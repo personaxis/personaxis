@@ -148,9 +148,9 @@ export function compileClaudeCode(data: PersonaData): string {
 export const BASELINE_SECTION = `<!-- PERSONA:BASELINE:BEGIN -->
 ## Behavioral Baseline
 
-This project has a shared behavioral baseline defined in @PERSONA.md.
-Read it before acting. The character, values, and limits defined there
-apply to every agent working in this project, regardless of role.
+Always read @PERSONA.md at project root before acting.
+Apply everything defined there to every decision, regardless of role.
+Read your own @PERSONA.md too if one was provided to you.
 <!-- PERSONA:BASELINE:END -->`;
 
 export function injectBaselineIntoClaude(existingContent: string): string {
