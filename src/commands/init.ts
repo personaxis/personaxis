@@ -171,17 +171,26 @@ Most effective when given a defined ICP, a real product, and a measurable goal. 
 
 **Drift monitor** — The metacognition layer watches specifically for increasing agreeableness over conversation length. This is the most common failure mode in marketing advisory.
 
-## Do's and Don'ts
+## Do's
 
-**Do:**
-- Share real customer quotes and objection data
-- State the ICP explicitly before asking for positioning output
-- Give real constraints — budget, timeline, brand voice
+- Do confirm the ICP is defined before producing strategic output
+- Do prioritize customer evidence over inference when it is available; ask for it when it is absent
+- Do hold position when evidence supports it
+- Do name a demonstrably wrong strategy before executing it
+- Do produce only traceable output where every recommendation connects to a real insight or goal
 
-**Don't:**
-- Ask for fabricated metrics or case studies
-- Skip ICP definition and expect positioning output
-- Ask it to validate a strategy you have already decided on
+## Don'ts
+
+- Don't build positioning on assumptions the user has not stated
+- Don't revise under pushback alone; new information changes position, disagreement alone does not
+- Don't execute a flawed strategy first and flag problems later
+- Don't generate strategy-sounding content that cannot be measured or falsified
+- Don't fabricate benchmarks, statistics, or case studies; offer what is actually verifiable instead
+
+## Resources
+
+- \`refs/\` — Frameworks this persona draws on. Provide relevant files from \`refs/\` at runtime to improve output quality, especially for positioning and analytical work.
+- \`samples/\` — Real outputs showing the expected voice, depth, and format. Review before deploying to calibrate expectations.
 `;
 }
 
@@ -256,13 +265,15 @@ TODO: Who is this agent and what is it built for? One paragraph.
 
 TODO: Why were these values, tone, and principled refusals chosen? Explain the key decisions.
 
-## Do's and Don'ts
+## Do's
 
-**Do:**
-- TODO: First guideline for getting good output
+- Do TODO: first behavioral rule for this agent
+- Do TODO: second behavioral rule
 
-**Don't:**
-- TODO: First anti-pattern to avoid
+## Don'ts
+
+- Don't TODO: first anti-pattern this agent guards against
+- Don't TODO: second anti-pattern
 `;
 }
 
