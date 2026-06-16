@@ -47,9 +47,11 @@ export const listCommand = new Command("list")
       if (existsSync(personaPath)) {
         try {
           const parsed = matter.read(personaPath);
-          const identity = parsed.data.identity as Record<string, string> | undefined;
-          name = identity?.name ?? slug;
-          role = identity?.tagline ?? identity?.role ?? "";
+          const metadata = parsed.data.metadata as Record<string, unknown> | undefined;
+          const identity = parsed.data.identity as Record<string, unknown> | undefined;
+          const roleIdentity = identity?.role_identity as Record<string, unknown> | undefined;
+          name = (metadata?.display_name as string) ?? (metadata?.name as string) ?? slug;
+          role = (metadata?.description as string) ?? (roleIdentity?.primary_role as string) ?? "";
         } catch {}
       }
 
@@ -60,6 +62,7 @@ export const listCommand = new Command("list")
 
     console.log("");
     console.log(chalk.dim("Compile a persona:"), chalk.cyan("personaxis compile .personaxis/personas/<slug>/PERSONA.md --target claude-code"));
+    console.log(chalk.dim("Compile for Codex:"), chalk.cyan("personaxis compile .personaxis/personas/<slug>/PERSONA.md --target codex"));
     console.log("");
   });
 
@@ -75,7 +78,8 @@ export const templatesCommand = new Command("templates")
     }
 
     console.log("");
-    console.log(chalk.dim("Use a template:"), chalk.cyan("personaxis use <template> [--target claude-code|cursor|soul-md]"));
+    console.log(chalk.dim("Use a template:"), chalk.cyan("personaxis use <template> [--target claude-code|codex]"));
+    console.log(chalk.dim("Archived targets:"), chalk.cyan("cursor, soul-md"));
     console.log(chalk.dim("Search registry:"), chalk.cyan("personaxis search <query>"), chalk.dim("(coming soon)"));
     console.log("");
   });

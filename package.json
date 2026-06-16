@@ -1,11 +1,13 @@
 {
   "name": "@personaxis/persona.md",
-  "version": "0.1.2",
-  "description": "CLI for PERSONA.md — define, validate, and compile AI agent personas",
+  "version": "0.6.0",
+  "description": "CLI for PERSONA.md spec v0.7.0 (Personaxis v12) - define, validate, lint, compile, decompile, push, pull, and migrate AI agent personas. Three-artifact model: personaxis.md (quantitative 10-layer spec), PERSONA.md (LLM-compiled qualitative document), and state.json (mutable runtime state). Ships compile|decompile|push|pull, state init|mutate|show, skills list|pull, and migrate 0.5-to-0.6|0.6-to-0.7 commands.",
   "keywords": [
     "ai",
     "agents",
     "persona",
+    "persona-spec",
+    "agent-personhood",
     "spec",
     "cli"
   ],
@@ -26,7 +28,8 @@
   },
   "files": [
     "dist",
-    "schema"
+    "schema",
+    "templates"
   ],
   "scripts": {
     "build": "tsc",
@@ -40,9 +43,11 @@
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "gray-matter": "^4.0.3",
-    "inquirer": "^12.5.2"
+    "inquirer": "^12.5.2",
+    "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "typescript": "^5.8.3"
   },

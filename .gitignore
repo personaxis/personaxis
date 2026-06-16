@@ -4,5 +4,8 @@ dist/
 
 # Test artifacts from local CLI runs
 .claude/
+.codex/
+.agents/
 .cursor/
-.personaxis/
+.personaxis/*
+!.personaxis/personaxis.md

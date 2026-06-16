@@ -12,6 +12,15 @@ import { lintCommand } from "./commands/lint.js";
 import { diffCommand } from "./commands/diff.js";
 import { exportCommand } from "./commands/export.js";
 import { specCommand } from "./commands/spec.js";
+import { templateCommand } from "./commands/template.js";
+import { pullCommand } from "./commands/pull.js";
+import { runtimeCommand } from "./commands/runtime.js";
+import { stateCommand } from "./commands/state.js";
+import { migrateCommand } from "./commands/migrate.js";
+import { configCommand } from "./commands/config.js";
+import { decompileCommand } from "./commands/decompile.js";
+import { pushCommand } from "./commands/push.js";
+import { skillsCommand } from "./commands/skills.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(
@@ -33,5 +42,14 @@ program.addCommand(specCommand);
 program.addCommand(useCommand);
 program.addCommand(listCommand);
 program.addCommand(templatesCommand);
+program.addCommand(templateCommand);
+program.addCommand(pullCommand);
+program.addCommand(runtimeCommand);
+program.addCommand(stateCommand);
+program.addCommand(migrateCommand);
+program.addCommand(configCommand);
+program.addCommand(decompileCommand);
+program.addCommand(pushCommand);
+program.addCommand(skillsCommand);
 
 program.parse();

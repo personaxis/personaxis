@@ -4,8 +4,9 @@ import chalk from "chalk";
 import matter from "gray-matter";
 
 const REQUIRED_LAYERS = [
-  "identity", "character", "personality", "cognition", "affect",
-  "drives_values", "normative_self_reg", "memory", "metacognition", "persona",
+  "identity", "character", "personality", "values_and_drives", "affect",
+  "cognition", "memory", "metacognition", "reflexive_self_regulation", "persona",
+  "metadata", "governance", "security",
 ];
 
 function flatten(obj: unknown, prefix = ""): Record<string, unknown> {
