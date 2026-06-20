@@ -1,0 +1,150 @@
+/**
+ * The Living Loop — what makes a persona "alive", governed end to end.
+ *
+ *   observe -> appraise -> evolve (clamped to envelopes) -> recompile -> memory
+ *
+ * Every mutation is clamped + audited; every memory write is dry-run verified +
+ * lineage-chained; the governance gate decides admissibility; the universal
+ * invariants are never touched. The model proposes signals; the spec engine
+ * imposes safety. Nothing is a black box — each step emits an auditable event.
+ */
+
+import { extractEnvelopes } from "./envelopes.js";
+import {
+  governMutations,
+  readMode,
+  type GovernanceConfig,
+  DEFAULT_GOVERNANCE,
+} from "./governance.js";
+import { applyMutation } from "./state-engine.js";
+import {
+  commitMemoryEntry,
+  prepareMemoryEntry,
+  verifyMemoryChain,
+} from "./memory.js";
+import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
+import { EventBus } from "./events.js";
+import type { Appraiser, ProvenanceSource } from "./appraisal.js";
+
+export interface LivingLoopOptions {
+  appraiser: Appraiser;
+  /** Override governance; otherwise read improvement_policy.mode from frontmatter. */
+  governance?: Partial<GovernanceConfig>;
+  /** Optional recompile hook (LLM-backed, lives in the CLI). Called on drift. */
+  recompile?: (handle: PersonaHandle) => Promise<void>;
+}
+
+export interface TickInput {
+  observation: string;
+  source: ProvenanceSource;
+  /** Actor recorded in the mutation log. Defaults to actor-llm. */
+  actor?: "actor-llm" | "runtime-context";
+}
+
+export interface TickReport {
+  mutationsApplied: number;
+  memoriesWritten: number;
+  abstained: boolean;
+}
+
+export class LivingLoop {
+  readonly bus = new EventBus();
+  private handle: PersonaHandle;
+
+  constructor(
+    personaPath: string,
+    private readonly opts: LivingLoopOptions,
+  ) {
+    this.handle = loadPersona(personaPath);
+  }
+
+  /** Reload the persona document (e.g. after a recompile). */
+  reload(): void {
+    this.handle = loadPersona(this.handle.personaPath);
+  }
+
+  get persona(): PersonaHandle {
+    return this.handle;
+  }
+
+  private resolveGovernance(): GovernanceConfig {
+    const mode = readMode(this.handle.frontmatter as Record<string, unknown>);
+    return { ...DEFAULT_GOVERNANCE, mode, ...this.opts.governance };
+  }
+
+  /** Run one full governed cycle. */
+  async tick(input: TickInput): Promise<TickReport> {
+    const bus = this.bus;
+    try {
+      // 1. observe
+      bus.emit({ type: "observe", observation: input.observation, source: input.source });
+
+      const env = extractEnvelopes(this.handle.frontmatter);
+      const state: StateFile = readState(this.handle.statePath);
+
+      // 2. appraise (model proposes structured signals only)
+      const signal = await this.opts.appraiser.appraise({
+        observation: input.observation,
+        source: input.source,
+        personaBody: this.handle.body,
+        mutableFields: Object.keys(env.envelopes),
+      });
+      bus.emit({ type: "appraise", signal });
+
+      // Uncertainty policy: abstain from evolving when confidence is too low.
+      if (signal.confidence < 0.2) {
+        bus.emit({ type: "abstain", reason: `low confidence (${signal.confidence.toFixed(2)})` });
+        return { mutationsApplied: 0, memoriesWritten: 0, abstained: true };
+      }
+
+      // 3. evolve — govern, then clamp + audit
+      const gov = this.resolveGovernance();
+      const decision = governMutations(signal.mutations, env, gov);
+      bus.emit({ type: "govern", verdicts: decision.verdicts });
+
+      let mutationsApplied = 0;
+      for (const m of decision.admitted) {
+        const result = applyMutation(state, env.envelopes, {
+          field: m.field,
+          delta: m.delta,
+          reason: m.reason,
+          actor: input.actor ?? "actor-llm",
+        });
+        bus.emit({ type: "mutate", result });
+        if (result.to !== result.from) mutationsApplied++;
+      }
+      if (decision.admitted.length > 0) writeState(this.handle.statePath, state);
+
+      // 5. memory — dry-run -> verify chain -> commit (write-path audit)
+      let memoriesWritten = 0;
+      for (const mem of signal.memories) {
+        const entry = prepareMemoryEntry(this.handle.personaPath, {
+          content: mem.content,
+          source: mem.source,
+          tags: mem.tags,
+        });
+        const chain = verifyMemoryChain(this.handle.personaPath);
+        if (!chain.ok) {
+          bus.emit({ type: "error", message: `memory chain broken at #${chain.brokenAt}; refusing write` });
+          continue;
+        }
+        commitMemoryEntry(this.handle.personaPath, entry);
+        bus.emit({ type: "memory", entry });
+        memoriesWritten++;
+      }
+
+      // 4. recompile on drift (after state changes so the doc reflects them)
+      if (mutationsApplied > 0 && this.opts.recompile) {
+        bus.emit({ type: "recompile", reason: `${mutationsApplied} envelope mutation(s) applied` });
+        await this.opts.recompile(this.handle);
+        this.reload();
+      }
+
+      bus.emit({ type: "tick-complete", mutationsApplied, memoriesWritten });
+      return { mutationsApplied, memoriesWritten, abstained: false };
+    } catch (err) {
+      bus.emit({ type: "error", message: (err as Error).message });
+      throw err;
+    }
+  }
+}

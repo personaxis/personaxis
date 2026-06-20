@@ -21,6 +21,7 @@ import { configCommand } from "./commands/config.js";
 import { decompileCommand } from "./commands/decompile.js";
 import { pushCommand } from "./commands/push.js";
 import { skillsCommand } from "./commands/skills.js";
+import { startRepl } from "./repl/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(
@@ -29,8 +30,13 @@ const pkg = JSON.parse(
 
 program
   .name("personaxis")
-  .description("Define, validate, and compile AI agent personas")
-  .version(pkg.version);
+  .description("Living, governed AI agent personas — define, validate, compile, and live.")
+  .version(pkg.version)
+  // `personaxis` with no subcommand enters the living REPL.
+  .option("--persona <path>", "Path to the persona (personaxis.md / PERSONA.md) for the REPL")
+  .action(async (opts: { persona?: string }) => {
+    await startRepl({ persona: opts.persona });
+  });
 
 program.addCommand(initCommand);
 program.addCommand(validateCommand);

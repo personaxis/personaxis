@@ -39,9 +39,8 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      # TODO(F0): enable once vitest is wired (plan/12-testing-ci)
-      # - name: Test
-      #   run: pnpm run test
+      - name: Test
+        run: pnpm run test
 
   golden:
     name: golden test (validate CMO = PASS)
