@@ -9,6 +9,7 @@ export * from "./persona.js";
 export * from "./envelopes.js";
 export * from "./state-engine.js";
 export * from "./appraisal.js";
+export * from "./heuristic-appraiser.js";
 export * from "./governance.js";
 export * from "./memory.js";
 export * from "./sigil.js";

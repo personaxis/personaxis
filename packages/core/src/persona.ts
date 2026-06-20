@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import matter from "gray-matter";
+import { extractEnvelopes } from "./envelopes.js";
 
 export interface PersonaFrontmatter {
   [key: string]: unknown;
@@ -94,4 +95,29 @@ export function writeState(statePath: string, state: StateFile): void {
 
 export function stateExists(statePath: string): boolean {
   return existsSync(statePath);
+}
+
+/**
+ * Return the persona's state, seeding a fresh state.json from envelope means if
+ * none exists yet. Keeps hosts (REPL, MCP) working out-of-the-box.
+ */
+export function ensureState(handle: PersonaHandle): StateFile {
+  if (existsSync(handle.statePath)) return readState(handle.statePath);
+  const env = extractEnvelopes(handle.frontmatter);
+  const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
+  const values: Record<string, number> = {};
+  for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
+  const state: StateFile = {
+    schema_version: "0.6.0",
+    persona_id: meta.name ?? "persona",
+    persona_version: meta.version ?? "0.0.0",
+    values,
+    active_context: { task_mode: null, audience: null, additional_context_flags: [] },
+    memory_anchors_active: [],
+    mutation_log: [],
+    last_compiled_at: null,
+    last_compiled_hash: null,
+  };
+  writeState(handle.statePath, state);
+  return state;
 }

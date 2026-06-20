@@ -1,0 +1,25 @@
+{
+  "name": "@personaxis/mcp",
+  "version": "0.7.0",
+  "description": "Personaxis MCP server — expose a living, governed persona as tools any MCP host (Claude Code, Codex, Cursor) can call.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "personaxis-mcp": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@personaxis/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.3"
+  }
+}

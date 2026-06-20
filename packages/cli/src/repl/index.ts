@@ -20,10 +20,10 @@ import {
   extractEnvelopes,
   readMode,
   sigilParams,
+  HeuristicAppraiser,
   type PersonaHandle,
   type StateFile,
 } from "@personaxis/core";
-import { HeuristicAppraiser } from "./appraiser.js";
 import { banner, sigilBlock, moodGauge, formatEvent } from "./render.js";
 
 interface ReplOptions {
