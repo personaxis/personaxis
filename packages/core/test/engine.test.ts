@@ -14,6 +14,7 @@ import {
   verifyMemoryChain,
   sigilParams,
   renderSigil,
+  LlmAppraiser,
   type Appraiser,
   type AppraisalSignal,
   type StateFile,
@@ -207,6 +208,62 @@ describe("LivingLoop (autonomous)", () => {
     const report = await loop.tick({ observation: "obs", source: "user" });
     expect(report.abstained).toBe(true);
     expect(report.mutationsApplied).toBe(0);
+  });
+});
+
+describe("LlmAppraiser (constrained decoding, mocked transport)", () => {
+  it("requests json_schema-constrained output and parses the signal", async () => {
+    let captured: { url: string; body: Record<string, unknown> } | null = null;
+    const fakeFetch = async (url: string, init: { body: string }) => {
+      captured = { url, body: JSON.parse(init.body) };
+      const content = JSON.stringify({
+        appraisal: "ok",
+        mutations: [{ field: "mood.tone", delta: 0.05, reason: "r" }],
+        memories: [{ content: "m", source: "user" }],
+        confidence: 0.8,
+      });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content } }] }),
+      };
+    };
+    const a = new LlmAppraiser({
+      endpoint: "http://localhost:11434/v1",
+      model: "qwen3:4b",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+    });
+    const sig = await a.appraise({
+      observation: "o",
+      source: "user",
+      personaBody: "identity",
+      mutableFields: ["mood.tone"],
+    });
+    expect(captured).not.toBeNull();
+    expect(captured!.url).toContain("/chat/completions");
+    const rf = captured!.body.response_format as { type: string };
+    expect(rf.type).toBe("json_schema");
+    expect(sig.mutations[0].field).toBe("mood.tone");
+    expect(sig.confidence).toBe(0.8);
+  });
+
+  it("recovers JSON wrapped in prose", async () => {
+    const fakeFetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          { message: { content: 'Sure! {"appraisal":"x","mutations":[],"memories":[],"confidence":0.6} done' } },
+        ],
+      }),
+    });
+    const a = new LlmAppraiser({
+      endpoint: "http://x/v1",
+      model: "m",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+    });
+    const sig = await a.appraise({ observation: "o", source: "user", personaBody: "id", mutableFields: [] });
+    expect(sig.confidence).toBe(0.6);
   });
 });
 

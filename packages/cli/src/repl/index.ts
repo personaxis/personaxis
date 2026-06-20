@@ -21,6 +21,8 @@ import {
   readMode,
   sigilParams,
   HeuristicAppraiser,
+  LlmAppraiser,
+  type Appraiser,
   type PersonaHandle,
   type StateFile,
 } from "@personaxis/core";
@@ -115,7 +117,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   const mode = readMode(handle.frontmatter as Record<string, unknown>);
   const name = personaName(handle);
 
-  const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
+  const loop = new LivingLoop(personaPath, { appraiser: pickAppraiser() });
   loop.bus.on((e) => {
     const line = formatEvent(e);
     if (line) stdout.write(line + "\n");
@@ -166,6 +168,27 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 
   rl.close();
   stdout.write(chalk.dim("\n  persona sleeping. state + memory persisted.\n"));
+}
+
+/**
+ * Choose the appraiser: an OpenAI-compatible local/hosted model when configured
+ * (constrained decoding), else the deterministic heuristic. Env:
+ *   PERSONAXIS_ENDPOINT (e.g. http://localhost:11434/v1), PERSONAXIS_MODEL,
+ *   PERSONAXIS_API_KEY (optional).
+ */
+function pickAppraiser(): Appraiser {
+  const endpoint = process.env.PERSONAXIS_ENDPOINT;
+  const model = process.env.PERSONAXIS_MODEL;
+  if (endpoint && model) {
+    return new LlmAppraiser({ endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY });
+  }
+  return new HeuristicAppraiser();
+}
+
+function appraiserLabel(): string {
+  const endpoint = process.env.PERSONAXIS_ENDPOINT;
+  const model = process.env.PERSONAXIS_MODEL;
+  return endpoint && model ? `LlmAppraiser (${model} @ ${endpoint})` : "HeuristicAppraiser (offline)";
 }
 
 function modeColor(mode: string): string {
@@ -267,7 +290,10 @@ async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boo
       stdout.write(chalk.dim("  /compile: wired to the LLM compile pipeline in a later phase (F2/F5).\n"));
       return false;
     case "model":
-      stdout.write(chalk.dim("  appraiser: HeuristicAppraiser (offline). LLM appraiser = F2.\n"));
+      stdout.write(chalk.dim(`  appraiser: ${appraiserLabel()}\n`));
+      stdout.write(
+        chalk.dim("  set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL to use a local/hosted model.\n"),
+      );
       return false;
     case "goal":
       stdout.write(chalk.dim(`  /goal stub — would set completion goal: "${arg}" (plan/07).\n`));
