@@ -1,0 +1,23 @@
+Personaxis CLI
+Copyright (c) 2026 Personaxis
+
+This product is the reference CLI implementation of the personaxis.md / PERSONA.md
+specification. It is released under the MIT License (see LICENSE).
+
+Third-party dependencies (each under its own license; see node_modules/<pkg>/LICENSE):
+  - ajv, ajv-formats        (MIT)
+  - chalk                   (MIT)
+  - commander               (MIT)
+  - gray-matter             (MIT)
+  - inquirer                (MIT)
+  - js-yaml                 (MIT)
+
+Conventions implemented from public documentation (no source copied):
+  - AGENTS.md and .codex/agents/*.toml  (OpenAI Codex, Apache-2.0 project)
+  - .claude/agents/*.md and SKILL.md    (Anthropic Claude Code, public docs)
+  - SOUL.md identity slot               (Nous Research Hermes, MIT project)
+  - agents.md HTTP tool contract        (Hugging Face Spaces, public docs)
+
+These are documented interoperability conventions; personaxis implements them
+independently to interoperate with those host agents. No third-party source code
+is bundled or derived beyond the permissively licensed npm dependencies above.
