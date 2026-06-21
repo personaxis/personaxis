@@ -37,7 +37,9 @@ personaxis-mcp     # stdio MCP server: persona_compiled, persona_state,
                    # adjust_persona_state, persona_observe, persona_audit, ...
 ```
 
-This repo is a **pnpm monorepo** (`@personaxis/core`, `@personaxis/cli`, `@personaxis/mcp`). See [`plan/`](plan/) for the full roadmap, research dossier, and checklists.
+This repo is a **pnpm monorepo** (`@personaxis/core`, `@personaxis/cli`, `@personaxis/mcp`, `@personaxis/tui`).
+
+**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — what personaxis is, the three-artifact model, the governed Living Loop, the security model, the full command reference, and the architecture. See [`plan/`](plan/) for the roadmap + research dossier and [`plan/14-apa-report/REPORT.md`](plan/14-apa-report/REPORT.md) for the APA report.
 
 ---
 
