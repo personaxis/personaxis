@@ -115,7 +115,7 @@ export function ensureState(handle: PersonaHandle): StateFile {
   const values: Record<string, number> = {};
   for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
   const state: StateFile = {
-    schema_version: "0.6.0",
+    schema_version: "0.7.0",
     persona_id: meta.name ?? "persona",
     persona_version: meta.version ?? "0.0.0",
     values,

@@ -84,16 +84,18 @@ jobs:
             echo "::warning::sibling persona.md repo not available; skipping golden validate"
           fi
 
-      # Byte-identity rule (CLAUDE.md): schemas must match persona.md. Non-blocking
-      # for now — there is pre-existing v0.6/v0.7 drift to reconcile separately.
-      - name: Check schema byte-identity with persona.md (warn-only)
+      # Byte-identity rule (CLAUDE.md): schemas AND templates must match persona.md.
+      # Blocking — drift is a spec-conformance regression.
+      - name: Enforce schema + template byte-identity with persona.md
+        if: ${{ hashFiles('persona.md/schema/persona.schema.json') != '' }}
         working-directory: cli
-        continue-on-error: true
         run: |
-          for f in persona.schema.json policy.schema.json state.schema.json; do
-            if [ -f "packages/cli/schema/$f" ] && [ -f "../persona.md/schema/$f" ]; then
-              if ! diff -q "packages/cli/schema/$f" "../persona.md/schema/$f" >/dev/null; then
-                echo "::warning::schema $f differs from persona.md (byte-identity rule)"
-              fi
-            fi
-          done
+          fail=0
+          check() { if ! diff -q "$1" "$2" >/dev/null; then echo "::error::$1 differs from $2 (byte-identity rule)"; fail=1; fi; }
+          check packages/cli/schema/persona.schema.json ../persona.md/schema/persona.schema.json
+          check packages/cli/schema/policy.schema.json  ../persona.md/schema/policy.schema.json
+          check packages/cli/schema/state.schema.json   ../persona.md/schema/state.schema.json
+          check packages/cli/templates/personaxis_template.md ../persona.md/.personaxis/personaxis_template.md
+          check packages/cli/templates/PERSONA_template.md     ../persona.md/PERSONA_template.md
+          check packages/cli/templates/policy_template.yaml    ../persona.md/.personaxis/policy_template.yaml
+          exit $fail

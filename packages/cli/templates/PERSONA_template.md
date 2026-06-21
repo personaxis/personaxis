@@ -161,5 +161,5 @@ cannot apply them without review."]
      A Claude Code subagent file also needs YAML frontmatter ABOVE the H1
      with `name` (the slug) and `description` (one line, used by Claude Code
      to decide when to invoke this subagent) - see
-     `examples/cmo/.claude/agents/frontend-expert.md` for a complete example.
+     `.claude/agents/frontend-expert.md` for a complete example.
      ═══════════════════════════════════════════════════════════════════════ -->

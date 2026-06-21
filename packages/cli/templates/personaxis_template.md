@@ -1,30 +1,42 @@
 ---
 # ═══════════════════════════════════════════════════════════════════════════
-# PERSONA.md — Canonical template (spec v0.6.0)
+# personaxis.md - Canonical quantitative spec template (spec v0.7.0)
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# This template is the starting point for every AI Persona conforming to the
-# PERSONA spec v11. Copy this file, rename it to PERSONA.md, and fill it in.
-# The final file must pass `personaxis validate ./PERSONA.md` without errors.
+# This template is the starting point for the QUANTITATIVE 10-layer spec of
+# every AI Persona conforming to the PERSONA spec v11. Copy this file to
+# `.personaxis/personaxis.md` (root mode) or
+# `.personaxis/personas/<slug>/personaxis.md` (subagent mode) and fill it in.
+# The final file must pass `personaxis validate` without errors.
 #
-# ── WHAT'S NEW IN v0.6.0 ──────────────────────────────────────────────────
+# ── v0.7.0 NOTE ─────────────────────────────────────────────────────────────
+#
+# As of spec v0.7.0, this quantitative document lives at
+# `.personaxis/[personas/<slug>/]personaxis.md`, NOT at the repo root.
+# The repo root `PERSONA.md` (or `.claude/agents/<slug>.md` in subagent mode)
+# is a SEPARATE, LLM-compiled QUALITATIVE document generated from this file via
+# `personaxis compile`. See the root `PERSONA_template.md` for that document's
+# template. Editing the compiled document and running `personaxis push` will
+# `personaxis decompile` your edits back into this file.
+#
+# ── WHAT'S NEW IN v0.6.0 (still the quantitative layer model) ──────────────
 #
 # v0.6.0 is a structural refactor focused on three problems detected in 0.5:
-#   1. Token cost of always-loaded identity (PERSONA.md naively inlined).
+#   1. Token cost of always-loaded identity (the spec naively inlined).
 #   2. Redundancy in edit_policy / drift_threshold scattered across layers.
 #   3. Confusion in reflexive_self_regulation.actions[] (mixing 5 concerns).
 #
 # The fixes, applied in this template:
 #
-# (a) Three-layer information model:
-#     - PERSONA.md       = SOURCE OF IDENTITY (immutable except via versioned
+# (a) Three-artifact information model:
+#     - personaxis.md    = SOURCE OF IDENTITY (immutable except via versioned
 #                          self-edit or governance approval).
 #     - state.json       = MUTABLE RUNTIME STATE (current trait/affect/mood
 #                          values, active context, mutation log). Lives in
 #                          the persona directory as a sibling artifact.
 #     - .dist/           = EPHEMERAL COMPILED PROMPT (per-request, generated
-#                          by the personaxis compiler from PERSONA.md +
-#                          state.json).
+#                          by the personaxis runtime compiler from
+#                          personaxis.md + state.json).
 #
 # (b) Field consumer model (documented per field):
 #     - [ACTOR-HOT]      Always in the actor's system prompt.
@@ -45,21 +57,40 @@
 # (e) `personality.context_modifiers` removed (redundant with persona.task_modes).
 # (f) `extensions.knowledge_anchors` removed (redundant with references/).
 #
-# ── FILE STRUCTURE ─────────────────────────────────────────────────────────
+# ── FILE STRUCTURE (root mode) ───────────────────────────────────────────────
 #
-#   persona-name/
-#   ├── PERSONA.md            # this file: 10-layer identity spec
-#   ├── policy.yaml           # observability + assertions + improvement_policy
-#   ├── state.json            # MUTABLE runtime state (current values)
-#   ├── memory.md             # long-term curated semantic memory
-#   ├── memory/               # episodic, date-stamped sessions
-#   │   └── YYYY-MM-DD.md
-#   ├── references/           # heavy knowledge prose (Anthropic Skills convention)
-#   ├── examples/             # worked outputs for voice/format calibration
-#   ├── skills/               # Anthropic-compatible sub-skills (optional)
-#   │   └── <skill-name>/SKILL.md
-#   ├── assets/               # catchall: CSV, JSON, images, fonts
-#   └── README.md             # human-facing: how to use this directory
+#   repo-root/
+#   ├── PERSONA.md            # compiled qualitative document (see root template)
+#   └── .personaxis/
+#       ├── personaxis.md     # this file: 10-layer quantitative identity spec
+#       ├── policy.yaml       # observability + assertions + improvement_policy
+#       ├── state.json        # MUTABLE runtime state (current values)
+#       ├── memory.md         # long-term curated semantic memory
+#       ├── memory/           # episodic, date-stamped sessions
+#       │   └── YYYY-MM-DD.md
+#       ├── references/       # heavy knowledge prose (Anthropic Skills convention)
+#       ├── examples/         # worked outputs for voice/format calibration
+#       ├── skills/           # Anthropic-compatible sub-skills (optional)
+#       │   └── <skill-name>/SKILL.md
+#       ├── assets/           # catchall: CSV, JSON, images, fonts
+#       ├── manifest.json     # compile/decompile provenance + content hashes
+#       └── README.md         # human-facing: how to use this directory
+#
+# ── FILE STRUCTURE (subagent mode) ──────────────────────────────────────────
+#
+#   repo-root/
+#   ├── .claude/agents/<slug>.md        # compiled qualitative document (Claude Code)
+#   └── .personaxis/personas/<slug>/    # same layout as root .personaxis/ above
+#       ├── personaxis.md
+#       ├── policy.yaml
+#       ├── state.json
+#       ├── memory.md
+#       ├── memory/
+#       ├── references/
+#       ├── examples/
+#       ├── skills/
+#       ├── assets/
+#       └── manifest.json
 #
 # ── TIER SYSTEM (MUST / SHOULD / MAY) ──────────────────────────────────────
 #
@@ -78,7 +109,7 @@
 
 apiVersion: persona.dev/v1            # MUST | UNIVERSAL — always "persona.dev/v1"
 kind: AgentPersona                    # MUST | enum<AgentPersona|UserPersona>
-spec_version: "0.6.0"                 # MUST | semver | spec version
+spec_version: "0.7.0"                 # MUST | semver | spec version
 
 # ═══════════════════════════════════════════════════════════════════════════
 # METADATA — registry-level identification (MUST)
@@ -653,6 +684,13 @@ runtime_artifacts:
 #   - memory.md    (curated long-term semantic memory)
 #   - skills/      (Anthropic-compatible sub-skills, optional)
 #   - assets/      (catchall for raw files)
+#
+# v0.7.0 LAYOUT CHANGE (informational; not part of this schema):
+#   - This document moved from repo-root `PERSONA.md` to
+#     `.personaxis/[personas/<slug>/]personaxis.md`. The repo-root
+#     `PERSONA.md` / `.claude/agents/<slug>.md` is now a separate compiled
+#     qualitative document generated via `personaxis compile`. No fields in
+#     this schema changed.
 # ═══════════════════════════════════════════════════════════════════════════
 
 ---
@@ -729,16 +767,18 @@ This persona's ability to edit its own spec is controlled by
 - `reflexive_self_regulation.decisions.governance_decision.enabled` includes
   `apply_self_edit`.
 
-**State.json vs PERSONA.md (frequent confusion):**
+**State.json vs personaxis.md (frequent confusion):**
 
 | Mutation | Edits which file? | Gated by |
 |---|---|---|
 | `adjust_persona_state(humor, -0.1)` | `state.json` | trait envelope (mean ± range), virtues with `enforcement: hard` |
-| `propose_self_edit(virtues.honesty.enforcement, "soft")` | proposes change to `PERSONA.md` | `improvement_policy.mode` + per-layer edit policy + universals |
-| `apply_self_edit(persona.voice.warmth_mean, 0.6)` | directly modifies `PERSONA.md` | `improvement_policy.mode: autonomous` + per-layer edit policy + universals |
+| `propose_self_edit(virtues.honesty.enforcement, "soft")` | proposes change to `personaxis.md` | `improvement_policy.mode` + per-layer edit policy + universals |
+| `apply_self_edit(persona.voice.warmth_mean, 0.6)` | directly modifies `personaxis.md` | `improvement_policy.mode: autonomous` + per-layer edit policy + universals |
 
 **Important:** state.json mutations happen regardless of improvement_policy.mode
 (state is operational, not spec). Spec edits require improvement_policy >= suggesting.
+Whenever this file changes (by any of the above), `personaxis push` recompiles
+the sibling `PERSONA.md` / `.claude/agents/<slug>.md` so the two stay in sync.
 
 ---
 
@@ -751,4 +791,6 @@ This persona's ability to edit its own spec is controlled by
 - `memory.md` — curated long-term semantic memory.
 - `memory/` — date-stamped episodic memory.
 - `state.json` — current runtime state (current trait/affect/mood values).
+- `manifest.json` - compile/decompile provenance (last op, model, source) and
+  content hashes used by `personaxis push`/`pull` to detect hand-edits.
 - `policy.yaml` — observability, assertions, and improvement_policy mode.

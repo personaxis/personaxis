@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://personaxis.com/schemas/persona/0.6/persona.schema.json",
-  "title": "PERSONA.md v0.6",
-  "description": "Schema for PERSONA.md spec v0.6.0 (Personaxis v11). Defines who an AI agent or user is across ten canonical layers. v0.6 introduces: (a) three-layer information model (PERSONA.md spec / state.json runtime / .dist compiled), (b) unified governance block with per_layer_edit_policy and drift_thresholds, (c) categorized reflexive decisions (replacing flat actions[]), (d) envelope-based trait/affect/mood (current values live in state.json), (e) removal of redundant fields (personality.context_modifiers, extensions.knowledge_anchors, scattered edit_policy). PERSONA.md is the only artifact inlined into the actor's compiled system prompt. Operational metadata lives in policy.yaml; runtime state lives in state.json.",
+  "$id": "https://personaxis.com/schemas/persona/0.7/persona.schema.json",
+  "title": "personaxis.md v0.7",
+  "description": "Schema for the quantitative 10-layer persona spec, spec v0.7.0 (Personaxis v11). As of v0.7.0 this document lives at `.personaxis/[personas/<slug>/]personaxis.md` (root or subagent mode); the repo-root `PERSONA.md` / `.claude/agents/<slug>.md` is a separate, LLM-compiled qualitative document generated from this file via `personaxis compile` and is not described by this schema. v0.6 field model (unchanged in v0.7): (a) three-artifact information model (personaxis.md spec / state.json runtime / .dist compiled), (b) unified governance block with per_layer_edit_policy and drift_thresholds, (c) categorized reflexive decisions (replacing flat actions[]), (d) envelope-based trait/affect/mood (current values live in state.json), (e) removal of redundant fields (personality.context_modifiers, extensions.knowledge_anchors, scattered edit_policy). Operational metadata lives in policy.yaml; runtime state lives in state.json.",
   "type": "object",
   "required": [
     "apiVersion",
@@ -37,7 +37,7 @@
     "spec_version": {
       "type": "string",
       "enum": ["0.7.0", "0.6.0", "0.5.0", "0.4.0", "0.3.0"],
-      "description": "Spec version. 0.7.0 is current (.personaxis/[personas/<slug>/]personaxis.md, compiled to PERSONA.md/<slug>.md). 0.3-0.6 accepted with deprecation warnings; the validator points to 'personaxis migrate' for automatic upgrade."
+      "description": "Spec version. 0.7.0 is current (layout-only change: this document moved from repo-root PERSONA.md to .personaxis/[personas/<slug>/]personaxis.md; no field changes from 0.6.0). 0.3-0.6 accepted with deprecation warnings; the validator points to 'personaxis migrate' for automatic upgrade."
     },
 
     "metadata": {

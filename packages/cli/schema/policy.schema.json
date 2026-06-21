@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://personaxis.com/schemas/persona/0.6/policy.schema.json",
-  "title": "policy.yaml v0.6",
-  "description": "Schema for the sibling policy.yaml file that lives next to PERSONA.md. Encodes the operational policy the Personaxis platform enforces over a persona-version: behavioral assertions, runtime constraints, evaluation suites, and improvement_policy (mutation governance). policy.yaml is consumed by the Personaxis backend and dashboard; it is NEVER inlined into an LLM system prompt. v0.6 introduces the autonomous mode and explicit scope allowlist/blocklist for spec self-edits.",
+  "$id": "https://personaxis.com/schemas/persona/0.7/policy.schema.json",
+  "title": "policy.yaml v0.7",
+  "description": "Schema for the sibling policy.yaml file that lives next to personaxis.md inside .personaxis/[personas/<slug>/]. Encodes the operational policy the Personaxis platform enforces over a persona-version: behavioral assertions, runtime constraints, evaluation suites, and improvement_policy (mutation governance). policy.yaml is consumed by the Personaxis backend and dashboard; it is NEVER inlined into an LLM system prompt. v0.7 is a layout-only change (moved from repo-root to .personaxis/); v0.6 introduced the autonomous mode and explicit scope allowlist/blocklist for spec self-edits.",
   "type": "object",
   "required": ["spec_version", "applies_to", "improvement_policy"],
   "additionalProperties": false,
@@ -10,18 +10,18 @@
     "spec_version": {
       "type": "string",
       "enum": ["0.7.0", "0.6.0", "0.5.0"],
-      "description": "Schema version. 0.7.0 is current. 0.5.0-0.6.0 accepted for backward compatibility (auto-migrated)."
+      "description": "Schema version. 0.7.0 is current (layout-only change, no field changes from 0.6.0). 0.5.0 accepted for backward compatibility (auto-migrated)."
     },
     "applies_to": {
       "type": "object",
       "required": ["persona_name"],
       "additionalProperties": false,
-      "description": "Reference to the PERSONA.md this policy governs. Lets a registry hold multiple policy.yaml siblings for different version ranges of the same persona (rare, but supported).",
+      "description": "Reference to the personaxis.md this policy governs. Lets a registry hold multiple policy.yaml siblings for different version ranges of the same persona (rare, but supported).",
       "properties": {
         "persona_name": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9_-]*$",
-          "description": "Must match the metadata.name of the PERSONA.md in the same directory."
+          "description": "Must match the metadata.name of the personaxis.md in the same directory."
         },
         "persona_version_range": {
           "type": "string",
@@ -154,7 +154,7 @@
               "persona",
               "cross_layer"
             ],
-            "description": "One of the 10 canonical PERSONA.md layers. The v0.6 canonical name for Layer 4 is 'values_and_drives'; 'values_drives' is accepted for backward compatibility with v0.5 policies. 'cross_layer' is for assertions that span multiple layers."
+            "description": "One of the 10 canonical personaxis.md layers. The v0.6 canonical name for Layer 4 is 'values_and_drives'; 'values_drives' is accepted for backward compatibility with v0.5 policies. 'cross_layer' is for assertions that span multiple layers."
           },
           "name": {
             "type": "string",
