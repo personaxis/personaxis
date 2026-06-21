@@ -149,7 +149,71 @@ TypeScript en todas partes. Dos canales de distribución:
 - **Binario único** por plataforma vía `bun compile` (`pnpm run package`) — sin runtime; los
   assets (schemas/templates/versión) se **embeben** en build, así el binario es autocontenido.
 
-## 10. Cómo correrlo
+## 10. Flujos de trabajo (end-to-end)
+
+> **Idea clave:** Personaxis es el *alma + memoria + conciencia* de la persona. El agente host
+> (Claude Code, Codex) es el *cerebro (modelo) + manos (tool-use)*. Personaxis solo **no** edita
+> código ni completa tareas por su cuenta: aporta identidad gobernada y persistente a quien sí
+> lo hace — o corre su propio lazo reactivo/evolutivo sobre un modelo local.
+
+### Flujo A — Solo (personaxis sin un agente grande)
+
+Útil cuando quieres una **identidad gobernada + memoria persistente + evolución acotada**, no un
+reemplazo de Claude Code.
+
+1. **Autoría:** `personaxis init` (o `pull`) → `personaxis validate` (pasa los 12 invariantes) →
+   `personaxis compile` (genera `PERSONA.md`).
+2. **Vida:** `personaxis` abre el REPL. Con un modelo local/BYOK (`PERSONAXIS_ENDPOINT`+`MODEL`),
+   hablas con la persona: en cada turno **observa → aprecia → evoluciona (acotado) → recuerda**.
+   Sin modelo, usa el appraiser heurístico (modo demo/offline).
+3. **Auditoría y reuso:** `/audit` (ver el trail), `overseer show` (todo el entorno),
+   `sync` (reconciliar entre máquinas).
+
+Lo que **sí** hace solo: define/valida/compila la persona, corre el lazo gobernado (reacciones +
+memoria + evolución acotada), y sirve esa identidad. Lo que **no** hace solo (todavía): ejecutar
+tareas reales (editar archivos, correr comandos) — ese trabajo lo hace el host (Flujo B) o, a
+futuro, conectando el *worker* del blackboard a herramientas reales.
+
+### Flujo B — Como capa bajo un agente potente (caso principal)
+
+El host trae el modelo potente y el loop de tool-use; personaxis aporta identidad viva + gobernanza.
+
+**B1 — Subagente nativo (sin MCP):**
+```bash
+personaxis compile --platform claude-code   # escribe .claude/agents/<slug>.md + baseline en CLAUDE.md
+```
+Claude Code adopta ese archivo como system-prompt del subagente → **el agente ES la persona**.
+Cuando la persona evoluciona, `live-sync` reescribe el bloque LIVE-STATE del archivo y el host lo ve.
+
+**B2 — MCP (runtime, más rico):** registras `personaxis-mcp` en el host. Secuencia típica de sesión:
+1. **Inicio:** el host llama `persona_compiled` → carga la identidad (slot #1 del prompt).
+2. **Durante el trabajo, el host llama a personaxis como "conciencia":**
+   - `persona_observe` → un tick gobernado del lazo (la persona reacciona/evoluciona, acotada).
+   - `adjust_persona_state` → ajusta mood/affect (clampeado + auditado).
+   - `scan_text` → antes de confiar en contenido externo (defensa de inyección).
+   - `evaluate_command` → antes de correr un comando (política sandbox: allow/ask/deny).
+   - `skill_review` → antes de usar una skill (supply-chain).
+   - `persona_propose_edit` → proponer una auto-edición del spec (gobernada por consenso).
+3. **Cierre:** `persona_audit` (integridad de cadena + anomalías). **Estado y memoria persisten**;
+   la próxima sesión, `persona_state`/`persona_compiled` restauran quién es.
+
+**B3 — agents.md/HTTP:** las mismas operaciones por `curl` (`personaxis serve`) para agentes que
+no hablan MCP.
+
+### ¿Por qué un agente potente la usaría?
+- **Identidad persistente y portable** entre sesiones, proyectos y máquinas (no re-explicas quién es).
+- **Evolución gobernada y auditable**: se adapta al usuario sin derivar de forma insegura (moat de
+  cumplimiento/seguridad).
+- **Memoria con procedencia** + defensas anti-envenenamiento (Zombie Agents).
+- **Segunda opinión de seguridad model-agnostic**: `scan_text`, `evaluate_command`, `skill_review`
+  funcionan igual sin importar qué modelo use el host.
+
+### Multi-persona (overseer)
+`personaxis orchestrate "<tarea>"` enruta la tarea a la persona mejor calificada por capacidad
+(blackboard). En B2, un orquestador host puede pedir a personaxis el ranking y luego delegar el
+trabajo real a esa persona/subagente.
+
+## 11. Cómo correrlo
 
 ```bash
 pnpm install && pnpm run build && pnpm run test
