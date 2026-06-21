@@ -23,6 +23,7 @@ import {
   sigilParams,
   HeuristicAppraiser,
   LlmAppraiser,
+  makeRecompileHook,
   type Appraiser,
   type PersonaHandle,
 } from "@personaxis/core";
@@ -90,7 +91,13 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   const mode = readMode(handle.frontmatter as Record<string, unknown>);
   const name = displayName(handle.frontmatter);
 
-  const loop = new LivingLoop(personaPath, { appraiser: pickAppraiser() });
+  // Live-sync: on evolution, update the LIVE-STATE block in the compiled host doc
+  // (repo-root PERSONA.md, if present) and write a .live.json notify marker.
+  const compiledCandidate = resolve(dirname(dirname(personaPath)), "PERSONA.md");
+  const loop = new LivingLoop(personaPath, {
+    appraiser: pickAppraiser(),
+    recompile: makeRecompileHook(existsSync(compiledCandidate) ? compiledCandidate : undefined),
+  });
   loop.bus.on((e) => {
     const line = formatEvent(e);
     if (line) stdout.write(line + "\n");

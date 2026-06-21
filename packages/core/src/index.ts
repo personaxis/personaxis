@@ -15,6 +15,7 @@ export * from "./governance.js";
 export * from "./self-evolution.js";
 export * from "./registry.js";
 export * from "./blackboard.js";
+export * from "./live-sync.js";
 export * from "./sync.js";
 export * from "./skill-review.js";
 export * from "./memory.js";
