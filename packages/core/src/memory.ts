@@ -82,6 +82,37 @@ export function commitMemoryEntry(personaPath: string, entry: MemoryEntry): void
   appendFileSync(p, JSON.stringify(entry) + "\n", "utf-8");
 }
 
+/**
+ * Honor deletion_policy.user_request_supported WITHOUT breaking the append-only
+ * chain: append a tombstone that supersedes a prior entry. The original line is
+ * never rewritten (chain stays verifiable); live readers filter it out. The
+ * deletion itself is thus auditable — you can prove what was removed and when.
+ */
+export function tombstoneMemory(
+  personaPath: string,
+  targetHash: string,
+  reason: string,
+): MemoryEntry {
+  const entry = prepareMemoryEntry(personaPath, {
+    content: `[deleted by user request: ${reason}]`,
+    source: "user",
+    tags: ["tombstone", `target:${targetHash}`],
+  });
+  commitMemoryEntry(personaPath, entry);
+  return entry;
+}
+
+/** Read memory with tombstoned entries (and the tombstones themselves) removed. */
+export function readLiveMemory(personaPath: string): MemoryEntry[] {
+  const all = readMemory(personaPath);
+  const tombstoned = new Set<string>();
+  for (const e of all) {
+    const t = e.tags.find((x) => x.startsWith("target:"));
+    if (e.tags.includes("tombstone") && t) tombstoned.add(t.slice("target:".length));
+  }
+  return all.filter((e) => !e.tags.includes("tombstone") && !tombstoned.has(e.hash));
+}
+
 /** Verify the hash chain is intact (tamper / poisoning detection). */
 export function verifyMemoryChain(personaPath: string): { ok: boolean; brokenAt?: number } {
   const entries = readMemory(personaPath);

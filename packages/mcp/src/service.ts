@@ -16,7 +16,10 @@ import {
   extractEnvelopes,
   applyMutation,
   readMemory,
+  readLiveMemory,
+  tombstoneMemory,
   verifyMemoryChain,
+  detectMemoryAnomalies,
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
@@ -92,5 +95,12 @@ export function audit(persona: string): unknown {
     memory_entries: mem.length,
     memory_chain_intact: chain.ok,
     memory_chain_broken_at: chain.brokenAt ?? null,
+    anomalies: detectMemoryAnomalies(mem),
   };
+}
+
+/** Honor deletion_policy.user_request_supported: tombstone a memory entry. */
+export function forget(persona: string, targetHash: string, reason: string): unknown {
+  const entry = tombstoneMemory(persona, targetHash, reason);
+  return { tombstoned: targetHash, by: entry.hash, live_entries: readLiveMemory(persona).length };
 }

@@ -21,7 +21,9 @@ import {
   commitMemoryEntry,
   prepareMemoryEntry,
   verifyMemoryChain,
+  readMemory,
 } from "./memory.js";
+import { detectMemoryAnomalies } from "./provenance.js";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, ProvenanceSource } from "./appraisal.js";
@@ -131,6 +133,13 @@ export class LivingLoop {
         commitMemoryEntry(this.handle.personaPath, entry);
         bus.emit({ type: "memory", entry });
         memoriesWritten++;
+      }
+
+      // Consensus / anomaly pass — surface poisoning signals (A-MemGuard-style).
+      if (memoriesWritten > 0) {
+        for (const a of detectMemoryAnomalies(readMemory(this.handle.personaPath))) {
+          bus.emit({ type: "anomaly", kind: a.kind, detail: a.detail });
+        }
       }
 
       // 4. recompile on drift (after state changes so the doc reflects them)

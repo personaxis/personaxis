@@ -80,6 +80,8 @@ export function formatEvent(e: LoopEvent): string | null {
     case "memory":
       return chalk.cyan(`  ✎ memory   [${e.entry.source}] ${truncate(e.entry.content, 60)} `) +
         chalk.dim(`#${e.entry.hash.slice(0, 8)}`);
+    case "anomaly":
+      return chalk.red(`  ⚠ anomaly   ${e.kind}: ${e.detail}`);
     case "recompile":
       return chalk.magenta(`  ↻ recompile  ${e.reason}`);
     case "abstain":

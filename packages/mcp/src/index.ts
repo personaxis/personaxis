@@ -122,11 +122,28 @@ export function buildServer(): McpServer {
 
   server.tool(
     "persona_audit",
-    "Return the recent mutation log plus episodic-memory chain integrity (tamper/poisoning detection). Use this to verify the persona's evolution has not been corrupted.",
+    "Return the recent mutation log, episodic-memory chain integrity (tamper/poisoning detection), and any detected memory anomalies (contradictions, untrusted-write spikes). Use this to verify the persona's evolution has not been corrupted.",
     personaArg,
     async ({ persona }) => {
       try {
         return ok(svc.audit(persona));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "persona_forget",
+    "Honor a user's deletion request: tombstone a memory entry by its hash. The append-only chain stays intact and verifiable (the deletion itself is auditable); the entry is hidden from live reads. Implements deletion_policy.user_request_supported.",
+    {
+      ...personaArg,
+      target_hash: z.string().describe("The hash of the memory entry to forget (from persona_audit / memory listing)."),
+      reason: z.string().describe("Why it is being forgotten (recorded in the tombstone)."),
+    },
+    async ({ persona, target_hash, reason }) => {
+      try {
+        return ok(svc.forget(persona, target_hash, reason));
       } catch (e) {
         return fail(e);
       }

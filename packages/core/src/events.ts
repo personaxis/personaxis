@@ -16,6 +16,7 @@ export type LoopEvent =
   | { type: "govern"; verdicts: Verdict[] }
   | { type: "mutate"; result: MutationResult }
   | { type: "memory"; entry: MemoryEntry }
+  | { type: "anomaly"; kind: string; detail: string }
   | { type: "recompile"; reason: string }
   | { type: "abstain"; reason: string }
   | { type: "error"; message: string }
