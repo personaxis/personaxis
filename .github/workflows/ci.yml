@@ -95,6 +95,7 @@ jobs:
           check packages/cli/schema/persona.schema.json ../persona.md/schema/persona.schema.json
           check packages/cli/schema/policy.schema.json  ../persona.md/schema/policy.schema.json
           check packages/cli/schema/state.schema.json   ../persona.md/schema/state.schema.json
+          check packages/cli/schema/memory.schema.json  ../persona.md/schema/memory.schema.json
           check packages/cli/templates/personaxis_template.md ../persona.md/.personaxis/personaxis_template.md
           check packages/cli/templates/PERSONA_template.md     ../persona.md/PERSONA_template.md
           check packages/cli/templates/policy_template.yaml    ../persona.md/.personaxis/policy_template.yaml

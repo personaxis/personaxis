@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-The reference CLI implementation of the **personaxis.md spec v0.7.0** (Personaxis v12). Published to npm as `@personaxis/persona.md`. The spec itself lives at [persona.md](https://github.com/personaxis/persona.md); this repo implements the validator, linter, init templates, compile/decompile, push/pull, providers, state mutation, and migration codemods.
+The reference CLI implementation of the **personaxis.md spec v0.8.0** (Personaxis v13). Published to npm as `@personaxis/persona.md`. The spec itself lives at [persona.md](https://github.com/personaxis/persona.md); this repo implements the validator, linter, init templates, compile/decompile, push/pull, providers, state mutation, and migration codemods.
 
-v0.7.0 is a layout-only move on top of v0.6.0 (no field changes): the quantitative 10-layer spec lives at `.personaxis/[personas/<slug>/]personaxis.md`, and the repo-root `PERSONA.md` (or `.claude/agents/<slug>.md` / `.codex/agents/<slug>.toml` in subagent mode) is now a separate, LLM-compiled qualitative document generated via `personaxis compile`.
+v0.8.0 is **additive** on top of v0.7.0 (no field changes; v0.7 personas validate unchanged): new OPTIONAL fields lift runtime-governance guarantees into the spec — `identity.capabilities` (routing), `governance.max_step_delta` (per-step drift cap), a `permissions` block (per-persona sandbox posture), `mutation_log.origin_node`/`session_id` (cross-OS reconciliation), and a normative `schema/memory.schema.json` (episodic entry: provenance + hash chain). Migrate with `personaxis migrate 0.7-to-0.8`. v0.7.0 was a layout-only move: the quantitative 10-layer spec lives at `.personaxis/[personas/<slug>/]personaxis.md`, and the repo-root `PERSONA.md` (or `.claude/agents/<slug>.md` / `.codex/agents/<slug>.toml` in subagent mode) is a separate, LLM-compiled qualitative document generated via `personaxis compile`.
 
 ## Monorepo & living architecture (WIP — "personaxis")
 

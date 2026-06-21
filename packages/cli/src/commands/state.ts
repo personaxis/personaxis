@@ -24,7 +24,7 @@ import { machineId } from "@personaxis/core";
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 interface StateFile {
-  schema_version: "0.7.0" | "0.6.0";
+  schema_version: "0.8.0" | "0.7.0" | "0.6.0";
   persona_id: string;
   persona_version: string;
   session_id?: string;
@@ -185,7 +185,7 @@ const initSubcommand = new Command("init")
       }
 
       const state: StateFile = {
-        schema_version: "0.7.0",
+        schema_version: "0.8.0",
         persona_id: metadata.name ?? "unknown",
         persona_version: metadata.version ?? "0.0.0",
         values,
