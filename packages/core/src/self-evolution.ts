@@ -61,6 +61,86 @@ export interface LedgerEvent {
 
 export type ProposalStatus = "pending" | "approved" | "rejected" | "applied" | "reverted";
 
+// ─── Multi-agent consensus verification (research: EvoSkills / A-MemGuard) ────
+//
+// Before an edit is applied it must clear a QUORUM of independent verifiers.
+// Independent verification prevents a single self-reinforcing error (or a clever
+// injection that reached the proposal stage) from mutating the spec.
+
+export interface VerifierResult {
+  verifier: string;
+  pass: boolean;
+  reason: string;
+}
+
+export interface SelfEditVerifier {
+  name: string;
+  verify(proposal: { targetPath: string; toValue: unknown; rationale: string }): VerifierResult;
+}
+
+/** Defense-in-depth: protected paths must never reach application. */
+export const invariantVerifier: SelfEditVerifier = {
+  name: "invariant",
+  verify: (p) =>
+    isProtected(p.targetPath)
+      ? { verifier: "invariant", pass: false, reason: `protected path ${p.targetPath}` }
+      : { verifier: "invariant", pass: true, reason: "no protected path" },
+};
+
+/** Envelope edits must be sane: min < max, mean within range, values bounded. */
+export const envelopeSanityVerifier: SelfEditVerifier = {
+  name: "envelope-sanity",
+  verify: (p) => {
+    const v = p.toValue as { mean?: unknown; range?: unknown };
+    const isEnvelope = v && typeof v === "object" && "range" in v;
+    if (!isEnvelope) return { verifier: "envelope-sanity", pass: true, reason: "not an envelope edit" };
+    const range = v.range as unknown;
+    const mean = v.mean as unknown;
+    if (!Array.isArray(range) || range.length !== 2 || typeof range[0] !== "number" || typeof range[1] !== "number") {
+      return { verifier: "envelope-sanity", pass: false, reason: "range must be [min,max] numbers" };
+    }
+    const [min, max] = range as [number, number];
+    if (min >= max) return { verifier: "envelope-sanity", pass: false, reason: `min ${min} >= max ${max}` };
+    if (min < -1 || max > 1) return { verifier: "envelope-sanity", pass: false, reason: "range out of [-1,1]" };
+    if (typeof mean === "number" && (mean < min || mean > max)) {
+      return { verifier: "envelope-sanity", pass: false, reason: `mean ${mean} outside [${min},${max}]` };
+    }
+    return { verifier: "envelope-sanity", pass: true, reason: "envelope sane" };
+  },
+};
+
+/** A non-empty rationale is required (auditability + anti-noise). */
+export const rationaleVerifier: SelfEditVerifier = {
+  name: "rationale",
+  verify: (p) =>
+    p.rationale.trim().length >= 8
+      ? { verifier: "rationale", pass: true, reason: "rationale present" }
+      : { verifier: "rationale", pass: false, reason: "rationale too short" },
+};
+
+export const DEFAULT_VERIFIERS: SelfEditVerifier[] = [
+  invariantVerifier,
+  envelopeSanityVerifier,
+  rationaleVerifier,
+];
+
+export interface ConsensusResult {
+  passed: boolean;
+  results: VerifierResult[];
+  quorum: number;
+  passes: number;
+}
+
+export function consensusVerify(
+  proposal: { targetPath: string; toValue: unknown; rationale: string },
+  verifiers: SelfEditVerifier[] = DEFAULT_VERIFIERS,
+  quorum = verifiers.length, // unanimous by default
+): ConsensusResult {
+  const results = verifiers.map((v) => v.verify(proposal));
+  const passes = results.filter((r) => r.pass).length;
+  return { passed: passes >= quorum, results, quorum, passes };
+}
+
 export interface ProposalView {
   id: string;
   targetPath: string;
@@ -103,7 +183,7 @@ export function proposeSelfEdit(
   req: SelfEditRequest,
   mode: ImprovementMode,
   actor = "actor-llm",
-): { id: string; status: ProposalStatus; version?: string } {
+): { id: string; status: ProposalStatus; version?: string; consensus?: ConsensusResult } {
   if (isProtected(req.targetPath)) {
     throw new SelfEditError(`path '${req.targetPath}' is protected and cannot be self-edited`);
   }
@@ -137,21 +217,37 @@ export function proposeSelfEdit(
   return { id, status: "pending" };
 }
 
-/** Approve + apply a pending proposal, minting the next PersonaVersion. */
+/**
+ * Approve + apply a pending proposal, minting the next PersonaVersion — but ONLY
+ * after a quorum of independent verifiers passes (multi-agent consensus). A failing
+ * consensus records a rejection (auditable) and throws.
+ */
 export function applySelfEdit(
   personaPath: string,
   id: string,
   approver: string,
-): { status: ProposalStatus; version: string } {
+  verifiers: SelfEditVerifier[] = DEFAULT_VERIFIERS,
+): { status: ProposalStatus; version: string; consensus: ConsensusResult } {
   const view = proposals(personaPath).find((p) => p.id === id);
   if (!view) throw new SelfEditError(`no proposal ${id}`);
   if (view.status !== "pending" && view.status !== "approved") {
     throw new SelfEditError(`proposal ${id} is ${view.status}, cannot apply`);
   }
+
+  const consensus = consensusVerify(
+    { targetPath: view.targetPath, toValue: view.toValue, rationale: view.rationale },
+    verifiers,
+  );
+  if (!consensus.passed) {
+    const reasons = consensus.results.filter((r) => !r.pass).map((r) => `${r.verifier}: ${r.reason}`).join("; ");
+    append(personaPath, { id, op: "reject", ts: new Date().toISOString(), actor: approver, rationale: `consensus failed (${consensus.passes}/${consensus.quorum}): ${reasons}` });
+    throw new SelfEditError(`consensus failed (${consensus.passes}/${consensus.quorum}): ${reasons}`);
+  }
+
   const version = nextVersion(personaPath);
   append(personaPath, { id, op: "approve", ts: new Date().toISOString(), actor: approver });
   append(personaPath, { id, op: "apply", ts: new Date().toISOString(), actor: approver, version });
-  return { status: "applied", version };
+  return { status: "applied", version, consensus };
 }
 
 export function rejectSelfEdit(personaPath: string, id: string, approver: string): void {

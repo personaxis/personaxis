@@ -12,6 +12,7 @@ import {
   applyOverlay,
   extractEnvelopes,
   isProtected,
+  consensusVerify,
   SelfEditError,
 } from "../src/index.js";
 
@@ -81,6 +82,47 @@ describe("suggesting flow (human approval)", () => {
     const { id } = proposeSelfEdit(personaPath, req("personality.traits.openness"), "suggesting");
     rejectSelfEdit(personaPath, id, "human-operator");
     expect(proposals(personaPath).find((p) => p.id === id)!.status).toBe("rejected");
+  });
+});
+
+describe("multi-agent consensus before apply", () => {
+  it("passes a clean envelope edit unanimously", () => {
+    const r = consensusVerify({
+      targetPath: "personality.traits.openness",
+      toValue: { mean: 0.5, range: [0.4, 0.6] },
+      rationale: "good reason here",
+    });
+    expect(r.passed).toBe(true);
+    expect(r.passes).toBe(r.quorum);
+  });
+
+  it("blocks an insane envelope edit (min >= max) and records a rejection", () => {
+    const { id } = proposeSelfEdit(
+      personaPath,
+      { targetPath: "personality.traits.openness", toValue: { mean: 0.7, range: [0.8, 0.6] }, rationale: "bad range here", sources: ["user"] },
+      "suggesting",
+    );
+    expect(() => applySelfEdit(personaPath, id, "human-operator")).toThrow(/consensus failed/);
+    expect(proposals(personaPath).find((p) => p.id === id)!.status).toBe("rejected");
+  });
+
+  it("blocks an edit with too-short rationale", () => {
+    const { id } = proposeSelfEdit(
+      personaPath,
+      { targetPath: "personality.traits.openness", toValue: { mean: 0.5, range: [0.4, 0.6] }, rationale: "ok", sources: ["user"] },
+      "suggesting",
+    );
+    expect(() => applySelfEdit(personaPath, id, "human-operator")).toThrow(/consensus/);
+  });
+
+  it("autonomous apply also goes through consensus (throws on bad range)", () => {
+    expect(() =>
+      proposeSelfEdit(
+        personaPath,
+        { targetPath: "personality.traits.openness", toValue: { mean: 0.7, range: [0.9, 0.1] }, rationale: "reasoned enough", sources: ["user"] },
+        "autonomous",
+      ),
+    ).toThrow(/consensus/);
   });
 });
 
