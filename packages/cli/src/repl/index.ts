@@ -20,14 +20,24 @@ import {
   displayName,
   extractEnvelopes,
   readMode,
-  sigilParams,
+  personaTheme,
   HeuristicAppraiser,
   LlmAppraiser,
   makeRecompileHook,
   type Appraiser,
   type PersonaHandle,
+  type PersonaTheme,
 } from "@personaxis/core";
-import { banner, sigilBlock, moodGauge, formatEvent, envelopeBars } from "./render.js";
+import {
+  animateLogo,
+  awaken,
+  sigilLines,
+  auraBar,
+  envelopeBars,
+  eventLine,
+  voiceWrap,
+  farewell,
+} from "@personaxis/tui/visual";
 
 interface ReplOptions {
   persona?: string;
@@ -70,7 +80,7 @@ becomes an observation fed to the governed loop (mode shown in /state).
 
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   const personaPath = resolvePersonaPath(opts.persona);
-  stdout.write(banner());
+  await animateLogo();
 
   if (!personaPath) {
     stdout.write(
@@ -90,6 +100,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   const state = ensureState(handle);
   const mode = readMode(handle.frontmatter as Record<string, unknown>);
   const name = displayName(handle.frontmatter);
+  const theme = personaTheme(handle.frontmatter);
 
   // Live-sync: on evolution, update the LIVE-STATE block in the compiled host doc
   // (repo-root PERSONA.md, if present) and write a .live.json notify marker.
@@ -99,14 +110,15 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     recompile: makeRecompileHook(existsSync(compiledCandidate) ? compiledCandidate : undefined),
   });
   loop.bus.on((e) => {
-    const line = formatEvent(e);
+    const line = eventLine(theme, e);
     if (line) stdout.write(line + "\n");
   });
 
-  stdout.write("\n" + sigilBlock(handle.frontmatter, state.values) + "\n\n");
+  stdout.write("\n");
+  await awaken(handle.frontmatter, state);
   stdout.write(
-    chalk.bold(`  ${name}`) +
-      chalk.dim(` is awake · improvement_policy=`) +
+    voiceWrap(theme, `  ${name} is awake`) +
+      chalk.dim(` · improvement_policy=`) +
       modeColor(mode) +
       chalk.dim(` · ${Object.keys(state.values).length} envelopes\n`),
   );
@@ -121,7 +133,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 
   const makePrompt = (): string => {
     const cur = readState(handle.statePath);
-    return `${moodGauge(cur.values)} ${chalk.magentaBright(name)} ${chalk.dim("›")} `;
+    return `${auraBar(theme, cur.values)} ${chalk.ansi256(theme.palette.accent)(name)} ${chalk.dim("›")} `;
   };
 
   // `for await (const line of rl)` queues input lines so none are dropped while a
@@ -135,7 +147,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
       if (line.startsWith("/")) {
         const cmd = line.slice(1).split(/\s+/)[0];
         const arg = line.slice(1 + cmd.length).trim();
-        const done = await handleSlash(cmd, arg, { rl, handle, loop });
+        const done = await handleSlash(cmd, arg, { rl, handle, loop, theme });
         if (done) break;
       } else {
         // Natural-language turn -> one governed loop cycle.
@@ -147,7 +159,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   }
 
   rl.close();
-  stdout.write(chalk.dim("\n  persona sleeping. state + memory persisted.\n"));
+  await farewell(handle.frontmatter);
 }
 
 /**
@@ -181,10 +193,11 @@ interface SlashCtx {
   rl: readline.Interface;
   handle: PersonaHandle;
   loop: LivingLoop;
+  theme: PersonaTheme;
 }
 
 async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boolean> {
-  const { handle, loop } = ctx;
+  const { handle, loop, theme } = ctx;
   switch (cmd) {
     case "help":
       stdout.write(HELP + "\n");
@@ -201,23 +214,23 @@ async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boo
         if (si.purpose) stdout.write(`  ${chalk.dim("purpose:")} ${si.purpose}\n`);
       }
       const st = readState(handle.statePath);
-      stdout.write("\n" + sigilBlock(handle.frontmatter, st.values) + "\n\n");
+      stdout.write("\n" + sigilLines(theme, st.values).join("\n") + "\n\n");
       return false;
     }
     case "sigil": {
       const st = readState(handle.statePath);
       // a few breathing frames
       for (let f = 0; f < 4; f++) {
-        stdout.write("\n" + sigilBlock(handle.frontmatter, st.values, f) + "\n");
+        stdout.write("\n" + sigilLines(theme, st.values, f).join("\n") + "\n");
       }
-      stdout.write(chalk.dim(`  seed #${sigilParams(handle.frontmatter).seed.toString(16)}\n\n`));
+      stdout.write(chalk.dim(`  seed #${theme.seed.toString(16)} · voice ${theme.voice.density}\n\n`));
       return false;
     }
     case "state": {
       const st = readState(handle.statePath);
       const env = extractEnvelopes(handle.frontmatter);
       stdout.write("\n" + chalk.bold("  Envelope values (position within range)\n"));
-      stdout.write(envelopeBars(st.values, env.envelopes) + "\n");
+      stdout.write(envelopeBars(theme, st.values, env.envelopes) + "\n");
       stdout.write(chalk.dim(`\n  mutation_log: ${st.mutation_log.length} entries\n\n`));
       return false;
     }

@@ -5,6 +5,10 @@
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./visual": "./dist/visual.js"
+  },
   "bin": {
     "personaxis-dash": "dist/index.js"
   },

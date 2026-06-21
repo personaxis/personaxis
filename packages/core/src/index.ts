@@ -24,6 +24,7 @@ export * from "./provenance.js";
 export * from "./injection.js";
 export * from "./sandbox.js";
 export * from "./sigil.js";
+export * from "./persona-theme.js";
 export * from "./events.js";
 export * from "./loop.js";
 

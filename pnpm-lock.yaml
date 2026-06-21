@@ -20,6 +20,9 @@ importers:
       '@personaxis/core':
         specifier: workspace:*
         version: link:../core
+      '@personaxis/tui':
+        specifier: workspace:*
+        version: link:../tui
       ajv:
         specifier: ^8.17.1
         version: 8.20.0

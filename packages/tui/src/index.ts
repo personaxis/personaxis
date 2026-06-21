@@ -21,12 +21,10 @@ import {
   extractEnvelopes,
   verifyMemoryChain,
   readMemory,
-  sigilParams,
-  renderSigil,
-  liveIntensity,
-  barIndex,
+  personaTheme,
   displayName,
 } from "@personaxis/core";
+import { sigilLines, auraBar, envelopeBars } from "./visual.js";
 
 interface Opts {
   persona: string;
@@ -51,27 +49,20 @@ export function renderFrame(personaPath: string, frame: number): string {
   const handle = loadPersona(personaPath);
   const state = readState(handle.statePath);
   const env = extractEnvelopes(handle.frontmatter);
-  const params = sigilParams(handle.frontmatter);
-  const paint = chalk.ansi256(params.color);
-  const sigil = renderSigil(params, liveIntensity(state.values, frame));
+  const theme = personaTheme(handle.frontmatter);
   const chain = verifyMemoryChain(handle.personaPath);
   const mem = readMemory(handle.personaPath);
 
   const lines: string[] = [];
   lines.push("");
-  lines.push("  " + chalk.bold.magentaBright(displayName(handle.frontmatter)) + chalk.dim(`  ·  sigil #${params.seed.toString(16)}`));
+  lines.push(
+    "  " + chalk.bold.ansi256(theme.palette.accent)(displayName(handle.frontmatter)) +
+      chalk.dim(`  ·  sigil #${theme.seed.toString(16)}  ·  ${auraBar(theme, state.values, frame)}`),
+  );
   lines.push("");
-  for (const row of sigil.grid) lines.push("     " + paint(row));
+  lines.push(...sigilLines(theme, state.values, frame));
   lines.push("");
-  for (const [k, v] of Object.entries(state.values)) {
-    const e = env.envelopes[k];
-    if (!e) continue;
-    const w = 18;
-    const pos = barIndex(v, e, w);
-    let bar = "";
-    for (let i = 0; i < w; i++) bar += i === pos ? chalk.cyan("●") : chalk.dim("─");
-    lines.push(`  ${k.padEnd(28)} ${bar} ${chalk.dim(v.toFixed(2))}`);
-  }
+  lines.push(envelopeBars(theme, state.values, env.envelopes));
   lines.push("");
   lines.push(
     chalk.dim(

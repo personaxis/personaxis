@@ -26,6 +26,10 @@ import { syncCommand } from "./commands/sync.js";
 import { serveCommand } from "./commands/serve.js";
 import { startRepl } from "./repl/index.js";
 
+// Options after a subcommand belong to that subcommand (so `sigil --persona X`
+// is parsed by `sigil`, not captured by the root REPL's own --persona).
+program.enablePositionalOptions();
+
 program
   .name("personaxis")
   .description("Living, governed AI agent personas — define, validate, compile, and live.")
