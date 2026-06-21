@@ -35,7 +35,8 @@
     "build": "node ../../scripts/embed-assets.mjs && tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "lint": "node ../../scripts/embed-assets.mjs && tsc --noEmit"
+    "lint": "node ../../scripts/embed-assets.mjs && tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@personaxis/core": "workspace:*",
@@ -51,7 +52,8 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
