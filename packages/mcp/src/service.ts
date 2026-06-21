@@ -26,6 +26,7 @@ import {
   rejectSelfEdit,
   proposals,
   activeOverlay,
+  reviewSkill,
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
@@ -130,4 +131,9 @@ export function decideEdit(persona: string, id: string, decision: "approve" | "r
   if (decision === "approve") return applySelfEdit(persona, id, "mcp-host");
   rejectSelfEdit(persona, id, "mcp-host");
   return { id, status: "rejected" };
+}
+
+/** Security-review a skill before use (supply-chain defense). */
+export function skillReview(skillPath: string): unknown {
+  return reviewSkill(skillPath);
 }

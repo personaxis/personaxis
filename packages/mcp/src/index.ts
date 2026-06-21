@@ -204,6 +204,21 @@ export function buildServer(): McpServer {
     },
   );
 
+  server.tool(
+    "skill_review",
+    "Security-review a skill directory (or SKILL.md) BEFORE using it. Scans for risky shell/network/eval/secret/credential patterns and returns findings, a verdict (ok|review|danger), and a content hash to pin/allowlist. ~26% of community skills carry vulnerabilities — never run an unreviewed skill.",
+    {
+      skill_path: z.string().describe("Path to the skill directory or SKILL.md to review."),
+    },
+    async ({ skill_path }) => {
+      try {
+        return ok(svc.skillReview(skill_path));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
   return server;
 }
 
