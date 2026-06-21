@@ -20,11 +20,15 @@ import {
   displayName,
   extractEnvelopes,
   readMode,
+  readMemory,
   personaTheme,
   HeuristicAppraiser,
   LlmAppraiser,
+  LlmResponder,
+  ReflectiveResponder,
   makeRecompileHook,
   type Appraiser,
+  type Responder,
   type PersonaHandle,
   type PersonaTheme,
 } from "@personaxis/core";
@@ -68,10 +72,10 @@ ${chalk.bold("Commands")}
   ${chalk.cyan("/evolve")} ${chalk.dim("<text>")}     run one governed Living-Loop cycle on <text>
   ${chalk.cyan("/audit")}             show the mutation log + memory-chain integrity
   ${chalk.cyan("/memory")}            list recent episodic memory entries
-  ${chalk.cyan("/compile")}           (stub) recompile PERSONA.md from the spec
-  ${chalk.cyan("/model")}             show the appraiser/model in use
-  ${chalk.cyan("/goal")} ${chalk.dim("<text>")}       (stub) set a completion goal
-  ${chalk.cyan("/loop")} ${chalk.dim("<n>")}          (stub) periodic self-audit every n ticks
+  ${chalk.cyan("/overseer")}          environment view (personas / projects / collections)
+  ${chalk.cyan("/model")}             show the model in use (conversation + appraisal)
+  ${chalk.cyan("/goal")} ${chalk.dim("<text>|clear")}  set / show / clear a completion goal
+  ${chalk.cyan("/loop")} ${chalk.dim("<n>")}          run n self-audit passes
   ${chalk.cyan("/exit")}              leave the session
 
 Type anything without a leading ${chalk.cyan("/")} to speak to the persona — your turn
@@ -109,6 +113,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     appraiser: pickAppraiser(),
     recompile: makeRecompileHook(existsSync(compiledCandidate) ? compiledCandidate : undefined),
   });
+  const responder = pickResponder();
   loop.bus.on((e) => {
     const line = eventLine(theme, e);
     if (line) stdout.write(line + "\n");
@@ -150,7 +155,18 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
         const done = await handleSlash(cmd, arg, { rl, handle, loop, theme });
         if (done) break;
       } else {
-        // Natural-language turn -> one governed loop cycle.
+        // Natural-language turn: the persona REPLIES (responder) and EVOLVES (loop).
+        const cur = readState(handle.statePath);
+        const reply = await responder
+          .respond({
+            message: line,
+            personaBody: handle.body,
+            memory: readMemory(handle.personaPath).slice(-6).map((m) => m.content),
+            state: cur.values,
+            name,
+          })
+          .catch((e) => `(responder error: ${(e as Error).message})`);
+        stdout.write("\n" + voiceWrap(theme, `  ${name}: ${reply}`) + "\n\n");
         await loop.tick({ observation: line, source: "user", actor: "actor-llm" });
       }
     }
@@ -175,6 +191,15 @@ function pickAppraiser(): Appraiser {
     return new LlmAppraiser({ endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY });
   }
   return new HeuristicAppraiser();
+}
+
+function pickResponder(): Responder {
+  const endpoint = process.env.PERSONAXIS_ENDPOINT;
+  const model = process.env.PERSONAXIS_MODEL;
+  if (endpoint && model) {
+    return new LlmResponder({ endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY });
+  }
+  return new ReflectiveResponder();
 }
 
 function appraiserLabel(): string {

@@ -11,6 +11,7 @@ export * from "./state-engine.js";
 export * from "./appraisal.js";
 export * from "./heuristic-appraiser.js";
 export * from "./llm-appraiser.js";
+export * from "./responder.js";
 export * from "./governance.js";
 export * from "./self-evolution.js";
 export * from "./registry.js";
