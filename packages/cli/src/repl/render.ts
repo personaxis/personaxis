@@ -57,6 +57,25 @@ export function moodGauge(values: Record<string, number>): string {
   return color(bar);
 }
 
+/** Render each envelope value as a bar showing its position within [min,max]. */
+export function envelopeBars(
+  values: Record<string, number>,
+  envelopes: Record<string, { min: number; max: number }>,
+  width = 16,
+): string {
+  const rows: string[] = [];
+  for (const [k, v] of Object.entries(values)) {
+    const e = envelopes[k];
+    if (!e) continue;
+    const frac = e.max === e.min ? 0.5 : (v - e.min) / (e.max - e.min);
+    const pos = Math.max(0, Math.min(width - 1, Math.round(frac * (width - 1))));
+    let bar = "";
+    for (let i = 0; i < width; i++) bar += i === pos ? chalk.cyan("●") : chalk.dim("─");
+    rows.push(`  ${k.padEnd(28)} ${bar} ${chalk.dim(v.toFixed(2))}`);
+  }
+  return rows.join("\n");
+}
+
 export function formatEvent(e: LoopEvent): string | null {
   switch (e.type) {
     case "observe":

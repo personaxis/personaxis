@@ -22,6 +22,7 @@ import { decompileCommand } from "./commands/decompile.js";
 import { pushCommand } from "./commands/push.js";
 import { skillsCommand } from "./commands/skills.js";
 import { overseerCommand } from "./commands/overseer.js";
+import { sigilCommand } from "./commands/sigil.js";
 import { startRepl } from "./repl/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -59,5 +60,6 @@ program.addCommand(decompileCommand);
 program.addCommand(pushCommand);
 program.addCommand(skillsCommand);
 program.addCommand(overseerCommand);
+program.addCommand(sigilCommand);
 
 program.parse();

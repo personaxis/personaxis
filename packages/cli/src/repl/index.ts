@@ -26,7 +26,7 @@ import {
   type PersonaHandle,
   type StateFile,
 } from "@personaxis/core";
-import { banner, sigilBlock, moodGauge, formatEvent } from "./render.js";
+import { banner, sigilBlock, moodGauge, formatEvent, envelopeBars } from "./render.js";
 
 interface ReplOptions {
   persona?: string;
@@ -236,12 +236,8 @@ async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boo
     case "state": {
       const st = readState(handle.statePath);
       const env = extractEnvelopes(handle.frontmatter);
-      stdout.write("\n" + chalk.bold("  Envelope values\n"));
-      for (const [k, v] of Object.entries(st.values)) {
-        const e = env.envelopes[k];
-        const range = e ? chalk.dim(` [${e.min}, ${e.max}]`) : "";
-        stdout.write(`  ${chalk.cyan(k)}: ${v}${range}\n`);
-      }
+      stdout.write("\n" + chalk.bold("  Envelope values (position within range)\n"));
+      stdout.write(envelopeBars(st.values, env.envelopes) + "\n");
       stdout.write(chalk.dim(`\n  mutation_log: ${st.mutation_log.length} entries\n\n`));
       return false;
     }
