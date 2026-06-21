@@ -24,6 +24,7 @@ import {
   readMemory,
 } from "./memory.js";
 import { detectMemoryAnomalies } from "./provenance.js";
+import { scanForInjection } from "./injection.js";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, ProvenanceSource } from "./appraisal.js";
@@ -81,6 +82,17 @@ export class LivingLoop {
       // 1. observe
       bus.emit({ type: "observe", observation: input.observation, source: input.source });
 
+      // 1a. injection scan — untrusted text must not steer evolution.
+      const scan = scanForInjection(input.observation);
+      const injectionBlocked = scan.verdict === "malicious";
+      if (scan.verdict !== "clean") {
+        bus.emit({
+          type: "anomaly",
+          kind: `injection:${scan.verdict}`,
+          detail: scan.findings.map((f) => f.rule).join(", "),
+        });
+      }
+
       const env = extractEnvelopes(this.handle.frontmatter);
       const state: StateFile = readState(this.handle.statePath);
 
@@ -104,8 +116,11 @@ export class LivingLoop {
       const decision = governMutations(signal.mutations, env, gov);
       bus.emit({ type: "govern", verdicts: decision.verdicts });
 
+      // A malicious injection blocks evolution this turn (content can still be
+      // remembered, tagged, for audit) — defense in depth over the governance gate.
+      const admitted = injectionBlocked ? [] : decision.admitted;
       let mutationsApplied = 0;
-      for (const m of decision.admitted) {
+      for (const m of admitted) {
         const result = applyMutation(state, env.envelopes, {
           field: m.field,
           delta: m.delta,
@@ -115,7 +130,7 @@ export class LivingLoop {
         bus.emit({ type: "mutate", result });
         if (result.to !== result.from) mutationsApplied++;
       }
-      if (decision.admitted.length > 0) writeState(this.handle.statePath, state);
+      if (admitted.length > 0) writeState(this.handle.statePath, state);
 
       // 5. memory — dry-run -> verify chain -> commit (write-path audit)
       let memoriesWritten = 0;
@@ -123,7 +138,7 @@ export class LivingLoop {
         const entry = prepareMemoryEntry(this.handle.personaPath, {
           content: mem.content,
           source: mem.source,
-          tags: mem.tags,
+          tags: injectionBlocked ? [...(mem.tags ?? []), "injection-flagged"] : mem.tags,
         });
         const chain = verifyMemoryChain(this.handle.personaPath);
         if (!chain.ok) {

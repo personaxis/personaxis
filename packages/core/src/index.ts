@@ -17,6 +17,7 @@ export * from "./registry.js";
 export * from "./skill-review.js";
 export * from "./memory.js";
 export * from "./provenance.js";
+export * from "./injection.js";
 export * from "./sigil.js";
 export * from "./events.js";
 export * from "./loop.js";

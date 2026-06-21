@@ -27,6 +27,7 @@ import {
   proposals,
   activeOverlay,
   reviewSkill,
+  scanForInjection,
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
@@ -136,4 +137,9 @@ export function decideEdit(persona: string, id: string, decision: "approve" | "r
 /** Security-review a skill before use (supply-chain defense). */
 export function skillReview(skillPath: string): unknown {
   return reviewSkill(skillPath);
+}
+
+/** Scan untrusted text for prompt-injection before it reaches the persona. */
+export function scanText(text: string): unknown {
+  return scanForInjection(text);
 }
