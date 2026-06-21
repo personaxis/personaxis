@@ -1,0 +1,66 @@
+name: Release
+
+# Publishes the packages to npm and attaches single-file binaries to the GitHub
+# Release when a version tag is pushed (e.g. v0.8.0). Requires the NPM_TOKEN secret.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run test
+      # Publish in dependency order (core first). pnpm rewrites workspace:* to the
+      # concrete version on publish. --no-git-checks since CI is detached at the tag.
+      - name: Publish packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in core cli mcp tui; do
+            (cd packages/$pkg && pnpm publish --access public --no-git-checks) || echo "::warning::publish skipped/failed for $pkg"
+          done
+
+  binaries:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: bun-linux-x64, name: linux-x64 }
+          - { os: macos-latest, target: bun-darwin-arm64, name: darwin-arm64 }
+          - { os: windows-latest, target: bun-windows-x64, name: windows-x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Compile single-file binary
+        run: bun build packages/cli/dist/index.js --compile --target ${{ matrix.target }} --outfile dist-bin/personaxis-${{ matrix.name }}
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-bin/personaxis-${{ matrix.name }}*
