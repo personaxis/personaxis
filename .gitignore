@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-bin/
 *.js.map
 
 # Test artifacts from local CLI runs
