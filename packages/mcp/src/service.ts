@@ -20,6 +20,12 @@ import {
   tombstoneMemory,
   verifyMemoryChain,
   detectMemoryAnomalies,
+  readMode,
+  proposeSelfEdit,
+  applySelfEdit,
+  rejectSelfEdit,
+  proposals,
+  activeOverlay,
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
@@ -103,4 +109,25 @@ export function audit(persona: string): unknown {
 export function forget(persona: string, targetHash: string, reason: string): unknown {
   const entry = tombstoneMemory(persona, targetHash, reason);
   return { tombstoned: targetHash, by: entry.hash, live_entries: readLiveMemory(persona).length };
+}
+
+export function proposeEdit(
+  persona: string,
+  targetPath: string,
+  toValue: unknown,
+  rationale: string,
+): unknown {
+  const h = loadPersona(persona);
+  const mode = readMode(h.frontmatter as Record<string, unknown>);
+  return proposeSelfEdit(persona, { targetPath, toValue, rationale, sources: ["user"] }, mode);
+}
+
+export function listProposals(persona: string): unknown {
+  return { proposals: proposals(persona), active_overlay: activeOverlay(persona) };
+}
+
+export function decideEdit(persona: string, id: string, decision: "approve" | "reject"): unknown {
+  if (decision === "approve") return applySelfEdit(persona, id, "mcp-host");
+  rejectSelfEdit(persona, id, "mcp-host");
+  return { id, status: "rejected" };
 }

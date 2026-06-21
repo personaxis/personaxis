@@ -150,6 +150,60 @@ export function buildServer(): McpServer {
     },
   );
 
+  server.tool(
+    "persona_propose_edit",
+    "Propose a governed edit to the persona's OWN spec (not just runtime state). Protected paths (identity, character, safety/honesty, affect universals, persona constraints) are refused. In 'suggesting' mode it queues for human approval; in 'autonomous' (sandbox) it auto-applies; in 'locked' it is refused. Every step is an append-only, reversible ledger event.",
+    {
+      ...personaArg,
+      target_path: z.string().describe("Dot path into the spec, e.g. 'personality.traits.openness'."),
+      to_value: z.string().describe("The proposed new value as JSON (e.g. '{\"mean\":0.7,\"range\":[0.6,0.8]}')."),
+      rationale: z.string().describe("Evidence-based justification."),
+    },
+    async ({ persona, target_path, to_value, rationale }) => {
+      try {
+        let parsed: unknown = to_value;
+        try {
+          parsed = JSON.parse(to_value);
+        } catch {
+          /* keep as string */
+        }
+        return ok(svc.proposeEdit(persona, target_path, parsed, rationale));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "persona_proposals",
+    "List self-edit proposals (pending/approved/applied/reverted/rejected) and the active overlay of applied edits. Use before approving.",
+    personaArg,
+    async ({ persona }) => {
+      try {
+        return ok(svc.listProposals(persona));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "persona_decide_edit",
+    "Approve (apply + mint a PersonaVersion) or reject a pending self-edit proposal by id.",
+    {
+      ...personaArg,
+      id: z.string().describe("Proposal id from persona_proposals."),
+      decision: z.enum(["approve", "reject"]).describe("approve = apply + mint version; reject = discard."),
+    },
+    async ({ persona, id, decision }) => {
+      try {
+        return ok(svc.decideEdit(persona, id, decision));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
   return server;
 }
 
