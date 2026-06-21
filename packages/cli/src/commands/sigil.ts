@@ -10,7 +10,7 @@ import { Command } from "commander";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import chalk from "chalk";
-import { loadPersona, ensureState, extractEnvelopes, sigilParams } from "@personaxis/core";
+import { loadPersona, ensureState, extractEnvelopes, sigilParams, displayName } from "@personaxis/core";
 import { sigilBlock, envelopeBars } from "../repl/render.js";
 
 export const sigilCommand = new Command("sigil")
@@ -26,10 +26,8 @@ export const sigilCommand = new Command("sigil")
     const handle = loadPersona(path);
     const state = ensureState(handle);
     const env = extractEnvelopes(handle.frontmatter);
-    const id = handle.frontmatter.identity as { display_name?: string } | undefined;
-    const meta = handle.frontmatter.metadata as { name?: string } | undefined;
 
-    console.log(chalk.bold.magentaBright(`\n  ${id?.display_name ?? meta?.name ?? "persona"}`));
+    console.log(chalk.bold.magentaBright(`\n  ${displayName(handle.frontmatter)}`));
     console.log(chalk.dim(`  sigil #${sigilParams(handle.frontmatter).seed.toString(16)}\n`));
     const frames = Math.max(1, Number(opts.frames) || 1);
     for (let f = 0; f < frames; f++) {

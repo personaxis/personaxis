@@ -9,6 +9,8 @@ import {
   rejectSelfEdit,
   proposals,
   activeOverlay,
+  applyOverlay,
+  extractEnvelopes,
   isProtected,
   SelfEditError,
 } from "../src/index.js";
@@ -79,6 +81,24 @@ describe("suggesting flow (human approval)", () => {
     const { id } = proposeSelfEdit(personaPath, req("personality.traits.openness"), "suggesting");
     rejectSelfEdit(personaPath, id, "human-operator");
     expect(proposals(personaPath).find((p) => p.id === id)!.status).toBe("rejected");
+  });
+});
+
+describe("applied self-edits actually take effect (overlay)", () => {
+  it("applyOverlay deep-sets a dot path without mutating the original", () => {
+    const fm = { personality: { traits: { openness: { mean: 0.5, range: [0.4, 0.6] } } } };
+    const out = applyOverlay(fm, { "personality.traits.openness": { mean: 0.7, range: [0.6, 0.8] } });
+    expect((out as typeof fm).personality.traits.openness.range).toEqual([0.6, 0.8]);
+    // original untouched
+    expect(fm.personality.traits.openness.range).toEqual([0.4, 0.6]);
+  });
+
+  it("an applied edit changes the extracted envelope used for clamping", () => {
+    const fm = { personality: { traits: { openness: { mean: 0.5, range: [0.4, 0.6] } } } };
+    proposeSelfEdit(personaPath, req("personality.traits.openness"), "autonomous"); // toValue range [0.6,0.8]
+    const overlaid = applyOverlay(fm, activeOverlay(personaPath));
+    const env = extractEnvelopes(overlaid);
+    expect(env.envelopes["traits.openness"]).toEqual({ mean: 0.7, min: 0.6, max: 0.8 });
   });
 });
 

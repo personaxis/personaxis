@@ -8,6 +8,7 @@ import {
   renderSigil,
   sigilParams,
   liveIntensity,
+  barIndex,
   type LoopEvent,
   type PersonaFrontmatter,
 } from "@personaxis/core";
@@ -67,8 +68,7 @@ export function envelopeBars(
   for (const [k, v] of Object.entries(values)) {
     const e = envelopes[k];
     if (!e) continue;
-    const frac = e.max === e.min ? 0.5 : (v - e.min) / (e.max - e.min);
-    const pos = Math.max(0, Math.min(width - 1, Math.round(frac * (width - 1))));
+    const pos = barIndex(v, { ...e, mean: 0 }, width);
     let bar = "";
     for (let i = 0; i < width; i++) bar += i === pos ? chalk.cyan("●") : chalk.dim("─");
     rows.push(`  ${k.padEnd(28)} ${bar} ${chalk.dim(v.toFixed(2))}`);

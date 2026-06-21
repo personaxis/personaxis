@@ -97,6 +97,13 @@ export function stateExists(statePath: string): boolean {
   return existsSync(statePath);
 }
 
+/** The human-facing name of a persona, from its frontmatter. */
+export function displayName(fm: PersonaFrontmatter): string {
+  const id = fm.identity as { display_name?: string; canonical_id?: string } | undefined;
+  const meta = fm.metadata as { name?: string } | undefined;
+  return id?.display_name ?? meta?.name ?? id?.canonical_id ?? "persona";
+}
+
 /**
  * Return the persona's state, seeding a fresh state.json from envelope means if
  * none exists yet. Keeps hosts (REPL, MCP) working out-of-the-box.

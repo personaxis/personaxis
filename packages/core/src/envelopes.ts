@@ -39,6 +39,12 @@ function readEnv(
   return null;
 }
 
+/** Position (0..width-1) of a value within its envelope — shared bar math. */
+export function barIndex(value: number, e: Envelope, width: number): number {
+  const frac = e.max === e.min ? 0.5 : (value - e.min) / (e.max - e.min);
+  return Math.max(0, Math.min(width - 1, Math.round(frac * (width - 1))));
+}
+
 export function extractEnvelopes(data: PersonaFrontmatter): EnvelopeLookup {
   const envelopes: Record<string, Envelope> = {};
   const hardEnforcedVirtues: string[] = [];

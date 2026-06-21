@@ -30,6 +30,7 @@ import {
   readMemory,
   verifyMemoryChain,
   detectMemoryAnomalies,
+  displayName,
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
@@ -53,10 +54,7 @@ persona's envelopes and appended to an immutable audit log.
 export function buildHttpServer(personaPath: string): Server {
   const handle = loadPersona(personaPath);
   ensureState(handle);
-  const name =
-    (handle.frontmatter.identity as { display_name?: string } | undefined)?.display_name ??
-    (handle.frontmatter.metadata as { name?: string } | undefined)?.name ??
-    "persona";
+  const name = displayName(handle.frontmatter);
 
   return createServer((req, res) => void route(req, res, personaPath, name));
 }

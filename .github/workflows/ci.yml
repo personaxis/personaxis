@@ -79,7 +79,21 @@ jobs:
         working-directory: cli
         run: |
           if [ -f ../persona.md/.personaxis/personas/cmo/personaxis.md ]; then
-            node dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md
+            node packages/cli/dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md
           else
             echo "::warning::sibling persona.md repo not available; skipping golden validate"
           fi
+
+      # Byte-identity rule (CLAUDE.md): schemas must match persona.md. Non-blocking
+      # for now — there is pre-existing v0.6/v0.7 drift to reconcile separately.
+      - name: Check schema byte-identity with persona.md (warn-only)
+        working-directory: cli
+        continue-on-error: true
+        run: |
+          for f in persona.schema.json policy.schema.json state.schema.json; do
+            if [ -f "packages/cli/schema/$f" ] && [ -f "../persona.md/schema/$f" ]; then
+              if ! diff -q "packages/cli/schema/$f" "../persona.md/schema/$f" >/dev/null; then
+                echo "::warning::schema $f differs from persona.md (byte-identity rule)"
+              fi
+            fi
+          done

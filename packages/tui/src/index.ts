@@ -24,7 +24,8 @@ import {
   sigilParams,
   renderSigil,
   liveIntensity,
-  type PersonaFrontmatter,
+  barIndex,
+  displayName,
 } from "@personaxis/core";
 
 interface Opts {
@@ -46,12 +47,6 @@ function parseArgs(argv: string[]): Opts {
   return o;
 }
 
-function personaName(fm: PersonaFrontmatter): string {
-  const id = fm.identity as { display_name?: string; canonical_id?: string } | undefined;
-  const meta = fm.metadata as { name?: string } | undefined;
-  return id?.display_name ?? meta?.name ?? id?.canonical_id ?? "persona";
-}
-
 export function renderFrame(personaPath: string, frame: number): string {
   const handle = loadPersona(personaPath);
   const state = readState(handle.statePath);
@@ -64,16 +59,15 @@ export function renderFrame(personaPath: string, frame: number): string {
 
   const lines: string[] = [];
   lines.push("");
-  lines.push("  " + chalk.bold.magentaBright(personaName(handle.frontmatter)) + chalk.dim(`  ·  sigil #${params.seed.toString(16)}`));
+  lines.push("  " + chalk.bold.magentaBright(displayName(handle.frontmatter)) + chalk.dim(`  ·  sigil #${params.seed.toString(16)}`));
   lines.push("");
   for (const row of sigil.grid) lines.push("     " + paint(row));
   lines.push("");
   for (const [k, v] of Object.entries(state.values)) {
     const e = env.envelopes[k];
     if (!e) continue;
-    const frac = e.max === e.min ? 0.5 : (v - e.min) / (e.max - e.min);
     const w = 18;
-    const pos = Math.max(0, Math.min(w - 1, Math.round(frac * (w - 1))));
+    const pos = barIndex(v, e, w);
     let bar = "";
     for (let i = 0; i < w; i++) bar += i === pos ? chalk.cyan("●") : chalk.dim("─");
     lines.push(`  ${k.padEnd(28)} ${bar} ${chalk.dim(v.toFixed(2))}`);

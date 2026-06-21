@@ -25,6 +25,7 @@ import {
 } from "./memory.js";
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
+import { activeOverlay, applyOverlay } from "./self-evolution.js";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, ProvenanceSource } from "./appraisal.js";
@@ -93,7 +94,14 @@ export class LivingLoop {
         });
       }
 
-      const env = extractEnvelopes(this.handle.frontmatter);
+      // Applied self-edits (governed, versioned) take effect here: the overlay is
+      // merged onto the frontmatter before envelopes are read, so an approved edit
+      // to e.g. a trait's range actually changes clamping. The spec file is untouched.
+      const fm = applyOverlay(
+        this.handle.frontmatter as Record<string, unknown>,
+        activeOverlay(this.handle.personaPath),
+      );
+      const env = extractEnvelopes(fm);
       const state: StateFile = readState(this.handle.statePath);
 
       // 2. appraise (model proposes structured signals only)

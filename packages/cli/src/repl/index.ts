@@ -16,7 +16,8 @@ import {
   LivingLoop,
   loadPersona,
   readState,
-  stateExists,
+  ensureState,
+  displayName,
   extractEnvelopes,
   readMode,
   sigilParams,
@@ -24,7 +25,6 @@ import {
   LlmAppraiser,
   type Appraiser,
   type PersonaHandle,
-  type StateFile,
 } from "@personaxis/core";
 import { banner, sigilBlock, moodGauge, formatEvent, envelopeBars } from "./render.js";
 
@@ -46,33 +46,6 @@ function resolvePersonaPath(opt?: string): string | null {
     if (existsSync(p)) return p;
   }
   return null;
-}
-
-function ensureState(handle: PersonaHandle): StateFile {
-  if (stateExists(handle.statePath)) return readState(handle.statePath);
-  const env = extractEnvelopes(handle.frontmatter);
-  const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
-  const values: Record<string, number> = {};
-  for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
-  const state: StateFile = {
-    schema_version: "0.6.0",
-    persona_id: meta.name ?? "persona",
-    persona_version: meta.version ?? "0.0.0",
-    values,
-    active_context: { task_mode: null, audience: null, additional_context_flags: [] },
-    memory_anchors_active: [],
-    mutation_log: [],
-    last_compiled_at: null,
-    last_compiled_hash: null,
-  };
-  writeFileSync(handle.statePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
-  return state;
-}
-
-function personaName(handle: PersonaHandle): string {
-  const id = handle.frontmatter.identity as { display_name?: string; canonical_id?: string } | undefined;
-  const meta = handle.frontmatter.metadata as { name?: string } | undefined;
-  return id?.display_name ?? meta?.name ?? id?.canonical_id ?? "persona";
 }
 
 const HELP = `
@@ -115,7 +88,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   const handle = loadPersona(personaPath);
   const state = ensureState(handle);
   const mode = readMode(handle.frontmatter as Record<string, unknown>);
-  const name = personaName(handle);
+  const name = displayName(handle.frontmatter);
 
   const loop = new LivingLoop(personaPath, { appraiser: pickAppraiser() });
   loop.bus.on((e) => {
@@ -214,7 +187,7 @@ async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boo
       return true;
     case "persona": {
       const id = handle.frontmatter.identity as Record<string, unknown> | undefined;
-      stdout.write("\n" + chalk.bold(`  ${personaName(handle)}\n`));
+      stdout.write("\n" + chalk.bold(`  ${displayName(handle.frontmatter)}\n`));
       stdout.write(chalk.dim(`  ${handle.personaPath}\n`));
       if (id?.system_identity) {
         const si = id.system_identity as { purpose?: string };

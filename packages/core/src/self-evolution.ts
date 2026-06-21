@@ -203,6 +203,30 @@ export function activeOverlay(personaPath: string): Record<string, unknown> {
   return overlay;
 }
 
+/**
+ * Apply an overlay (dot-path -> value) onto a copy of a frontmatter object, so
+ * APPLIED self-edits actually take effect downstream (e.g. envelope extraction in
+ * the loop) without mutating the original commented spec file. Returns a new object.
+ */
+export function applyOverlay(
+  frontmatter: Record<string, unknown>,
+  overlay: Record<string, unknown>,
+): Record<string, unknown> {
+  if (Object.keys(overlay).length === 0) return frontmatter;
+  const clone = structuredClone(frontmatter);
+  for (const [path, value] of Object.entries(overlay)) {
+    const parts = path.split(".");
+    let node = clone as Record<string, unknown>;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const k = parts[i];
+      if (typeof node[k] !== "object" || node[k] === null) node[k] = {};
+      node = node[k] as Record<string, unknown>;
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+  return clone;
+}
+
 function nextVersion(personaPath: string): string {
   const applied = readLedger(personaPath).filter((e) => e.op === "apply").length;
   // PersonaVersion: bump the patch component per applied self-edit.
