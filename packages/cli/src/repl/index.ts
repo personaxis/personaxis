@@ -286,6 +286,17 @@ async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boo
       await loop.tick({ observation: arg, source: "user", actor: "actor-llm" });
       return false;
     }
+    case "overseer": {
+      const { overseerView } = await import("@personaxis/core");
+      const v = overseerView();
+      stdout.write(
+        "\n" +
+          chalk.bold.magentaBright("  overseer") +
+          chalk.dim(` · machine ${v.machine}\n`) +
+          `  personas ${v.personas} · projects ${v.projects} · collections ${v.collections}\n\n`,
+      );
+      return false;
+    }
     case "compile":
       stdout.write(chalk.dim("  /compile: wired to the LLM compile pipeline in a later phase (F2/F5).\n"));
       return false;

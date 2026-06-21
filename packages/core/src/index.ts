@@ -13,6 +13,7 @@ export * from "./heuristic-appraiser.js";
 export * from "./llm-appraiser.js";
 export * from "./governance.js";
 export * from "./self-evolution.js";
+export * from "./registry.js";
 export * from "./memory.js";
 export * from "./provenance.js";
 export * from "./sigil.js";
