@@ -126,6 +126,21 @@ divergen y se mergean con auditoría).
 3. **Subagente nativo**: `compile` a `.claude/agents/<slug>.md`, `.codex/agents/<slug>.toml`,
    `SOUL.md`; **live-sync** actualiza el doc del host cuando la persona evoluciona.
 
+## 7b. Identidad visual (diferenciada por spec)
+
+Cada persona **se ve y se comporta distinto en la terminal**, derivado determinísticamente de su
+`personaxis.md` (no es un spinner genérico). El `PersonaTheme` (`@personaxis/core`) mapea:
+
+- **affect.valence → tono** de la paleta (frío ↔ cálido); **arousal → brillo**.
+- **extraversion → ritmo/amplitud** del "respirar"; **openness → drift** (cuánto explora el sigilo
+  entre frames); **emotionality → jitter**; **conscientiousness → simetría** (nítido ↔ orgánico).
+- identidad → **glifos** y semilla estable; **voz** → `terse | balanced | expansive` (estilo de salida).
+
+Toda la animación vive en **una sola sede**: `@personaxis/tui/visual` (logo animado, "despertar" de
+la persona, sigilo temático animado, aura viva, floreos por evento, estilo de voz). La usan el REPL,
+el comando `sigil` y el dashboard. Las animaciones solo corren en TTY; en pipe/CI hay fallback estático.
+Dos personas distintas → sigilo, paleta, glifos y voz visiblemente distintos.
+
 ## 8. Arquitectura (monorepo)
 
 ```
