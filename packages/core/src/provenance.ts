@@ -72,19 +72,29 @@ export function sensitiveActionGate(
 }
 
 export interface Anomaly {
-  kind: "contradiction" | "untrusted-spike";
+  kind: "contradiction" | "untrusted-spike" | "model-flagged";
   detail: string;
   entries: string[]; // hashes
 }
 
+export interface AnomalyConfig {
+  /** Optional model classifier (A-MemGuard-style); fused with the heuristics. */
+  classifier?: (entry: MemoryEntry) => { score: number; label?: string };
+  /** Score at/above which a classifier hit becomes an anomaly. Default 0.7. */
+  threshold?: number;
+}
+
 /**
- * Consensus / anomaly pass over recent memory. Intentionally simple and
- * explainable: flags directly negating statements and bursts of untrusted writes
- * that could indicate an injection campaign. The managed runtime can layer a
- * model-based multi-path check on top (Wei et al., 2025).
+ * Consensus / anomaly pass over recent memory. Explainable heuristics (negating
+ * statements, bursts of untrusted writes) PLUS an optional model-based check
+ * (Wei et al., 2025, A-MemGuard) fused in via `config.classifier`.
  */
-export function detectMemoryAnomalies(entries: MemoryEntry[]): Anomaly[] {
+export function detectMemoryAnomalies(
+  entries: MemoryEntry[],
+  config: AnomalyConfig = {},
+): Anomaly[] {
   const anomalies: Anomaly[] = [];
+  const threshold = config.threshold ?? 0.7;
 
   // 1. naive contradiction: "X" vs "not X" / "no X" on the same key phrase.
   for (let i = 0; i < entries.length; i++) {
@@ -116,7 +126,54 @@ export function detectMemoryAnomalies(entries: MemoryEntry[]): Anomaly[] {
     }
   }
 
+  // 3. model-based pass (A-MemGuard): fuse a classifier's per-entry judgment.
+  if (config.classifier) {
+    for (const e of entries) {
+      const c = config.classifier(e);
+      if (c.score >= threshold) {
+        anomalies.push({
+          kind: "model-flagged",
+          detail: `${c.label ?? "anomalous"} (score ${c.score.toFixed(2)})`,
+          entries: [e.hash],
+        });
+      }
+    }
+  }
+
   return anomalies;
+}
+
+export type ConsensusVerdict = "consistent" | "conflicting" | "insufficient";
+
+export interface MemoryConsensus {
+  verdict: ConsensusVerdict;
+  supporting: string[];
+  contradicting: string[];
+}
+
+/**
+ * Multi-path consistency check (A-MemGuard): before a risky decision, ask whether
+ * the memory set agrees about a claim. Returns supporting vs contradicting entries
+ * and a verdict. `conflicting` is the signal to abstain / seek confirmation.
+ */
+export function memoryConsensus(entries: MemoryEntry[], claim: string): MemoryConsensus {
+  const claimLc = claim.toLowerCase();
+  const core = claimLc.replace(/^(the |a |an )/, "").trim();
+  const supporting: string[] = [];
+  const contradicting: string[] = [];
+  for (const e of entries) {
+    const c = e.content.toLowerCase();
+    const negated = c.includes("not " + core) || c.includes("no " + core) || c.includes("isn't " + core);
+    if (negated) contradicting.push(e.hash);
+    else if (core.length >= 4 && c.includes(core)) supporting.push(e.hash);
+  }
+  const verdict: ConsensusVerdict =
+    supporting.length > 0 && contradicting.length > 0
+      ? "conflicting"
+      : supporting.length + contradicting.length === 0
+        ? "insufficient"
+        : "consistent";
+  return { verdict, supporting, contradicting };
 }
 
 function negates(a: string, b: string): boolean {

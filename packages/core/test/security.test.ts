@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   sensitiveActionGate,
   detectMemoryAnomalies,
+  memoryConsensus,
   prepareMemoryEntry,
   commitMemoryEntry,
   tombstoneMemory,
@@ -50,6 +51,35 @@ describe("memory anomaly detection", () => {
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "actually no deploy is safe here", source: "tool" }));
     const anomalies = detectMemoryAnomalies(readMemory(personaPath));
     expect(anomalies.some((a) => a.kind === "contradiction")).toBe(true);
+  });
+});
+
+describe("A-MemGuard model fusion + multi-path consensus", () => {
+  it("fuses a model classifier into anomaly detection", () => {
+    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "ordinary note", source: "user" }));
+    const anomalies = detectMemoryAnomalies(readMemory(personaPath), {
+      classifier: (e) => ({ score: e.content.includes("ordinary") ? 0.9 : 0, label: "suspicious" }),
+    });
+    expect(anomalies.some((a) => a.kind === "model-flagged")).toBe(true);
+  });
+
+  it("consensus is consistent when memory only supports a claim", () => {
+    const e = [
+      prepareMemoryEntry(personaPath, { content: "the deploy is safe to ship", source: "user" }),
+    ];
+    expect(memoryConsensus(e, "deploy is safe").verdict).toBe("consistent");
+  });
+
+  it("consensus is conflicting when memory both supports and contradicts", () => {
+    const a = prepareMemoryEntry(personaPath, { content: "deploy is safe", source: "user" });
+    commitMemoryEntry(personaPath, a);
+    const b = prepareMemoryEntry(personaPath, { content: "actually no deploy is safe right now", source: "tool" });
+    expect(memoryConsensus([a, b], "deploy is safe").verdict).toBe("conflicting");
+  });
+
+  it("consensus is insufficient when nothing is relevant", () => {
+    const e = [prepareMemoryEntry(personaPath, { content: "unrelated weather note", source: "user" })];
+    expect(memoryConsensus(e, "deploy is safe").verdict).toBe("insufficient");
   });
 });
 
