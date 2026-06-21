@@ -9,8 +9,8 @@
 
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { existsSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { resolve, join, dirname } from "node:path";
 import chalk from "chalk";
 import {
   LivingLoop,
@@ -302,12 +302,39 @@ async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boo
         chalk.dim("  set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL to use a local/hosted model.\n"),
       );
       return false;
-    case "goal":
-      stdout.write(chalk.dim(`  /goal stub — would set completion goal: "${arg}" (plan/07).\n`));
+    case "goal": {
+      const goalPath = join(dirname(handle.personaPath), "goal.json");
+      if (arg === "clear") {
+        if (existsSync(goalPath)) unlinkSync(goalPath);
+        stdout.write(chalk.dim("  goal cleared.\n"));
+      } else if (arg) {
+        writeFileSync(goalPath, JSON.stringify({ text: arg, createdTs: new Date().toISOString() }, null, 2));
+        stdout.write(chalk.green("✓") + ` goal set: ${arg}\n`);
+      } else if (existsSync(goalPath)) {
+        const g = JSON.parse(readFileSync(goalPath, "utf-8")) as { text: string; createdTs: string };
+        stdout.write(`  ${chalk.bold("goal:")} ${g.text} ${chalk.dim(`(since ${g.createdTs})`)}\n`);
+      } else {
+        stdout.write(chalk.dim("  no goal set. /goal <text> to set, /goal clear to remove.\n"));
+      }
       return false;
-    case "loop":
-      stdout.write(chalk.dim(`  /loop stub — periodic self-audit (plan/07).\n`));
+    }
+    case "loop": {
+      const n = Math.max(1, Math.min(20, Number(arg) || 3));
+      const { verifyMemoryChain, readMemory } = await import("@personaxis/core");
+      stdout.write(chalk.dim(`  running ${n} self-audit pass(es)...\n`));
+      for (let i = 1; i <= n; i++) {
+        const st = readState(handle.statePath);
+        const chain = verifyMemoryChain(handle.personaPath);
+        const mem = readMemory(handle.personaPath);
+        stdout.write(
+          `  ${chalk.dim(`#${i}`)} mutations ${st.mutation_log.length} · memory ${mem.length} · chain ` +
+            (chain.ok ? chalk.green("ok") : chalk.red("BROKEN")) +
+            "\n",
+        );
+      }
+      stdout.write(chalk.dim("  (interval scheduling is a harness TODO — plan/10-harness)\n"));
       return false;
+    }
     default:
       stdout.write(chalk.yellow(`  unknown command /${cmd} — try /help\n`));
       return false;
