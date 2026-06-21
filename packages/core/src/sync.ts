@@ -39,7 +39,9 @@ function dedupeLog(entries: MutationLogEntry[]): MutationLogEntry[] {
   const seen = new Set<string>();
   const out: MutationLogEntry[] = [];
   for (const e of entries) {
-    const key = `${e.ts}|${e.field}|${e.to}|${e.actor}`;
+    // v0.8: origin_node distinguishes same-ts mutations made on different machines,
+    // so a genuine concurrent edit is not collapsed during reconciliation.
+    const key = `${e.ts}|${e.field}|${e.to}|${e.actor}|${e.origin_node ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(e);

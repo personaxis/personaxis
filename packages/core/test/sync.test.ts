@@ -29,6 +29,14 @@ describe("cross-OS state merge", () => {
     expect(merged.values["mood.tone"]).toBe(0.2); // clamped
   });
 
+  it("v0.8: does not collapse same-ts mutations from different machines", () => {
+    const a = st({ "mood.tone": 0.1 }, [{ ...mut("2026-06-01T00:00:00Z", "mood.tone", 0.1), origin_node: "win" }]);
+    const b = st({ "mood.tone": 0.2 }, [{ ...mut("2026-06-01T00:00:00Z", "mood.tone", 0.2), origin_node: "mac" }]);
+    const { merged } = mergeState(a, b);
+    const toneEntries = merged.mutation_log.filter((e) => e.field === "mood.tone");
+    expect(toneEntries).toHaveLength(2); // distinct origins preserved
+  });
+
   it("reports a conflict when both diverge without history", () => {
     const a = st({ "mood.tone": 0.1 });
     const b = st({ "mood.tone": 0.3 });

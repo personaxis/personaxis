@@ -34,6 +34,10 @@ export interface MutationLogEntry {
     | "judge-correction";
   tool_call_id?: string;
   governance_blocked?: boolean;
+  /** v0.8: machine/instance that produced this mutation (cross-OS reconciliation). */
+  origin_node?: string;
+  /** v0.8: runtime session id, for traceability. */
+  session_id?: string;
 }
 
 export interface StateFile {

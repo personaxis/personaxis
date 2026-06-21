@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve, dirname, join } from "path";
 import chalk from "chalk";
 import { loadPersonaFile } from "../load.js";
+import { machineId } from "@personaxis/core";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,8 @@ interface MutationLogEntry {
     | "judge-correction";
   tool_call_id?: string;
   governance_blocked?: boolean;
+  origin_node?: string;
+  session_id?: string;
 }
 
 interface EnvelopeLookup {
@@ -274,6 +277,7 @@ const mutateSubcommand = new Command("mutate")
             (options.actor as MutationLogEntry["actor"]) ?? "human-operator",
           tool_call_id: options.toolCallId,
           governance_blocked: governanceBlocked,
+          origin_node: machineId(),
         };
 
         state.values[options.field] = next;

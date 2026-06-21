@@ -22,6 +22,10 @@ export interface MutationRequest {
   toolCallId?: string;
   /** Set by the governance gate when a mutation is refused. */
   governanceBlocked?: boolean;
+  /** v0.8: machine/instance origin (cross-OS reconciliation). */
+  originNode?: string;
+  /** v0.8: runtime session id. */
+  sessionId?: string;
 }
 
 export interface MutationResult {
@@ -70,6 +74,8 @@ export function applyMutation(
     actor: req.actor ?? "human-operator",
     tool_call_id: req.toolCallId,
     governance_blocked: blocked,
+    origin_node: req.originNode,
+    session_id: req.sessionId,
   };
 
   state.values[req.field] = next;

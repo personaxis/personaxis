@@ -26,6 +26,8 @@ import {
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
 import { activeOverlay, applyOverlay } from "./self-evolution.js";
+import { machineId } from "./registry.js";
+import { randomUUID } from "node:crypto";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, ProvenanceSource } from "./appraisal.js";
@@ -54,6 +56,8 @@ export interface TickReport {
 export class LivingLoop {
   readonly bus = new EventBus();
   private handle: PersonaHandle;
+  /** v0.8: stamped on every mutation for cross-OS reconciliation + traceability. */
+  readonly sessionId = randomUUID();
 
   constructor(
     personaPath: string,
@@ -134,6 +138,8 @@ export class LivingLoop {
           delta: m.delta,
           reason: m.reason,
           actor: input.actor ?? "actor-llm",
+          originNode: machineId(),
+          sessionId: this.sessionId,
         });
         bus.emit({ type: "mutate", result });
         if (result.to !== result.from) mutationsApplied++;

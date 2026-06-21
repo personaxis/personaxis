@@ -112,6 +112,23 @@ describe("envelopes + state engine", () => {
     expect(state.mutation_log).toHaveLength(1);
     expect(state.mutation_log[0].clamped).toBe(true);
   });
+
+  it("v0.8: records origin_node + session_id on the audit entry", () => {
+    writeFileSync(personaPath, fixture("autonomous"));
+    seedState();
+    const { frontmatter, statePath } = loadPersona(personaPath);
+    const env = extractEnvelopes(frontmatter);
+    const state = readState(statePath);
+    const r = applyMutation(state, env.envelopes, {
+      field: "mood.tone",
+      delta: 0.05,
+      reason: "t",
+      originNode: "machine-abc",
+      sessionId: "sess-1",
+    });
+    expect(r.entry.origin_node).toBe("machine-abc");
+    expect(r.entry.session_id).toBe("sess-1");
+  });
 });
 
 describe("governance gate", () => {
