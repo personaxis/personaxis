@@ -18,6 +18,7 @@ export * from "./blackboard.js";
 export * from "./live-sync.js";
 export * from "./sync.js";
 export * from "./skill-review.js";
+export * from "./skill-lifecycle.js";
 export * from "./memory.js";
 export * from "./provenance.js";
 export * from "./injection.js";
