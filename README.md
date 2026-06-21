@@ -14,7 +14,21 @@ Full documentation lives in the [PERSONA.md spec repository](https://github.com/
 
 ## Living persona (new)
 
-Beyond the static commands, `personaxis` is becoming a **living, governed persona agent**. Run it with no subcommand to enter an interactive REPL where you talk to your persona and drive it with `/commands`:
+**Play in 60 seconds** — run `personaxis` in any empty folder:
+
+```bash
+personaxis                       # first run scaffolds a valid starter persona, then it wakes up
+# › hi! talk in natural language, or use /state /evolve /audit /memory /sigil ...
+```
+
+It creates a valid, playable companion (`.personaxis/personaxis.md`), the persona **awakens** with its own animated sigil, and **replies** to you. For a real conversation, point it at a model:
+
+```bash
+export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama / llama.cpp
+export PERSONAXIS_MODEL=qwen3:4b
+```
+
+Beyond the REPL, `personaxis` is a **living, governed persona agent**. Drive an existing persona directly:
 
 ```bash
 node packages/cli/dist/index.js --persona .personaxis/personaxis.md
