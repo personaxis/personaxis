@@ -42,6 +42,7 @@ import {
   voiceWrap,
   farewell,
 } from "@personaxis/tui/visual";
+import { writeStarterPersona } from "../starter.js";
 
 interface ReplOptions {
   persona?: string;
@@ -83,21 +84,30 @@ becomes an observation fed to the governed loop (mode shown in /state).
 `;
 
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
-  const personaPath = resolvePersonaPath(opts.persona);
+  let personaPath = resolvePersonaPath(opts.persona);
   await animateLogo();
 
   if (!personaPath) {
-    stdout.write(
-      chalk.yellow("No persona found.") +
-        " Looked for: " +
-        CANDIDATES.map((c) => chalk.dim(c)).join(", ") +
-        "\nRun " +
-        chalk.cyan("personaxis init") +
-        " or pass " +
-        chalk.cyan("--persona <path>") +
-        ".\n",
-    );
-    return;
+    // First-run onboarding: scaffold a valid, playable starter persona.
+    stdout.write(chalk.yellow("  No persona here yet.") + chalk.dim(" Let's create one so you can start playing.\n\n"));
+    let name = "Aria";
+    if (stdin.isTTY) {
+      // Interactive: ask (one question at a time — safe on a TTY).
+      const onboard = readline.createInterface({ input: stdin, output: stdout });
+      try {
+        const yn = ((await onboard.question(`  Create a starter persona in ${chalk.cyan(".personaxis/")}? ${chalk.dim("[Y/n]")} `)) || "y").trim().toLowerCase();
+        if (yn && yn !== "y" && yn !== "yes") {
+          stdout.write(chalk.dim("  No problem. Run ") + chalk.cyan("personaxis init") + chalk.dim(" anytime, or pass ") + chalk.cyan("--persona <path>") + chalk.dim(".\n"));
+          return;
+        }
+        name = ((await onboard.question(`  Name your persona ${chalk.dim("[Aria]")} `)) || "Aria").trim() || "Aria";
+      } finally {
+        onboard.close();
+      }
+    }
+    // Non-interactive (piped/CI) auto-creates the default so the session can run.
+    personaPath = writeStarterPersona(process.cwd(), name);
+    stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)} — ${chalk.bold(name)} is ready.\n`);
   }
 
   const handle = loadPersona(personaPath);

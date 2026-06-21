@@ -59,6 +59,23 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
     expect(ov).toContain("collections");
   });
 
+  it("first-run onboarding scaffolds a VALID, playable starter persona", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "pxs-onboard-"));
+    const out = execFileSync("node", [CLI], {
+      cwd,
+      input: "hi there\n/exit\n",
+      encoding: "utf-8",
+      env: { ...process.env, FORCE_COLOR: "0", PERSONAXIS_NO_ANIM: "1" },
+    });
+    expect(out).toContain("is ready");
+    expect(out).toContain("is awake");
+    const created = join(cwd, ".personaxis", "personaxis.md");
+    expect(existsSync(created)).toBe(true);
+    // The starter must always validate (regression guard) — throws on non-zero exit.
+    expect(() => run(["validate", created])).not.toThrow();
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
   it("sync merges another machine's state without clobber (dry-run)", () => {
     const other = join(home, "other-state.json");
     writeFileSync(

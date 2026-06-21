@@ -29,6 +29,7 @@ const templateFiles = [
   "personaxis_template.md",
   "PERSONA_template.md",
   "policy_template.yaml",
+  "starter_persona.md",
 ];
 
 const lines = [
