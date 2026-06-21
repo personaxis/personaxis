@@ -3,6 +3,9 @@ dist/
 dist-bin/
 *.js.map
 
+# generated (codegen at build time from schema/ + templates/)
+packages/cli/src/generated/
+
 # Test artifacts from local CLI runs
 .claude/
 .codex/

@@ -1,13 +1,6 @@
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { resolve, dirname } from "path";
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const schema = JSON.parse(
-  readFileSync(resolve(__dirname, "../schema/persona.schema.json"), "utf-8")
-) as Record<string, unknown>;
+import { personaSchema as schema } from "./generated/assets.js";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);

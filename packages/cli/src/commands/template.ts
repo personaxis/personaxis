@@ -1,10 +1,8 @@
 import { Command } from "commander";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { fileURLToPath } from "url";
+import { writeFileSync, existsSync, mkdirSync } from "fs";
 import { resolve, dirname } from "path";
 import chalk from "chalk";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { templates } from "../generated/assets.js";
 
 interface TemplateDescriptor {
   name: string;
@@ -28,17 +26,12 @@ const TEMPLATES: TemplateDescriptor[] = [
   },
 ];
 
-function resolveTemplatePath(filename: string): string {
-  // dist/commands/template.js → ../../templates/<filename>
-  return resolve(__dirname, "..", "..", "templates", filename);
-}
-
 function loadTemplate(name: string): { descriptor: TemplateDescriptor; content: string } | undefined {
   const descriptor = TEMPLATES.find((t) => t.name === name);
   if (!descriptor) return undefined;
-  const path = resolveTemplatePath(descriptor.filename);
-  if (!existsSync(path)) return undefined;
-  return { descriptor, content: readFileSync(path, "utf-8") };
+  const content = templates[descriptor.filename];
+  if (content === undefined) return undefined;
+  return { descriptor, content };
 }
 
 const listCommand = new Command("list")

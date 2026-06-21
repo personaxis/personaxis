@@ -6,14 +6,12 @@
  * binaries per platform AND publish to npm with a thin-shim + optionalDependencies.
  * This script drives the bun side.
  *
- * KNOWN REMAINING WORK: the CLI loads schema/*.json and templates/* via fs at
- * runtime (packages/cli/src/schema.ts, commands/*). Those assets are NOT embedded
- * in a compiled binary, so the binary currently fails with ENOENT on schema lookup.
- * Fix: embed assets with Bun's `import schema from "./schema.json" with { type: "json" }`
- * (or `Bun.file`/embeddedFiles) instead of fs reads relative to __dirname. Until
- * then the supported install path is npm (node), which works today.
+ * Assets (schema/*.json, templates/*, version) are embedded at build time via
+ * scripts/embed-assets.mjs -> packages/cli/src/generated/assets.ts, so the compiled
+ * binary is self-contained (no runtime fs reads of bundled assets). Verified:
+ * `personaxis --version` and `personaxis validate <persona>` work from the binary.
  *
- * Usage: node scripts/package.mjs   (requires `bun` on PATH)
+ * Usage: node scripts/package.mjs [target-name]   (requires `bun` on PATH)
  */
 
 import { execSync } from "node:child_process";

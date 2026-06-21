@@ -7,15 +7,10 @@
 
 import { existsSync, readFileSync } from "fs";
 import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
 import yaml from "js-yaml";
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const policySchema = JSON.parse(
-  readFileSync(resolve(__dirname, "../schema/policy.schema.json"), "utf-8"),
-) as Record<string, unknown>;
+import { policySchema } from "./generated/assets.js";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);

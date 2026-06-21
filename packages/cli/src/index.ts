@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import { program } from "commander";
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { resolve, dirname } from "path";
+import { version } from "./generated/assets.js";
 import { initCommand } from "./commands/init.js";
 import { validateCommand } from "./commands/validate.js";
 import { compileCommand } from "./commands/compile.js";
@@ -27,15 +25,10 @@ import { syncCommand } from "./commands/sync.js";
 import { serveCommand } from "./commands/serve.js";
 import { startRepl } from "./repl/index.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(
-  readFileSync(resolve(__dirname, "../package.json"), "utf-8")
-) as { version: string };
-
 program
   .name("personaxis")
   .description("Living, governed AI agent personas — define, validate, compile, and live.")
-  .version(pkg.version)
+  .version(version)
   // `personaxis` with no subcommand enters the living REPL.
   .option("--persona <path>", "Path to the persona (personaxis.md / PERSONA.md) for the REPL")
   .action(async (opts: { persona?: string }) => {

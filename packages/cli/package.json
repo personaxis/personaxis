@@ -32,10 +32,10 @@
     "templates"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/embed-assets.mjs && tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit"
+    "lint": "node ../../scripts/embed-assets.mjs && tsc --noEmit"
   },
   "dependencies": {
     "@personaxis/core": "workspace:*",

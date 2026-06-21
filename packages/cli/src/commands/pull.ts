@@ -1,21 +1,15 @@
 import { Command } from "commander";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
-import { readFileSync } from "fs";
 import chalk from "chalk";
 import matter from "gray-matter";
 import { validatePersona } from "../schema.js";
+import { version } from "../generated/assets.js";
 import {
 	REGISTRY_BASE_URL,
 	REGISTRY_CLIENT_TOKEN,
 	REGISTRY_UA_PREFIX,
 } from "../registry-config.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(
-	readFileSync(resolve(__dirname, "..", "..", "package.json"), "utf-8"),
-) as { version: string };
 
 function isValidSlug(slug: string): boolean {
 	return slug.length > 0 && slug.length <= 100 && /^[a-z0-9][a-z0-9_-]*$/.test(slug);
@@ -48,9 +42,9 @@ export const pullCommand = new Command("pull")
 			res = await fetch(url, {
 				method: "GET",
 				headers: {
-					"User-Agent": `${REGISTRY_UA_PREFIX}${pkg.version}`,
+					"User-Agent": `${REGISTRY_UA_PREFIX}${version}`,
 					"X-Personaxis-Client": REGISTRY_CLIENT_TOKEN,
-					"X-Personaxis-Cli-Version": pkg.version,
+					"X-Personaxis-Cli-Version": version,
 					Accept: "text/markdown",
 				},
 			});
@@ -89,7 +83,7 @@ export const pullCommand = new Command("pull")
 		}
 
 		const content = await res.text();
-		const version = res.headers.get("x-persona-version") ?? "unknown";
+		const personaVersion = res.headers.get("x-persona-version") ?? "unknown";
 
 		// Validate locally — write the file even on warning, but flag it.
 		let validationStatus = "(skipped)";
@@ -116,7 +110,7 @@ export const pullCommand = new Command("pull")
 		writeFileSync(dest, content, "utf-8");
 
 		console.log("");
-		console.log(chalk.green("✓"), chalk.bold(slug), chalk.dim(`(v${version}, ${validationStatus})`), chalk.dim("→"), dest);
+		console.log(chalk.green("✓"), chalk.bold(slug), chalk.dim(`(v${personaVersion}, ${validationStatus})`), chalk.dim("→"), dest);
 		console.log("");
 		console.log(chalk.dim("  Compile to a runtime:"));
 		console.log(chalk.cyan(`  personaxis compile ${opts.out ?? "PERSONA.md"} --target claude-code`));
