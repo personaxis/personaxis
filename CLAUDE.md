@@ -8,6 +8,28 @@ The reference CLI implementation of the **personaxis.md spec v0.7.0** (Personaxi
 
 v0.7.0 is a layout-only move on top of v0.6.0 (no field changes): the quantitative 10-layer spec lives at `.personaxis/[personas/<slug>/]personaxis.md`, and the repo-root `PERSONA.md` (or `.claude/agents/<slug>.md` / `.codex/agents/<slug>.toml` in subagent mode) is now a separate, LLM-compiled qualitative document generated via `personaxis compile`.
 
+## Monorepo & living architecture (WIP — "personaxis")
+
+This repo is migrating from a single CLI package into a **pnpm monorepo** that turns the CLI into a *living, governed persona agent* (see `plan/` for the full roadmap + research, and `plan/MASTER_CHECKLIST.md`).
+
+| Package | Role |
+|---|---|
+| `packages/core` (`@personaxis/core`) | Framework-agnostic engine: persona/state IO, envelope extraction, **clamp+audit state engine**, appraisal signals + JSON schema, **governance gate** (locked/suggesting/autonomous), **append-only hash-chained episodic memory**, the **Living Loop** (`observe→appraise→evolve→recompile→memory`), event bus, deterministic per-persona **sigil**, heuristic + **LLM (constrained-decoding) appraisers**. |
+| `packages/cli` (`@personaxis/persona.md`) | The existing CLI (validate/lint/compile/decompile/state/...) **plus** the interactive **REPL**: `personaxis` with no subcommand enters a living session (NL + `/commands`). The original `src/` moved here unchanged. |
+| `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (`personaxis-mcp`) exposing persona tools (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, …) to any host (Claude Code, Codex, Cursor). |
+| `packages/tui` | (placeholder) future ascii dashboard. |
+
+**Build/test/run (from repo root):**
+```bash
+pnpm install
+pnpm run build            # pnpm -r build (core first, then cli/mcp)
+pnpm run test             # vitest across packages
+node packages/cli/dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md   # golden -> PASS
+node packages/cli/dist/index.js --persona <path>   # enter the living REPL
+```
+
+**Path note:** `schema/` and `templates/` now live under `packages/cli/`. The byte-identity sync rule below still holds, but the sibling-repo relative path is now `../../../persona.md` from `packages/cli/`. The five-state validator, 12 universals, and envelope clamping are unchanged and still the source of truth.
+
 ## Three-artifact model (v0.7)
 
 | Artifact | Mutability | Schema | Who edits |

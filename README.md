@@ -12,6 +12,35 @@ Full documentation lives in the [PERSONA.md spec repository](https://github.com/
 
 ---
 
+## Living persona (new)
+
+Beyond the static commands, `personaxis` is becoming a **living, governed persona agent**. Run it with no subcommand to enter an interactive REPL where you talk to your persona and drive it with `/commands`:
+
+```bash
+node packages/cli/dist/index.js --persona .personaxis/personaxis.md
+# › talk in natural language, or use /state /evolve /audit /memory /sigil /persona ...
+```
+
+Each turn feeds a **governed Living Loop** — `observe → appraise → evolve → recompile → memory` — where every state change is **clamped to the persona's envelopes, audited in an immutable mutation log, and reversible**, and episodic memory is written to an **append-only hash chain** (tamper/poisoning-evident). Identity stays immutable; only `state.json` and memory evolve, within the spec's universal invariants.
+
+Set a local model for the appraisal step (constrained decoding keeps even a ≤4B model safe):
+
+```bash
+export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama / llama.cpp
+export PERSONAXIS_MODEL=qwen3:4b
+```
+
+**Use it inside a bigger agent (Claude Code, Codex, Cursor)** via the MCP server — the host brings the powerful model, personaxis brings the living identity:
+
+```bash
+personaxis-mcp     # stdio MCP server: persona_compiled, persona_state,
+                   # adjust_persona_state, persona_observe, persona_audit, ...
+```
+
+This repo is a **pnpm monorepo** (`@personaxis/core`, `@personaxis/cli`, `@personaxis/mcp`). See [`plan/`](plan/) for the full roadmap, research dossier, and checklists.
+
+---
+
 ## Quick start
 
 ```bash
