@@ -13,6 +13,7 @@ import { extractEnvelopes } from "./envelopes.js";
 import {
   governMutations,
   readMode,
+  readMaxStepDelta,
   type GovernanceConfig,
   DEFAULT_GOVERNANCE,
 } from "./governance.js";
@@ -76,8 +77,10 @@ export class LivingLoop {
   }
 
   private resolveGovernance(): GovernanceConfig {
-    const mode = readMode(this.handle.frontmatter as Record<string, unknown>);
-    return { ...DEFAULT_GOVERNANCE, mode, ...this.opts.governance };
+    const fm = this.handle.frontmatter as Record<string, unknown>;
+    const mode = readMode(fm);
+    const maxStepDelta = readMaxStepDelta(fm);
+    return { ...DEFAULT_GOVERNANCE, mode, maxStepDelta, ...this.opts.governance };
   }
 
   /** Run one full governed cycle. */

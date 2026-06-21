@@ -328,6 +328,7 @@ persona:
 governance:
   autonomy_envelope: "role_fidelity"
   approval_policy: "human_for_core_changes"
+  max_step_delta: 0.12
   per_layer_edit_policy:
     identity: "human_approval_required"
     character: "human_approval_required"

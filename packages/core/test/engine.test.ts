@@ -211,6 +211,25 @@ describe("LivingLoop (autonomous)", () => {
     expect(verifyMemoryChain(personaPath).ok).toBe(true);
   });
 
+  it("v0.8: governance.max_step_delta bounds the per-step drift", async () => {
+    writeFileSync(
+      personaPath,
+      `---\nmetadata: { name: t, version: 1.0.0 }\nidentity: { canonical_id: t }\nimprovement_policy: { mode: autonomous }\ngovernance: { max_step_delta: 0.05 }\naffect:\n  baseline:\n    mood:\n      tone: { mean: 0.0, range: [-1, 1] }\n---\nbody\n`,
+    );
+    seedState();
+    const loop = new LivingLoop(personaPath, {
+      appraiser: new FixedAppraiser({
+        appraisal: "x",
+        confidence: 0.9,
+        mutations: [{ field: "mood.tone", delta: 0.9, reason: "spike" }],
+        memories: [],
+      }),
+    });
+    await loop.tick({ observation: "o", source: "user" });
+    const st = readState(loadPersona(personaPath).statePath);
+    expect(st.values["mood.tone"]).toBeCloseTo(0.05, 5); // bounded to max_step_delta, not 0.9
+  });
+
   it("abstains on low confidence", async () => {
     writeFileSync(personaPath, fixture("autonomous"));
     seedState();

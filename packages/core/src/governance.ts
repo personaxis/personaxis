@@ -95,3 +95,10 @@ export function readMode(frontmatter: Record<string, unknown>): ImprovementMode 
   const m = ip?.mode;
   return m === "suggesting" || m === "autonomous" ? m : "locked";
 }
+
+/** v0.8: read governance.max_step_delta from frontmatter; falls back to the default. */
+export function readMaxStepDelta(frontmatter: Record<string, unknown>): number {
+  const g = frontmatter.governance as { max_step_delta?: unknown } | undefined;
+  const v = g?.max_step_delta;
+  return typeof v === "number" && v > 0 && v <= 1 ? v : DEFAULT_GOVERNANCE.maxStepDelta;
+}
