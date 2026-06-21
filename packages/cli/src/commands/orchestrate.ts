@@ -15,6 +15,7 @@ import {
   loadRegistry,
   loadPersona,
   extractCapabilities,
+  getTeam,
   LivingLoop,
   HeuristicAppraiser,
   displayName,
@@ -38,9 +39,20 @@ function registeredAgents(): { agents: Agent[]; paths: Record<string, string> } 
 export const orchestrateCommand = new Command("orchestrate")
   .description("Route a task across registered personas via the blackboard (capability-matched).")
   .argument("<task>", "Task description")
+  .option("--team <name>", "Restrict routing to a team's members")
   .option("--run", "Run one governed Living-Loop cycle on the assigned persona")
-  .action(async (task: string, opts: { run?: boolean }) => {
-    const { agents, paths } = registeredAgents();
+  .action(async (task: string, opts: { run?: boolean; team?: string }) => {
+    let { agents, paths } = registeredAgents();
+    if (opts.team) {
+      const team = getTeam(opts.team);
+      if (!team) {
+        console.error(chalk.red("Error:"), `no team '${opts.team}'`);
+        process.exit(1);
+      }
+      const members = new Set(team.members.map((m) => m.slug));
+      agents = agents.filter((a) => members.has(a.id));
+      console.log(chalk.dim(`  (scoped to team '${opts.team}': ${[...members].join(", ")})`));
+    }
     if (agents.length === 0) {
       console.error(chalk.yellow("No registered personas with a global spec found."));
       console.error(chalk.dim("Register one: ") + chalk.cyan("personaxis overseer register <slug>"));

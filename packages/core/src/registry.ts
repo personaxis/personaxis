@@ -33,16 +33,39 @@ export interface ProjectRecord {
   lastSeen: string;
   machine: string;
 }
+/**
+ * A Collection is pure ORGANIZATION — a named group of personas/projects, like a
+ * folder or tag. No runtime behavior. (Distinct from a Team, below.)
+ */
 export interface Collection {
   name: string;
   personas: string[];
   projects: string[];
 }
+
+/**
+ * A Team is an OPERATIONAL multi-agent unit: personas with ROLES, a shared GOAL,
+ * that collaborate (e.g. via the blackboard, scoped to the team's members). A team
+ * has a lead and members; it is runtime, not just taxonomy.
+ */
+export interface TeamMember {
+  slug: string;
+  role: string;
+}
+export interface Team {
+  name: string;
+  lead?: string;
+  members: TeamMember[];
+  goal?: string;
+  createdTs: string;
+}
+
 export interface Registry {
   version: 1;
   personas: Record<string, PersonaRecord>;
   projects: Record<string, ProjectRecord>;
   collections: Record<string, Collection>;
+  teams: Record<string, Team>;
   machines: Record<string, { lastSeen: string; os: string }>;
 }
 
@@ -63,7 +86,7 @@ function registryFile(): string {
 }
 
 function empty(): Registry {
-  return { version: 1, personas: {}, projects: {}, collections: {}, machines: {} };
+  return { version: 1, personas: {}, projects: {}, collections: {}, teams: {}, machines: {} };
 }
 
 export function loadRegistry(): Registry {
@@ -130,6 +153,39 @@ export function addToCollection(
   return c;
 }
 
+// ─── Teams (operational, with roles + a shared goal) ────────────────────────
+
+export function createTeam(name: string, lead?: string): Team {
+  const reg = loadRegistry();
+  reg.teams[name] ??= { name, lead, members: lead ? [{ slug: lead, role: "lead" }] : [], createdTs: new Date().toISOString() };
+  if (lead) reg.teams[name].lead = lead;
+  saveRegistry(reg);
+  return reg.teams[name];
+}
+
+export function addTeamMember(name: string, slug: string, role: string): Team {
+  const reg = loadRegistry();
+  const t = (reg.teams[name] ??= { name, members: [], createdTs: new Date().toISOString() });
+  const existing = t.members.find((m) => m.slug === slug);
+  if (existing) existing.role = role;
+  else t.members.push({ slug, role });
+  if (role === "lead") t.lead = slug;
+  saveRegistry(reg);
+  return t;
+}
+
+export function setTeamGoal(name: string, goal: string): Team {
+  const reg = loadRegistry();
+  const t = (reg.teams[name] ??= { name, members: [], createdTs: new Date().toISOString() });
+  t.goal = goal;
+  saveRegistry(reg);
+  return t;
+}
+
+export function getTeam(name: string): Team | undefined {
+  return loadRegistry().teams[name];
+}
+
 function touchMachine(reg: Registry): void {
   reg.machines[machineId()] = { lastSeen: new Date().toISOString(), os: platform() };
 }
@@ -164,6 +220,7 @@ export function overseerView(): {
   personas: number;
   projects: number;
   collections: number;
+  teams: number;
   machines: number;
   detail: Registry;
 } {
@@ -173,6 +230,7 @@ export function overseerView(): {
     personas: Object.keys(reg.personas).length,
     projects: Object.keys(reg.projects).length,
     collections: Object.keys(reg.collections).length,
+    teams: Object.keys(reg.teams ?? {}).length,
     machines: Object.keys(reg.machines).length,
     detail: reg,
   };

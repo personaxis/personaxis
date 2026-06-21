@@ -7,6 +7,10 @@ import {
   registerProject,
   createCollection,
   addToCollection,
+  createTeam,
+  addTeamMember,
+  setTeamGoal,
+  getTeam,
   resolveEffectivePersona,
   overseerView,
   machineId,
@@ -45,6 +49,23 @@ describe("overseer registry", () => {
 
   it("machineId is stable across calls", () => {
     expect(machineId()).toBe(machineId());
+  });
+
+  it("teams are operational (roles + lead + goal), distinct from collections", () => {
+    createTeam("launch-squad", "cmo");
+    addTeamMember("launch-squad", "frontend", "builder");
+    addTeamMember("launch-squad", "security", "reviewer");
+    setTeamGoal("launch-squad", "ship the v1 launch safely");
+    const t = getTeam("launch-squad")!;
+    expect(t.lead).toBe("cmo");
+    expect(t.goal).toBe("ship the v1 launch safely");
+    expect(t.members.find((m) => m.slug === "frontend")!.role).toBe("builder");
+    // a collection is just grouping, not a team
+    createCollection("marketing-stuff");
+    addToCollection("marketing-stuff", "persona", "cmo");
+    const v = overseerView();
+    expect(v.teams).toBe(1);
+    expect(v.collections).toBe(1);
   });
 
   it("project overlay takes precedence over global", () => {

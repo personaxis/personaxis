@@ -34,9 +34,12 @@ const showCmd = new Command("show")
     console.log(`  ${chalk.cyan("projects")}    ${v.projects}`);
     for (const p of Object.values(v.detail.projects))
       console.log(chalk.dim(`    · ${p.root} [${p.slugs.join(", ")}]`));
-    console.log(`  ${chalk.cyan("collections")} ${v.collections}`);
+    console.log(`  ${chalk.cyan("collections")} ${v.collections}` + chalk.dim("  (grouping/taxonomy)"));
     for (const c of Object.values(v.detail.collections))
       console.log(chalk.dim(`    · ${c.name}: ${c.personas.length} persona(s), ${c.projects.length} project(s)`));
+    console.log(`  ${chalk.cyan("teams")}       ${v.teams}` + chalk.dim("  (operational: roles + goal — `personaxis team show`)"));
+    for (const t of Object.values(v.detail.teams ?? {}))
+      console.log(chalk.dim(`    · ${t.name}: ${t.members.length} member(s)` + (t.lead ? `, lead ${t.lead}` : "")));
     console.log("");
   });
 
