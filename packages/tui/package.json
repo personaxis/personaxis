@@ -1,0 +1,24 @@
+{
+  "name": "@personaxis/tui",
+  "version": "0.7.0",
+  "description": "Personaxis live ASCII dashboard — a breathing, per-persona view of a living persona.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "personaxis-dash": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@personaxis/core": "workspace:*",
+    "chalk": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.3"
+  }
+}
