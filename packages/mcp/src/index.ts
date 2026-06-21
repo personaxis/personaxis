@@ -232,6 +232,23 @@ export function buildServer(): McpServer {
     },
   );
 
+  server.tool(
+    "evaluate_command",
+    "Evaluate whether a shell command may run under a two-axis policy (sandbox × approval), returning allow|ask|deny + reason + a risk classification (writes/network/destructive/escapes-workspace). Use BEFORE executing any command the persona proposes. A 'deny' command must not run.",
+    {
+      command: z.string().describe("The shell command to evaluate."),
+      sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
+      approval: z.enum(["untrusted", "on-failure", "on-request", "never"]).default("on-request"),
+    },
+    async ({ command, sandbox, approval }) => {
+      try {
+        return ok(svc.evaluateCmd(command, sandbox, approval));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
   return server;
 }
 

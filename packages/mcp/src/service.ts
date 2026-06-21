@@ -28,6 +28,8 @@ import {
   activeOverlay,
   reviewSkill,
   scanForInjection,
+  evaluateCommand,
+  DEFAULT_POLICY,
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
@@ -142,4 +144,13 @@ export function skillReview(skillPath: string): unknown {
 /** Scan untrusted text for prompt-injection before it reaches the persona. */
 export function scanText(text: string): unknown {
   return scanForInjection(text);
+}
+
+/** Evaluate a shell command against a two-axis (approval × sandbox) policy. */
+export function evaluateCmd(
+  command: string,
+  sandbox: "read-only" | "workspace-write" | "danger-full-access",
+  approval: "untrusted" | "on-failure" | "on-request" | "never",
+): unknown {
+  return evaluateCommand(command, { ...DEFAULT_POLICY, sandbox, approval, workspaceRoot: process.cwd() });
 }
