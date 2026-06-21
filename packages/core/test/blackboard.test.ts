@@ -20,7 +20,7 @@ describe("capability matching", () => {
     expect(score).toBeCloseTo(2 / 3, 3);
   });
 
-  it("extracts capabilities from a persona frontmatter", () => {
+  it("extracts capabilities from a persona frontmatter (derived fallback)", () => {
     const caps = extractCapabilities({
       identity: {
         system_identity: { purpose: "Run the marketing function and own positioning", allowed_domains: ["marketing", "brand"] },
@@ -28,6 +28,17 @@ describe("capability matching", () => {
       },
     });
     expect(caps).toEqual(expect.arrayContaining(["marketing", "positioning", "brand"]));
+  });
+
+  it("v0.8: prefers explicit identity.capabilities over derived ones", () => {
+    const caps = extractCapabilities({
+      identity: {
+        capabilities: ["positioning", "demand_generation"],
+        system_identity: { purpose: "completely unrelated text about gardening and weather" },
+      },
+    });
+    expect(caps).toEqual(expect.arrayContaining(["positioning", "demand_generation"]));
+    expect(caps).not.toContain("gardening");
   });
 });
 

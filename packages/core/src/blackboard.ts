@@ -24,15 +24,27 @@ function tokenize(text: string): string[] {
     .filter((w) => w.length > 2 && !STOP.has(w));
 }
 
-/** Capability tokens for a persona, from its identity layer. */
+/**
+ * Capability tokens for a persona. Prefers the explicit, machine-readable
+ * `identity.capabilities` (v0.8); falls back to deriving them from the identity
+ * layer (purpose / allowed_domains / role) when absent.
+ */
 export function extractCapabilities(fm: PersonaFrontmatter): string[] {
   const id = fm.identity as
     | {
+        capabilities?: unknown;
         system_identity?: { purpose?: string; allowed_domains?: unknown };
         role_identity?: { primary_role?: string } | string;
         narrative_identity?: { self_concept?: string };
       }
     | undefined;
+
+  // v0.8: explicit declaration wins (reliable routing, not heuristic).
+  if (Array.isArray(id?.capabilities)) {
+    const explicit = (id.capabilities as unknown[]).filter((c): c is string => typeof c === "string");
+    if (explicit.length > 0) return [...new Set(explicit.flatMap((c) => tokenize(c)))];
+  }
+
   const tokens = new Set<string>();
   const si = id?.system_identity;
   if (si?.purpose) tokenize(si.purpose).forEach((t) => tokens.add(t));
