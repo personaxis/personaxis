@@ -41,6 +41,32 @@ export const DEFAULT_POLICY: Policy = {
   workspaceRoot: process.cwd(),
 };
 
+/**
+ * v0.8: build a Policy from a persona's declared `permissions` block, so a persona
+ * carries its own sandbox posture to any host. Missing fields fall back to defaults.
+ */
+export function policyFromFrontmatter(
+  frontmatter: Record<string, unknown>,
+  workspaceRoot: string = process.cwd(),
+): Policy {
+  const p = (frontmatter.permissions ?? {}) as Partial<Policy>;
+  const sandbox =
+    p.sandbox === "read-only" || p.sandbox === "workspace-write" || p.sandbox === "danger-full-access"
+      ? p.sandbox
+      : DEFAULT_POLICY.sandbox;
+  const approval =
+    p.approval === "untrusted" || p.approval === "on-failure" || p.approval === "on-request" || p.approval === "never"
+      ? p.approval
+      : DEFAULT_POLICY.approval;
+  return {
+    sandbox,
+    approval,
+    allow: Array.isArray(p.allow) ? p.allow.filter((x): x is string => typeof x === "string") : [],
+    deny: Array.isArray(p.deny) ? p.deny.filter((x): x is string => typeof x === "string") : [],
+    workspaceRoot,
+  };
+}
+
 export interface CommandClass {
   writesFiles: boolean;
   network: boolean;

@@ -4,6 +4,7 @@ import {
   classifyCommand,
   pathEscapesWorkspace,
   wrapCommand,
+  policyFromFrontmatter,
   type Policy,
 } from "../src/index.js";
 
@@ -64,6 +65,25 @@ describe("two-axis policy decisions", () => {
 
   it("allow-list overrides approval but not deny/sandbox-escape", () => {
     expect(evaluateCommand("git push", policy({ allow: ["git push"], approval: "untrusted" })).decision).toBe("allow");
+  });
+});
+
+describe("v0.8: policy from a persona's declared permissions", () => {
+  it("builds a policy from frontmatter.permissions and enforces it", () => {
+    const fm = {
+      permissions: { sandbox: "read-only", approval: "on-request", deny: ["rm\\s+-rf"] },
+    };
+    const policy = policyFromFrontmatter(fm, "/work");
+    expect(policy.sandbox).toBe("read-only");
+    expect(evaluateCommand("echo hi > f", policy).decision).toBe("deny"); // read-only forbids writes
+    expect(evaluateCommand("rm -rf x", policy).decision).toBe("deny"); // deny-list
+    expect(evaluateCommand("cat f", policy).decision).toBe("allow");
+  });
+
+  it("falls back to conservative defaults when permissions are absent", () => {
+    const policy = policyFromFrontmatter({}, "/work");
+    expect(policy.sandbox).toBe("workspace-write");
+    expect(policy.approval).toBe("on-request");
   });
 });
 

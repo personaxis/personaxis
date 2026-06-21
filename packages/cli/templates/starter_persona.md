@@ -357,6 +357,10 @@ security:
   prompt_injection_defense: true
   memory_poisoning_defense: true
 
+permissions:
+  sandbox: "workspace-write"
+  approval: "on-request"
+
 runtime_artifacts:
   state_file: "./state.json"
   policy_file: "./policy.yaml"

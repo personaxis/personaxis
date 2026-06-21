@@ -29,6 +29,7 @@ import {
   reviewSkill,
   scanForInjection,
   evaluateCommand,
+  policyFromFrontmatter,
   DEFAULT_POLICY,
   type LoopEvent,
   type ProvenanceSource,
@@ -146,11 +147,19 @@ export function scanText(text: string): unknown {
   return scanForInjection(text);
 }
 
-/** Evaluate a shell command against a two-axis (approval × sandbox) policy. */
+/**
+ * Evaluate a shell command against a two-axis (approval × sandbox) policy. If a
+ * persona path is given, the persona's OWN declared `permissions` posture is used
+ * (v0.8); otherwise the explicit sandbox/approval args apply.
+ */
 export function evaluateCmd(
   command: string,
   sandbox: "read-only" | "workspace-write" | "danger-full-access",
   approval: "untrusted" | "on-failure" | "on-request" | "never",
+  persona?: string,
 ): unknown {
-  return evaluateCommand(command, { ...DEFAULT_POLICY, sandbox, approval, workspaceRoot: process.cwd() });
+  const policy = persona
+    ? policyFromFrontmatter(loadPersona(persona).frontmatter, process.cwd())
+    : { ...DEFAULT_POLICY, sandbox, approval, workspaceRoot: process.cwd() };
+  return evaluateCommand(command, policy);
 }

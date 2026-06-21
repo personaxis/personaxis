@@ -239,10 +239,11 @@ export function buildServer(): McpServer {
       command: z.string().describe("The shell command to evaluate."),
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
       approval: z.enum(["untrusted", "on-failure", "on-request", "never"]).default("on-request"),
+      persona: z.string().optional().describe("Optional persona path; if given, the persona's own declared permissions posture (v0.8) is used instead of the sandbox/approval args."),
     },
-    async ({ command, sandbox, approval }) => {
+    async ({ command, sandbox, approval, persona }) => {
       try {
-        return ok(svc.evaluateCmd(command, sandbox, approval));
+        return ok(svc.evaluateCmd(command, sandbox, approval, persona));
       } catch (e) {
         return fail(e);
       }
