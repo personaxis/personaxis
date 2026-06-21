@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/persona.md",
-  "version": "0.6.0",
-  "description": "CLI for PERSONA.md spec v0.7.0 (Personaxis v12) - define, validate, lint, compile, decompile, push, pull, and migrate AI agent personas. Three-artifact model: personaxis.md (quantitative 10-layer spec), PERSONA.md (LLM-compiled qualitative document), and state.json (mutable runtime state). Ships compile|decompile|push|pull, state init|mutate|show, skills list|pull, and migrate 0.5-to-0.6|0.6-to-0.7 commands.",
+  "version": "0.8.0",
+  "description": "The living, governed AI persona toolchain (personaxis.md spec v0.8.0). Run `personaxis` for an interactive REPL where your persona talks, evolves (clamped + audited), and remembers; plus validate, lint, compile/decompile, state, push/pull, skills, overseer, team, orchestrate, sigil, sync, serve, and migrate (incl. 0.7-to-0.8). Three-artifact model: personaxis.md (10-layer spec), PERSONA.md (compiled), state.json (runtime).",
   "keywords": [
     "ai",
     "agents",

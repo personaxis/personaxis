@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/core",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Personaxis engine: governed Living Loop, bounded memory, state/envelope mutation, persona sigil. Spec-faithful, framework-agnostic.",
   "license": "MIT",
   "type": "module",
@@ -9,7 +9,9 @@
   "exports": {
     ".": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "lint": "tsc --noEmit",
