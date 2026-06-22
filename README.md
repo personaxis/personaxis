@@ -4,9 +4,9 @@
 
 [![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Spec](https://img.shields.io/badge/spec-0.7.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
+[![Spec](https://img.shields.io/badge/spec-0.8.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
 
-CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- define, validate, lint, compile, decompile, push, pull, and migrate AI agent personas (spec v0.7.0 / Personaxis v12).
+CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- define, validate, lint, compile, decompile, push, pull, and migrate AI agent personas (spec v0.8.0 / Personaxis v13).
 
 Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md).
 
@@ -73,6 +73,7 @@ Migrate an existing persona:
 ```bash
 npx @personaxis/persona.md migrate 0.5-to-0.6 ./PERSONA.md --apply   # v0.5 -> v0.6 structural codemod
 npx @personaxis/persona.md migrate 0.6-to-0.7 --apply                # v0.6 layout -> v0.7 layout
+npx @personaxis/persona.md migrate 0.7-to-0.8 --apply                # v0.7 -> v0.8 (additive: spec_version bump)
 ```
 
 Mutate runtime state (clamped to envelopes declared in personaxis.md):
@@ -101,7 +102,7 @@ Requires Node.js 18+.
 | `export --format json\|md\|yaml` | Export personaxis.md as clean semantic content |
 | `template list\|show\|get` | Manage pedagogical templates |
 | `diff <before> <after>` | Compare two versions field by field |
-| `spec` | Print the v0.7.0 spec — useful for injecting into agent prompts |
+| `spec` | Print the v0.8.0 spec — useful for injecting into agent prompts |
 | `use <template>` | Scaffold a persona from a template |
 | `list` | List personas installed in this project |
 | `templates` | List built-in templates |
@@ -113,6 +114,14 @@ Requires Node.js 18+.
 | **`pull [--root\|<slug>]`** | **v0.7.0:** Download a persona version (spec, compiled document, and support folders) into the local layout |
 | **`skills list [--root\|<slug>]`** | **v0.7.0:** List `extensions.skills` entries and their materialization status (`materialized`, `missing-local`, `reference-only`) |
 | **`skills pull <name> [--root\|<slug>]`** | **v0.7.0:** Pull a `github:org/repo[/path]` skill entry into `skills/<name>/`, validate it against agentskills.io rules, and offer to rewrite the `extensions.skills` entry to `./skills/<name>` |
+| **`migrate 0.7-to-0.8`** | **v0.8.0:** Additive bump (no field changes); makes the new optional fields available |
+| **(no subcommand)** | **v0.8.0:** Enter the living **REPL** — talk to your persona; it replies and evolves via the governed Living Loop. First run scaffolds a valid starter persona |
+| **`sigil [--persona <p>]`** | **v0.8.0:** Render a persona's deterministic, state-aware ASCII sigil + envelope panel |
+| **`overseer show\|register\|collection`** | **v0.8.0:** The master view — all personas, projects, and **collections** (taxonomy) |
+| **`team create\|add\|goal\|show`** | **v0.8.0:** Operational multi-agent **teams** (roles + lead + shared goal) — distinct from collections |
+| **`orchestrate "<task>" [--team <name>] [--run]`** | **v0.8.0:** Route a task to the best-matching persona via the capability blackboard |
+| **`sync <other-state.json> --persona <p>`** | **v0.8.0:** Reconcile a portable persona's `state.json` across machines (no clobber) |
+| **`serve --persona <p>`** | **v0.8.0:** Serve a persona over HTTP + `agents.md` (low-context interop for any agent) |
 
 ### Validate exit codes
 
