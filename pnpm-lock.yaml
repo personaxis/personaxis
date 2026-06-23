@@ -80,6 +80,22 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.19.19)
 
+  packages/evals:
+    dependencies:
+      '@personaxis/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.19.19)
+
   packages/mcp:
     dependencies:
       '@modelcontextprotocol/sdk':

@@ -33,7 +33,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for pkg in core cli mcp tui; do
+          for pkg in core cli mcp tui evals; do
             (cd packages/$pkg && pnpm publish --access public --no-git-checks) || echo "::warning::publish skipped/failed for $pkg"
           done
 

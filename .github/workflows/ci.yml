@@ -100,3 +100,34 @@ jobs:
           check packages/cli/templates/PERSONA_template.md     ../persona.md/PERSONA_template.md
           check packages/cli/templates/policy_template.yaml    ../persona.md/.personaxis/policy_template.yaml
           exit $fail
+
+  evals:
+    name: governance evals (deterministic, no API keys)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install & build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      # Proves the governance invariants hold (clamp, gate, drift cap, episodic
+      # honoring, tamper-evidence, injection block, budget stop, verification).
+      # A regression fails the suite (non-zero exit) and blocks the PR.
+      - name: Run governance eval suite
+        run: node packages/evals/dist/index.js --out eval-report.md --markdown
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval-report.md

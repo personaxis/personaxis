@@ -1,0 +1,28 @@
+{
+  "name": "@personaxis/evals",
+  "version": "0.9.0",
+  "description": "Governance/property eval harness for Personaxis — proves the clamp holds, the gate blocks, memory stays tamper-evident, budgets stop, and verification catches. Deterministic (no API) + optional live.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "personaxis-evals": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "eval": "node dist/index.js"
+  },
+  "dependencies": {
+    "@personaxis/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.0"
+  }
+}
