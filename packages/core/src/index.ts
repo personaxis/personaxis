@@ -28,6 +28,7 @@ export * from "./sandbox.js";
 export * from "./sigil.js";
 export * from "./persona-theme.js";
 export * from "./events.js";
+export * from "./trace.js";
 export * from "./loop.js";
 export * from "./tools/exec.js";
 export * from "./tools/registry.js";
