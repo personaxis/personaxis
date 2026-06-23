@@ -58,6 +58,23 @@ memory    → escribe a memoria episódica (append-only, encadenada por hash) tr
 **División de seguridad:** el modelo (incluso uno pequeño ≤4B) solo *propone*; el código y el
 spec *imponen* la seguridad. Por eso es viable en modelos chicos y seguro a la vez.
 
+### El Agent Loop (ejecutar tareas, no solo evolucionar)
+
+Junto al Living Loop (que evoluciona la **identidad**) corre el **Agent Loop** (que ejecuta
+**tareas**). En el REPL lo invocas con `/do <tarea>`:
+
+```
+tarea → [ el modelo propone una tool (run_command / read_file / write_file / edit_file / list_dir)
+          → GATE del sandbox (allow | ask | deny) → (si ask) aprobación humana → ejecuta → observa ]*
+        → finish
+```
+
+El modelo **solo propone** la tool-call; el **sandbox decide** (un `deny` nunca corre), las acciones
+riesgosas **piden aprobación** (`shift+tab` cicla la postura: `read-only → workspace-write →
+danger-full-access`), y **toda salida de tool se escanea por inyección** antes de volver al modelo.
+Usa function-calling nativo del proveedor con fallback a JSON restringido (provider-agnostic). El mismo
+agente se expone por MCP (`agent_run`) y HTTP (`POST /persona/agent`).
+
 El modo de evolución lo decide `improvement_policy.mode` del spec:
 - `locked` (por defecto): el lazo aprecia y recuerda, pero las mutaciones de envelope son
   solo dirigidas por humano.
@@ -71,7 +88,10 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
   compila. Salidas con 5 exit codes.
 - **Memoria gobernada:** episódica *append-only* con **procedencia** (user/tool/internal/
   synthesis) y **cadena de hashes** (detecta manipulación). Borrado por petición vía *tombstone*
-  (no reescribe la historia; la cesura es auditable).
+  (no reescribe la historia; la cesura es auditable). El runtime **respeta `memory.types`** del spec:
+  con `episodic: false` no escribe nada; con `semantic: true` consolida a `memory.md`. Los tipos aún
+  no implementados (procedural/autobiographical/…) los marca el linter como "declarado pero no
+  aplicado" en vez de fingir que funcionan.
 - **Defensas de inyección/envenenamiento:** escáner de inyección por capas (normalización
   Unicode, zero-width, bidi, homóglifos; decodificación base64/hex; reglas ponderadas);
   detección de anomalías con consenso multi-path; *gates de acción sensible* por procedencia.
@@ -83,8 +103,11 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
 ## 5. Comandos (referencia)
 
 **El vivo:**
-- `personaxis` — abre el **REPL** (sesión viva). Dentro: `/state`, `/evolve <texto>`, `/audit`,
-  `/memory`, `/sigil`, `/persona`, `/overseer`, `/goal`, `/loop`, `/model`, `/help`, `/exit`.
+- `personaxis` — abre el **REPL** (sesión viva). En un TTY es una **app de pantalla completa**
+  (alternate-screen, sin dejar historial de frames): menú `/` en vivo y `shift+tab` para ciclar la
+  postura del sandbox. Dentro: `/do <tarea>` (agente ejecutor), `/state`, `/evolve <texto>`, `/audit`,
+  `/memory`, `/sigil`, `/persona`, `/overseer`, `/goal`, `/loop` (corre ticks gobernados), `/mode`,
+  `/model`, `/help`, `/exit`. (En pipe/CI cae a un lector de línea simple.)
 - `personaxis sigil [--persona <path>]` — sigilo ascii único de la persona + panel de envelopes.
 - `personaxis-dash [--persona <path>]` — TUI viva que respira con el estado.
 
@@ -166,10 +189,11 @@ TypeScript en todas partes. Dos canales de distribución:
 
 ## 10. Flujos de trabajo (end-to-end)
 
-> **Idea clave:** Personaxis es el *alma + memoria + conciencia* de la persona. El agente host
-> (Claude Code, Codex) es el *cerebro (modelo) + manos (tool-use)*. Personaxis solo **no** edita
-> código ni completa tareas por su cuenta: aporta identidad gobernada y persistente a quien sí
-> lo hace — o corre su propio lazo reactivo/evolutivo sobre un modelo local.
+> **Idea clave:** Personaxis es el *alma + memoria + conciencia* de la persona. Puede operar de dos
+> formas: (a) **como capa** bajo un agente host (Claude Code, Codex) que trae el modelo potente, o
+> (b) **como agente independiente** que ejecuta tareas él mismo vía el Agent Loop (`/do`), gobernado
+> por el sandbox. En ambos casos la identidad es persistente, la evolución acotada y toda acción
+> auditada.
 
 ### Flujo A — Solo (personaxis sin un agente grande)
 
@@ -185,9 +209,11 @@ reemplazo de Claude Code.
    `sync` (reconciliar entre máquinas).
 
 Lo que **sí** hace solo: define/valida/compila la persona, corre el lazo gobernado (reacciones +
-memoria + evolución acotada), y sirve esa identidad. Lo que **no** hace solo (todavía): ejecutar
-tareas reales (editar archivos, correr comandos) — ese trabajo lo hace el host (Flujo B) o, a
-futuro, conectando el *worker* del blackboard a herramientas reales.
+memoria + evolución acotada), sirve esa identidad, **y ejecuta tareas reales** vía `/do` — el
+**Agent Loop** corre comandos y edita archivos, cada acción gateada por el sandbox de la persona
+(`ask`/`deny`), con la salida escaneada y auditada. Necesita un modelo con tool-calling
+(`PERSONAXIS_ENDPOINT`+`MODEL`). En postura `read-only` solo lee; en `workspace-write` actúa dentro
+del proyecto pidiendo aprobación para lo riesgoso.
 
 ### Flujo B — Como capa bajo un agente potente (caso principal)
 
