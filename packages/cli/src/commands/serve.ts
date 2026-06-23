@@ -21,6 +21,9 @@ import chalk from "chalk";
 import {
   LivingLoop,
   HeuristicAppraiser,
+  PersonaAgent,
+  EventBus,
+  policyFromFrontmatter,
   loadPersona,
   ensureState,
   extractEnvelopes,
@@ -45,6 +48,7 @@ persona's envelopes and appended to an immutable audit log.
 - \`GET  /persona/audit\` — mutation log + memory-chain integrity + anomalies
 - \`POST /persona/observe\` — body \`{ "observation": string, "source": "user|tool|internal|synthesis" }\`; runs one governed loop cycle
 - \`POST /persona/adjust\`  — body \`{ "field": string, "delta": number, "reason": string }\`; clamped, audited mutation
+- \`POST /persona/agent\`   — body \`{ "task": string }\`; runs the governed Agent Loop (sandbox-gated tool calls); needs a tool-calling model
 
 ## Notes
 - Untrusted observations are prompt-injection scanned; malicious ones do not steer evolution.
@@ -117,6 +121,27 @@ async function route(
       });
       writeState(handle.statePath, st);
       return json(res, 200, result);
+    }
+    if (req.method === "POST" && url === "/persona/agent") {
+      const { body, parseError } = await readJson(req);
+      if (parseError) return json(res, 400, { error: "invalid JSON body" });
+      const task = String(body.task ?? "");
+      if (!task.trim()) return json(res, 400, { error: "task (non-empty string) is required" });
+      const endpoint = process.env.PERSONAXIS_ENDPOINT;
+      const model = process.env.PERSONAXIS_MODEL;
+      if (!endpoint || !model) return json(res, 400, { error: "agent requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL" });
+      const events: LoopEvent[] = [];
+      const bus = new EventBus();
+      bus.on((e) => events.push(e));
+      const agent = new PersonaAgent({
+        llm: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+        policy: policyFromFrontmatter(handle.frontmatter as Record<string, unknown>, process.cwd()),
+        personaBody: handle.body,
+        onApproval: async () => "deny", // non-interactive HTTP: deny anything needing approval
+        bus,
+      });
+      const result = await agent.run(task);
+      return json(res, 200, { result, events });
     }
     json(res, 404, { error: "not found" });
   } catch (e) {

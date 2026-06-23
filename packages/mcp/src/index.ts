@@ -250,6 +250,23 @@ export function buildServer(): McpServer {
     },
   );
 
+  server.tool(
+    "agent_run",
+    "Run the persona's GOVERNED Agent Loop on a task: it proposes shell/file tool calls, each gated by the persona's sandbox policy (a 'deny' never runs; anything needing approval is denied in this non-interactive context), executes the allowed ones, and returns the step events + final summary. Requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL.",
+    {
+      persona: z.string().describe("Path to the persona (personaxis.md / PERSONA.md)."),
+      task: z.string().describe("The task to accomplish."),
+      max_steps: z.number().int().min(1).max(30).default(12),
+    },
+    async ({ persona, task, max_steps }) => {
+      try {
+        return ok(await svc.agentRun(persona, task, max_steps));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
   return server;
 }
 

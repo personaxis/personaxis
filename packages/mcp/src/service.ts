@@ -10,6 +10,8 @@
 import {
   LivingLoop,
   HeuristicAppraiser,
+  PersonaAgent,
+  EventBus,
   loadPersona,
   writeState,
   ensureState,
@@ -102,6 +104,34 @@ export async function observe(
       events: [...events, { type: "error", message: (e as Error).message }],
     };
   }
+}
+
+/**
+ * Run the governed Agent Loop on a task. Non-interactive: any tool whose verdict
+ * is `ask` is denied (the host can pre-authorize via the persona's permissions
+ * allow-list). Requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL for tool-calling.
+ */
+export async function agentRun(persona: string, task: string, maxSteps = 12): Promise<unknown> {
+  const endpoint = process.env.PERSONAXIS_ENDPOINT;
+  const model = process.env.PERSONAXIS_MODEL;
+  if (!endpoint || !model) {
+    return { error: "agent requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL (tool-calling model)" };
+  }
+  const handle = loadPersona(persona);
+  ensureState(handle);
+  const events: LoopEvent[] = [];
+  const bus = new EventBus();
+  bus.on((e) => events.push(e));
+  const agent = new PersonaAgent({
+    llm: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+    policy: policyFromFrontmatter(handle.frontmatter as Record<string, unknown>, process.cwd()),
+    personaBody: handle.body,
+    onApproval: async () => "deny", // non-interactive host: deny anything needing approval
+    maxSteps,
+    bus,
+  });
+  const result = await agent.run(task);
+  return { result, events };
 }
 
 export function audit(persona: string): unknown {

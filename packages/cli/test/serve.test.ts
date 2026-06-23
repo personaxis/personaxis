@@ -62,4 +62,12 @@ describe("serve HTTP endpoints (bug fixes)", () => {
     expect(res.headers.get("content-type")).toContain("markdown");
     expect(await res.text()).toContain("/persona/observe");
   });
+
+  it("400 on /persona/agent without a configured model", async () => {
+    const prev = process.env.PERSONAXIS_MODEL;
+    delete process.env.PERSONAXIS_MODEL;
+    const res = await fetch(`${base}/persona/agent`, { method: "POST", body: JSON.stringify({ task: "do x" }) });
+    expect(res.status).toBe(400);
+    if (prev) process.env.PERSONAXIS_MODEL = prev;
+  });
 });
