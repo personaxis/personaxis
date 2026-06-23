@@ -36,6 +36,10 @@ const PROTECTED_PREFIXES = [
   "reflexive_self_regulation.hard_limits",
   "persona.constraints",
   "memory.deletion_policy",
+  // A persona must not loosen its own safety rails via self-edit (G3):
+  "governance.max_step_delta",
+  "governance.per_layer_edit_policy",
+  "permissions",
 ];
 
 export interface SelfEditRequest {

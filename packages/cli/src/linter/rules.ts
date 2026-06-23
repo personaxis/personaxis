@@ -401,6 +401,34 @@ export function runRules(data: Record<string, unknown>): RuleResult {
 
   collectTodoFields(data, "", findings);
 
+  // Runtime honesty (G3): some declared memory facets are not yet enforced by the
+  // reference runtime. Warn so the spec never silently over-promises behavior.
+  const mem = asObj(data.memory);
+  const memTypes = mem ? asObj(mem.types) : undefined;
+  const UNENFORCED_TYPES = ["procedural", "autobiographical", "user_preferences", "evaluations"];
+  if (memTypes) {
+    for (const t of UNENFORCED_TYPES) {
+      if (memTypes[t] === true) {
+        findings.push({
+          rule: "memory-type-unenforced",
+          severity: "warning",
+          path: `memory.types.${t}`,
+          message: `'${t}' memory is declared but NOT yet enforced by this runtime (only episodic + semantic are). It will be ignored until implemented.`,
+        });
+      }
+    }
+  }
+  for (const policy of ["consolidation_policy", "retrieval_policy", "write_policy"]) {
+    if (mem && mem[policy] !== undefined) {
+      findings.push({
+        rule: "memory-policy-unenforced",
+        severity: "warning",
+        path: `memory.${policy}`,
+        message: `'memory.${policy}' is declared but NOT yet consumed by this runtime.`,
+      });
+    }
+  }
+
   const layerCount = presentLayers.length;
   const totalRequired = isAgent ? 10 : userPersonaRequired.length;
   const absent = layersToCheck.filter((l) => !asObj(data[l])).length;
