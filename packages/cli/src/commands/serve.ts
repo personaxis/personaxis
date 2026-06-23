@@ -88,23 +88,30 @@ async function route(
       });
     }
     if (req.method === "POST" && url === "/persona/observe") {
-      const body = await readJson(req);
+      const { body, parseError } = await readJson(req);
+      if (parseError) return json(res, 400, { error: "invalid JSON body" });
+      const observation = String(body.observation ?? "");
+      if (!observation.trim()) return json(res, 400, { error: "observation (non-empty string) is required" });
       const events: LoopEvent[] = [];
       const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
       loop.bus.on((e) => events.push(e));
-      const report = await loop.tick({
-        observation: String(body.observation ?? ""),
-        source: (body.source as ProvenanceSource) ?? "user",
-      });
+      const report = await loop.tick({ observation, source: (body.source as ProvenanceSource) ?? "user" });
       return json(res, 200, { report, events });
     }
     if (req.method === "POST" && url === "/persona/adjust") {
-      const body = await readJson(req);
+      const { body, parseError } = await readJson(req);
+      if (parseError) return json(res, 400, { error: "invalid JSON body" });
       const env = extractEnvelopes(handle.frontmatter);
+      const field = String(body.field ?? "");
+      const delta = Number(body.delta);
+      if (!(field in env.envelopes)) {
+        return json(res, 400, { error: `unknown envelope field '${field}'`, fields: Object.keys(env.envelopes) });
+      }
+      if (!Number.isFinite(delta)) return json(res, 400, { error: "delta must be a finite number" });
       const st = readState(handle.statePath);
       const result = applyMutation(st, env.envelopes, {
-        field: String(body.field),
-        delta: Number(body.delta),
+        field,
+        delta,
         reason: String(body.reason ?? "http adjust"),
         actor: "actor-llm",
       });
@@ -122,15 +129,29 @@ function json(res: ServerResponse, code: number, data: unknown): void {
   res.end(JSON.stringify(data, null, 2));
 }
 
-function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
-  return new Promise((resolveBody) => {
+interface ParsedBody {
+  body: Record<string, unknown>;
+  parseError: boolean;
+}
+
+function readJson(req: IncomingMessage): Promise<ParsedBody> {
+  return new Promise((resolveBody, rejectBody) => {
     let raw = "";
-    req.on("data", (c) => (raw += c));
+    const MAX = 1_000_000; // 1 MB cap — refuse oversized bodies
+    req.on("data", (c) => {
+      raw += c;
+      if (raw.length > MAX) {
+        req.destroy();
+        rejectBody(new Error("request body too large"));
+      }
+    });
+    req.on("error", (err) => rejectBody(err));
     req.on("end", () => {
+      if (!raw) return resolveBody({ body: {}, parseError: false });
       try {
-        resolveBody(raw ? (JSON.parse(raw) as Record<string, unknown>) : {});
+        resolveBody({ body: JSON.parse(raw) as Record<string, unknown>, parseError: false });
       } catch {
-        resolveBody({});
+        resolveBody({ body: {}, parseError: true });
       }
     });
   });
@@ -148,6 +169,11 @@ export const serveCommand = new Command("serve")
     }
     const server = buildHttpServer(personaPath);
     const port = Number(opts.port) || 7637;
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      const why = err.code === "EADDRINUSE" ? `port ${port} is already in use` : err.message;
+      console.error(chalk.red("Error:"), `could not start server — ${why}`);
+      process.exit(1);
+    });
     server.listen(port, () => {
       console.log(chalk.green("✓"), `persona serving on ${chalk.cyan(`http://localhost:${port}`)}`);
       console.log(chalk.dim(`  curl http://localhost:${port}/agents.md`));
