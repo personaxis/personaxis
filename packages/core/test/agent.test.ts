@@ -107,6 +107,55 @@ describe("PersonaAgent (governed task execution)", () => {
     const res = await agent.run("loop forever");
     expect(res.finished).toBe(false);
     expect(res.steps).toBe(3);
+    expect(res.budget.stoppedBy).toBe("max_steps");
+  });
+
+  it("stops on a token budget", async () => {
+    // a fetch that always proposes a read and reports 500 tokens per call
+    let i = 0;
+    const usageFetch = (async () => {
+      i++;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: "", tool_calls: [{ id: `c${i}`, type: "function", function: { name: "list_dir", arguments: JSON.stringify({ path: "." }) } }] } }],
+          usage: { prompt_tokens: 400, completion_tokens: 100, total_tokens: 500 },
+        }),
+      };
+    }) as unknown as typeof fetch;
+    const agent = new PersonaAgent({
+      llm: llm(usageFetch),
+      policy: policy(),
+      budget: { maxSteps: 100, maxTokens: 1200, stopConditions: [], onExhaust: "stop" },
+    });
+    const res = await agent.run("read a lot");
+    expect(res.finished).toBe(false);
+    expect(res.budget.stoppedBy).toBe("max_tokens");
+    expect(res.budget.tokens).toBeGreaterThanOrEqual(1200);
+  });
+
+  it("blocking verification rejects an unverified finish and stops after retries", async () => {
+    const agent = new PersonaAgent({
+      llm: llm(scriptedFetch([{ tool: "finish", args: { summary: "I think it is done" } }])),
+      policy: policy(),
+      verification: { mode: "blocking", quorum: "all", onFail: "retry", maxRetries: 1, gates: [{ type: "predicate", kind: "contains", expr: "ALL_TESTS_PASS" }] },
+    });
+    const res = await agent.run("do the thing");
+    expect(res.finished).toBe(false);
+    expect(res.verification?.passed).toBe(false);
+    expect(res.budget.stoppedBy).toBe("verification_failed");
+  });
+
+  it("advisory verification reports but never blocks", async () => {
+    const agent = new PersonaAgent({
+      llm: llm(scriptedFetch([{ tool: "finish", args: { summary: "done-ish" } }])),
+      policy: policy(),
+      verification: { mode: "advisory", quorum: "all", onFail: "stop", maxRetries: 0, gates: [{ type: "predicate", kind: "contains", expr: "NEVER" }] },
+    });
+    const res = await agent.run("do the thing");
+    expect(res.finished).toBe(true);
+    expect(res.verification?.passed).toBe(false); // reported as failed, but did not block
   });
 });
 

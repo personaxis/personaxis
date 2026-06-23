@@ -33,11 +33,26 @@ export interface ToolCall {
   args: Record<string, unknown>;
 }
 
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
 export interface ToolCallResponse {
   /** Assistant free text accompanying the call (may be empty). */
   text: string;
   toolCalls: ToolCall[];
   usedFallback: boolean;
+  /** Token accounting from the provider (for budget enforcement), when reported. */
+  usage?: TokenUsage;
+}
+
+function extractUsage(json: { usage?: Partial<TokenUsage> }): TokenUsage | undefined {
+  const u = json.usage;
+  if (!u) return undefined;
+  const total = u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
+  return { prompt_tokens: u.prompt_tokens ?? 0, completion_tokens: u.completion_tokens ?? 0, total_tokens: total };
 }
 
 export interface ToolCallConfig {
@@ -100,6 +115,7 @@ export async function requestToolCall(
     if (res.ok) {
       const json = (await res.json()) as {
         choices?: Array<{ message?: { content?: string; tool_calls?: RawToolCall[] } }>;
+        usage?: Partial<TokenUsage>;
       };
       const msg = json.choices?.[0]?.message ?? {};
       const toolCalls = (msg.tool_calls ?? []).map((tc) => ({
@@ -107,7 +123,7 @@ export async function requestToolCall(
         name: tc.function.name,
         args: parseArgs(tc.function.arguments),
       }));
-      return { text: (msg.content ?? "").trim(), toolCalls, usedFallback: false };
+      return { text: (msg.content ?? "").trim(), toolCalls, usedFallback: false, usage: extractUsage(json) };
     }
     // Auth/rate/server errors won't be fixed by the fallback — surface them.
     if (res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500) {
@@ -180,7 +196,8 @@ async function reactFallback(
     };
     const res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
     if (res.ok) {
-      const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: Partial<TokenUsage> };
+      const usage = extractUsage(json);
       const content = json.choices?.[0]?.message?.content ?? "{}";
       let parsed: { thought?: string; tool?: string; args?: Record<string, unknown> };
       try {
@@ -190,12 +207,13 @@ async function reactFallback(
         parsed = m ? JSON.parse(m[0]) : {};
       }
       if (!parsed.tool) {
-        return { text: parsed.thought ?? content.slice(0, 200), toolCalls: [], usedFallback: true };
+        return { text: parsed.thought ?? content.slice(0, 200), toolCalls: [], usedFallback: true, usage };
       }
       return {
         text: parsed.thought ?? "",
         toolCalls: [{ id: `react_${Date.now()}`, name: parsed.tool, args: parsed.args ?? {} }],
         usedFallback: true,
+        usage,
       };
     }
     lastErr = `HTTP ${res.status}: ${await safeText(res)}`;

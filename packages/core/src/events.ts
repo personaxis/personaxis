@@ -28,7 +28,16 @@ export type LoopEvent =
   | { type: "tool-verdict"; tool: string; decision: "allow" | "ask" | "deny"; reason: string }
   | { type: "tool-result"; tool: string; ok: boolean; output: string }
   | { type: "agent-finish"; summary: string; steps: number }
-  | { type: "agent-error"; message: string };
+  | { type: "agent-error"; message: string }
+  // Agent budget + stop conditions (v0.9)
+  | { type: "agent-budget"; step: number; tokens: number; costUsd: number; wallSeconds: number }
+  | { type: "agent-stop-condition"; reason: string; step: number }
+  // Objective verification (v0.9)
+  | { type: "verify-start"; gates: number }
+  | { type: "verify-result"; verifier: string; pass: boolean; reason: string }
+  | { type: "verify-complete"; passed: boolean; passes: number; quorum: number }
+  // Trace export (v0.9, P3)
+  | { type: "trace-exported"; format: string; path: string; spanCount: number };
 
 export type LoopListener = (e: LoopEvent) => void;
 
