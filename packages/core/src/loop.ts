@@ -31,7 +31,7 @@ import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
 import { EventBus } from "./events.js";
-import type { Appraiser, ProvenanceSource } from "./appraisal.js";
+import type { Appraiser, AppraisalSignal, ProvenanceSource } from "./appraisal.js";
 
 export interface LivingLoopOptions {
   appraiser: Appraiser;
@@ -111,13 +111,23 @@ export class LivingLoop {
       const env = extractEnvelopes(fm);
       const state: StateFile = readState(this.handle.statePath);
 
-      // 2. appraise (model proposes structured signals only)
-      const signal = await this.opts.appraiser.appraise({
-        observation: input.observation,
-        source: input.source,
-        personaBody: this.handle.body,
-        mutableFields: Object.keys(env.envelopes),
-      });
+      // 2. appraise (model proposes structured signals only). A failing/unreachable
+      // appraiser (network, auth, unsupported response_format) must NOT end the
+      // session: degrade to "no evolution this turn" — the persona still replied
+      // and the spec invariants are untouched.
+      let signal: AppraisalSignal;
+      try {
+        signal = await this.opts.appraiser.appraise({
+          observation: input.observation,
+          source: input.source,
+          personaBody: this.handle.body,
+          mutableFields: Object.keys(env.envelopes),
+        });
+      } catch (err) {
+        bus.emit({ type: "error", message: `appraiser unavailable: ${(err as Error).message}` });
+        bus.emit({ type: "abstain", reason: "appraiser error" });
+        return { mutationsApplied: 0, memoriesWritten: 0, abstained: true };
+      }
       bus.emit({ type: "appraise", signal });
 
       // Uncertainty policy: abstain from evolving when confidence is too low.

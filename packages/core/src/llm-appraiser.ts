@@ -14,6 +14,7 @@
 import {
   APPRAISAL_JSON_SCHEMA,
   parseAppraisalSignal,
+  portableJsonSchema,
   type AppraiseInput,
   type AppraisalSignal,
   type Appraiser,
@@ -54,47 +55,72 @@ export class LlmAppraiser implements Appraiser {
       input.observation,
     ].join("\n");
 
-    const body = {
+    const base = {
       model: this.cfg.model,
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: userMsg },
       ],
-      // Constrained decoding: force schema-valid JSON. Supported by llama.cpp
-      // server and Ollama; hosted OpenAI-compatible APIs accept json_schema too.
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "appraisal_signal", strict: true, schema: APPRAISAL_JSON_SCHEMA },
-      },
       temperature: 0.4,
       max_tokens: this.cfg.maxTokens ?? 512,
     };
 
-    const res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(this.cfg.apiKey ? { authorization: `Bearer ${this.cfg.apiKey}` } : {}),
+    // Constrained decoding, most-constrained first. Endpoints accept different
+    // subsets: llama.cpp/Ollama and OpenAI take full `json_schema`; Cohere/Groq
+    // reject value-constraint keywords (so we send the portable schema) and some
+    // accept only `json_object`; the rest just need a JSON-shaped prompt. We degrade
+    // gracefully so a strict backend never kills the loop. Safety is downstream
+    // (clamp + parseAppraisalSignal), never the model's to enforce.
+    const strategies: Array<Record<string, unknown> | undefined> = [
+      {
+        type: "json_schema",
+        json_schema: {
+          name: "appraisal_signal",
+          strict: true,
+          schema: portableJsonSchema(APPRAISAL_JSON_SCHEMA),
+        },
       },
-      body: JSON.stringify(body),
-    });
+      { type: "json_object" },
+      undefined,
+    ];
 
-    if (!res.ok) {
-      throw new Error(`LLM appraiser HTTP ${res.status}: ${await safeText(res)}`);
+    let lastErr = "no response";
+    for (const responseFormat of strategies) {
+      const body = responseFormat ? { ...base, response_format: responseFormat } : base;
+      const res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(this.cfg.apiKey ? { authorization: `Bearer ${this.cfg.apiKey}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        const json = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const content = json.choices?.[0]?.message?.content ?? "{}";
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(content);
+        } catch {
+          // Some servers wrap JSON in prose; extract the first {...} block.
+          const m = content.match(/\{[\s\S]*\}/);
+          parsed = m ? JSON.parse(m[0]) : {};
+        }
+        return parseAppraisalSignal(parsed);
+      }
+
+      lastErr = `HTTP ${res.status}: ${await safeText(res)}`;
+      // Auth, rate-limit and server errors won't be fixed by relaxing the
+      // response_format — surface them immediately. Only 400/422 (unsupported
+      // response_format/schema) are worth retrying with a looser strategy.
+      if (res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500) {
+        break;
+      }
     }
-    const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = json.choices?.[0]?.message?.content ?? "{}";
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      // Some servers wrap JSON in prose; extract the first {...} block.
-      const m = content.match(/\{[\s\S]*\}/);
-      parsed = m ? JSON.parse(m[0]) : {};
-    }
-    return parseAppraisalSignal(parsed);
+    throw new Error(`LLM appraiser ${lastErr}`);
   }
 }
 

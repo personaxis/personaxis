@@ -81,6 +81,45 @@ export const APPRAISAL_JSON_SCHEMA = {
   },
 } as const;
 
+/**
+ * Value-constraint keywords that hosted structured-output backends (Cohere, Groq,
+ * some Azure deployments) reject — they accept only a structural subset of JSON
+ * Schema. The spec engine re-imposes every one of these downstream (delta clamping
+ * + `parseAppraisalSignal` coercion), so dropping them from the *wire* schema costs
+ * no safety: the model still proposes, the code + spec still impose.
+ */
+const UNSUPPORTED_SCHEMA_KEYWORDS = new Set([
+  "maxLength",
+  "minLength",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "maxItems",
+  "minItems",
+  "pattern",
+  "multipleOf",
+  "format",
+]);
+
+/**
+ * Project a JSON Schema down to the portable subset accepted by strict
+ * structured-output endpoints: keep structural keywords (`type`, `properties`,
+ * `required`, `items`, `enum`, `additionalProperties`), drop value constraints.
+ */
+export function portableJsonSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(portableJsonSchema);
+  if (schema && typeof schema === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(schema as Record<string, unknown>)) {
+      if (UNSUPPORTED_SCHEMA_KEYWORDS.has(k)) continue;
+      out[k] = portableJsonSchema(v);
+    }
+    return out;
+  }
+  return schema;
+}
+
 /** Anything that can turn an observation into an appraisal signal. */
 export interface Appraiser {
   appraise(input: AppraiseInput): Promise<AppraisalSignal>;

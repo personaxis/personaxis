@@ -301,6 +301,79 @@ describe("LlmAppraiser (constrained decoding, mocked transport)", () => {
     const sig = await a.appraise({ observation: "o", source: "user", personaBody: "id", mutableFields: [] });
     expect(sig.confidence).toBe(0.6);
   });
+
+  it("sends a portable schema (no value constraints) under json_schema", async () => {
+    let schema: Record<string, unknown> | null = null;
+    const fakeFetch = async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body);
+      schema = body.response_format.json_schema.schema;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: '{"appraisal":"x","mutations":[],"memories":[],"confidence":0.5}' } }],
+        }),
+      };
+    };
+    const a = new LlmAppraiser({
+      endpoint: "http://x/v1",
+      model: "m",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+    });
+    await a.appraise({ observation: "o", source: "user", personaBody: "id", mutableFields: [] });
+    // Value constraints the spec engine re-imposes downstream must not reach a
+    // strict backend (Cohere/Groq reject them).
+    expect(JSON.stringify(schema)).not.toContain("maxLength");
+    expect(JSON.stringify(schema)).not.toContain("minimum");
+    expect(JSON.stringify(schema)).not.toContain("maxItems");
+    // Structural keywords are preserved.
+    expect(JSON.stringify(schema)).toContain("additionalProperties");
+    expect(JSON.stringify(schema)).toContain("enum");
+  });
+
+  it("falls back to json_object then plain when json_schema is rejected (400)", async () => {
+    const formats: unknown[] = [];
+    let call = 0;
+    const fakeFetch = async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body);
+      formats.push(body.response_format?.type ?? "none");
+      call++;
+      // First two strategies 400 (unsupported), third (plain) succeeds.
+      if (call < 3) return { ok: false, status: 400, text: async () => "unsupported response_format" };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: '{"appraisal":"ok","mutations":[],"memories":[],"confidence":0.7}' } }],
+        }),
+      };
+    };
+    const a = new LlmAppraiser({
+      endpoint: "http://x/v1",
+      model: "m",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+    });
+    const sig = await a.appraise({ observation: "o", source: "user", personaBody: "id", mutableFields: [] });
+    expect(formats).toEqual(["json_schema", "json_object", "none"]);
+    expect(sig.confidence).toBe(0.7);
+  });
+
+  it("does not retry past auth errors (401)", async () => {
+    let calls = 0;
+    const fakeFetch = async () => {
+      calls++;
+      return { ok: false, status: 401, text: async () => "bad key" };
+    };
+    const a = new LlmAppraiser({
+      endpoint: "http://x/v1",
+      model: "m",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+    });
+    await expect(
+      a.appraise({ observation: "o", source: "user", personaBody: "id", mutableFields: [] }),
+    ).rejects.toThrow(/401/);
+    expect(calls).toBe(1);
+  });
 });
 
 describe("sigil determinism", () => {

@@ -177,7 +177,12 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
           })
           .catch((e) => `(responder error: ${(e as Error).message})`);
         stdout.write("\n" + voiceWrap(theme, `  ${name}: ${reply}`) + "\n\n");
-        await loop.tick({ observation: line, source: "user", actor: "actor-llm" });
+        // The Living Loop is best-effort: a failed tick (model/network) must never
+        // end the session. The loop already degrades internally; this is the final
+        // backstop so the REPL stays alive no matter what.
+        await loop
+          .tick({ observation: line, source: "user", actor: "actor-llm" })
+          .catch((e) => stdout.write(chalk.dim(`  loop skipped: ${(e as Error).message}\n`)));
       }
     }
     rl.setPrompt(makePrompt());
