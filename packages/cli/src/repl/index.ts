@@ -2,9 +2,10 @@
  * `personaxis` (no subcommand) -> the living REPL.
  *
  * A persistent, interactive session where you talk to your persona in natural
- * language and drive it with /commands (Claude-Code style). The persona is not
- * static: natural-language turns feed the governed Living Loop, so it observes,
- * appraises, and evolves within its envelopes — every change clamped + audited.
+ * language, drive it with /commands, and hand it real tasks with /do (the governed
+ * Agent Loop). On a TTY it runs as a full alternate-screen app (Screen): no frame
+ * pile-up, a live `/` menu, and shift+tab to cycle the sandbox posture. When stdin
+ * isn't a TTY (pipes/CI) it falls back to a simple line reader.
  */
 
 import * as readline from "node:readline/promises";
@@ -14,6 +15,8 @@ import { resolve, join, dirname } from "node:path";
 import chalk from "chalk";
 import {
   LivingLoop,
+  PersonaAgent,
+  EventBus,
   loadPersona,
   readState,
   ensureState,
@@ -21,7 +24,10 @@ import {
   extractEnvelopes,
   readMode,
   readMemory,
+  verifyMemoryChain,
+  overseerView,
   personaTheme,
+  policyFromFrontmatter,
   HeuristicAppraiser,
   LlmAppraiser,
   LlmResponder,
@@ -29,8 +35,14 @@ import {
   makeRecompileHook,
   type Appraiser,
   type Responder,
+  type Policy,
+  type SandboxMode,
   type PersonaHandle,
   type PersonaTheme,
+  type LoopEvent,
+  type ToolCall,
+  type CommandVerdict,
+  type ApprovalDecision,
 } from "@personaxis/core";
 import {
   animateLogo,
@@ -42,18 +54,15 @@ import {
   voiceWrap,
   farewell,
 } from "@personaxis/tui/visual";
+import { Screen, type SlashItem } from "@personaxis/tui/screen";
 import { writeStarterPersona } from "../starter.js";
 
 interface ReplOptions {
   persona?: string;
 }
 
-const CANDIDATES = [
-  ".personaxis/personaxis.md",
-  ".personaxis/PERSONA.md",
-  "personaxis.md",
-  "PERSONA.md",
-];
+const CANDIDATES = [".personaxis/personaxis.md", ".personaxis/PERSONA.md", "personaxis.md", "PERSONA.md"];
+const POSTURES: SandboxMode[] = ["read-only", "workspace-write", "danger-full-access"];
 
 function resolvePersonaPath(opt?: string): string | null {
   if (opt) return existsSync(resolve(opt)) ? resolve(opt) : null;
@@ -64,35 +73,272 @@ function resolvePersonaPath(opt?: string): string | null {
   return null;
 }
 
-const HELP = `
-${chalk.bold("Commands")}
-  ${chalk.cyan("/help")}              show this help
-  ${chalk.cyan("/persona")}           show the active persona (identity + sigil)
-  ${chalk.cyan("/sigil")}             render the persona's living sigil
-  ${chalk.cyan("/state")}             show current envelope values + recent mutations
-  ${chalk.cyan("/evolve")} ${chalk.dim("<text>")}     run one governed Living-Loop cycle on <text>
-  ${chalk.cyan("/audit")}             show the mutation log + memory-chain integrity
-  ${chalk.cyan("/memory")}            list recent episodic memory entries
-  ${chalk.cyan("/overseer")}          environment view (personas / projects / collections)
-  ${chalk.cyan("/model")}             show the model in use (conversation + appraisal)
-  ${chalk.cyan("/goal")} ${chalk.dim("<text>|clear")}  set / show / clear a completion goal
-  ${chalk.cyan("/loop")} ${chalk.dim("<n>")}          run n self-audit passes
-  ${chalk.cyan("/exit")}              leave the session
+// ── Session context shared by both UIs ──────────────────────────────────────
+interface Ctx {
+  handle: PersonaHandle;
+  loop: LivingLoop;
+  responder: Responder;
+  theme: PersonaTheme;
+  name: string;
+  mode: string;
+  out: (text: string) => void;
+  postureIndex: number;
+  approve: (call: ToolCall, v: CommandVerdict) => Promise<ApprovalDecision>;
+}
 
-Type anything without a leading ${chalk.cyan("/")} to speak to the persona — your turn
-becomes an observation fed to the governed loop (mode shown in /state).
-`;
+function llmConfig(): { endpoint: string; model: string; apiKey?: string } | undefined {
+  const endpoint = process.env.PERSONAXIS_ENDPOINT;
+  const model = process.env.PERSONAXIS_MODEL;
+  return endpoint && model ? { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY } : undefined;
+}
+
+function pickAppraiser(): Appraiser {
+  const llm = llmConfig();
+  return llm ? new LlmAppraiser(llm) : new HeuristicAppraiser();
+}
+function pickResponder(): Responder {
+  const llm = llmConfig();
+  return llm ? new LlmResponder(llm) : new ReflectiveResponder();
+}
+function appraiserLabel(): string {
+  const llm = llmConfig();
+  return llm ? `${llm.model} @ ${llm.endpoint}` : "heuristic (offline — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL)";
+}
+
+function buildPolicy(ctx: Ctx): Policy {
+  const base = policyFromFrontmatter(ctx.handle.frontmatter as Record<string, unknown>, process.cwd());
+  return { ...base, sandbox: POSTURES[ctx.postureIndex] };
+}
+
+function readGoalText(handle: PersonaHandle): string | undefined {
+  const goalPath = join(dirname(handle.personaPath), "goal.json");
+  if (!existsSync(goalPath)) return undefined;
+  try {
+    return (JSON.parse(readFileSync(goalPath, "utf-8")) as { text?: string }).text;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Render any loop OR agent event into a single display line (or null to skip). */
+function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
+  switch (e.type) {
+    case "abstain":
+      return chalk.dim(`  · abstained: ${e.reason}`);
+    case "agent-step":
+      return chalk.dim(`  ┌─ step ${e.step}`);
+    case "agent-think":
+      return e.text ? chalk.dim(`  │ ${e.text.slice(0, 100)}`) : null;
+    case "tool-propose":
+      return chalk.cyan(`  │ → ${e.tool} ${chalk.dim(JSON.stringify(e.args).slice(0, 80))}`);
+    case "tool-verdict": {
+      const c = e.decision === "deny" ? chalk.red : e.decision === "ask" ? chalk.yellow : chalk.green;
+      return `  │   ${c(e.decision)} ${chalk.dim(e.reason)}`;
+    }
+    case "tool-result":
+      return chalk.dim(`  │   ${e.ok ? "✓" : "✗"} ${e.output.split("\n")[0].slice(0, 90)}`);
+    case "agent-finish":
+      return chalk.green(`  └─ ${e.summary}`);
+    case "agent-error":
+      return chalk.red(`  └─ agent error: ${e.message}`);
+    default:
+      return eventLine(theme, e);
+  }
+}
+
+// ── Commands (single source for /help and the live `/` menu) ─────────────────
+interface CommandDef {
+  name: string;
+  desc: string;
+  run(arg: string, ctx: Ctx): Promise<boolean | void> | boolean | void;
+}
+
+const COMMANDS: CommandDef[] = [
+  { name: "help", desc: "show commands", run: (_a, ctx) => void ctx.out(helpText()) },
+  {
+    name: "persona",
+    desc: "show identity + sigil",
+    run: (_a, ctx) => {
+      const id = ctx.handle.frontmatter.identity as { display_name?: string; system_identity?: { purpose?: string } } | undefined;
+      ctx.out(chalk.bold(`  ${ctx.name}`));
+      if (id?.system_identity?.purpose) ctx.out(`  ${chalk.dim("purpose:")} ${id.system_identity.purpose}`);
+      ctx.out(sigilLines(ctx.theme, readState(ctx.handle.statePath).values).join("\n"));
+    },
+  },
+  {
+    name: "sigil",
+    desc: "render the living sigil",
+    run: (_a, ctx) => {
+      const st = readState(ctx.handle.statePath);
+      ctx.out(sigilLines(ctx.theme, st.values, 0).join("\n"));
+      ctx.out(chalk.dim(`  seed #${ctx.theme.seed.toString(16)} · voice ${ctx.theme.voice.density}`));
+    },
+  },
+  {
+    name: "state",
+    desc: "envelope values + mutations",
+    run: (_a, ctx) => {
+      const st = readState(ctx.handle.statePath);
+      const env = extractEnvelopes(ctx.handle.frontmatter);
+      ctx.out(chalk.bold("  Envelope values"));
+      ctx.out(envelopeBars(ctx.theme, st.values, env.envelopes));
+      ctx.out(chalk.dim(`  mutation_log: ${st.mutation_log.length} entries`));
+    },
+  },
+  {
+    name: "evolve",
+    desc: "run one Living-Loop cycle on <text>",
+    run: async (arg, ctx) => {
+      if (!arg) return void ctx.out(chalk.yellow("  usage: /evolve <observation text>"));
+      await ctx.loop.tick({ observation: arg, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+    },
+  },
+  {
+    name: "do",
+    desc: "hand the persona a TASK to execute (governed agent)",
+    run: (arg, ctx) => runAgent(arg, ctx),
+  },
+  {
+    name: "audit",
+    desc: "mutation log + memory-chain integrity",
+    run: (_a, ctx) => {
+      const st = readState(ctx.handle.statePath);
+      const chain = verifyMemoryChain(ctx.handle.personaPath);
+      ctx.out(chalk.bold("  Mutation log (last 8)"));
+      for (const m of st.mutation_log.slice(-8)) ctx.out(`  ${chalk.dim(m.ts)} ${m.field}: ${m.from} → ${m.to}${m.clamped ? chalk.yellow(" clamped") : ""}`);
+      ctx.out("  memory chain: " + (chain.ok ? chalk.green("intact ✓") : chalk.red(`broken at #${chain.brokenAt}`)));
+    },
+  },
+  {
+    name: "memory",
+    desc: "list recent episodic memory",
+    run: (_a, ctx) => {
+      const mem = readMemory(ctx.handle.personaPath);
+      ctx.out(chalk.bold(`  Episodic memory (${mem.length} entries, last 6)`));
+      for (const m of mem.slice(-6)) ctx.out(`  ${chalk.dim(m.ts)} ${chalk.cyan(`[${m.source}]`)} ${m.content.slice(0, 70)}`);
+    },
+  },
+  {
+    name: "overseer",
+    desc: "environment view",
+    run: (_a, ctx) => {
+      const v = overseerView();
+      ctx.out(chalk.bold.magentaBright("  overseer") + chalk.dim(` · machine ${v.machine}`));
+      ctx.out(`  personas ${v.personas} · projects ${v.projects} · collections ${v.collections}`);
+    },
+  },
+  { name: "model", desc: "show the model in use", run: (_a, ctx) => void ctx.out(chalk.dim(`  model: ${appraiserLabel()}`)) },
+  {
+    name: "mode",
+    desc: "show/cycle the sandbox posture (shift+tab)",
+    run: (_a, ctx) => {
+      ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
+      ctx.out(chalk.dim(`  sandbox posture → ${chalk.bold(POSTURES[ctx.postureIndex])}`));
+    },
+  },
+  {
+    name: "goal",
+    desc: "set / show / clear a standing goal",
+    run: (arg, ctx) => {
+      const goalPath = join(dirname(ctx.handle.personaPath), "goal.json");
+      if (arg === "clear") {
+        if (existsSync(goalPath)) unlinkSync(goalPath);
+        return void ctx.out(chalk.dim("  goal cleared."));
+      }
+      if (arg) {
+        writeFileSync(goalPath, JSON.stringify({ text: arg, createdTs: new Date().toISOString() }, null, 2));
+        return void ctx.out(chalk.green("  ✓") + ` goal set: ${arg} ${chalk.dim("(used by /do and the loop)")}`);
+      }
+      const g = readGoalText(ctx.handle);
+      ctx.out(g ? `  ${chalk.bold("goal:")} ${g}` : chalk.dim("  no goal set. /goal <text> to set."));
+    },
+  },
+  {
+    name: "loop",
+    desc: "run n governed Living-Loop ticks",
+    run: async (arg, ctx) => {
+      const n = Math.max(1, Math.min(20, Number(arg) || 3));
+      const goal = readGoalText(ctx.handle) ?? "self-reflection";
+      ctx.out(chalk.dim(`  running ${n} governed tick(s) on: ${goal}`));
+      for (let i = 1; i <= n; i++) {
+        await ctx.loop.tick({ observation: goal, source: "internal", actor: "runtime-context" }).catch((e) => ctx.out(chalk.dim(`  tick ${i} skipped: ${(e as Error).message}`)));
+      }
+    },
+  },
+  { name: "exit", desc: "leave the session", run: () => true },
+  { name: "quit", desc: "leave the session", run: () => true },
+];
+
+/** The slash-command registry (names + descriptions) — single source of truth. */
+export function listCommands(): SlashItem[] {
+  return COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
+}
+
+function helpText(): string {
+  const lines = [chalk.bold("Commands")];
+  for (const c of COMMANDS) {
+    if (c.name === "quit") continue;
+    lines.push(`  ${chalk.cyan(`/${c.name}`).padEnd(22)} ${chalk.dim(c.desc)}`);
+  }
+  lines.push("", chalk.dim("Type without a leading / to talk. /do <task> runs the governed agent."));
+  return lines.join("\n");
+}
+
+async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
+  const name = line.slice(1).split(/\s+/)[0];
+  const arg = line.slice(1 + name.length).trim();
+  const cmd = COMMANDS.find((c) => c.name === name);
+  if (!cmd) {
+    ctx.out(chalk.yellow(`  unknown command /${name} — try /help`));
+    return false;
+  }
+  return (await cmd.run(arg, ctx)) === true;
+}
+
+async function handleTurn(line: string, ctx: Ctx): Promise<void> {
+  const cur = readState(ctx.handle.statePath);
+  const reply = await ctx.responder
+    .respond({
+      message: line,
+      personaBody: ctx.handle.body,
+      memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content),
+      state: cur.values,
+      name: ctx.name,
+    })
+    .catch((e) => `(responder error: ${(e as Error).message})`);
+  ctx.out(voiceWrap(ctx.theme, `  ${ctx.name}: ${reply}`));
+  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+}
+
+async function runAgent(task: string, ctx: Ctx): Promise<void> {
+  if (!task) return void ctx.out(chalk.yellow("  usage: /do <task to accomplish>"));
+  const llm = llmConfig();
+  if (!llm) return void ctx.out(chalk.yellow("  /do needs a model — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL (and API key)."));
+  const bus = new EventBus();
+  bus.on((e) => {
+    const l = renderEvent(ctx.theme, e);
+    if (l) ctx.out(l);
+  });
+  const agent = new PersonaAgent({
+    llm,
+    policy: buildPolicy(ctx),
+    personaBody: ctx.handle.body,
+    goal: readGoalText(ctx.handle),
+    onApproval: ctx.approve,
+    bus,
+  });
+  ctx.out(chalk.dim(`  agent posture: ${POSTURES[ctx.postureIndex]} · ${task}`));
+  await agent.run(task);
+}
 
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   let personaPath = resolvePersonaPath(opts.persona);
   await animateLogo();
 
   if (!personaPath) {
-    // First-run onboarding: scaffold a valid, playable starter persona.
     stdout.write(chalk.yellow("  No persona here yet.") + chalk.dim(" Let's create one so you can start playing.\n\n"));
     let name = "Aria";
     if (stdin.isTTY) {
-      // Interactive: ask (one question at a time — safe on a TTY).
       const onboard = readline.createInterface({ input: stdin, output: stdout });
       try {
         const yn = ((await onboard.question(`  Create a starter persona in ${chalk.cyan(".personaxis/")}? ${chalk.dim("[Y/n]")} `)) || "y").trim().toLowerCase();
@@ -105,271 +351,116 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
         onboard.close();
       }
     }
-    // Non-interactive (piped/CI) auto-creates the default so the session can run.
     personaPath = writeStarterPersona(process.cwd(), name);
     stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)} — ${chalk.bold(name)} is ready.\n`);
   }
 
   const handle = loadPersona(personaPath);
-  const state = ensureState(handle);
+  ensureState(handle);
   const mode = readMode(handle.frontmatter as Record<string, unknown>);
   const name = displayName(handle.frontmatter);
   const theme = personaTheme(handle.frontmatter);
-
-  // Live-sync: on evolution, update the LIVE-STATE block in the compiled host doc
-  // (repo-root PERSONA.md, if present) and write a .live.json notify marker.
   const compiledCandidate = resolve(dirname(dirname(personaPath)), "PERSONA.md");
   const loop = new LivingLoop(personaPath, {
     appraiser: pickAppraiser(),
     recompile: makeRecompileHook(existsSync(compiledCandidate) ? compiledCandidate : undefined),
   });
-  const responder = pickResponder();
-  loop.bus.on((e) => {
-    const line = eventLine(theme, e);
-    if (line) stdout.write(line + "\n");
-  });
 
-  stdout.write("\n");
-  await awaken(handle.frontmatter, state);
-  stdout.write(
-    voiceWrap(theme, `  ${name} is awake`) +
-      chalk.dim(` · improvement_policy=`) +
-      modeColor(mode) +
-      chalk.dim(` · ${Object.keys(state.values).length} envelopes\n`),
-  );
-  if (mode === "locked") {
-    stdout.write(
-      chalk.dim(
-        "  (locked: the loop appraises + remembers, but envelope mutations are\n   human-directed only. Set improvement_policy.mode to evolve autonomously.)\n",
-      ),
-    );
-  }
-  stdout.write("\n");
-
-  const makePrompt = (): string => {
-    const cur = readState(handle.statePath);
-    return `${auraBar(theme, cur.values)} ${chalk.ansi256(theme.palette.accent)(name)} ${chalk.dim("›")} `;
+  const ctx: Ctx = {
+    handle,
+    loop,
+    responder: pickResponder(),
+    theme,
+    name,
+    mode,
+    out: (t) => stdout.write(t + "\n"),
+    postureIndex: POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox),
+    approve: async () => "deny",
   };
+  if (ctx.postureIndex < 0) ctx.postureIndex = 1;
 
-  // `for await (const line of rl)` queues input lines so none are dropped while a
-  // turn is being processed (rl.question in a loop drops piped lines — see tests).
-  const rl = readline.createInterface({ input: stdin, output: stdout, prompt: makePrompt() });
-  rl.prompt();
+  if (stdin.isTTY) {
+    await runScreenMode(ctx);
+  } else {
+    await runLineMode(ctx);
+  }
+}
 
+// ── Non-TTY: simple line reader (pipes/CI) ───────────────────────────────────
+async function runLineMode(ctx: Ctx): Promise<void> {
+  ctx.loop.bus.on((e) => {
+    const l = renderEvent(ctx.theme, e);
+    if (l) stdout.write(l + "\n");
+  });
+  stdout.write("\n");
+  await awaken(ctx.handle.frontmatter, readState(ctx.handle.statePath));
+  stdout.write(voiceWrap(ctx.theme, `  ${ctx.name} is awake`) + chalk.dim(` · mode=${ctx.mode} · posture=${POSTURES[ctx.postureIndex]}\n\n`));
+
+  const rl = readline.createInterface({ input: stdin, output: stdout });
   for await (const raw of rl) {
     const line = raw.trim();
     if (line) {
       if (line.startsWith("/")) {
-        const cmd = line.slice(1).split(/\s+/)[0];
-        const arg = line.slice(1 + cmd.length).trim();
-        const done = await handleSlash(cmd, arg, { rl, handle, loop, theme });
-        if (done) break;
+        if (await runCommand(line, ctx)) break;
       } else {
-        // Natural-language turn: the persona REPLIES (responder) and EVOLVES (loop).
-        const cur = readState(handle.statePath);
-        const reply = await responder
-          .respond({
-            message: line,
-            personaBody: handle.body,
-            memory: readMemory(handle.personaPath).slice(-6).map((m) => m.content),
-            state: cur.values,
-            name,
-          })
-          .catch((e) => `(responder error: ${(e as Error).message})`);
-        stdout.write("\n" + voiceWrap(theme, `  ${name}: ${reply}`) + "\n\n");
-        // The Living Loop is best-effort: a failed tick (model/network) must never
-        // end the session. The loop already degrades internally; this is the final
-        // backstop so the REPL stays alive no matter what.
-        await loop
-          .tick({ observation: line, source: "user", actor: "actor-llm" })
-          .catch((e) => stdout.write(chalk.dim(`  loop skipped: ${(e as Error).message}\n`)));
+        await handleTurn(line, ctx);
       }
     }
-    rl.setPrompt(makePrompt());
-    rl.prompt();
   }
-
   rl.close();
-  await farewell(handle.frontmatter);
+  await farewell(ctx.handle.frontmatter);
 }
 
-/**
- * Choose the appraiser: an OpenAI-compatible local/hosted model when configured
- * (constrained decoding), else the deterministic heuristic. Env:
- *   PERSONAXIS_ENDPOINT (e.g. http://localhost:11434/v1), PERSONAXIS_MODEL,
- *   PERSONAXIS_API_KEY (optional).
- */
-function pickAppraiser(): Appraiser {
-  const endpoint = process.env.PERSONAXIS_ENDPOINT;
-  const model = process.env.PERSONAXIS_MODEL;
-  if (endpoint && model) {
-    return new LlmAppraiser({ endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY });
-  }
-  return new HeuristicAppraiser();
-}
+// ── TTY: full alternate-screen app ───────────────────────────────────────────
+async function runScreenMode(ctx: Ctx): Promise<void> {
+  const commands: SlashItem[] = COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
+  let screen: Screen;
 
-function pickResponder(): Responder {
-  const endpoint = process.env.PERSONAXIS_ENDPOINT;
-  const model = process.env.PERSONAXIS_MODEL;
-  if (endpoint && model) {
-    return new LlmResponder({ endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY });
-  }
-  return new ReflectiveResponder();
-}
+  const header = (cols: number): string[] => {
+    const st = readState(ctx.handle.statePath);
+    return [
+      "  " + chalk.bold.ansi256(ctx.theme.palette.accent)(ctx.name) + chalk.dim(`  ·  ${auraBar(ctx.theme, st.values)}  ·  sigil #${ctx.theme.seed.toString(16)}`),
+      chalk.dim(`  mode ${ctx.mode}  ·  posture ${chalk.bold(POSTURES[ctx.postureIndex])}  ·  model ${appraiserLabel()}`).slice(0, cols + 40),
+      chalk.dim("  " + "─".repeat(Math.max(0, Math.min(cols, 78) - 2))),
+    ];
+  };
+  const status = (): string =>
+    chalk.dim("  /help · /do <task> · shift+tab posture · ctrl+c exit");
 
-function appraiserLabel(): string {
-  const endpoint = process.env.PERSONAXIS_ENDPOINT;
-  const model = process.env.PERSONAXIS_MODEL;
-  return endpoint && model ? `LlmAppraiser (${model} @ ${endpoint})` : "HeuristicAppraiser (offline)";
-}
-
-function modeColor(mode: string): string {
-  if (mode === "autonomous") return chalk.red(mode);
-  if (mode === "suggesting") return chalk.yellow(mode);
-  return chalk.green(mode);
-}
-
-interface SlashCtx {
-  rl: readline.Interface;
-  handle: PersonaHandle;
-  loop: LivingLoop;
-  theme: PersonaTheme;
-}
-
-async function handleSlash(cmd: string, arg: string, ctx: SlashCtx): Promise<boolean> {
-  const { handle, loop, theme } = ctx;
-  switch (cmd) {
-    case "help":
-      stdout.write(HELP + "\n");
-      return false;
-    case "exit":
-    case "quit":
-      return true;
-    case "persona": {
-      const id = handle.frontmatter.identity as Record<string, unknown> | undefined;
-      stdout.write("\n" + chalk.bold(`  ${displayName(handle.frontmatter)}\n`));
-      stdout.write(chalk.dim(`  ${handle.personaPath}\n`));
-      if (id?.system_identity) {
-        const si = id.system_identity as { purpose?: string };
-        if (si.purpose) stdout.write(`  ${chalk.dim("purpose:")} ${si.purpose}\n`);
-      }
-      const st = readState(handle.statePath);
-      stdout.write("\n" + sigilLines(theme, st.values).join("\n") + "\n\n");
-      return false;
-    }
-    case "sigil": {
-      const st = readState(handle.statePath);
-      // a few breathing frames
-      for (let f = 0; f < 4; f++) {
-        stdout.write("\n" + sigilLines(theme, st.values, f).join("\n") + "\n");
-      }
-      stdout.write(chalk.dim(`  seed #${theme.seed.toString(16)} · voice ${theme.voice.density}\n\n`));
-      return false;
-    }
-    case "state": {
-      const st = readState(handle.statePath);
-      const env = extractEnvelopes(handle.frontmatter);
-      stdout.write("\n" + chalk.bold("  Envelope values (position within range)\n"));
-      stdout.write(envelopeBars(theme, st.values, env.envelopes) + "\n");
-      stdout.write(chalk.dim(`\n  mutation_log: ${st.mutation_log.length} entries\n\n`));
-      return false;
-    }
-    case "audit": {
-      const st = readState(handle.statePath);
-      const { verifyMemoryChain } = await import("@personaxis/core");
-      const chain = verifyMemoryChain(handle.personaPath);
-      stdout.write("\n" + chalk.bold("  Mutation log (last 8)\n"));
-      for (const e of st.mutation_log.slice(-8)) {
-        stdout.write(
-          `  ${chalk.dim(e.ts)} ${e.field}: ${e.from} → ${e.to}` +
-            (e.clamped ? chalk.yellow(" clamped") : "") +
-            (e.governance_blocked ? chalk.red(" blocked") : "") +
-            chalk.dim(` — ${e.reason}\n`),
-        );
-      }
-      stdout.write(
-        "\n  memory chain: " +
-          (chain.ok ? chalk.green("intact ✓") : chalk.red(`broken at #${chain.brokenAt}`)) +
-          "\n\n",
-      );
-      return false;
-    }
-    case "memory": {
-      const { readMemory } = await import("@personaxis/core");
-      const mem = readMemory(handle.personaPath);
-      stdout.write("\n" + chalk.bold(`  Episodic memory (${mem.length} entries, last 6)\n`));
-      for (const m of mem.slice(-6)) {
-        stdout.write(
-          `  ${chalk.dim(m.ts)} ${chalk.cyan(`[${m.source}]`)} ${m.content.slice(0, 70)} ` +
-            chalk.dim(`#${m.hash.slice(0, 8)}\n`),
-        );
-      }
-      stdout.write("\n");
-      return false;
-    }
-    case "evolve": {
-      if (!arg) {
-        stdout.write(chalk.yellow("  usage: /evolve <observation text>\n"));
-        return false;
-      }
-      await loop.tick({ observation: arg, source: "user", actor: "actor-llm" });
-      return false;
-    }
-    case "overseer": {
-      const { overseerView } = await import("@personaxis/core");
-      const v = overseerView();
-      stdout.write(
-        "\n" +
-          chalk.bold.magentaBright("  overseer") +
-          chalk.dim(` · machine ${v.machine}\n`) +
-          `  personas ${v.personas} · projects ${v.projects} · collections ${v.collections}\n\n`,
-      );
-      return false;
-    }
-    case "compile":
-      stdout.write(chalk.dim("  /compile: wired to the LLM compile pipeline in a later phase (F2/F5).\n"));
-      return false;
-    case "model":
-      stdout.write(chalk.dim(`  appraiser: ${appraiserLabel()}\n`));
-      stdout.write(
-        chalk.dim("  set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL to use a local/hosted model.\n"),
-      );
-      return false;
-    case "goal": {
-      const goalPath = join(dirname(handle.personaPath), "goal.json");
-      if (arg === "clear") {
-        if (existsSync(goalPath)) unlinkSync(goalPath);
-        stdout.write(chalk.dim("  goal cleared.\n"));
-      } else if (arg) {
-        writeFileSync(goalPath, JSON.stringify({ text: arg, createdTs: new Date().toISOString() }, null, 2));
-        stdout.write(chalk.green("✓") + ` goal set: ${arg}\n`);
-      } else if (existsSync(goalPath)) {
-        const g = JSON.parse(readFileSync(goalPath, "utf-8")) as { text: string; createdTs: string };
-        stdout.write(`  ${chalk.bold("goal:")} ${g.text} ${chalk.dim(`(since ${g.createdTs})`)}\n`);
+  screen = new Screen({
+    renderHeader: header,
+    renderStatus: status,
+    commands,
+    onCycleMode: () => {
+      ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
+    },
+    onExit: () => screen.stop(),
+    onSubmit: async (line) => {
+      if (line.startsWith("/")) {
+        screen.print(chalk.dim(`  ${line}`));
+        const done = await runCommand(line, ctx);
+        if (done) {
+          screen.stop();
+          process.exit(0);
+        }
       } else {
-        stdout.write(chalk.dim("  no goal set. /goal <text> to set, /goal clear to remove.\n"));
+        screen.print(chalk.dim(`  › ${line}`));
+        await handleTurn(line, ctx);
       }
-      return false;
-    }
-    case "loop": {
-      const n = Math.max(1, Math.min(20, Number(arg) || 3));
-      const { verifyMemoryChain, readMemory } = await import("@personaxis/core");
-      stdout.write(chalk.dim(`  running ${n} self-audit pass(es)...\n`));
-      for (let i = 1; i <= n; i++) {
-        const st = readState(handle.statePath);
-        const chain = verifyMemoryChain(handle.personaPath);
-        const mem = readMemory(handle.personaPath);
-        stdout.write(
-          `  ${chalk.dim(`#${i}`)} mutations ${st.mutation_log.length} · memory ${mem.length} · chain ` +
-            (chain.ok ? chalk.green("ok") : chalk.red("BROKEN")) +
-            "\n",
-        );
-      }
-      stdout.write(chalk.dim("  (interval scheduling is a harness TODO — plan/10-harness)\n"));
-      return false;
-    }
-    default:
-      stdout.write(chalk.yellow(`  unknown command /${cmd} — try /help\n`));
-      return false;
-  }
+    },
+  });
+
+  ctx.out = (t) => screen.print(t);
+  ctx.approve = async (call) => {
+    const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}? [y = yes · a = always · N = no]`)).trim().toLowerCase();
+    return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
+  };
+  ctx.loop.bus.on((e) => {
+    const l = renderEvent(ctx.theme, e);
+    if (l) screen.print(l);
+  });
+
+  screen.start();
+  screen.print("");
+  screen.print(voiceWrap(ctx.theme, `  ✦ ${ctx.name} is awake`) + chalk.dim(` — talk, or /do <task>. /help for commands.`));
 }
