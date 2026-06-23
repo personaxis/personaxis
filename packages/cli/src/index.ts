@@ -25,6 +25,7 @@ import { teamCommand } from "./commands/team.js";
 import { sigilCommand } from "./commands/sigil.js";
 import { syncCommand } from "./commands/sync.js";
 import { serveCommand } from "./commands/serve.js";
+import { personasCommand } from "./commands/personas.js";
 import { startRepl } from "./repl/index.js";
 
 // Options after a subcommand belong to that subcommand (so `sigil --persona X`
@@ -66,5 +67,6 @@ program.addCommand(teamCommand);
 program.addCommand(sigilCommand);
 program.addCommand(syncCommand);
 program.addCommand(serveCommand);
+program.addCommand(personasCommand);
 
 program.parse();

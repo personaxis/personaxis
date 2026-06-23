@@ -28,6 +28,7 @@ import {
   overseerView,
   personaTheme,
   policyFromFrontmatter,
+  resolveEffectivePersona,
   HeuristicAppraiser,
   LlmAppraiser,
   LlmResponder,
@@ -65,7 +66,15 @@ const CANDIDATES = [".personaxis/personaxis.md", ".personaxis/PERSONA.md", "pers
 const POSTURES: SandboxMode[] = ["read-only", "workspace-write", "danger-full-access"];
 
 function resolvePersonaPath(opt?: string): string | null {
-  if (opt) return existsSync(resolve(opt)) ? resolve(opt) : null;
+  if (opt) {
+    if (existsSync(resolve(opt))) return resolve(opt);
+    // Not a path → treat as a global/overlay persona slug (G5 reuse).
+    if (!opt.includes("/") && !opt.includes("\\")) {
+      const eff = resolveEffectivePersona(process.cwd(), opt);
+      if (eff.scope !== "none" && existsSync(eff.path)) return eff.path;
+    }
+    return null;
+  }
   for (const c of CANDIDATES) {
     const p = resolve(c);
     if (existsSync(p)) return p;
