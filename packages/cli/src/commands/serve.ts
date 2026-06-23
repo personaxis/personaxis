@@ -24,6 +24,8 @@ import {
   PersonaAgent,
   EventBus,
   policyFromFrontmatter,
+  readAgentBudget,
+  readVerification,
   loadPersona,
   ensureState,
   extractEnvelopes,
@@ -133,11 +135,15 @@ async function route(
       const events: LoopEvent[] = [];
       const bus = new EventBus();
       bus.on((e) => events.push(e));
+      const fm = handle.frontmatter as Record<string, unknown>;
       const agent = new PersonaAgent({
         llm: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
-        policy: policyFromFrontmatter(handle.frontmatter as Record<string, unknown>, process.cwd()),
+        policy: policyFromFrontmatter(fm, process.cwd()),
         personaBody: handle.body,
         onApproval: async () => "deny", // non-interactive HTTP: deny anything needing approval
+        budget: readAgentBudget(fm),
+        verification: readVerification(fm),
+        judge: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
         bus,
       });
       const result = await agent.run(task);

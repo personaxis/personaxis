@@ -29,6 +29,8 @@ import {
   personaTheme,
   policyFromFrontmatter,
   resolveEffectivePersona,
+  readAgentBudget,
+  readVerification,
   HeuristicAppraiser,
   LlmAppraiser,
   LlmResponder,
@@ -150,6 +152,16 @@ function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
       return chalk.green(`  └─ ${e.summary}`);
     case "agent-error":
       return chalk.red(`  └─ agent error: ${e.message}`);
+    case "agent-stop-condition":
+      return chalk.yellow(`  ⏹ stop: ${e.reason} (step ${e.step})`);
+    case "verify-start":
+      return chalk.dim(`  ⚖ verifying (${e.gates} gate${e.gates === 1 ? "" : "s"})…`);
+    case "verify-result":
+      return `  ⚖   ${e.pass ? chalk.green("pass") : chalk.red("fail")} ${chalk.dim(`${e.verifier}: ${e.reason}`)}`;
+    case "verify-complete":
+      return e.passed ? chalk.green(`  ⚖ verified (${e.passes}/${e.quorum})`) : chalk.red(`  ⚖ verification failed (${e.passes}/${e.quorum})`);
+    case "agent-budget":
+      return null; // shown in the per-run budget summary, not per step
     default:
       return eventLine(theme, e);
   }
@@ -328,16 +340,24 @@ async function runAgent(task: string, ctx: Ctx): Promise<void> {
     const l = renderEvent(ctx.theme, e);
     if (l) ctx.out(l);
   });
+  const fm = ctx.handle.frontmatter as Record<string, unknown>;
   const agent = new PersonaAgent({
     llm,
     policy: buildPolicy(ctx),
     personaBody: ctx.handle.body,
     goal: readGoalText(ctx.handle),
     onApproval: ctx.approve,
+    budget: readAgentBudget(fm),
+    verification: readVerification(fm),
+    judge: { endpoint: llm.endpoint, model: llm.model, apiKey: llm.apiKey },
     bus,
   });
   ctx.out(chalk.dim(`  agent posture: ${POSTURES[ctx.postureIndex]} · ${task}`));
-  await agent.run(task);
+  const result = await agent.run(task);
+  ctx.out(
+    chalk.dim(`  budget: ${result.budget.steps} steps · ${result.budget.tokens} tok · $${result.budget.costUsd}` +
+      (result.budget.stoppedBy ? ` · stopped: ${result.budget.stoppedBy}` : "")),
+  );
 }
 
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
