@@ -10,8 +10,9 @@ import {
   executeFileWrite,
   executeFileEdit,
   readFileSafe,
-  readAgentState,
-  verifyAgentStateChain,
+  readMemory,
+  loadPersona,
+  readState,
   DEFAULT_POLICY,
   type Policy,
   type LoopEvent,
@@ -160,8 +161,11 @@ describe("PersonaAgent (governed task execution)", () => {
     expect(res.verification?.passed).toBe(false); // reported as failed, but did not block
   });
 
-  it("persists a STATE.md spine and RESUMES across runs (memory-in-the-loop)", async () => {
+  it("records each run in the EXISTING memory (no STATE.md) and resumes via memory + agent_session", async () => {
     const personaPath = join(dir, "personaxis.md");
+    // A persona with episodic memory enabled + seeded state.json.
+    writeFileSync(personaPath, `---\nmetadata: { name: a, version: 1.0.0 }\nidentity: { canonical_id: a }\nmemory: { types: { episodic: true } }\n---\nbody`);
+    writeFileSync(join(dir, "state.json"), JSON.stringify({ schema_version: "0.9.0", persona_id: "a", persona_version: "1.0.0", values: {}, mutation_log: [] }));
     const mk = () =>
       new PersonaAgent({
         llm: llm(scriptedFetch([{ tool: "finish", args: { summary: "shipped the landing page" } }])),
@@ -169,15 +173,18 @@ describe("PersonaAgent (governed task execution)", () => {
         personaPath,
       });
     await mk().run("build a landing page");
-    expect(readAgentState(personaPath).length).toBe(1);
-    expect(existsSync(join(dir, "STATE.md"))).toBe(true);
-    expect(readFileSync(join(dir, "STATE.md"), "utf-8")).toContain("build a landing page");
+    // No STATE.md / agent-state.jsonl files exist.
+    expect(existsSync(join(dir, "STATE.md"))).toBe(false);
+    expect(existsSync(join(dir, "memory", "agent-state.jsonl"))).toBe(false);
+    // The run is recorded as an episodic memory entry (source synthesis, tag agent-run).
+    const mem = readMemory(personaPath);
+    expect(mem.some((m) => m.tags.includes("agent-run") && m.content.includes("build a landing page"))).toBe(true);
+    // agent_session in state.json tracks the run.
+    const st = readState(loadPersona(personaPath).statePath);
+    expect(st.agent_session?.step_count).toBeGreaterThanOrEqual(1);
 
     await mk().run("write the launch email");
-    const entries = readAgentState(personaPath);
-    expect(entries.length).toBe(2); // resumed: appended, not restarted
-    expect(verifyAgentStateChain(personaPath).ok).toBe(true);
-    expect(readFileSync(join(dir, "STATE.md"), "utf-8")).toContain("write the launch email");
+    expect(readMemory(personaPath).filter((m) => m.tags.includes("agent-run")).length).toBe(2);
   });
 });
 

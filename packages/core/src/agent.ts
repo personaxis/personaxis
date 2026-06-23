@@ -37,14 +37,14 @@ import {
 } from "./verification.js";
 import type { ConsensusResult } from "./self-evolution.js";
 import {
-  readAgentState,
-  commitAgentState,
-  buildStateMarkdown,
+  prepareMemoryEntry,
+  commitMemoryEntry,
   readLiveMemory,
+  readSemanticMemory,
+  readMemoryTypes,
   type AgentOutcome,
 } from "./memory.js";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { loadPersona, readState, writeState } from "./persona.js";
 
 export type ApprovalDecision = "approve" | "deny" | "always";
 export type OnApproval = (call: ToolCall, verdict: CommandVerdict) => Promise<ApprovalDecision>;
@@ -130,30 +130,66 @@ export class PersonaAgent {
     ].filter(Boolean).join("\n");
   }
 
-  /** Prior STATE.md + recent learnings + memory — so the agent RESUMES, not restarts. */
+  /**
+   * Resume context — so the agent RESUMES, not restarts. Built from the spec's
+   * EXISTING memory artifacts (no STATE.md): the active task from state.json's
+   * agent_session, the consolidated semantic memory.md, and recent episodic memory.
+   */
   private resumeContext(): string {
     const p = this.opts.personaPath;
     if (!p) return "";
     const parts: string[] = [];
-    const statePath = join(dirname(p), "STATE.md");
-    if (existsSync(statePath)) {
-      parts.push("\n# Prior state (RESUME — do not restart work already done)\n" + readFileSync(statePath, "utf-8").slice(0, 3000));
-    } else {
-      const recent = readAgentState(p).slice(-5);
-      if (recent.length) parts.push("\n# Prior runs\n" + recent.map((e) => `- ${e.outcome}: ${e.task}${e.learning ? ` — lesson: ${e.learning}` : ""}`).join("\n"));
+    try {
+      const st = readState(loadPersona(p).statePath);
+      const sess = st.agent_session;
+      if (sess?.active_task) {
+        parts.push(`\n# Resume (do not restart)\nLast task: ${sess.active_task}${sess.stop_reason ? ` — stopped: ${sess.stop_reason}` : ""}`);
+      }
+    } catch {
+      /* state may not exist yet */
     }
+    const semantic = readSemanticMemory(p);
+    if (semantic.trim()) parts.push("\n# Long-term memory (memory.md)\n" + semantic.slice(0, 2500));
     const mem = readLiveMemory(p).slice(-6);
     if (mem.length) parts.push("\n# Recent memory\n" + mem.map((m) => `- [${m.source}] ${m.content}`).join("\n"));
     return parts.join("\n");
   }
 
-  /** Persist the run to the hash-chained agent-state log + regenerate STATE.md. */
-  private persist(task: string, outcome: AgentOutcome, summary: string, step: number): void {
+  /**
+   * Persist the run into the EXISTING memory model (no separate STATE.md): the
+   * run summary becomes an episodic memory entry (honoring memory.types.episodic),
+   * which the semantic-consolidation step folds into memory.md; and state.json's
+   * agent_session records the active task + stop reason for resumption.
+   */
+  private spentTokens = 0;
+  private spentCost = 0;
+
+  private persist(task: string, outcome: AgentOutcome, summary: string, step: number, stopReason: string | null): void {
+    const tokens = this.spentTokens;
+    const costUsd = this.spentCost;
     const p = this.opts.personaPath;
     if (!p) return;
     try {
-      commitAgentState(p, { task, step, outcome, summary, learning: summary.replace(/\n+/g, " ").slice(0, 200) });
-      buildStateMarkdown(p);
+      const handle = loadPersona(p);
+      if (readMemoryTypes(handle.frontmatter as Record<string, unknown>).episodic) {
+        const entry = prepareMemoryEntry(p, {
+          content: `agent run [${outcome}] "${task}": ${summary.replace(/\n+/g, " ").slice(0, 240)}`,
+          source: "synthesis",
+          tags: ["agent-run", outcome],
+        });
+        commitMemoryEntry(p, entry);
+      }
+      // Structured resumption pointer in state.json (not prose).
+      const st = readState(handle.statePath);
+      st.agent_session = {
+        active_task: outcome === "success" ? null : task,
+        started_at: st.agent_session?.started_at ?? new Date().toISOString(),
+        step_count: step,
+        token_count: tokens,
+        cost_usd: Number(costUsd.toFixed(4)),
+        stop_reason: stopReason,
+      };
+      writeState(handle.statePath, st);
     } catch {
       /* best-effort: persistence must never crash a run */
     }
@@ -238,7 +274,7 @@ export class PersonaAgent {
           bus.emit({ type: "agent-stop-condition", reason: check.stopReason ?? "budget", step: step - 1 });
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
-          this.persist(task, "stopped", summary, step - 1);
+          this.persist(task, "stopped", summary, step - 1, check.stopReason);
           return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification };
         }
 
@@ -247,6 +283,8 @@ export class PersonaAgent {
         const res = await requestToolCall(this.opts.llm, messages, this.tools, this.preferFallback);
         if (res.usedFallback) this.preferFallback = true;
         tokens += res.usage?.total_tokens ?? 0;
+        this.spentTokens = tokens;
+        this.spentCost = estimateCostUsd(this.opts.llm.model, tokens);
         if (res.text) {
           lastText = res.text;
           bus.emit({ type: "agent-think", text: res.text });
@@ -257,12 +295,12 @@ export class PersonaAgent {
           const decision = await verifyCompletion(res.text || "(no action)");
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
-            this.persist(task, "success", res.text || "", step);
+            this.persist(task, "success", res.text || "", step, "goal_met");
             return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
-            this.persist(task, "verification_failed", "verification failed", step);
+            this.persist(task, "verification_failed", "verification failed", step, "verification_failed");
             return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
           }
           continue; // retry
@@ -332,12 +370,12 @@ export class PersonaAgent {
           const decision = await verifyCompletion(finishedThisStep.summary);
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
-            this.persist(task, "success", finishedThisStep.summary, step);
+            this.persist(task, "success", finishedThisStep.summary, step, "goal_met");
             return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
-            this.persist(task, "verification_failed", "verification failed", step);
+            this.persist(task, "verification_failed", "verification failed", step, "verification_failed");
             return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
           }
           // retry: loop continues; the failure note is already in messages.
@@ -345,11 +383,11 @@ export class PersonaAgent {
       }
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
-      this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
+      this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL, "hard_ceiling");
       return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
-      this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
+      this.persist(task, "error", `agent error: ${(err as Error).message}`, 0, "error");
       return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification };
     }
   }
