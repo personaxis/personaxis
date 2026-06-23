@@ -84,30 +84,32 @@ async function main(): Promise<void> {
   }
   ensureState(loadPersona(personaPath));
 
-  const clear = "\x1b[2J\x1b[H";
   let frame = 0;
 
-  if (opts.once) {
-    for (let i = 0; i < opts.frames; i++) process.stdout.write(renderFrame(personaPath, i) + "\n");
+  // Non-interactive (pipe/CI/--once): print static frames, no screen takeover.
+  if (opts.once || !process.stdout.isTTY) {
+    const n = opts.once ? opts.frames : 1;
+    for (let i = 0; i < n; i++) process.stdout.write(renderFrame(personaPath, i) + "\n");
     return;
   }
 
-  process.on("SIGINT", () => {
-    process.stdout.write("\x1b[?25h" + clear); // restore cursor
+  // Interactive: take over the ALTERNATE screen buffer so nothing pollutes
+  // scrollback, and run until the user quits (no arbitrary frame cap).
+  const enter = "\x1b[?1049h\x1b[?25l";
+  const home = "\x1b[H\x1b[J";
+  const restore = "\x1b[?25h\x1b[?1049l";
+  let timer: NodeJS.Timeout;
+  const close = () => {
+    clearInterval(timer);
+    process.stdout.write(restore);
     console.log(chalk.dim("  dashboard closed.\n"));
     process.exit(0);
-  });
-  process.stdout.write("\x1b[?25l"); // hide cursor
-
-  const tick = () => {
-    process.stdout.write(clear + renderFrame(personaPath, frame++));
-    if (frame >= opts.frames && opts.frames > 0) {
-      process.stdout.write("\x1b[?25h\n" + chalk.dim("  (max frames reached)\n"));
-      process.exit(0);
-    }
   };
+  process.on("SIGINT", close);
+  process.stdout.write(enter);
+  const tick = () => process.stdout.write(home + renderFrame(personaPath, frame++));
   tick();
-  setInterval(tick, opts.interval);
+  timer = setInterval(tick, opts.interval);
 }
 
 const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
