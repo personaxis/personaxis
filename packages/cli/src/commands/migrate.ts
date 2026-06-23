@@ -457,10 +457,45 @@ const sevenToEight = new Command("0.7-to-0.8")
     }
   });
 
+// ─── 0.8-to-0.9 subcommand (additive — no field changes) ───────────────────
+
+const eightToNine = new Command("0.8-to-0.9")
+  .description("Bump a persona from spec 0.8.0 to 0.9.0. Additive: no field changes — just updates spec_version. New OPTIONAL blocks (verification, agent_budget, observability, runtime_artifacts.agent_state_file) become available.")
+  .argument("[file]", "personaxis.md path (default: .personaxis/personaxis.md)", ".personaxis/personaxis.md")
+  .option("--apply", "Write changes (default: dry-run; prints what would change)")
+  .action((file: string, options: { apply?: boolean }) => {
+    try {
+      const path = resolve(file);
+      if (!existsSync(path)) {
+        console.error(chalk.red("Error:"), `persona not found at ${path}`);
+        process.exit(1);
+      }
+      const before = readFileSync(path, "utf-8");
+      if (!/spec_version:\s*["']?0\.8\.0["']?/.test(before)) {
+        console.log(chalk.yellow("Nothing to do:"), "spec_version is not 0.8.0 (already migrated or a different version).");
+        return;
+      }
+      const after = before.replace(/spec_version:\s*["']?0\.8\.0["']?/, 'spec_version: "0.9.0"');
+      console.log("");
+      console.log(options.apply ? chalk.green.bold("0.8.0 → 0.9.0 applied (additive).") : chalk.yellow.bold("DRY RUN — add --apply to write."));
+      console.log(chalk.dim("  - spec_version: 0.8.0 → 0.9.0 (no field changes; v0.8 personas remain valid)"));
+      console.log(chalk.dim("  - new optional blocks now available: verification (objective gates),"));
+      console.log(chalk.dim("    agent_budget (stop-conditions + caps), observability (tracing), runtime_artifacts.agent_state_file"));
+      if (options.apply) {
+        writeFileSync(path, after, "utf-8");
+        console.log(chalk.green("\n  ✓ written. Run ") + chalk.cyan("personaxis validate") + chalk.green(" to confirm."));
+      }
+    } catch (err) {
+      console.error(chalk.red("Error:"), (err as Error).message);
+      process.exit(1);
+    }
+  });
+
 // ─── Parent migrate command ────────────────────────────────────────────────
 
 export const migrateCommand = new Command("migrate")
   .description("Apply version-to-version codemods to a PERSONA.md.")
   .addCommand(fiveToSix)
   .addCommand(sixToSeven)
-  .addCommand(sevenToEight);
+  .addCommand(sevenToEight)
+  .addCommand(eightToNine);

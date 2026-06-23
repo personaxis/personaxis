@@ -4,9 +4,9 @@
 
 [![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Spec](https://img.shields.io/badge/spec-0.8.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
+[![Spec](https://img.shields.io/badge/spec-0.9.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
 
-CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- define, validate, lint, compile, decompile, push, pull, and migrate AI agent personas (spec v0.8.0 / Personaxis v13).
+CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- define, validate, lint, compile, decompile, push, pull, and migrate AI agent personas (spec v0.9.0 / Personaxis v14).
 
 Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md).
 
@@ -102,7 +102,7 @@ Requires Node.js 18+.
 | `export --format json\|md\|yaml` | Export personaxis.md as clean semantic content |
 | `template list\|show\|get` | Manage pedagogical templates |
 | `diff <before> <after>` | Compare two versions field by field |
-| `spec` | Print the v0.8.0 spec — useful for injecting into agent prompts |
+| `spec` | Print the v0.9.0 spec — useful for injecting into agent prompts |
 | `use <template>` | Scaffold a persona from a template |
 | `list` | List personas installed in this project |
 | `templates` | List built-in templates |

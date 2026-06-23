@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/tui",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Personaxis live ASCII dashboard — a breathing, per-persona view of a living persona.",
   "license": "MIT",
   "type": "module",

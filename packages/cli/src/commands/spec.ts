@@ -15,7 +15,7 @@ v0.6 introduces a three-artifact model:
 
   apiVersion: persona.dev/v1                # UNIVERSAL — always this exact value
   kind: AgentPersona | UserPersona          # AgentPersona for agents; UserPersona for humans
-  spec_version: "0.6.0"                     # version of this spec
+  spec_version: "0.9.0"                     # version of this spec (current)
 
 ## Required top-level blocks
 
@@ -106,7 +106,7 @@ const RULES_TEXT = `
   ─────────────────────────────────────────────────────────────────────────
   missing-top-level              error     apiVersion / kind / spec_version / metadata absent
   api-version                    error     apiVersion not exactly 'persona.dev/v1'
-  spec-version                   error     spec_version not in [0.3.0 | 0.4.0 | 0.5.0 | 0.6.0]
+  spec-version                   error     spec_version not in [0.3.0 … 0.9.0]
   missing-required-layers        error     A required layer for this kind is absent
   metadata-completeness          warning   metadata.name / version / display_name / description / created missing
   identity-completeness          warning   canonical_id / system_identity.purpose / role_identity.primary_role missing
@@ -124,7 +124,7 @@ const RULES_TEXT = `
 const RULES_JSON = [
   { rule: "missing-top-level",            severity: "error",   checks: "apiVersion / kind / spec_version / metadata absent" },
   { rule: "api-version",                  severity: "error",   checks: "apiVersion not exactly 'persona.dev/v1'" },
-  { rule: "spec-version",                 severity: "error",   checks: "spec_version not in [0.3.0|0.4.0|0.5.0|0.6.0]" },
+  { rule: "spec-version",                 severity: "error",   checks: "spec_version not in [0.3.0…0.9.0]" },
   { rule: "missing-required-layers",      severity: "error",   checks: "A required layer for this kind is absent" },
   { rule: "metadata-completeness",        severity: "warning", checks: "metadata fields missing" },
   { rule: "identity-completeness",        severity: "warning", checks: "identity canonical_id / system_identity.purpose / role_identity.primary_role missing" },
