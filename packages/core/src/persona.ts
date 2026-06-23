@@ -55,6 +55,15 @@ export interface StateFile {
   mutation_log: MutationLogEntry[];
   last_compiled_at?: string | null;
   last_compiled_hash?: string | null;
+  /** v0.9: live agent-loop session tracking (resumable across runs). */
+  agent_session?: {
+    active_task: string | null;
+    started_at: string | null;
+    step_count: number;
+    token_count: number;
+    cost_usd: number;
+    stop_reason: string | null;
+  };
 }
 
 /** A persona handle: resolved paths + parsed frontmatter. */

@@ -10,6 +10,8 @@ import {
   executeFileWrite,
   executeFileEdit,
   readFileSafe,
+  readAgentState,
+  verifyAgentStateChain,
   DEFAULT_POLICY,
   type Policy,
   type LoopEvent,
@@ -156,6 +158,26 @@ describe("PersonaAgent (governed task execution)", () => {
     const res = await agent.run("do the thing");
     expect(res.finished).toBe(true);
     expect(res.verification?.passed).toBe(false); // reported as failed, but did not block
+  });
+
+  it("persists a STATE.md spine and RESUMES across runs (memory-in-the-loop)", async () => {
+    const personaPath = join(dir, "personaxis.md");
+    const mk = () =>
+      new PersonaAgent({
+        llm: llm(scriptedFetch([{ tool: "finish", args: { summary: "shipped the landing page" } }])),
+        policy: policy(),
+        personaPath,
+      });
+    await mk().run("build a landing page");
+    expect(readAgentState(personaPath).length).toBe(1);
+    expect(existsSync(join(dir, "STATE.md"))).toBe(true);
+    expect(readFileSync(join(dir, "STATE.md"), "utf-8")).toContain("build a landing page");
+
+    await mk().run("write the launch email");
+    const entries = readAgentState(personaPath);
+    expect(entries.length).toBe(2); // resumed: appended, not restarted
+    expect(verifyAgentStateChain(personaPath).ok).toBe(true);
+    expect(readFileSync(join(dir, "STATE.md"), "utf-8")).toContain("write the launch email");
   });
 });
 

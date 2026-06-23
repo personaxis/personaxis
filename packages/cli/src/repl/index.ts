@@ -350,6 +350,7 @@ async function runAgent(task: string, ctx: Ctx): Promise<void> {
     budget: readAgentBudget(fm),
     verification: readVerification(fm),
     judge: { endpoint: llm.endpoint, model: llm.model, apiKey: llm.apiKey },
+    personaPath: ctx.handle.personaPath,
     bus,
   });
   ctx.out(chalk.dim(`  agent posture: ${POSTURES[ctx.postureIndex]} · ${task}`));

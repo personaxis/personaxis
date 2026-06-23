@@ -134,6 +134,7 @@ export async function agentRun(persona: string, task: string, maxSteps = 12): Pr
     budget: readAgentBudget(fm),
     verification: readVerification(fm),
     judge: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+    personaPath: persona,
     bus,
   });
   const result = await agent.run(task);

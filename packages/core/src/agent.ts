@@ -36,6 +36,15 @@ import {
   type JudgeConfig,
 } from "./verification.js";
 import type { ConsensusResult } from "./self-evolution.js";
+import {
+  readAgentState,
+  commitAgentState,
+  buildStateMarkdown,
+  readLiveMemory,
+  type AgentOutcome,
+} from "./memory.js";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 export type ApprovalDecision = "approve" | "deny" | "always";
 export type OnApproval = (call: ToolCall, verdict: CommandVerdict) => Promise<ApprovalDecision>;
@@ -63,6 +72,8 @@ export interface AgentOptions {
   verification?: VerificationConfig;
   /** v0.9: LLM access for llm_judge / rubric gates. */
   judge?: JudgeConfig;
+  /** v0.9: persona path — enables the resumable STATE.md spine + memory-in-the-loop. */
+  personaPath?: string;
   bus?: EventBus;
 }
 
@@ -115,7 +126,37 @@ export class PersonaAgent {
       `workspace: ${this.policy.workspaceRoot}`,
       `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
       this.opts.goal ? `\n# Standing goal\n${this.opts.goal}` : "",
-    ].join("\n");
+      this.resumeContext(),
+    ].filter(Boolean).join("\n");
+  }
+
+  /** Prior STATE.md + recent learnings + memory — so the agent RESUMES, not restarts. */
+  private resumeContext(): string {
+    const p = this.opts.personaPath;
+    if (!p) return "";
+    const parts: string[] = [];
+    const statePath = join(dirname(p), "STATE.md");
+    if (existsSync(statePath)) {
+      parts.push("\n# Prior state (RESUME — do not restart work already done)\n" + readFileSync(statePath, "utf-8").slice(0, 3000));
+    } else {
+      const recent = readAgentState(p).slice(-5);
+      if (recent.length) parts.push("\n# Prior runs\n" + recent.map((e) => `- ${e.outcome}: ${e.task}${e.learning ? ` — lesson: ${e.learning}` : ""}`).join("\n"));
+    }
+    const mem = readLiveMemory(p).slice(-6);
+    if (mem.length) parts.push("\n# Recent memory\n" + mem.map((m) => `- [${m.source}] ${m.content}`).join("\n"));
+    return parts.join("\n");
+  }
+
+  /** Persist the run to the hash-chained agent-state log + regenerate STATE.md. */
+  private persist(task: string, outcome: AgentOutcome, summary: string, step: number): void {
+    const p = this.opts.personaPath;
+    if (!p) return;
+    try {
+      commitAgentState(p, { task, step, outcome, summary, learning: summary.replace(/\n+/g, " ").slice(0, 200) });
+      buildStateMarkdown(p);
+    } catch {
+      /* best-effort: persistence must never crash a run */
+    }
   }
 
   /** Run the loop until verified completion, a budget/stop condition, or an error. */
@@ -197,6 +238,7 @@ export class PersonaAgent {
           bus.emit({ type: "agent-stop-condition", reason: check.stopReason ?? "budget", step: step - 1 });
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
+          this.persist(task, "stopped", summary, step - 1);
           return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification };
         }
 
@@ -215,10 +257,12 @@ export class PersonaAgent {
           const decision = await verifyCompletion(res.text || "(no action)");
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
+            this.persist(task, "success", res.text || "", step);
             return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
+            this.persist(task, "verification_failed", "verification failed", step);
             return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
           }
           continue; // retry
@@ -288,10 +332,12 @@ export class PersonaAgent {
           const decision = await verifyCompletion(finishedThisStep.summary);
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
+            this.persist(task, "success", finishedThisStep.summary, step);
             return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
+            this.persist(task, "verification_failed", "verification failed", step);
             return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
           }
           // retry: loop continues; the failure note is already in messages.
@@ -299,9 +345,11 @@ export class PersonaAgent {
       }
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
+      this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
       return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
+      this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
       return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification };
     }
   }

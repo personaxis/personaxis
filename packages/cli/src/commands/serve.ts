@@ -144,6 +144,7 @@ async function route(
         budget: readAgentBudget(fm),
         verification: readVerification(fm),
         judge: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+        personaPath: handle.personaPath,
         bus,
       });
       const result = await agent.run(task);
