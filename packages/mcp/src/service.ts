@@ -12,6 +12,8 @@ import {
   HeuristicAppraiser,
   PersonaAgent,
   EventBus,
+  Tracer,
+  readObservability,
   loadPersona,
   writeState,
   ensureState,
@@ -137,8 +139,12 @@ export async function agentRun(persona: string, task: string, maxSteps = 12): Pr
     personaPath: persona,
     bus,
   });
+  const obs = readObservability(fm);
+  const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
   const result = await agent.run(task);
-  return { result, events };
+  const trace = tracer ? tracer.write(persona).paths : [];
+  tracer?.stop();
+  return { result, events, trace };
 }
 
 export function audit(persona: string): unknown {

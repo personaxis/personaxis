@@ -23,9 +23,11 @@ import {
   HeuristicAppraiser,
   PersonaAgent,
   EventBus,
+  Tracer,
   policyFromFrontmatter,
   readAgentBudget,
   readVerification,
+  readObservability,
   loadPersona,
   ensureState,
   extractEnvelopes,
@@ -147,8 +149,12 @@ async function route(
         personaPath: handle.personaPath,
         bus,
       });
+      const obs = readObservability(fm);
+      const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
       const result = await agent.run(task);
-      return json(res, 200, { result, events });
+      const trace = tracer ? tracer.write(handle.personaPath).paths : [];
+      tracer?.stop();
+      return json(res, 200, { result, events, trace });
     }
     json(res, 404, { error: "not found" });
   } catch (e) {

@@ -31,6 +31,8 @@ import {
   resolveEffectivePersona,
   readAgentBudget,
   readVerification,
+  readObservability,
+  Tracer,
   HeuristicAppraiser,
   LlmAppraiser,
   LlmResponder,
@@ -353,12 +355,19 @@ async function runAgent(task: string, ctx: Ctx): Promise<void> {
     personaPath: ctx.handle.personaPath,
     bus,
   });
+  const obs = readObservability(fm);
+  const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
   ctx.out(chalk.dim(`  agent posture: ${POSTURES[ctx.postureIndex]} · ${task}`));
   const result = await agent.run(task);
   ctx.out(
     chalk.dim(`  budget: ${result.budget.steps} steps · ${result.budget.tokens} tok · $${result.budget.costUsd}` +
       (result.budget.stoppedBy ? ` · stopped: ${result.budget.stoppedBy}` : "")),
   );
+  if (tracer) {
+    const { paths } = tracer.write(ctx.handle.personaPath);
+    tracer.stop();
+    for (const p of paths) ctx.out(chalk.dim(`  trace → ${p}`));
+  }
 }
 
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
