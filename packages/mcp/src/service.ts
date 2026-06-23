@@ -32,6 +32,8 @@ import {
   activeOverlay,
   reviewSkill,
   scanForInjection,
+  scanAgentConfig,
+  detectKind,
   evaluateCommand,
   policyFromFrontmatter,
   readAgentBudget,
@@ -196,6 +198,10 @@ export function skillReview(skillPath: string): unknown {
 /** Scan untrusted text for prompt-injection before it reaches the persona. */
 export function scanText(text: string): unknown {
   return scanForInjection(text);
+}
+
+export function scanConfig(content: string, filename?: string): unknown {
+  return scanAgentConfig(content, filename ? detectKind(filename) : undefined);
 }
 
 /**

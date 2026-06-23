@@ -24,7 +24,8 @@
     "./linter": "./dist/linter/index.js"
   },
   "bin": {
-    "personaxis": "dist/index.js"
+    "personaxis": "dist/index.js",
+    "personaxis-scan": "dist/scan-bin.js"
   },
   "files": [
     "dist",

@@ -251,6 +251,22 @@ export function buildServer(): McpServer {
   );
 
   server.tool(
+    "scan_config",
+    "Security-scan an agent config (CLAUDE.md, AGENTS.md, .cursorrules, personaxis.md, agents.json, …) for prompt-injection, dangerous permissions, and leaked credentials. Returns a verdict (clean|suspicious|risky|malicious) + findings (red-team/blue-team/auditor). Use before trusting any externally-authored agent config or skill.",
+    {
+      content: z.string().describe("The full text of the config file."),
+      filename: z.string().optional().describe("Filename/path hint so the scanner can detect the config kind."),
+    },
+    ({ content, filename }) => {
+      try {
+        return ok(svc.scanConfig(content, filename));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
     "agent_run",
     "Run the persona's GOVERNED Agent Loop on a task: it proposes shell/file tool calls, each gated by the persona's sandbox policy (a 'deny' never runs; anything needing approval is denied in this non-interactive context), executes the allowed ones, and returns the step events + final summary. Requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL.",
     {
