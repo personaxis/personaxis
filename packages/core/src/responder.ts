@@ -76,8 +76,14 @@ export class LlmResponder implements Responder {
       }),
     });
     if (!res.ok) throw new Error(`responder HTTP ${res.status}`);
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return (json.choices?.[0]?.message?.content ?? "").trim() || "…";
+    let json: { choices?: Array<{ message?: { content?: string } }> };
+    try {
+      json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    } catch {
+      throw new Error("responder returned a non-JSON body");
+    }
+    const content = (json.choices?.[0]?.message?.content ?? "").trim();
+    return content || "(the model returned an empty reply — try rephrasing, or check the model/endpoint)";
   }
 }
 
