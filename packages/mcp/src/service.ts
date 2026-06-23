@@ -92,8 +92,16 @@ export async function observe(
   ensureState(loadPersona(persona)); // seed state.json if missing
   const loop = new LivingLoop(persona, { appraiser: new HeuristicAppraiser() });
   loop.bus.on((e) => events.push(e));
-  const report = await loop.tick({ observation, source });
-  return { report, events };
+  // Best-effort: a tick failure must not crash the MCP server (mirror the REPL).
+  try {
+    const report = await loop.tick({ observation, source });
+    return { report, events };
+  } catch (e) {
+    return {
+      report: { mutationsApplied: 0, memoriesWritten: 0, abstained: true },
+      events: [...events, { type: "error", message: (e as Error).message }],
+    };
+  }
 }
 
 export function audit(persona: string): unknown {
