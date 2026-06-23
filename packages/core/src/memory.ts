@@ -15,9 +15,41 @@
  */
 
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ProvenanceSource } from "./appraisal.js";
+
+/**
+ * The spec's `memory.types` map (MUST). The runtime now HONORS these instead of
+ * always writing episodic. `episodic` defaults to true only when the persona
+ * declares no `memory` block (backward compatibility); once declared, the flags
+ * are authoritative — a persona with `episodic: false` writes nothing to the log.
+ */
+export interface MemoryTypes {
+  episodic: boolean;
+  semantic: boolean;
+  procedural: boolean;
+  autobiographical: boolean;
+  user_preferences: boolean;
+  evaluations: boolean;
+}
+
+export function readMemoryTypes(frontmatter: Record<string, unknown>): MemoryTypes {
+  const mem = frontmatter.memory as { types?: Record<string, unknown> } | undefined;
+  const declared = mem?.types;
+  const flag = (k: string, dflt: boolean): boolean =>
+    declared && typeof declared[k] === "boolean" ? (declared[k] as boolean) : dflt;
+  // No memory block at all → keep episodic on so existing personas still record.
+  const episodicDefault = mem === undefined;
+  return {
+    episodic: flag("episodic", episodicDefault),
+    semantic: flag("semantic", false),
+    procedural: flag("procedural", false),
+    autobiographical: flag("autobiographical", false),
+    user_preferences: flag("user_preferences", false),
+    evaluations: flag("evaluations", false),
+  };
+}
 
 export interface MemoryEntry {
   ts: string;
@@ -111,6 +143,35 @@ export function readLiveMemory(personaPath: string): MemoryEntry[] {
     if (e.tags.includes("tombstone") && t) tombstoned.add(t.slice("target:".length));
   }
   return all.filter((e) => !e.tags.includes("tombstone") && !tombstoned.has(e.hash));
+}
+
+/**
+ * Consolidate episodic memory into a semantic snapshot at <personaDir>/memory.md
+ * (the spec's `memory.types.semantic`). Deterministic + dependency-free: groups
+ * live (non-tombstoned) entries by provenance source into a digest. Idempotent —
+ * rewritten each call, so it always reflects the current live memory.
+ */
+export function consolidateSemantic(personaPath: string, limit = 200): { ok: boolean; path: string; count: number } {
+  const entries = readLiveMemory(personaPath).slice(-limit);
+  const path = join(dirname(personaPath), "memory.md");
+  if (entries.length === 0) {
+    writeFileSync(path, "# Semantic memory\n\n_(empty)_\n", "utf-8");
+    return { ok: true, path, count: 0 };
+  }
+  const bySource = new Map<string, MemoryEntry[]>();
+  for (const e of entries) {
+    const arr = bySource.get(e.source) ?? [];
+    arr.push(e);
+    bySource.set(e.source, arr);
+  }
+  const lines = ["# Semantic memory (consolidated)", "", `_generated ${new Date().toISOString()} from ${entries.length} episodic entr${entries.length === 1 ? "y" : "ies"}_`, ""];
+  for (const [source, arr] of bySource) {
+    lines.push(`## From ${source}`);
+    for (const e of arr) lines.push(`- ${e.content.replace(/\n+/g, " ").trim()} \`#${e.hash.slice(0, 8)}\``);
+    lines.push("");
+  }
+  writeFileSync(path, lines.join("\n"), "utf-8");
+  return { ok: true, path, count: entries.length };
 }
 
 /** Verify the hash chain is intact (tamper / poisoning detection). */

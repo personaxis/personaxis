@@ -23,6 +23,8 @@ import {
   prepareMemoryEntry,
   verifyMemoryChain,
   readMemory,
+  readMemoryTypes,
+  consolidateSemantic,
 } from "./memory.js";
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
@@ -159,28 +161,39 @@ export class LivingLoop {
       }
       if (admitted.length > 0) writeState(this.handle.statePath, state);
 
-      // 5. memory — dry-run -> verify chain -> commit (write-path audit)
+      // 5. memory — HONOR memory.types (spec fidelity). Episodic writes only when
+      // the persona declares `memory.types.episodic`; otherwise nothing is logged.
+      const memTypes = readMemoryTypes(fm);
       let memoriesWritten = 0;
-      for (const mem of signal.memories) {
-        const entry = prepareMemoryEntry(this.handle.personaPath, {
-          content: mem.content,
-          source: mem.source,
-          tags: injectionBlocked ? [...(mem.tags ?? []), "injection-flagged"] : mem.tags,
-        });
-        const chain = verifyMemoryChain(this.handle.personaPath);
-        if (!chain.ok) {
-          bus.emit({ type: "error", message: `memory chain broken at #${chain.brokenAt}; refusing write` });
-          continue;
+      if (memTypes.episodic) {
+        for (const mem of signal.memories) {
+          const entry = prepareMemoryEntry(this.handle.personaPath, {
+            content: mem.content,
+            source: mem.source,
+            tags: injectionBlocked ? [...(mem.tags ?? []), "injection-flagged"] : mem.tags,
+          });
+          const chain = verifyMemoryChain(this.handle.personaPath);
+          if (!chain.ok) {
+            bus.emit({ type: "error", message: `memory chain broken at #${chain.brokenAt}; refusing write` });
+            continue;
+          }
+          commitMemoryEntry(this.handle.personaPath, entry);
+          bus.emit({ type: "memory", entry });
+          memoriesWritten++;
         }
-        commitMemoryEntry(this.handle.personaPath, entry);
-        bus.emit({ type: "memory", entry });
-        memoriesWritten++;
+      } else if (signal.memories.length > 0) {
+        bus.emit({ type: "abstain", reason: `memory.types.episodic=false — ${signal.memories.length} note(s) not stored` });
       }
 
       // Consensus / anomaly pass — surface poisoning signals (A-MemGuard-style).
       if (memoriesWritten > 0) {
         for (const a of detectMemoryAnomalies(readMemory(this.handle.personaPath))) {
           bus.emit({ type: "anomaly", kind: a.kind, detail: a.detail });
+        }
+        // Episodic → semantic consolidation when the persona declares it.
+        if (memTypes.semantic) {
+          const c = consolidateSemantic(this.handle.personaPath);
+          bus.emit({ type: "recompile", reason: `semantic consolidation (${c.count} entries → memory.md)` });
         }
       }
 
