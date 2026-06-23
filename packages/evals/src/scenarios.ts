@@ -74,7 +74,8 @@ class FixedAppraiser implements Appraiser {
 
 function scriptedFetch(steps: Array<{ tool?: string; args?: object; text?: string }>): typeof fetch {
   let i = 0;
-  return (async () => {
+  return (async (url: string) => {
+    if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
     const s = steps[Math.min(i, steps.length - 1)];
     i++;
     const message = s.tool

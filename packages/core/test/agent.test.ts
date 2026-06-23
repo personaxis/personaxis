@@ -31,7 +31,9 @@ function policy(over: Partial<Policy> = {}): Policy {
 /** A scripted OpenAI-style /chat/completions fetch. Each call returns the next item. */
 function scriptedFetch(steps: Array<{ text?: string; tool?: string; args?: object }>): typeof fetch {
   let i = 0;
-  return (async () => {
+  return (async (url: string) => {
+    // The context manager probes /models; answer without consuming a scripted step.
+    if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
     const s = steps[Math.min(i, steps.length - 1)];
     i++;
     const message = s.tool
@@ -116,7 +118,8 @@ describe("PersonaAgent (governed task execution)", () => {
   it("stops on a token budget", async () => {
     // a fetch that always proposes a read and reports 500 tokens per call
     let i = 0;
-    const usageFetch = (async () => {
+    const usageFetch = (async (url: string) => {
+      if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
       i++;
       return {
         ok: true,

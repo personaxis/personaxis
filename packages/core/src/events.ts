@@ -37,7 +37,10 @@ export type LoopEvent =
   | { type: "verify-result"; verifier: string; pass: boolean; reason: string }
   | { type: "verify-complete"; passed: boolean; passes: number; quorum: number }
   // Trace export (v0.9, P3)
-  | { type: "trace-exported"; format: string; path: string; spanCount: number };
+  | { type: "trace-exported"; format: string; path: string; spanCount: number }
+  // Context-window manager
+  | { type: "context-meter"; used: number; limit: number; pct: number }
+  | { type: "context-compacted"; removed: number; usedAfter: number };
 
 export type LoopListener = (e: LoopEvent) => void;
 

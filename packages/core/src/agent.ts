@@ -45,6 +45,7 @@ import {
   type AgentOutcome,
 } from "./memory.js";
 import { loadPersona, readState, writeState } from "./persona.js";
+import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow } from "./context.js";
 
 export type ApprovalDecision = "approve" | "deny" | "always";
 export type OnApproval = (call: ToolCall, verdict: CommandVerdict) => Promise<ApprovalDecision>;
@@ -72,8 +73,12 @@ export interface AgentOptions {
   verification?: VerificationConfig;
   /** v0.9: LLM access for llm_judge / rubric gates. */
   judge?: JudgeConfig;
-  /** v0.9: persona path — enables the resumable STATE.md spine + memory-in-the-loop. */
+  /** v0.9: persona path — enables resumption (memory + state.json agent_session). */
   personaPath?: string;
+  /** Shared session context meter (the REPL passes one so it persists across turns). */
+  meter?: ContextMeter;
+  /** Compact the conversation when context fill crosses this fraction (default 0.8). */
+  compactThreshold?: number;
   bus?: EventBus;
 }
 
@@ -203,6 +208,10 @@ export class PersonaAgent {
     const verification: VerificationConfig = this.opts.verification ?? DEFAULT_VERIFICATION;
     const HARD_CEIL = 1000; // absolute safety bound against misconfiguration
     const startTime = Date.now();
+    const meter = this.opts.meter ?? new ContextMeter(cachedContextWindow(this.opts.llm.model));
+    const compactThreshold = this.opts.compactThreshold ?? 0.8;
+    // Refine the window from the endpoint in the background (best-effort).
+    void resolveContextWindow(this.opts.llm).then((w) => (meter.limit = w)).catch(() => {});
 
     let tokens = 0;
     let deniedCount = 0;
@@ -280,11 +289,24 @@ export class PersonaAgent {
 
         bus.emit({ type: "agent-step", step });
 
+        // Context management: compact BEFORE sending if near the window (headroom).
+        if (meter.pct >= compactThreshold) {
+          const c = await compactMessages(messages, meter, { llm: this.opts.llm, threshold: compactThreshold });
+          if (c.compacted) {
+            messages.length = 0;
+            messages.push(...c.messages);
+            bus.emit({ type: "context-compacted", removed: c.removed ?? 0, usedAfter: meter.used });
+          }
+        }
+
         const res = await requestToolCall(this.opts.llm, messages, this.tools, this.preferFallback);
         if (res.usedFallback) this.preferFallback = true;
         tokens += res.usage?.total_tokens ?? 0;
         this.spentTokens = tokens;
         this.spentCost = estimateCostUsd(this.opts.llm.model, tokens);
+        meter.observe(res.usage);
+        if (!res.usage) meter.estimate(messages);
+        bus.emit({ type: "context-meter", used: meter.used, limit: meter.limit, pct: Number(meter.pct.toFixed(3)) });
         if (res.text) {
           lastText = res.text;
           bus.emit({ type: "agent-think", text: res.text });
