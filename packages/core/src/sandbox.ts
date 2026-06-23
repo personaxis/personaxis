@@ -162,6 +162,47 @@ export function evaluateCommand(cmd: string, policy: Policy = DEFAULT_POLICY): C
   }
 }
 
+/**
+ * Decide allow | ask | deny for a FILE WRITE/EDIT under a policy. Mirrors
+ * evaluateCommand's precedence but for a path target (the agent's write_file /
+ * edit_file tools). Reuses pathEscapesWorkspace so a write that escapes the
+ * workspace is denied under workspace-write, exactly like a shell redirect would be.
+ */
+export function evaluateFileWrite(
+  targetPath: string,
+  policy: Policy = DEFAULT_POLICY,
+  opts: { destructive?: boolean } = {},
+): CommandVerdict {
+  const klass: CommandClass = {
+    writesFiles: true,
+    network: false,
+    destructive: Boolean(opts.destructive),
+    escapesWorkspace: pathEscapesWorkspace(targetPath, policy.workspaceRoot),
+  };
+
+  if (matchesAny(policy.deny, targetPath)) {
+    return { decision: "deny", reason: "path matches deny-list", class: klass };
+  }
+  if (policy.sandbox === "read-only") {
+    return { decision: "deny", reason: "read-only sandbox forbids writes", class: klass };
+  }
+  if (policy.sandbox === "workspace-write" && klass.escapesWorkspace) {
+    return { decision: "deny", reason: "write escapes the workspace", class: klass };
+  }
+  if (matchesAny(policy.allow, targetPath)) {
+    return { decision: "allow", reason: "path matches allow-list", class: klass };
+  }
+  switch (policy.approval) {
+    case "never":
+    case "on-failure":
+      return { decision: "allow", reason: `approval=${policy.approval}`, class: klass };
+    case "on-request":
+    case "untrusted":
+    default:
+      return { decision: "ask", reason: "file write needs approval", class: klass };
+  }
+}
+
 export interface WrapResult {
   command: string;
   args: string[];

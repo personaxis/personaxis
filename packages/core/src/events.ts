@@ -20,7 +20,15 @@ export type LoopEvent =
   | { type: "recompile"; reason: string }
   | { type: "abstain"; reason: string }
   | { type: "error"; message: string }
-  | { type: "tick-complete"; mutationsApplied: number; memoriesWritten: number };
+  | { type: "tick-complete"; mutationsApplied: number; memoriesWritten: number }
+  // Agent loop (G1) — governed task execution.
+  | { type: "agent-step"; step: number }
+  | { type: "agent-think"; text: string }
+  | { type: "tool-propose"; tool: string; args: Record<string, unknown> }
+  | { type: "tool-verdict"; tool: string; decision: "allow" | "ask" | "deny"; reason: string }
+  | { type: "tool-result"; tool: string; ok: boolean; output: string }
+  | { type: "agent-finish"; summary: string; steps: number }
+  | { type: "agent-error"; message: string };
 
 export type LoopListener = (e: LoopEvent) => void;
 

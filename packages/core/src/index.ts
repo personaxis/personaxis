@@ -28,5 +28,9 @@ export * from "./sigil.js";
 export * from "./persona-theme.js";
 export * from "./events.js";
 export * from "./loop.js";
+export * from "./tools/exec.js";
+export * from "./tools/registry.js";
+export * from "./tool-calling.js";
+export * from "./agent.js";
 
 export const CORE_VERSION = "0.7.0";
