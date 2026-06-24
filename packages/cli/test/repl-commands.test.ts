@@ -6,7 +6,7 @@ describe("REPL slash-command registry", () => {
   const names = cmds.map((c) => c.name);
 
   it("exposes the core commands including the new agent + mode controls", () => {
-    for (const n of ["help", "persona", "state", "evolve", "do", "audit", "memory", "mode", "goal", "loop", "exit"]) {
+    for (const n of ["help", "persona", "state", "evolve", "do", "audit", "memory", "mode", "improve", "goal", "loop", "exit"]) {
       expect(names).toContain(n);
     }
   });

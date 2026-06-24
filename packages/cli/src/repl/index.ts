@@ -65,6 +65,7 @@ import {
 } from "@personaxis/tui/visual";
 import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
 import { writeStarterPersona } from "../starter.js";
+import { runMode, isMode, MODES } from "../commands/mode.js";
 
 interface ReplOptions {
   persona?: string;
@@ -234,6 +235,28 @@ const COMMANDS: CommandDef[] = [
       ctx.out(chalk.bold("  Envelope values"));
       ctx.out(envelopeBars(ctx.theme, st.values, env.envelopes));
       ctx.out(chalk.dim(`  mutation_log: ${st.mutation_log.length} entries`));
+    },
+  },
+  {
+    name: "improve",
+    desc: "view/set self-improvement mode: locked | suggesting | autonomous",
+    run: (arg, ctx) => {
+      const wanted = arg.trim().toLowerCase();
+      if (!wanted) {
+        ctx.out(chalk.dim(`  improvement mode = ${chalk.bold(ctx.mode)}  ·  usage: /improve <${MODES.join("|")}>`));
+        return;
+      }
+      if (!isMode(wanted)) {
+        ctx.out(chalk.yellow(`  mode must be one of ${MODES.join(" | ")}`));
+        return;
+      }
+      try {
+        const r = runMode(ctx.handle.personaPath, wanted);
+        ctx.mode = r.current;
+        ctx.out(chalk.green(`  ✓ improvement mode → ${chalk.bold(ctx.mode)}`) + (r.changed ? "" : chalk.dim(" (unchanged)")));
+      } catch (e) {
+        ctx.out(chalk.red(`  could not set mode: ${(e as Error).message}`));
+      }
     },
   },
   {
