@@ -64,7 +64,7 @@ import {
   voiceWrap,
   farewell,
 } from "@personaxis/tui/visual";
-import { Screen, type SlashItem } from "@personaxis/tui/screen";
+import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
 import { writeStarterPersona } from "../starter.js";
 
 interface ReplOptions {
@@ -99,13 +99,28 @@ interface Ctx {
   theme: PersonaTheme;
   name: string;
   mode: string;
-  out: (text: string) => void;
+  out: (text: string, role?: LineRole) => void;
   postureIndex: number;
   approve: (call: ToolCall, v: CommandVerdict) => Promise<ApprovalDecision>;
   /** Persistent conversation (no system message) for chat continuity. */
   conversation: ChatMessage[];
   /** Session-level context-window meter (persists across turns). */
   meter: ContextMeter;
+  /** Update the spinner phase label (Screen mode only). */
+  phase?: (label: string) => void;
+}
+
+function phaseFor(e: LoopEvent): string {
+  switch (e.type) {
+    case "agent-step": return "thinking";
+    case "tool-propose": return `running ${e.tool}`;
+    case "tool-result": return "reading result";
+    case "verify-start":
+    case "verify-result": return "verifying";
+    case "appraise": return "appraising";
+    case "context-compacted": return "compacting context";
+    default: return "working";
+  }
 }
 
 function llmConfig(): { endpoint: string; model: string; apiKey?: string } | undefined {
@@ -164,13 +179,13 @@ function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
     case "agent-error":
       return chalk.red(`  └─ agent error: ${e.message}`);
     case "agent-stop-condition":
-      return chalk.yellow(`  ⏹ stop: ${e.reason} (step ${e.step})`);
+      return chalk.yellow(`  ■ stop: ${e.reason} (step ${e.step})`);
     case "verify-start":
-      return chalk.dim(`  ⚖ verifying (${e.gates} gate${e.gates === 1 ? "" : "s"})…`);
+      return chalk.dim(`  verify · ${e.gates} gate${e.gates === 1 ? "" : "s"}…`);
     case "verify-result":
-      return `  ⚖   ${e.pass ? chalk.green("pass") : chalk.red("fail")} ${chalk.dim(`${e.verifier}: ${e.reason}`)}`;
+      return `  verify   ${e.pass ? chalk.green("pass") : chalk.red("fail")} ${chalk.dim(`${e.verifier}: ${e.reason}`)}`;
     case "verify-complete":
-      return e.passed ? chalk.green(`  ⚖ verified (${e.passes}/${e.quorum})`) : chalk.red(`  ⚖ verification failed (${e.passes}/${e.quorum})`);
+      return e.passed ? chalk.green(`  verify · ok (${e.passes}/${e.quorum})`) : chalk.red(`  verify · FAILED (${e.passes}/${e.quorum})`);
     case "agent-budget":
     case "context-meter":
       return null; // shown in the status bar, not inline
@@ -362,16 +377,17 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     const reply = await ctx.responder
       .respond({ message: line, personaBody: ctx.handle.body, memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content), state: cur.values, name: ctx.name })
       .catch((e) => `(responder error: ${(e as Error).message})`);
-    ctx.out(voiceWrap(ctx.theme, `  ${shortName(ctx)}: ${reply}`));
-    await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+    ctx.out(voiceWrap(ctx.theme, `${shortName(ctx)}: ${reply}`), "persona");
+    await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
     return;
   }
 
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
   const bus = new EventBus();
   bus.on((e) => {
+    ctx.phase?.(phaseFor(e));
     const l = renderEvent(ctx.theme, e);
-    if (l) ctx.out(l);
+    if (l) ctx.out(l, "activity");
   });
   const obs = readObservability(fm);
   const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
@@ -391,7 +407,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   });
   const result = await agent.run(line);
   ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
-  ctx.out(voiceWrap(ctx.theme, `  ${shortName(ctx)}: ${result.summary || "…"}`));
+  ctx.out(voiceWrap(ctx.theme, `${shortName(ctx)}: ${result.summary || "…"}`), "persona");
   // Only surface the budget line when something noteworthy happened (a multi-step
   // task or an early stop) — not on every one-shot chat reply.
   if (result.budget.steps > 1 || (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met")) {
@@ -497,6 +513,28 @@ async function runLineMode(ctx: Ctx): Promise<void> {
   await farewell(ctx.handle.frontmatter);
 }
 
+function fmtK(n: number): string {
+  return n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n);
+}
+
+/** The Hermes-style context bar: model | used/limit | [bar] pct% | elapsed. */
+function contextBar(ctx: Ctx): string {
+  const m = ctx.meter;
+  if (!m.limit) return chalk.dim("  offline — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL");
+  const pct = Math.round(m.pct * 100);
+  const barW = 12;
+  const filled = Math.min(barW, Math.round(m.pct * barW));
+  const bar = "█".repeat(filled) + "░".repeat(barW - filled);
+  const color = pct >= 80 ? chalk.red : pct >= 60 ? chalk.yellow : chalk.green;
+  const el = Math.floor(m.elapsedSeconds);
+  const elapsed = el >= 60 ? `${Math.floor(el / 60)}m${el % 60}s` : `${el}s`;
+  const model = process.env.PERSONAXIS_MODEL ?? "model";
+  return (
+    chalk.dim(`  ${model} `) + chalk.dim("│ ") + color(`${fmtK(m.used)}/${fmtK(m.limit)}`) +
+    chalk.dim(" │ ") + color(bar) + " " + color(`${pct}%`) + chalk.dim(` │ ${elapsed} · /help`)
+  );
+}
+
 // ── TTY: full alternate-screen app ───────────────────────────────────────────
 async function runScreenMode(ctx: Ctx): Promise<void> {
   const commands: SlashItem[] = COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
@@ -505,48 +543,52 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   const header = (cols: number): string[] => {
     const st = readState(ctx.handle.statePath);
     return [
-      "  " + chalk.bold.ansi256(ctx.theme.palette.accent)(ctx.name) + chalk.dim(`  ·  ${auraBar(ctx.theme, st.values)}  ·  sigil #${ctx.theme.seed.toString(16)}`),
-      chalk.dim(`  mode ${ctx.mode}  ·  posture ${chalk.bold(POSTURES[ctx.postureIndex])}  ·  model ${appraiserLabel()}`).slice(0, cols + 40),
-      chalk.dim("  " + "─".repeat(Math.max(0, Math.min(cols, 78) - 2))),
+      "  " + chalk.bold.ansi256(ctx.theme.palette.accent)(shortName(ctx)) +
+        chalk.dim(`  ·  ${auraBar(ctx.theme, st.values)}  ·  mode ${ctx.mode}  ·  posture `) + chalk.bold(POSTURES[ctx.postureIndex]),
+      chalk.dim("  " + "─".repeat(Math.max(0, Math.min(cols, 80) - 2))),
     ];
   };
-  const status = (): string =>
-    chalk.dim("  /help · /do <task> · shift+tab posture · ctrl+c exit");
 
   screen = new Screen({
     renderHeader: header,
-    renderStatus: status,
+    renderStatus: () => contextBar(ctx),
     commands,
     onCycleMode: () => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
     },
     onExit: () => screen.stop(),
     onSubmit: async (line) => {
-      if (line.startsWith("/")) {
-        screen.print(chalk.dim(`  ${line}`));
-        const done = await runCommand(line, ctx);
-        if (done) {
-          screen.stop();
-          process.exit(0);
+      screen.setBusy(true, line.startsWith("/") ? "running command" : "thinking");
+      try {
+        if (line.startsWith("/")) {
+          screen.print(chalk.dim(line), "user");
+          const done = await runCommand(line, ctx);
+          if (done) {
+            screen.stop();
+            process.exit(0);
+          }
+        } else {
+          screen.divider();
+          screen.print(chalk.cyan(line), "user");
+          await handleTurn(line, ctx);
         }
-      } else {
-        screen.print(chalk.dim(`  › ${line}`));
-        await handleTurn(line, ctx);
+      } finally {
+        screen.setBusy(false);
       }
     },
   });
 
-  ctx.out = (t) => screen.print(t);
+  ctx.out = (t, role) => screen.print(t, role ?? "system");
+  ctx.phase = (label) => screen.setPhase(label);
   ctx.approve = async (call) => {
-    const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}? [y = yes · a = always · N = no]`)).trim().toLowerCase();
+    const ans = (await screen.ask(chalk.yellow(`approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`))).trim().toLowerCase();
     return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
   };
   ctx.loop.bus.on((e) => {
     const l = renderEvent(ctx.theme, e);
-    if (l) screen.print(l);
+    if (l) screen.print(l, "activity");
   });
 
   screen.start();
-  screen.print("");
-  screen.print(voiceWrap(ctx.theme, `  ✦ ${ctx.name} is awake`) + chalk.dim(` — talk, or /do <task>. /help for commands.`));
+  screen.print(voiceWrap(ctx.theme, `${shortName(ctx)} is awake`) + chalk.dim(" — talk in natural language (it can use tools), or /help."), "persona");
 }

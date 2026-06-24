@@ -149,7 +149,7 @@ export function eventLine(theme: PersonaTheme, e: LoopEvent): string | null {
       return p(theme.palette.secondary)(`  ◍ appraise `) + chalk.dim(`${trunc(e.signal.appraisal, 60)} (conf ${e.signal.confidence.toFixed(2)})`);
     case "govern": {
       const ok = e.verdicts.filter((v) => v.admitted).length;
-      return chalk.dim(`  ⚖ govern   ${ok} admitted, ${e.verdicts.length - ok} rejected`);
+      return chalk.dim(`  ◇ govern   ${ok} admitted, ${e.verdicts.length - ok} rejected`);
     }
     case "mutate": {
       const r = e.result;
@@ -160,7 +160,7 @@ export function eventLine(theme: PersonaTheme, e: LoopEvent): string | null {
     case "memory":
       return p(theme.palette.primary)(`  ✶ memory  `) + chalk.dim(`[${e.entry.source}] ${trunc(e.entry.content, 52)} #${e.entry.hash.slice(0, 8)}`);
     case "anomaly":
-      return chalk.bgRed.whiteBright(` ⚠ ${e.kind} `) + chalk.red(` ${e.detail}`);
+      return chalk.bgRed.whiteBright(` ! ${e.kind} `) + chalk.red(` ${e.detail}`);
     case "recompile":
       return p(theme.palette.secondary)(`  ↻ live-sync  ${e.reason}`);
     case "abstain":
@@ -180,7 +180,7 @@ export function voiceWrap(theme: PersonaTheme, text: string): string {
     case "terse":
       return chalk.ansi256(theme.palette.dim)(text);
     case "expansive":
-      return chalk.ansi256(theme.palette.accent)("✧ ") + chalk.ansi256(theme.palette.primary)(text);
+      return chalk.ansi256(theme.palette.accent)("◇ ") + chalk.ansi256(theme.palette.primary)(text);
     default:
       return chalk.ansi256(theme.palette.primary)(text);
   }

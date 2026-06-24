@@ -18,7 +18,7 @@ export function toMarkdown(report: EvalReport): string {
   lines.push("|---|---|---|");
   for (const r of report.results) {
     const checks = r.checks.map((c) => `${c.pass ? "✓" : "✗"} ${c.name}`).join("<br>");
-    lines.push(`| \`${r.id}\` | ${r.passed ? "✅ pass" : "❌ FAIL"} | ${checks} |`);
+    lines.push(`| \`${r.id}\` | ${r.passed ? "PASS" : "FAIL"} | ${checks} |`);
   }
   return lines.join("\n");
 }
