@@ -101,6 +101,9 @@ interface Ctx {
   out: (text: string, role?: LineRole) => void;
   postureIndex: number;
   approve: (call: ToolCall, v: CommandVerdict) => Promise<ApprovalDecision>;
+  /** The LLM-facing system prompt = the COMPILED PERSONA.md (slot #1), not the
+   * quantitative personaxis.md body. Resources/memory are injected by the agent. */
+  personaDoc: string;
   /** Persistent conversation (no system message) for chat continuity. */
   conversation: ChatMessage[];
   /** Session-level context-window meter (persists across turns). */
@@ -159,22 +162,21 @@ function readGoalText(handle: PersonaHandle): string | undefined {
 /** Render any loop OR agent event into a single display line (or null to skip). */
 function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
   switch (e.type) {
+    // Internal agent reasoning is NOT shown — the reply is printed once by the
+    // caller. Only real ACTIONS (tool calls) and errors surface as activity.
     case "abstain":
-      return chalk.dim(`  · abstained: ${e.reason}`);
     case "agent-step":
-      return chalk.dim(`  ┌─ step ${e.step}`);
     case "agent-think":
-      return e.text ? chalk.dim(`  │ ${e.text.slice(0, 100)}`) : null;
+    case "agent-finish":
+      return null;
     case "tool-propose":
-      return chalk.cyan(`  │ → ${e.tool} ${chalk.dim(JSON.stringify(e.args).slice(0, 80))}`);
+      return chalk.cyan(`  → ${e.tool} ${chalk.dim(JSON.stringify(e.args).slice(0, 80))}`);
     case "tool-verdict": {
       const c = e.decision === "deny" ? chalk.red : e.decision === "ask" ? chalk.yellow : chalk.green;
-      return `  │   ${c(e.decision)} ${chalk.dim(e.reason)}`;
+      return `    ${c(e.decision)} ${chalk.dim(e.reason)}`;
     }
     case "tool-result":
-      return chalk.dim(`  │   ${e.ok ? "✓" : "✗"} ${e.output.split("\n")[0].slice(0, 90)}`);
-    case "agent-finish":
-      return chalk.green(`  └─ ${e.summary}`);
+      return chalk.dim(`    ${e.ok ? "✓" : "✗"} ${e.output.split("\n")[0].slice(0, 90)}`);
     case "agent-error":
       return chalk.red(`  └─ agent error: ${e.message}`);
     case "agent-stop-condition":
@@ -236,10 +238,20 @@ const COMMANDS: CommandDef[] = [
   },
   {
     name: "evolve",
-    desc: "run one Living-Loop cycle on <text>",
+    desc: "run one Living-Loop cycle on <text> (shows the governed steps)",
     run: async (arg, ctx) => {
       if (!arg) return void ctx.out(chalk.yellow("  usage: /evolve <observation text>"));
-      await ctx.loop.tick({ observation: arg, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+      const off = ctx.loop.bus.on((e) => {
+        const l = eventLine(ctx.theme, e);
+        if (l) ctx.out(l, "activity");
+      });
+      try {
+        await ctx.loop.tick({ observation: arg, source: "user", actor: "actor-llm" });
+      } catch (e) {
+        ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`));
+      } finally {
+        off();
+      }
     },
   },
   {
@@ -359,8 +371,24 @@ async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   return (await cmd.run(arg, ctx)) === true;
 }
 
+/** A clean, short persona name from the spec metadata — never a sliced URL/path. */
 function shortName(ctx: Ctx): string {
-  return ctx.name.length > 20 ? ctx.name.split(/\s+/)[0].replace(/^@/, "").slice(0, 20) : ctx.name;
+  const id = ctx.handle.frontmatter.identity as { short_name?: string; display_name?: string; canonical_id?: string } | undefined;
+  const meta = ctx.handle.frontmatter.metadata as { name?: string } | undefined;
+  const clean = (s: string | undefined): string | undefined => {
+    if (!s) return undefined;
+    // Reject package/URL-looking ids (contain / or multiple dots); keep real names.
+    if (/[\/\\]/.test(s) || (s.match(/\./g)?.length ?? 0) > 0) return undefined;
+    return s.length <= 24 ? s : undefined;
+  };
+  return (
+    clean(id?.short_name) ??
+    clean(id?.display_name) ??
+    clean(meta?.name) ??
+    clean(id?.canonical_id) ??
+    // last resort: first word of the display name, stripped of @ and path chars
+    (ctx.name.split(/[\s/]+/)[0].replace(/^@/, "").replace(/\.[a-z]+$/i, "").slice(0, 20) || "persona")
+  );
 }
 
 /**
@@ -374,7 +402,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   if (!llm) {
     const cur = readState(ctx.handle.statePath);
     const reply = await ctx.responder
-      .respond({ message: line, personaBody: ctx.handle.body, memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content), state: cur.values, name: ctx.name })
+      .respond({ message: line, personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content), state: cur.values, name: shortName(ctx) })
       .catch((e) => `(responder error: ${(e as Error).message})`);
     ctx.out(voiceWrap(ctx.theme, `${shortName(ctx)}: ${reply}`), "persona");
     await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
@@ -393,7 +421,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const agent = new PersonaAgent({
     llm,
     policy: buildPolicy(ctx),
-    personaBody: ctx.handle.body,
+    personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
     goal: readGoalText(ctx.handle),
     onApproval: ctx.approve,
     budget: readAgentBudget(fm),
@@ -417,7 +445,11 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     tracer.stop();
     for (const p of paths) ctx.out(chalk.dim(`  trace → ${p}`));
   }
-  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+  // Identity evolution runs SILENTLY (no observe/appraise/govern noise in chat).
+  const report = await ctx.loop
+    .tick({ observation: line, source: "user", actor: "actor-llm" })
+    .catch(() => ({ mutationsApplied: 0, memoriesWritten: 0, abstained: true }));
+  if (report.mutationsApplied > 0) ctx.out(chalk.dim(`  · evolved (${report.mutationsApplied})`));
 }
 
 const handleTurn = runAgentTurn;
@@ -456,6 +488,9 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   const name = displayName(handle.frontmatter);
   const theme = personaTheme(handle.frontmatter);
   const compiledCandidate = resolve(dirname(dirname(personaPath)), "PERSONA.md");
+  // The LLM-facing system prompt is the COMPILED PERSONA.md (qualitative, slot #1).
+  // Fall back to the personaxis.md body only when no compiled doc exists.
+  const personaDoc = existsSync(compiledCandidate) ? readFileSync(compiledCandidate, "utf-8") : handle.body;
   const loop = new LivingLoop(personaPath, {
     appraiser: pickAppraiser(),
     recompile: makeRecompileHook(existsSync(compiledCandidate) ? compiledCandidate : undefined),
@@ -475,6 +510,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     out: (t) => stdout.write(t + "\n"),
     postureIndex: POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox),
     approve: async () => "deny",
+    personaDoc,
     conversation: [],
     meter,
   };
@@ -489,10 +525,6 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 
 // ── Non-TTY: simple line reader (pipes/CI) ───────────────────────────────────
 async function runLineMode(ctx: Ctx): Promise<void> {
-  ctx.loop.bus.on((e) => {
-    const l = renderEvent(ctx.theme, e);
-    if (l) stdout.write(l + "\n");
-  });
   stdout.write("\n");
   await awaken(ctx.handle.frontmatter, readState(ctx.handle.statePath));
   stdout.write(voiceWrap(ctx.theme, `  ${ctx.name} is awake`) + chalk.dim(` · mode=${ctx.mode} · posture=${POSTURES[ctx.postureIndex]}\n\n`));
@@ -513,28 +545,31 @@ async function runLineMode(ctx: Ctx): Promise<void> {
 }
 
 
-/** A compact prompt with the live context fill — no persistent bottom bar (which
- * would need an alt-screen). Keeps the terminal NORMAL so scroll/selection work. */
-function promptLine(ctx: Ctx): string {
-  const m = ctx.meter;
-  const arrow = chalk.ansi256(ctx.theme.palette.accent)("❯");
-  if (!m.limit) return chalk.dim(`${shortName(ctx)} `) + arrow + " ";
-  const pct = Math.round(m.pct * 100);
-  const color = pct >= 80 ? chalk.red : pct >= 60 ? chalk.yellow : chalk.dim;
-  return chalk.dim(`${shortName(ctx)} `) + color(`${pct}%`) + " " + arrow + " ";
+function fmtK(n: number): string {
+  return n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n);
 }
 
 // ── TTY: minimalist interactive REPL in the NORMAL buffer ────────────────────
 async function runScreenMode(ctx: Ctx): Promise<void> {
   const commands: SlashItem[] = COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
   let screen: Screen;
+  let lastMs = 0;
+
+  // Status line shown BELOW the input: conversation tokens · last response time · mode.
+  const status = (): string => {
+    const m = ctx.meter;
+    const tok = m.limit ? `${fmtK(m.used)}/${fmtK(m.limit)} tok` : "offline";
+    const pct = m.limit ? ` ${Math.round(m.pct * 100)}%` : "";
+    const last = lastMs ? `last ${(lastMs / 1000).toFixed(1)}s` : "ready";
+    return chalk.dim(`  ${tok}${pct}  ·  ${last}  ·  ${ctx.mode}  ·  ${POSTURES[ctx.postureIndex]}  ·  shift+tab`);
+  };
 
   screen = new Screen({
-    prompt: () => promptLine(ctx),
+    prompt: () => chalk.bold("› "),
+    status,
     commands,
     onCycleMode: () => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
-      screen.print(chalk.dim(`  posture → ${POSTURES[ctx.postureIndex]}`));
     },
     onExit: () => screen.stop(),
     onSubmit: async (line) => {
@@ -548,9 +583,9 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
         }
         return;
       }
-      // Chat/agent turn — timed per message.
-      screen.print(""); // separator between turns
-      screen.print(chalk.bold.ansi256(ctx.theme.palette.secondary)("you ") + chalk.dim("› ") + line, "user");
+      // Chat/agent turn — the user's message echoed with a distinct background.
+      screen.print("");
+      screen.print(chalk.bgAnsi256(238).whiteBright(`  › ${line}  `), "user");
       screen.setBusy(true, "thinking");
       const t0 = Date.now();
       try {
@@ -558,8 +593,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
       } finally {
         screen.setBusy(false);
       }
-      const secs = ((Date.now() - t0) / 1000).toFixed(1);
-      screen.print(chalk.dim(`  ⟢ ${secs}s`)); // per-message response time, stays in the chat
+      lastMs = Date.now() - t0;
     },
   });
 
@@ -569,10 +603,6 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`)).trim().toLowerCase();
     return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
   };
-  ctx.loop.bus.on((e) => {
-    const l = renderEvent(ctx.theme, e);
-    if (l) screen.print(l, "activity");
-  });
 
   screen.start();
   screen.print(voiceWrap(ctx.theme, `${shortName(ctx)} is awake`) + chalk.dim(" — talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");

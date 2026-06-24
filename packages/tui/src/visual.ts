@@ -64,39 +64,38 @@ const EMBLEM = [
 
 export const LOGO = renderWordmark("personaxis");
 
-// One elegant, restrained brand color (violet) — no rainbow, no flashing.
-const INK = 141; // ansi256 violet
-const INK_DIM = 97;
-const CORE = 219; // soft pink core highlight
-const TAGLINE = chalk.dim("  the home of living, governed AI personas · ") + chalk.ansi256(INK)("/help");
+// Monochrome: the terminal's DEFAULT foreground (bold) adapts to light/dark themes
+// automatically — dark on a light terminal, light on a dark one. No color.
+const TAGLINE = chalk.dim("  the home of living, governed AI personas · ") + chalk.bold("/help");
+const word = (l: string): string => chalk.bold(l);
 
-function paintEmblem(coreColor: number): string {
+/** Paint the emblem; `bright` controls the core (used for a single subtle pulse). */
+function paintEmblem(bright: boolean): string {
   const core = "◉";
   return EMBLEM.map((line) => {
     let out = "";
     for (const ch of line) {
-      if (ch === core) out += chalk.ansi256(coreColor).bold(ch);
+      if (ch === core) out += bright ? chalk.bold(ch) : chalk.dim(ch);
       else if (ch === " ") out += " ";
-      else out += chalk.ansi256(INK_DIM)(ch);
+      else out += chalk.dim(ch);
     }
     return out;
   }).join("\n");
 }
 
-/** A quiet, premium reveal: the emblem fades in, the wordmark wipes in once, then settles. */
+/** A quiet, premium reveal: the emblem settles, the wordmark wipes in once. Monochrome. */
 export async function animateLogo(): Promise<void> {
-  const word = (l: string) => chalk.ansi256(INK).bold(l);
   if (!supportsAnim()) {
-    write("\n" + paintEmblem(CORE) + "\n\n" + LOGO.map(word).join("\n") + "\n" + TAGLINE + "\n\n");
+    write("\n" + paintEmblem(true) + "\n\n" + LOGO.map(word).join("\n") + "\n" + TAGLINE + "\n\n");
     return;
   }
   write("\n");
-  // Emblem: a single gentle pulse on the core (not a loop).
-  for (const c of [INK_DIM, INK, CORE]) {
-    write("\x1b[s" + paintEmblem(c) + "\x1b[u");
-    await sleep(110);
+  // Emblem: a single gentle pulse on the core (dim → bright), not a loop.
+  for (const bright of [false, true]) {
+    write("\x1b[s" + paintEmblem(bright) + "\x1b[u");
+    await sleep(120);
   }
-  write(paintEmblem(CORE) + "\n\n");
+  write(paintEmblem(true) + "\n\n");
   // Wordmark: left-to-right wipe, revealed once, then static.
   const width = LOGO[0].length;
   for (let w = 4; w <= width; w += 4) {

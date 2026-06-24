@@ -23,8 +23,10 @@ export interface SlashItem {
 }
 
 export interface ReplHooks {
-  /** The prompt prefix, e.g. "personaxis 12% ❯ ". */
+  /** The prompt prefix, e.g. "❯ ". */
   prompt(): string;
+  /** A status line shown BELOW the input (tokens · time · mode). */
+  status(): string;
   commands: SlashItem[];
   onSubmit(line: string): Promise<void> | void;
   onCycleMode?(): void;
@@ -113,22 +115,31 @@ export class Screen {
     return this.hooks.commands.filter((c) => c.name.startsWith(q));
   }
 
+  private rule(): string {
+    return chalk.dim("─".repeat(Math.min(this.cols(), 72)));
+  }
+
   private promptBlock(): string[] {
     if (this.busy) {
-      return [`${chalk.magentaBright(SPINNER[this.spinnerFrame])} ${chalk.dim(this.phase || "working…")}`];
+      return [this.rule(), `${chalk.cyan(SPINNER[this.spinnerFrame])} ${chalk.dim(this.phase || "working…")}`];
     }
     if (this.pendingAsk) return [chalk.yellow("? ") + this.input];
 
-    const promptLine = this.hooks.prompt() + this.input;
-    if (!this.menuOpen) return [promptLine];
+    // The input line: a subtle background marks the area the USER is typing in.
+    const typed = this.input.length ? chalk.bgAnsi256(236).whiteBright(` ${this.input} `) : chalk.dim(" type a message… ");
+    const promptLine = this.hooks.prompt() + typed;
 
-    const items = this.matches().slice(0, 8);
-    const menu = items.map((c, i) => {
-      const sel = i === this.menuIndex;
-      const name = (sel ? chalk.black.bgCyan(` /${c.name} `) : chalk.cyan(` /${c.name} `)).padEnd(sel ? 28 : 20);
-      return "  " + name + chalk.dim(c.desc.slice(0, this.cols() - 30));
-    });
-    return [promptLine, chalk.dim("  ┄┄ commands · ↑↓ select · Tab fill · Enter run · Esc close ┄┄"), ...menu];
+    if (this.menuOpen) {
+      const items = this.matches().slice(0, 8);
+      const menu = items.map((c, i) => {
+        const sel = i === this.menuIndex;
+        const name = (sel ? chalk.black.bgCyan(` /${c.name} `) : chalk.cyan(` /${c.name} `)).padEnd(sel ? 28 : 20);
+        return "  " + name + chalk.dim(c.desc.slice(0, this.cols() - 30));
+      });
+      return [promptLine, chalk.dim("  ┄┄ ↑↓ select · Tab fill · Enter run · Esc close ┄┄"), ...menu];
+    }
+    // Status line BELOW the input, separated by a rule.
+    return [promptLine, this.rule(), this.hooks.status()];
   }
 
   private renderPrompt(): void {
