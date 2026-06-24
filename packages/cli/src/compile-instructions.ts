@@ -62,22 +62,39 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
       `it is read directly by a coding agent (Claude Code, Codex) as the repo-wide behavioral baseline.`;
 
   return [
-    `You are the personaxis compiler. Translate the quantitative persona spec below into ${target.label}.`,
+    `You are the personaxis compiler. Compile the quantitative persona spec below into ${target.label}.`,
     ``,
     subagentNote,
     ``,
-    `Follow the section contract documented in PERSONA_template.md: Identity & Purpose, Character ` +
-      `(Always / Never), Personality & Voice, Values, How You Think, Limits, Self-Improvement, and ` +
-      `Resources. Write in clear prose - this document is read directly by a coding agent, not parsed ` +
-      `as data. Do not invent facts, rules, or constraints that are not present in or directly implied ` +
-      `by the spec below.`,
+    `This document is a PERSONA-PROMPTING artifact, not a profile: its job is to make a language ` +
+      `model ADOPT and STAY IN this persona. Apply these evidence-backed devices (see ` +
+      `docs/PERSONA_PROMPTING.md): write the ENTIRE document in the SECOND PERSON ("You are…", ` +
+      `"You always…") as direct role adoption; open with a one-line "You are <name>…" statement; ` +
+      `give a tight CHARACTER CARD; include 2-4 few-shot VOICE EXEMPLARS; use concrete behavioral ` +
+      `ANCHORS (Always/Never) with examples; write SCENE CONTRACTS that connect a situation to the ` +
+      `behavior and concrete actions; separate STABLE / EVOLVING / SITUATIONAL traits; and add ` +
+      `anti-break-character guardrails.`,
     ``,
-    `The final "Resources" section must reproduce the resource manifest given below verbatim (as a ` +
-      `bullet list), with paths rewritten relative to ${target.outputPath} ` +
-      `(e.g. "${target.isSubagent ? `./.personaxis/personas/${target.slug}/` : "./.personaxis/"}memory.md").`,
+    `Follow the section order in PERSONA_template.md: "You are <name>" opener, Who you are, How you ` +
+      `speak (+ voice exemplars), What you always / never do, In specific situations (scene ` +
+      `contracts), How you think, What is fixed / what can change, Hard limits (never overridden), ` +
+      `Staying in character, Memory & resources, Self-improvement.`,
+    ``,
+    `When the spec has a "persona_prompting" block, use its fields directly: address.you_are for the ` +
+      `opener, voice_exemplars for "How you speak", scene_contracts for "In specific situations", ` +
+      `behavioral_anchors for Always/Never, break_character_guardrails for "Staying in character", ` +
+      `and consistency for "What is fixed / what can change". When a field is absent, DERIVE that ` +
+      `section faithfully from the quantitative layers. Do not invent facts, rules, or limits not ` +
+      `present in or directly implied by the spec.`,
+    ``,
+    `Two hard rules: (1) "Hard limits" must reproduce the safety universals ` +
+      `(reflexive_self_regulation.hard_limits + persona.constraints), and "Staying in character" must ` +
+      `explicitly state it NEVER overrides those limits. (2) The "Memory & resources" section must ` +
+      `reproduce the resource manifest below verbatim (bullet list), with paths relative to ` +
+      `${target.outputPath} (e.g. "${target.isSubagent ? `./.personaxis/personas/${target.slug}/` : "./.personaxis/"}memory.md").`,
     ``,
     `Output ONLY the compiled document. Do not wrap it in a code block.`,
-    section("personaxis.md (quantitative spec, source of truth)", input.personaxisMd),
+    section("personaxis.md (quantitative spec + persona_prompting source, source of truth)", input.personaxisMd),
     section("policy.yaml (operational policy - reference only, do not restate verbatim)", input.policyYaml),
     section("state.json (current runtime state - reference only)", input.stateJson),
     section("Resource manifest (paths only, never file contents)", input.resourceManifest),
@@ -106,6 +123,10 @@ export function buildDecompilePrompt(input: DecompilePromptInput): string {
       `the corresponding behavior.`,
     `- If the edit introduces a constraint, virtue, value, or limit that has no corresponding field, add ` +
       `it to the most specific existing layer rather than inventing a new top-level block.`,
+    `- Map persona-prompting edits to the "persona_prompting" block: changes to "How you speak" voice ` +
+      `samples -> voice_exemplars; "In specific situations" -> scene_contracts; Always/Never -> ` +
+      `behavioral_anchors; "Staying in character" -> break_character_guardrails; fixed/evolving/` +
+      `situational -> consistency. Never weaken a safety universal or a hard limit via these edits.`,
     `- Output ONLY the full updated personaxis.md (YAML frontmatter + Markdown body), starting with "---".`,
     section("Current personaxis.md (quantitative spec, before edit)", input.currentPersonaxisMd),
     section(`Edited ${target.outputPath} (compiled document, after hand-edit)`, input.editedCompiledMd),
