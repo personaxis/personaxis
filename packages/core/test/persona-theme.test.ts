@@ -26,6 +26,15 @@ describe("persona theme", () => {
     expect(warm.palette.primary).not.toBe(cool.palette.primary);
   });
 
+  it("two personas with the SAME affect still differ in color + glyphs (color from seed, VR4)", () => {
+    const a = personaTheme(fm({ identity: { canonical_id: "scout" } }));
+    const b = personaTheme(fm({ identity: { canonical_id: "analyst" } }));
+    expect(a.seed).not.toBe(b.seed);
+    // distinct palette and distinct glyph set despite identical affect/traits
+    expect([a.palette.primary, a.palette.accent]).not.toEqual([b.palette.primary, b.palette.accent]);
+    expect(a.glyphs.join("")).not.toBe(b.glyphs.join(""));
+  });
+
   it("maps personality to motion (extraversion->breath, conscientiousness->symmetry)", () => {
     const lively = personaTheme(fm({ personality: { traits: { extraversion: { mean: 0.95 } } } }));
     const calm = personaTheme(fm({ personality: { traits: { extraversion: { mean: 0.1 } } } }));

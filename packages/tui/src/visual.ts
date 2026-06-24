@@ -29,39 +29,74 @@ export const supportsAnim = (): boolean =>
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const write = (s: string): void => void process.stdout.write(s);
 
-export const LOGO = [
-  "  ___  ___ _ __ ___  ___  _ __   __ ___  _____ ____ ",
-  " / _ \\/ _ \\ '__/ __|/ _ \\| '_ \\ / _` \\ \\/ /_ _/ ___|",
-  "|  __/  __/ |  \\__ \\ (_) | | | | (_| |>  < | |\\___ \\",
-  " \\___|\\___|_|  |___/\\___/|_| |_|\\__,_/_/\\_\\___|____/",
-];
+// A robust 5-row block font (only █ and space → renders identically in every
+// monospace terminal; no slant/underscore tricks that collapsed into "eersonaxis").
+const FONT: Record<string, string[]> = {
+  p: ["█████", "█   █", "█████", "█    ", "█    "],
+  e: ["█████", "█    ", "███  ", "█    ", "█████"],
+  r: ["█████", "█   █", "█████", "█  █ ", "█   █"],
+  s: ["█████", "█    ", "█████", "    █", "█████"],
+  o: ["█████", "█   █", "█   █", "█   █", "█████"],
+  n: ["█   █", "██  █", "█ █ █", "█  ██", "█   █"],
+  a: ["█████", "█   █", "█████", "█   █", "█   █"],
+  x: ["█   █", " █ █ ", "  █  ", " █ █ ", "█   █"],
+  i: ["█████", "  █  ", "  █  ", "  █  ", "█████"],
+};
+
+/** Compose a word from FONT, row by row. Letters it doesn't know become spaces. */
+export function renderWordmark(word: string): string[] {
+  const rows = ["", "", "", "", ""];
+  for (const ch of word.toLowerCase()) {
+    const g = FONT[ch] ?? ["     ", "     ", "     ", "     ", "     "];
+    for (let r = 0; r < 5; r++) rows[r] += g[r] + " ";
+  }
+  return rows;
+}
+
+// The brand mark: the radiating emblem from logo.svg (a sun/sigil with a core).
+const EMBLEM = ["  \\ | /  ", "—  ◉  —", "  / | \\  "];
+
+export const LOGO = renderWordmark("personaxis");
 
 const TAGLINE =
-  chalk.dim("  living, governed personas · ") + chalk.cyan("/help") + chalk.dim(" · ") + chalk.cyan("/exit");
+  chalk.dim("  the home of living, governed AI personas · ") + chalk.cyan("/help");
 
-/** Animated wordmark reveal with a color sweep; static fallback off-TTY. */
+// Warm→cool brand gradient across the wordmark (ansi256), per column position.
+const BRAND = [201, 165, 129, 99, 63, 75, 81, 117]; // magenta → violet → blue → cyan
+function paintGradient(line: string, shift: number): string {
+  let out = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === " ") out += " ";
+    else out += chalk.ansi256(BRAND[(i + shift) % BRAND.length]).bold(ch);
+  }
+  return out;
+}
+
+/** Animated wordmark reveal with a live gradient sweep + pulsing emblem. */
 export async function animateLogo(): Promise<void> {
-  const purple = chalk.bold.magentaBright;
+  const emblem = (c: number) => EMBLEM.map((l) => chalk.ansi256(c).bold(l)).join("\n");
   if (!supportsAnim()) {
-    write("\n" + LOGO.map((l) => purple(l)).join("\n") + "\n" + TAGLINE + "\n\n");
+    write("\n" + chalk.ansi256(track(0))(EMBLEM.join("\n")) + "\n\n" + LOGO.map((l) => paintGradient(l, 0)).join("\n") + "\n" + TAGLINE + "\n\n");
     return;
   }
-  write("\n");
-  // reveal line by line
+  write("\n" + emblem(BRAND[0]) + "\n\n");
+  // reveal the wordmark row by row
   for (const line of LOGO) {
-    write(purple(line) + "\n");
-    await sleep(55);
+    write(paintGradient(line, 0) + "\n");
+    await sleep(45);
   }
-  // brief shimmer sweep across the wordmark
-  for (let s = 0; s < 3; s++) {
-    write("\x1b[" + (LOGO.length + 0) + "A");
-    for (let i = 0; i < LOGO.length; i++) {
-      const c = (s + i) % 2 === 0 ? chalk.magentaBright : chalk.magenta;
-      write("\x1b[2K" + c(LOGO[i]) + "\n");
-    }
-    await sleep(70);
+  // a few gradient-sweep frames so the wordmark visibly shimmers (and feels alive)
+  for (let s = 1; s <= 6; s++) {
+    write(`\x1b[${LOGO.length}A`);
+    for (const line of LOGO) write("\x1b[2K" + paintGradient(line, s) + "\n");
+    await sleep(60);
   }
   write(TAGLINE + "\n\n");
+}
+
+function track(i: number): number {
+  return BRAND[i % BRAND.length];
 }
 
 function paintGlyphRow(theme: PersonaTheme, row: string): string {

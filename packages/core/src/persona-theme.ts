@@ -39,23 +39,58 @@ const GLYPH_SETS = [
   [" ", "░", "▒", "▓", "█", "█"],
   [" ", "⋄", "◇", "◈", "◆", "▰"],
   [" ", "`", "'", "^", "≈", "☵"],
+  [" ", "·", "-", "=", "≡", "█"],
+  [" ", "˙", "•", "◦", "◉", "⬢"],
+  [" ", "·", "⋅", "∗", "✺", "✸"],
+  [" ", ".", "·", "•", "●", "⬤"],
+  [" ", "▁", "▃", "▅", "▇", "█"],
 ];
-
-// Curated ANSI-256 palette families keyed by (valence, arousal) quadrant. Each is
-// [primary, secondary, accent]; a 7th "dim" is derived. Hand-picked to read well.
-const FAMILIES = {
-  coolCalm: [24, 31, 37], // negative valence, low arousal — deep teal/blue
-  coolSharp: [27, 33, 51], // negative valence, high arousal — electric blue/cyan
-  warmCalm: [95, 137, 180], // positive valence, low arousal — earthy amber
-  warmSharp: [202, 208, 220], // positive valence, high arousal — vivid orange/gold
-  neutral: [60, 103, 146], // near-zero valence — muted violet
-} as const;
 
 function seedFrom(fm: PersonaFrontmatter): number {
   const id = fm.identity as { canonical_id?: string; display_name?: string } | undefined;
   const meta = fm.metadata as { name?: string } | undefined;
-  const key = id?.canonical_id ?? id?.display_name ?? meta?.name ?? "persona";
-  return parseInt(createHash("sha256").update(String(key)).digest("hex").slice(0, 8), 16) >>> 0;
+  // A RICH fingerprint so two personas differ even if one identity field collides:
+  // identity + name + the trait/affect signature. Never a bare "persona" fallback.
+  const traits = (fm.personality as { traits?: Record<string, { mean?: number }> } | undefined)?.traits ?? {};
+  const sig = Object.entries(traits)
+    .map(([k, v]) => `${k}:${typeof v?.mean === "number" ? v.mean.toFixed(2) : "?"}`)
+    .sort()
+    .join(",");
+  const key = [id?.canonical_id, id?.display_name, meta?.name, sig].filter(Boolean).join("|") || JSON.stringify(fm).slice(0, 200);
+  return parseInt(createHash("sha256").update(key).digest("hex").slice(0, 8), 16) >>> 0;
+}
+
+/** HSV → nearest ANSI-256 cube index (16..231). Gives the full color wheel. */
+function hsvAnsi(h: number, s: number, v: number): number {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const to6 = (n: number) => Math.max(0, Math.min(5, Math.round((n + m) * 5)));
+  return 16 + 36 * to6(r) + 6 * to6(g) + to6(b);
+}
+
+/**
+ * Palette derived from the SEED's hue (so two personas differ in color regardless
+ * of affect), nudged by affect: valence warms/cools the hue, arousal raises
+ * saturation/brightness. Returns [primary, secondary, accent].
+ */
+function colorFromSeed(seed: number, valence: number, arousal: number): readonly [number, number, number] {
+  const baseHue = seed % 360;
+  const hue = (baseHue + valence * 25 + 360) % 360;
+  const sat = Math.min(1, 0.5 + arousal * 0.35);
+  const val = 0.7 + arousal * 0.2;
+  const primary = hsvAnsi(hue, sat, val);
+  const secondary = hsvAnsi(hue, sat * 0.65, Math.min(1, val + 0.2));
+  const accent = hsvAnsi((hue + 38) % 360, Math.min(1, sat + 0.25), Math.min(1, val + 0.1));
+  return [primary, secondary, accent];
 }
 
 function traitMean(fm: PersonaFrontmatter, name: string, dflt: number): number {
@@ -66,12 +101,6 @@ function traitMean(fm: PersonaFrontmatter, name: string, dflt: number): number {
 function affectMean(fm: PersonaFrontmatter, dim: string, dflt: number): number {
   const a = (fm.affect as { baseline?: { core_affect?: Record<string, { mean?: number }> } } | undefined)?.baseline?.core_affect?.[dim];
   return typeof a?.mean === "number" ? a.mean : dflt;
-}
-
-function pickFamily(valence: number, arousal: number): readonly [number, number, number] {
-  if (Math.abs(valence) < 0.12) return FAMILIES.neutral;
-  if (valence < 0) return arousal >= 0.5 ? FAMILIES.coolSharp : FAMILIES.coolCalm;
-  return arousal >= 0.5 ? FAMILIES.warmSharp : FAMILIES.warmCalm;
 }
 
 export interface ThemedSigil {
@@ -152,14 +181,19 @@ export function personaTheme(fm: PersonaFrontmatter): PersonaTheme {
   const emotionality = traitMean(fm, "emotionality", 0.5);
   const conscientiousness = traitMean(fm, "conscientiousness", 0.5);
 
-  const [primary, secondary, accent] = pickFamily(valence, arousal);
+  // Color from the seed's hue (distinct per persona), nudged by affect.
+  const [primary, secondary, accent] = colorFromSeed(seed, valence, arousal);
 
   const verbosity = extraversion * 0.5 + openness * 0.3 - conscientiousness * 0.25;
   const density = verbosity > 0.18 ? "expansive" : verbosity < -0.05 ? "terse" : "balanced";
 
+  // Glyph set from a fingerprint of seed + trait signature (not seed % N alone),
+  // so personas with seeds differing by a multiple of N don't share glyphs.
+  const glyphIdx = (seed ^ (Math.floor(openness * 97) * 7) ^ (Math.floor(conscientiousness * 89) * 13) ^ (Math.floor(emotionality * 83) * 17)) >>> 0;
+
   return {
     seed,
-    palette: { primary, secondary, accent, dim: 240 + (seed % 4) },
+    palette: { primary, secondary, accent, dim: 236 + (seed % 6) },
     motion: {
       breathRate: Number((0.6 + extraversion * 1.8).toFixed(3)),
       amplitude: Number((0.04 + (extraversion + arousal) * 0.06).toFixed(3)),
@@ -167,7 +201,7 @@ export function personaTheme(fm: PersonaFrontmatter): PersonaTheme {
       drift: Number((openness * 0.6).toFixed(3)),
       symmetry: Number(conscientiousness.toFixed(3)),
     },
-    glyphs: GLYPH_SETS[seed % GLYPH_SETS.length],
+    glyphs: GLYPH_SETS[glyphIdx % GLYPH_SETS.length],
     voice: { density, flourish: Number(openness.toFixed(3)) },
     size: 9,
   };
