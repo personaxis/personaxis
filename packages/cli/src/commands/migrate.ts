@@ -491,6 +491,41 @@ const eightToNine = new Command("0.8-to-0.9")
     }
   });
 
+// ─── 0.9-to-0.10 subcommand (additive — no field changes) ──────────────────
+
+const nineToTen = new Command("0.9-to-0.10")
+  .description("Bump a persona from spec 0.9.0 to 0.10.0. Additive: no field changes — just updates spec_version. New OPTIONAL blocks (identity.short_name, improvement_policy.mode inline, persona_prompting) become available.")
+  .argument("[file]", "personaxis.md path (default: .personaxis/personaxis.md)", ".personaxis/personaxis.md")
+  .option("--apply", "Write changes (default: dry-run; prints what would change)")
+  .action((file: string, options: { apply?: boolean }) => {
+    try {
+      const path = resolve(file);
+      if (!existsSync(path)) {
+        console.error(chalk.red("Error:"), `persona not found at ${path}`);
+        process.exit(1);
+      }
+      const before = readFileSync(path, "utf-8");
+      if (!/spec_version:\s*["']?0\.9\.0["']?/.test(before)) {
+        console.log(chalk.yellow("Nothing to do:"), "spec_version is not 0.9.0 (already migrated or a different version).");
+        return;
+      }
+      const after = before.replace(/spec_version:\s*["']?0\.9\.0["']?/, 'spec_version: "0.10.0"');
+      console.log("");
+      console.log(options.apply ? chalk.green.bold("0.9.0 → 0.10.0 applied (additive).") : chalk.yellow.bold("DRY RUN — add --apply to write."));
+      console.log(chalk.dim("  - spec_version: 0.9.0 → 0.10.0 (no field changes; v0.9 personas remain valid)"));
+      console.log(chalk.dim("  - new optional blocks now available: identity.short_name,"));
+      console.log(chalk.dim("    improvement_policy.mode (inline), persona_prompting (voice/scene/anchors/guardrails)"));
+      console.log(chalk.dim("  - compile now produces a persona-prompting PERSONA.md (see docs/PERSONA_PROMPTING.md)"));
+      if (options.apply) {
+        writeFileSync(path, after, "utf-8");
+        console.log(chalk.green("\n  ✓ written. Run ") + chalk.cyan("personaxis validate") + chalk.green(" to confirm."));
+      }
+    } catch (err) {
+      console.error(chalk.red("Error:"), (err as Error).message);
+      process.exit(1);
+    }
+  });
+
 // ─── Parent migrate command ────────────────────────────────────────────────
 
 export const migrateCommand = new Command("migrate")
@@ -498,4 +533,5 @@ export const migrateCommand = new Command("migrate")
   .addCommand(fiveToSix)
   .addCommand(sixToSeven)
   .addCommand(sevenToEight)
-  .addCommand(eightToNine);
+  .addCommand(eightToNine)
+  .addCommand(nineToTen);
