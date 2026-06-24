@@ -32,6 +32,14 @@ describe("command classification", () => {
     expect(pathEscapesWorkspace("../secrets", root)).toBe(true);
     expect(pathEscapesWorkspace("src/index.ts", root)).toBe(false);
   });
+
+  it("does not misflag CLI switches (date /t, dir /s) as workspace escapes", () => {
+    expect(classifyCommand("date /t", root).escapesWorkspace).toBe(false);
+    expect(classifyCommand("dir /s", root).escapesWorkspace).toBe(false);
+    expect(classifyCommand("ipconfig /all", root).escapesWorkspace).toBe(false);
+    // real escaping paths still flagged:
+    expect(classifyCommand("cat /etc/passwd", root).escapesWorkspace).toBe(true);
+  });
 });
 
 describe("two-axis policy decisions", () => {

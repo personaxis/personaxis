@@ -79,6 +79,8 @@ export interface AgentOptions {
   meter?: ContextMeter;
   /** Compact the conversation when context fill crosses this fraction (default 0.8). */
   compactThreshold?: number;
+  /** Prior conversation (excluding the system message) for chat continuity. */
+  priorMessages?: ChatMessage[];
   bus?: EventBus;
 }
 
@@ -99,9 +101,12 @@ export interface AgentResult {
 }
 
 const GUARD =
-  "You are this persona acting as an autonomous agent. Stay in character. You are an AI; " +
-  "never claim real feelings. Use tools to accomplish the task. Prefer the smallest safe action. " +
-  "When done, call `finish` with a short summary. Do not fabricate tool results.";
+  "You are this persona. Stay in character. You are an AI; never claim real feelings. " +
+  "You can BOTH converse and act. For a normal question or chat, just reply in natural language " +
+  "(no tool, no finish call — your text reply IS the answer). Only use tools when the request needs a " +
+  "real action (run a command, read/write/edit a file, list a directory); prefer the smallest safe action, " +
+  "and after acting, reply to the user. When a multi-step task is fully done, call `finish` with a short " +
+  "summary. Never fabricate tool results.";
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -109,6 +114,8 @@ function escapeRegExp(s: string): string {
 
 export class PersonaAgent {
   readonly bus: EventBus;
+  /** The full message array after the last run (for conversation continuity). */
+  lastMessages?: ChatMessage[];
   private readonly policy: Policy;
   private readonly tools: ToolSpec[];
   private preferFallback = false;
@@ -222,8 +229,10 @@ export class PersonaAgent {
 
     const messages: ChatMessage[] = [
       { role: "system", content: this.systemPrompt() },
+      ...(this.opts.priorMessages ?? []),
       { role: "user", content: task },
     ];
+    this.lastMessages = messages; // reference; reflects the final state after the run
 
     const spent = (steps: number, goalMet = false, confidence?: number): AgentBudgetSpent => ({
       steps,

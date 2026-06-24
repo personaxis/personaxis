@@ -33,6 +33,11 @@ import {
   readVerification,
   readObservability,
   Tracer,
+  ContextMeter,
+  cachedContextWindow,
+  resolveContextWindow,
+  compactMessages,
+  type ChatMessage,
   HeuristicAppraiser,
   LlmAppraiser,
   LlmResponder,
@@ -97,6 +102,10 @@ interface Ctx {
   out: (text: string) => void;
   postureIndex: number;
   approve: (call: ToolCall, v: CommandVerdict) => Promise<ApprovalDecision>;
+  /** Persistent conversation (no system message) for chat continuity. */
+  conversation: ChatMessage[];
+  /** Session-level context-window meter (persists across turns). */
+  meter: ContextMeter;
 }
 
 function llmConfig(): { endpoint: string; model: string; apiKey?: string } | undefined {
@@ -163,7 +172,10 @@ function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
     case "verify-complete":
       return e.passed ? chalk.green(`  ⚖ verified (${e.passes}/${e.quorum})`) : chalk.red(`  ⚖ verification failed (${e.passes}/${e.quorum})`);
     case "agent-budget":
-      return null; // shown in the per-run budget summary, not per step
+    case "context-meter":
+      return null; // shown in the status bar, not inline
+    case "context-compacted":
+      return chalk.dim(`  · context compacted (${e.removed} msgs freed)`);
     default:
       return eventLine(theme, e);
   }
@@ -252,6 +264,21 @@ const COMMANDS: CommandDef[] = [
   },
   { name: "model", desc: "show the model in use", run: (_a, ctx) => void ctx.out(chalk.dim(`  model: ${appraiserLabel()}`)) },
   {
+    name: "compact",
+    desc: "summarize older turns to free context",
+    run: async (_a, ctx) => {
+      const llm = llmConfig();
+      if (!llm) return void ctx.out(chalk.dim("  /compact needs a model."));
+      const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
+      if (r.compacted) {
+        ctx.conversation = r.messages.filter((m) => m.role !== "system");
+        ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept`));
+      } else {
+        ctx.out(chalk.dim("  nothing to compact yet."));
+      }
+    },
+  },
+  {
     name: "mode",
     desc: "show/cycle the sandbox posture (shift+tab)",
     run: (_a, ctx) => {
@@ -318,31 +345,36 @@ async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   return (await cmd.run(arg, ctx)) === true;
 }
 
-async function handleTurn(line: string, ctx: Ctx): Promise<void> {
-  const cur = readState(ctx.handle.statePath);
-  const reply = await ctx.responder
-    .respond({
-      message: line,
-      personaBody: ctx.handle.body,
-      memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content),
-      state: cur.values,
-      name: ctx.name,
-    })
-    .catch((e) => `(responder error: ${(e as Error).message})`);
-  ctx.out(voiceWrap(ctx.theme, `  ${ctx.name}: ${reply}`));
-  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+function shortName(ctx: Ctx): string {
+  return ctx.name.length > 20 ? ctx.name.split(/\s+/)[0].replace(/^@/, "").slice(0, 20) : ctx.name;
 }
 
-async function runAgent(task: string, ctx: Ctx): Promise<void> {
-  if (!task) return void ctx.out(chalk.yellow("  usage: /do <task to accomplish>"));
+/**
+ * A turn: the persona CONVERSES and (when needed) USES TOOLS — one governed agent
+ * loop, with persistent conversation + the session context meter. This unifies chat
+ * and `/do`: natural language can now call tools. Offline (no model) → the honest
+ * reflective responder. Identity evolution (the Living Loop) still runs each turn.
+ */
+async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const llm = llmConfig();
-  if (!llm) return void ctx.out(chalk.yellow("  /do needs a model — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL (and API key)."));
+  if (!llm) {
+    const cur = readState(ctx.handle.statePath);
+    const reply = await ctx.responder
+      .respond({ message: line, personaBody: ctx.handle.body, memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content), state: cur.values, name: ctx.name })
+      .catch((e) => `(responder error: ${(e as Error).message})`);
+    ctx.out(voiceWrap(ctx.theme, `  ${shortName(ctx)}: ${reply}`));
+    await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+    return;
+  }
+
+  const fm = ctx.handle.frontmatter as Record<string, unknown>;
   const bus = new EventBus();
   bus.on((e) => {
     const l = renderEvent(ctx.theme, e);
     if (l) ctx.out(l);
   });
-  const fm = ctx.handle.frontmatter as Record<string, unknown>;
+  const obs = readObservability(fm);
+  const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
   const agent = new PersonaAgent({
     llm,
     policy: buildPolicy(ctx),
@@ -353,21 +385,30 @@ async function runAgent(task: string, ctx: Ctx): Promise<void> {
     verification: readVerification(fm),
     judge: { endpoint: llm.endpoint, model: llm.model, apiKey: llm.apiKey },
     personaPath: ctx.handle.personaPath,
+    meter: ctx.meter,
+    priorMessages: ctx.conversation,
     bus,
   });
-  const obs = readObservability(fm);
-  const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
-  ctx.out(chalk.dim(`  agent posture: ${POSTURES[ctx.postureIndex]} · ${task}`));
-  const result = await agent.run(task);
-  ctx.out(
-    chalk.dim(`  budget: ${result.budget.steps} steps · ${result.budget.tokens} tok · $${result.budget.costUsd}` +
-      (result.budget.stoppedBy ? ` · stopped: ${result.budget.stoppedBy}` : "")),
-  );
+  const result = await agent.run(line);
+  ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
+  ctx.out(voiceWrap(ctx.theme, `  ${shortName(ctx)}: ${result.summary || "…"}`));
+  // Only surface the budget line when something noteworthy happened (a multi-step
+  // task or an early stop) — not on every one-shot chat reply.
+  if (result.budget.steps > 1 || (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met")) {
+    ctx.out(chalk.dim(`  budget: ${result.budget.steps} steps · ${result.budget.tokens} tok · $${result.budget.costUsd}` + (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met" ? ` · stopped: ${result.budget.stoppedBy}` : "")));
+  }
   if (tracer) {
     const { paths } = tracer.write(ctx.handle.personaPath);
     tracer.stop();
     for (const p of paths) ctx.out(chalk.dim(`  trace → ${p}`));
   }
+  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`)));
+}
+
+const handleTurn = runAgentTurn;
+async function runAgent(task: string, ctx: Ctx): Promise<void> {
+  if (!task) return void ctx.out(chalk.yellow("  usage: /do <task to accomplish>"));
+  return runAgentTurn(task, ctx);
 }
 
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
@@ -405,6 +446,10 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     recompile: makeRecompileHook(existsSync(compiledCandidate) ? compiledCandidate : undefined),
   });
 
+  const llm0 = llmConfig();
+  const meter = new ContextMeter(llm0 ? cachedContextWindow(llm0.model) : 0);
+  if (llm0) void resolveContextWindow(llm0).then((w) => (meter.limit = w)).catch(() => {});
+
   const ctx: Ctx = {
     handle,
     loop,
@@ -415,6 +460,8 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     out: (t) => stdout.write(t + "\n"),
     postureIndex: POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox),
     approve: async () => "deny",
+    conversation: [],
+    meter,
   };
   if (ctx.postureIndex < 0) ctx.postureIndex = 1;
 

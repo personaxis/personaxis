@@ -78,14 +78,25 @@ const NETWORK = /\b(curl|wget|nc|ncat|ssh|scp|telnet|ftp|rsync)\b|\bnpm\s+(insta
 const WRITE = />>?|\b(rm|mv|cp|mkdir|touch|tee|dd|truncate|chmod|chown|ln)\b/i;
 const DESTRUCTIVE = /\brm\s+-[a-z]*f|\b(mkfs|fdisk|shred|:\(\)\s*\{)/i;
 
+/**
+ * A leading-slash token that is really a Windows/CLI SWITCH, not a filesystem path
+ * (e.g. `/t`, `/c`, `/s`, `/?`, `/all`, `/b`). Real escaping paths look like
+ * `/etc/passwd`, `/usr`, `/tmp`, `~/x`, `../x`. We exclude switch-shaped tokens so
+ * harmless commands like `date /t` or `dir /s` aren't misflagged as workspace escapes.
+ */
+function isCliSwitch(tok: string): boolean {
+  return /^\/(\?|[a-zA-Z]{1,3}(:[A-Za-z0-9_-]+)?)$/.test(tok);
+}
+
 /** Heuristically classify what a shell command would do. */
 export function classifyCommand(cmd: string, workspaceRoot: string): CommandClass {
   const writesFiles = WRITE.test(cmd);
   const network = NETWORK.test(cmd);
   const destructive = DESTRUCTIVE.test(cmd);
-  const escapesWorkspace = (cmd.match(/(?:^|\s)(\/[^\s'"]+|[~][^\s'"]*|\.\.\/[^\s'"]*)/g) ?? []).some((tok) =>
-    pathEscapesWorkspace(tok.trim(), workspaceRoot),
-  );
+  const escapesWorkspace = (cmd.match(/(?:^|\s)(\/[^\s'"]+|[~][^\s'"]*|\.\.\/[^\s'"]*)/g) ?? [])
+    .map((tok) => tok.trim())
+    .filter((tok) => !isCliSwitch(tok))
+    .some((tok) => pathEscapesWorkspace(tok, workspaceRoot));
   return { writesFiles, network, destructive, escapesWorkspace };
 }
 
