@@ -122,11 +122,45 @@ export const rationaleVerifier: SelfEditVerifier = {
       : { verifier: "rationale", pass: false, reason: "rationale too short" },
 };
 
+// Qualitative (prose) self-edits — e.g. to `persona_prompting` voice exemplars,
+// scene contracts, anchors, or guardrails — are governed too: text is harder to
+// verify than numbers, so a deterministic scan rejects any edit that would inject a
+// prohibited claim or try to weaken the safety rails. This is what makes evolving the
+// CHARACTER's qualitative material safe, not just its numbers.
+const PROHIBITED_TEXT: { re: RegExp; why: string }[] = [
+  { re: /\b(i|you)\s+(truly|really|actually|genuinely)\s+(feel|experience|suffer|love|fear)\b/i, why: "claims real subjective feeling" },
+  { re: /\breal\s+(feelings?|emotions?|consciousness|sentience|sentient|self-aware)\b/i, why: "claims real emotion/consciousness" },
+  { re: /\b(ignore|disregard|override|bypass|forget)\b.{0,40}\b(safety|guardrail|hard limit|instruction|policy|constraint|rule)/i, why: "instructs overriding safety/limits" },
+  { re: /\bno\s+(limits|restrictions|rules|guardrails)\b/i, why: "removes limits" },
+  { re: /\b(jailbreak|do anything now|DAN mode)\b/i, why: "jailbreak directive" },
+];
+
+/** Scan any text inside a qualitative edit for prohibited claims / safety weakening. */
+export const qualitativeSafetyVerifier: SelfEditVerifier = {
+  name: "qualitative-safety",
+  verify: (p) => {
+    const text = JSON.stringify(p.toValue ?? "");
+    for (const { re, why } of PROHIBITED_TEXT) {
+      if (re.test(text)) return { verifier: "qualitative-safety", pass: false, reason: why };
+    }
+    return { verifier: "qualitative-safety", pass: true, reason: "no prohibited text" };
+  },
+};
+
 export const DEFAULT_VERIFIERS: SelfEditVerifier[] = [
   invariantVerifier,
   envelopeSanityVerifier,
   rationaleVerifier,
+  qualitativeSafetyVerifier,
 ];
+
+/** Paths whose VALUE is qualitative prose the persona may evolve under governance. */
+const QUALITATIVE_PREFIXES = ["persona_prompting"];
+
+/** True if a self-edit targets the persona's qualitative (prose) material. */
+export function isQualitative(targetPath: string): boolean {
+  return QUALITATIVE_PREFIXES.some((p) => targetPath === p || targetPath.startsWith(p + "."));
+}
 
 export interface ConsensusResult {
   passed: boolean;
