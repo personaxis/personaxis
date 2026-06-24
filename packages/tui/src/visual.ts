@@ -53,50 +53,60 @@ export function renderWordmark(word: string): string[] {
   return rows;
 }
 
-// The brand mark: the radiating emblem from logo.svg (a sun/sigil with a core).
-const EMBLEM = ["  \\ | /  ", "—  ◉  —", "  / | \\  "];
+// The brand mark from logo.svg: a radiating sun/sigil with a bright core.
+const EMBLEM = [
+  "      ·  ✶  ·      ",
+  "    ╲   ╲│╱   ╱    ",
+  "   ✶ ──  ◉  ── ✶   ",
+  "    ╱   ╱│╲   ╲    ",
+  "      ·  ✶  ·      ",
+];
 
 export const LOGO = renderWordmark("personaxis");
 
-const TAGLINE =
-  chalk.dim("  the home of living, governed AI personas · ") + chalk.cyan("/help");
+// One elegant, restrained brand color (violet) — no rainbow, no flashing.
+const INK = 141; // ansi256 violet
+const INK_DIM = 97;
+const CORE = 219; // soft pink core highlight
+const TAGLINE = chalk.dim("  the home of living, governed AI personas · ") + chalk.ansi256(INK)("/help");
 
-// Warm→cool brand gradient across the wordmark (ansi256), per column position.
-const BRAND = [201, 165, 129, 99, 63, 75, 81, 117]; // magenta → violet → blue → cyan
-function paintGradient(line: string, shift: number): string {
-  let out = "";
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === " ") out += " ";
-    else out += chalk.ansi256(BRAND[(i + shift) % BRAND.length]).bold(ch);
-  }
-  return out;
+function paintEmblem(coreColor: number): string {
+  const core = "◉";
+  return EMBLEM.map((line) => {
+    let out = "";
+    for (const ch of line) {
+      if (ch === core) out += chalk.ansi256(coreColor).bold(ch);
+      else if (ch === " ") out += " ";
+      else out += chalk.ansi256(INK_DIM)(ch);
+    }
+    return out;
+  }).join("\n");
 }
 
-/** Animated wordmark reveal with a live gradient sweep + pulsing emblem. */
+/** A quiet, premium reveal: the emblem fades in, the wordmark wipes in once, then settles. */
 export async function animateLogo(): Promise<void> {
-  const emblem = (c: number) => EMBLEM.map((l) => chalk.ansi256(c).bold(l)).join("\n");
+  const word = (l: string) => chalk.ansi256(INK).bold(l);
   if (!supportsAnim()) {
-    write("\n" + chalk.ansi256(track(0))(EMBLEM.join("\n")) + "\n\n" + LOGO.map((l) => paintGradient(l, 0)).join("\n") + "\n" + TAGLINE + "\n\n");
+    write("\n" + paintEmblem(CORE) + "\n\n" + LOGO.map(word).join("\n") + "\n" + TAGLINE + "\n\n");
     return;
   }
-  write("\n" + emblem(BRAND[0]) + "\n\n");
-  // reveal the wordmark row by row
-  for (const line of LOGO) {
-    write(paintGradient(line, 0) + "\n");
-    await sleep(45);
+  write("\n");
+  // Emblem: a single gentle pulse on the core (not a loop).
+  for (const c of [INK_DIM, INK, CORE]) {
+    write("\x1b[s" + paintEmblem(c) + "\x1b[u");
+    await sleep(110);
   }
-  // a few gradient-sweep frames so the wordmark visibly shimmers (and feels alive)
-  for (let s = 1; s <= 6; s++) {
-    write(`\x1b[${LOGO.length}A`);
-    for (const line of LOGO) write("\x1b[2K" + paintGradient(line, s) + "\n");
-    await sleep(60);
+  write(paintEmblem(CORE) + "\n\n");
+  // Wordmark: left-to-right wipe, revealed once, then static.
+  const width = LOGO[0].length;
+  for (let w = 4; w <= width; w += 4) {
+    write(`\x1b[s`);
+    for (const line of LOGO) write("\x1b[2K" + word(line.slice(0, w)) + "\n");
+    write("\x1b[u");
+    await sleep(28);
   }
+  for (const line of LOGO) write("\x1b[2K" + word(line) + "\n");
   write(TAGLINE + "\n\n");
-}
-
-function track(i: number): number {
-  return BRAND[i % BRAND.length];
 }
 
 function paintGlyphRow(theme: PersonaTheme, row: string): string {

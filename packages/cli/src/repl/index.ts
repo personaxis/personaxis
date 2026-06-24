@@ -58,7 +58,6 @@ import {
   animateLogo,
   awaken,
   sigilLines,
-  auraBar,
   envelopeBars,
   eventLine,
   voiceWrap,
@@ -513,75 +512,61 @@ async function runLineMode(ctx: Ctx): Promise<void> {
   await farewell(ctx.handle.frontmatter);
 }
 
-function fmtK(n: number): string {
-  return n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n);
-}
 
-/** The Hermes-style context bar: model | used/limit | [bar] pct% | elapsed. */
-function contextBar(ctx: Ctx): string {
+/** A compact prompt with the live context fill — no persistent bottom bar (which
+ * would need an alt-screen). Keeps the terminal NORMAL so scroll/selection work. */
+function promptLine(ctx: Ctx): string {
   const m = ctx.meter;
-  if (!m.limit) return chalk.dim("  offline — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL");
+  const arrow = chalk.ansi256(ctx.theme.palette.accent)("❯");
+  if (!m.limit) return chalk.dim(`${shortName(ctx)} `) + arrow + " ";
   const pct = Math.round(m.pct * 100);
-  const barW = 12;
-  const filled = Math.min(barW, Math.round(m.pct * barW));
-  const bar = "█".repeat(filled) + "░".repeat(barW - filled);
-  const color = pct >= 80 ? chalk.red : pct >= 60 ? chalk.yellow : chalk.green;
-  const el = Math.floor(m.elapsedSeconds);
-  const elapsed = el >= 60 ? `${Math.floor(el / 60)}m${el % 60}s` : `${el}s`;
-  const model = process.env.PERSONAXIS_MODEL ?? "model";
-  return (
-    chalk.dim(`  ${model} `) + chalk.dim("│ ") + color(`${fmtK(m.used)}/${fmtK(m.limit)}`) +
-    chalk.dim(" │ ") + color(bar) + " " + color(`${pct}%`) + chalk.dim(` │ ${elapsed} · /help`)
-  );
+  const color = pct >= 80 ? chalk.red : pct >= 60 ? chalk.yellow : chalk.dim;
+  return chalk.dim(`${shortName(ctx)} `) + color(`${pct}%`) + " " + arrow + " ";
 }
 
-// ── TTY: full alternate-screen app ───────────────────────────────────────────
+// ── TTY: minimalist interactive REPL in the NORMAL buffer ────────────────────
 async function runScreenMode(ctx: Ctx): Promise<void> {
   const commands: SlashItem[] = COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
   let screen: Screen;
 
-  const header = (cols: number): string[] => {
-    const st = readState(ctx.handle.statePath);
-    return [
-      "  " + chalk.bold.ansi256(ctx.theme.palette.accent)(shortName(ctx)) +
-        chalk.dim(`  ·  ${auraBar(ctx.theme, st.values)}  ·  mode ${ctx.mode}  ·  posture `) + chalk.bold(POSTURES[ctx.postureIndex]),
-      chalk.dim("  " + "─".repeat(Math.max(0, Math.min(cols, 80) - 2))),
-    ];
-  };
-
   screen = new Screen({
-    renderHeader: header,
-    renderStatus: () => contextBar(ctx),
+    prompt: () => promptLine(ctx),
     commands,
     onCycleMode: () => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
+      screen.print(chalk.dim(`  posture → ${POSTURES[ctx.postureIndex]}`));
     },
     onExit: () => screen.stop(),
     onSubmit: async (line) => {
-      screen.setBusy(true, line.startsWith("/") ? "running command" : "thinking");
-      try {
-        if (line.startsWith("/")) {
-          screen.print(chalk.dim(line), "user");
-          const done = await runCommand(line, ctx);
-          if (done) {
-            screen.stop();
-            process.exit(0);
-          }
-        } else {
-          screen.divider();
-          screen.print(chalk.cyan(line), "user");
-          await handleTurn(line, ctx);
+      if (line.startsWith("/")) {
+        screen.print(chalk.dim(`  ${line}`));
+        const done = await runCommand(line, ctx);
+        if (done) {
+          screen.stop();
+          await farewell(ctx.handle.frontmatter);
+          process.exit(0);
         }
+        return;
+      }
+      // Chat/agent turn — timed per message.
+      screen.print(""); // separator between turns
+      screen.print(chalk.bold.ansi256(ctx.theme.palette.secondary)("you ") + chalk.dim("› ") + line, "user");
+      screen.setBusy(true, "thinking");
+      const t0 = Date.now();
+      try {
+        await handleTurn(line, ctx);
       } finally {
         screen.setBusy(false);
       }
+      const secs = ((Date.now() - t0) / 1000).toFixed(1);
+      screen.print(chalk.dim(`  ⟢ ${secs}s`)); // per-message response time, stays in the chat
     },
   });
 
   ctx.out = (t, role) => screen.print(t, role ?? "system");
   ctx.phase = (label) => screen.setPhase(label);
   ctx.approve = async (call) => {
-    const ans = (await screen.ask(chalk.yellow(`approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`))).trim().toLowerCase();
+    const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`)).trim().toLowerCase();
     return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
   };
   ctx.loop.bus.on((e) => {
@@ -590,5 +575,5 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   });
 
   screen.start();
-  screen.print(voiceWrap(ctx.theme, `${shortName(ctx)} is awake`) + chalk.dim(" — talk in natural language (it can use tools), or /help."), "persona");
+  screen.print(voiceWrap(ctx.theme, `${shortName(ctx)} is awake`) + chalk.dim(" — talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");
 }
