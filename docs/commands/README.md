@@ -11,21 +11,21 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 
 | Command | What it does |
 |---|---|
-| `init [slug]` | Scaffold a persona (root or sub) — generates `personaxis.md` + `policy.yaml` (spec 0.10). |
-| `validate <file>` | 5-status validator (PASS / PASS_WITH_WARNINGS / FAIL_SCHEMA / FAIL_POLICY / FAIL_CONCEPTUAL). |
-| `lint <file>` | Tier-aware semantic findings against the layer/field contract. |
-| `compile [slug]` | Compile to the canonical `PERSONA.md` / `persona.md`; `--platform` exports a host placement. See [compile](../architecture/compile.md). |
-| `decompile` | Reverse: edited compiled doc → proposed `personaxis.md` (re-validate before writing). |
-| `improve [mode]` | View/set self-improvement posture (`locked` / `suggesting` / `autonomous`). See [self-evolution](../architecture/self-evolution.md). |
-| `state` | init / show / mutate `state.json` (envelope-clamped). |
-| `migrate <a-to-b>` | Version codemods (`0.9-to-0.10` is additive — bumps `spec_version`). |
-| `sigil` | Render a persona's deterministic, state-aware ASCII sigil. |
-| `scan` | Cross-harness config scanner (red/blue/auditor). |
-| `push` / `pull` | Publish / fetch a persona version (spec + compiled doc + resources). |
-| `personas` | Global persona registry (reuse across projects). |
-| `serve` | Runtime/MCP serving. |
-| `trace` | Inspect JSONL/OTLP traces. |
-| _(no subcommand)_ | Enter the living **REPL**. |
+| [`init [slug]`](./init.md) | Scaffold a persona (root or sub) — generates `personaxis.md` + `policy.yaml` (spec 0.10). |
+| [`validate <file>`](./validate.md) | 5-status validator (PASS / PASS_WITH_WARNINGS / FAIL_SCHEMA / FAIL_POLICY / FAIL_CONCEPTUAL). |
+| [`lint <file>`](./lint.md) | Tier-aware semantic findings against the layer/field contract. |
+| [`compile [slug]`](./compile.md) | Compile to the canonical `PERSONA.md`; `--platform` exports a host placement. |
+| [`decompile`](./decompile.md) | Reverse: edited compiled doc → proposed `personaxis.md` (re-validates before writing). |
+| [`improve [mode]`](./improve.md) | View/set self-improvement posture (`locked` / `suggesting` / `autonomous`). |
+| [`state`](./state.md) | init / show / mutate `state.json` (envelope-clamped). |
+| [`migrate <a-to-b>`](./migrate.md) | Version codemods (`0.9-to-0.10` is additive — bumps `spec_version`). |
+| [`sigil`](./sigil.md) | Render a persona's deterministic, state-aware ASCII sigil. |
+| [`scan`](./scan.md) | Cross-harness config scanner (red/blue/auditor). |
+| [`push` / `pull`](./push-pull.md) | Publish / fetch a persona version (spec + compiled doc + resources). |
+| [`personas`](./personas.md) | Global persona registry (reuse across projects). |
+| [`serve`](./serve.md) | Runtime / MCP serving. |
+| [`trace`](./trace.md) | Inspect JSONL/OTLP traces. |
+| [_(no subcommand)_](./repl.md) | Enter the living **REPL**. |
 
 ## REPL slash-commands
 

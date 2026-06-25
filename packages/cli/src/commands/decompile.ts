@@ -63,7 +63,12 @@ export async function runDecompile(opts: RunDecompileOptions): Promise<void> {
 
   const provider = resolveProvider(opts.provider);
   const result = await runProviderOrExit(provider, prompt, opts.fromFile);
-  const proposedSpecMarkdown = result.text.trim() + "\n";
+  let proposed = result.text.trim();
+  // Some providers wrap the whole document in a ```fence``` despite instructions — strip it,
+  // otherwise gray-matter sees the fence as body and the frontmatter (all the spec) is lost.
+  const fence = proposed.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
+  if (fence) proposed = fence[1].trim();
+  const proposedSpecMarkdown = proposed + "\n";
 
   let data;
   try {
