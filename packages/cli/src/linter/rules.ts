@@ -76,7 +76,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
     });
   }
 
-  const SUPPORTED_SPEC_VERSIONS = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0", "0.8.0"]);
+  const SUPPORTED_SPEC_VERSIONS = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0", "0.8.0", "0.9.0", "0.10.0"]);
   if (data.spec_version && !SUPPORTED_SPEC_VERSIONS.has(String(data.spec_version))) {
     findings.push({
       rule: "spec-version",
@@ -440,6 +440,44 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         ? `Persona defines all ${totalRequired} required layers (kind=${kind ?? "?"}).`
         : `Persona defines ${layerCount}/${totalRequired} required layers (kind=${kind ?? "?"}). Missing: ${layersToCheck.filter((l) => !asObj(data[l])).join(", ")}.`,
   });
+
+  // v0.10: persona-prompting source material (MAY) — honest, tier-aware checks.
+  const pp = asObj(data.persona_prompting);
+  if (pp) {
+    const addr = asObj(pp.address);
+    if (addr && (typeof addr.you_are !== "string" || !addr.you_are.trim())) {
+      findings.push({
+        rule: "persona-prompting-address",
+        severity: "warning",
+        path: "persona_prompting.address.you_are",
+        message: "persona_prompting.address is set but 'you_are' is empty — role adoption is the strongest device; provide a one-line 'You are <name>…'.",
+      });
+    }
+    const exemplars = Array.isArray(pp.voice_exemplars) ? pp.voice_exemplars.length : 0;
+    if (exemplars > 0 && exemplars < 2) {
+      findings.push({
+        rule: "persona-prompting-voice",
+        severity: "info",
+        path: "persona_prompting.voice_exemplars",
+        message: "Only one voice exemplar — 2-4 few-shot samples anchor the register more reliably.",
+      });
+    }
+    if (Array.isArray(pp.break_character_guardrails) && pp.break_character_guardrails.length > 0) {
+      findings.push({
+        rule: "persona-prompting-guardrails",
+        severity: "info",
+        path: "persona_prompting.break_character_guardrails",
+        message: "Break-character guardrails present — note they NEVER override the safety universals (the compiler enforces this ordering).",
+      });
+    }
+  } else if (isAgent) {
+    findings.push({
+      rule: "persona-prompting-absent",
+      severity: "info",
+      path: "persona_prompting",
+      message: "No persona_prompting block — the compiled PERSONA.md will be derived from the quantitative layers. Adding voice_exemplars/scene_contracts/anchors yields a richer, more in-character document (see docs/PERSONA_PROMPTING.md).",
+    });
+  }
 
   return { findings, presentLayers, missingLayers };
 }

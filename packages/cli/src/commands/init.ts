@@ -24,7 +24,7 @@ export function buildMarketingGuru(displayName: string, slug: string): string {
   return `---
 apiVersion: persona.dev/v1
 kind: AgentPersona
-spec_version: "0.7.0"
+spec_version: "0.10.0"
 
 metadata:
   name: "${slug}"
@@ -42,6 +42,7 @@ extensions:
 identity:
   canonical_id: "${slug}"
   display_name: "${displayName}"
+  short_name: "${displayName}"          # v0.10: chat/UI handle
   system_identity:
     purpose: "Own the complete marketing function — from positioning and brand to content, growth, campaigns, and analytics."
     allowed_domains:
@@ -332,6 +333,26 @@ governance:
     persona: 0.20
   improvement_policy_location: "./policy.yaml#/improvement_policy"
 
+# v0.10: inline self-improvement posture read by the runtime. Change with
+# \`personaxis improve <mode>\` or the REPL /improve.
+improvement_policy:
+  mode: locked                          # locked | suggesting | autonomous
+
+# v0.10: persona-prompting source material the compiler assembles into PERSONA.md.
+# All optional; see docs/PERSONA_PROMPTING.md. Uncomment and fill to enrich the
+# compiled, LLM-facing document (role adoption, voice, scene contracts, guardrails).
+# persona_prompting:
+#   address:
+#     second_person: true
+#     you_are: ""
+#   voice_exemplars:
+#     - { context: "", user: "", persona: "" }
+#   scene_contracts:
+#     - { situation: "", expected_behavior: "", actions: [] }
+#   behavioral_anchors: { do: [], dont: [], examples: [] }
+#   break_character_guardrails: []
+#   consistency: { stable: [], evolving: [], situational: [] }
+
 security:
   prompt_injection_defense: true
   memory_poisoning_defense: true
@@ -384,7 +405,7 @@ function buildCustomAgentTemplate(
   return `---
 apiVersion: persona.dev/v1
 kind: AgentPersona
-spec_version: "0.7.0"
+spec_version: "0.10.0"
 
 metadata:
   name: "${slug}"
@@ -402,6 +423,7 @@ extensions:
 identity:
   canonical_id: "${slug}"
   display_name: "${displayName}"
+  short_name: "${displayName}"          # v0.10: chat/UI handle
   system_identity:
     purpose: "${purpose || "TODO: one-sentence reason this persona exists"}"
     allowed_domains: []
@@ -600,6 +622,26 @@ governance:
     persona: 0.20
   improvement_policy_location: "./policy.yaml#/improvement_policy"
 
+# v0.10: inline self-improvement posture read by the runtime. Change with
+# \`personaxis improve <mode>\` or the REPL /improve.
+improvement_policy:
+  mode: locked                          # locked | suggesting | autonomous
+
+# v0.10: persona-prompting source material the compiler assembles into PERSONA.md.
+# All optional; see docs/PERSONA_PROMPTING.md. Uncomment and fill to enrich the
+# compiled, LLM-facing document (role adoption, voice, scene contracts, guardrails).
+# persona_prompting:
+#   address:
+#     second_person: true
+#     you_are: ""
+#   voice_exemplars:
+#     - { context: "", user: "", persona: "" }
+#   scene_contracts:
+#     - { situation: "", expected_behavior: "", actions: [] }
+#   behavioral_anchors: { do: [], dont: [], examples: [] }
+#   break_character_guardrails: []
+#   consistency: { stable: [], evolving: [], situational: [] }
+
 security:
   prompt_injection_defense: true
   memory_poisoning_defense: true
@@ -627,7 +669,7 @@ function buildUserPersonaTemplate(displayName: string, slug: string): string {
   return `---
 apiVersion: persona.dev/v1
 kind: UserPersona
-spec_version: "0.7.0"
+spec_version: "0.10.0"
 
 metadata:
   name: "${slug}"
@@ -641,6 +683,7 @@ metadata:
 identity:
   canonical_id: "${slug}"
   display_name: "${displayName}"
+  short_name: "${displayName}"          # v0.10: chat/UI handle
   system_identity:
     purpose: "TODO: what are you trying to accomplish that the agent should help with"
   role_identity:
@@ -695,7 +738,7 @@ function buildProjectBaseline(projectName: string, projectSlug: string): string 
   return `---
 apiVersion: persona.dev/v1
 kind: AgentPersona
-spec_version: "0.7.0"
+spec_version: "0.10.0"
 
 metadata:
   name: "${projectSlug}-baseline"
@@ -871,6 +914,26 @@ governance:
     persona: 0.20
   improvement_policy_location: "./policy.yaml#/improvement_policy"
 
+# v0.10: inline self-improvement posture read by the runtime. Change with
+# \`personaxis improve <mode>\` or the REPL /improve.
+improvement_policy:
+  mode: locked                          # locked | suggesting | autonomous
+
+# v0.10: persona-prompting source material the compiler assembles into PERSONA.md.
+# All optional; see docs/PERSONA_PROMPTING.md. Uncomment and fill to enrich the
+# compiled, LLM-facing document (role adoption, voice, scene contracts, guardrails).
+# persona_prompting:
+#   address:
+#     second_person: true
+#     you_are: ""
+#   voice_exemplars:
+#     - { context: "", user: "", persona: "" }
+#   scene_contracts:
+#     - { situation: "", expected_behavior: "", actions: [] }
+#   behavioral_anchors: { do: [], dont: [], examples: [] }
+#   break_character_guardrails: []
+#   consistency: { stable: [], evolving: [], situational: [] }
+
 security:
   prompt_injection_defense: true
   memory_poisoning_defense: true
@@ -914,7 +977,7 @@ function buildPolicyYaml(metaSlug: string, includeStarterSuites = true): string 
 # prompt. Read by Personaxis backend for observability + mutation governance.
 # See docs/personaxis-docs/concepts/policy-and-improvement.mdx.
 
-spec_version: "0.7.0"
+spec_version: "0.10.0"
 
 applies_to:
   persona_name: "${metaSlug}"
@@ -997,7 +1060,7 @@ export const initCommand = new Command("init")
       writeFileSync(baselinePolicyPath, buildPolicyYaml(`${projectSlug}-baseline`), "utf-8");
 
       console.log("");
-      console.log(chalk.green("✓"), chalk.bold(".personaxis/personaxis.md + policy.yaml created"), chalk.dim("(project baseline, spec_version 0.7.0)"));
+      console.log(chalk.green("✓"), chalk.bold(".personaxis/personaxis.md + policy.yaml created"), chalk.dim("(project baseline, spec_version 0.10.0)"));
       console.log(chalk.dim("  Fill in the TODO fields, then validate and compile:"));
       console.log(chalk.cyan("  personaxis validate"));
       console.log(chalk.cyan("  personaxis compile --root --platform claude-code"));
@@ -1083,7 +1146,7 @@ export const initCommand = new Command("init")
     console.log("");
     console.log(chalk.green("✓"), chalk.bold(displayName), chalk.dim(`→ .personaxis/personas/${folderSlug}/{personaxis.md, policy.yaml}`));
     if (isFilled) {
-      console.log(chalk.dim("  All fields pre-filled (spec_version 0.7.0). Review and adjust, then:"));
+      console.log(chalk.dim("  All fields pre-filled (spec_version 0.10.0). Review and adjust, then:"));
     } else {
       console.log(chalk.dim("  Fill in the TODO fields, then:"));
     }
