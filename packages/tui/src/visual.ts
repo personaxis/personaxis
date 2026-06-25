@@ -83,8 +83,19 @@ function paintEmblem(bright: boolean): string {
   }).join("\n");
 }
 
-/** A quiet, premium reveal: the emblem settles, the wordmark wipes in once. Monochrome. */
+/** Compact single-line logo for narrow terminals (the block wordmark would wrap + break). */
+function compactLogo(): string {
+  return chalk.bold("◉ personaxis") + chalk.dim("  ·  living, governed AI personas");
+}
+
+/** A quiet, premium reveal: the emblem settles, the wordmark wipes in once. Monochrome.
+ *  Responsive: falls back to a one-line mark when the terminal is narrower than the block. */
 export async function animateLogo(): Promise<void> {
+  const cols = process.stdout.columns ?? 80;
+  if (cols < LOGO[0].length + 2) {
+    write("\n" + compactLogo() + "\n\n");
+    return;
+  }
   if (!supportsAnim()) {
     write("\n" + paintEmblem(true) + "\n\n" + LOGO.map(word).join("\n") + "\n" + TAGLINE + "\n\n");
     return;
