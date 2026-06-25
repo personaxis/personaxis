@@ -15,17 +15,17 @@ Source: `packages/cli/src/repl/{roster.ts, index.ts}`; `packages/cli/src/command
     personas/
       cmo/
         personaxis.md  state.json  memory.md  …            ← sub resources
-        persona.md                        ← sub compiled doc (INSIDE its own folder)
+        PERSONA.md                        ← sub compiled doc (INSIDE its own folder)
         personas/                         ← a sub can have its own subs (recurses)
 ```
 
 The root's compiled `PERSONA.md` sits at the repo root so a host agent reads it as the
-project baseline; a sub's compiled `persona.md` sits **inside** its folder next to its own
+project baseline; a sub's compiled `PERSONA.md` sits **inside** its folder next to its own
 resources. `personaxis compile` resolves these automatically:
 
 ```bash
 personaxis compile --root        # .personaxis/personaxis.md  → ./PERSONA.md
-personaxis compile cmo           # .personaxis/personas/cmo/personaxis.md → …/cmo/persona.md
+personaxis compile cmo           # .personaxis/personas/cmo/personaxis.md → …/cmo/PERSONA.md
 personaxis compile cmo --platform claude-code   # ALSO export .claude/agents/cmo.md (host)
 ```
 
@@ -39,7 +39,7 @@ You talk to the **root** by default. To reach sub-personas, prefix the message:
 
 Unknown `@tokens` (e.g. an email) are left in the message, never mis-routed. A reply comes
 **from the addressed persona** — its own name and its own fixed color — not ventriloquized by
-the root. Each sub runs with its **own** spec, compiled `persona.md`, `state.json`, memory,
+the root. Each sub runs with its **own** spec, compiled `PERSONA.md`, `state.json`, memory,
 and self-improvement ledger; only the screen + the session context-meter are shared.
 
 > Why `@` and not a format that clashes with hosts: addressing is a CLI-level convenience.

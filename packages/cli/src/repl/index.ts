@@ -584,7 +584,7 @@ function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number):
   ensureState(handle);
   const isSub = isSubagentPath(personaPath);
   const compiled = isSub
-    ? join(dirname(personaPath), "persona.md")
+    ? join(dirname(personaPath), "PERSONA.md")
     : resolve(dirname(dirname(personaPath)), "PERSONA.md");
   const personaDoc = existsSync(compiled) ? readFileSync(compiled, "utf-8") : handle.body;
   const loop = new LivingLoop(personaPath, {

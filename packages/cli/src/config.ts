@@ -11,6 +11,8 @@ export interface PersonaxisConfig {
     /** OpenAI-compatible chat-completions endpoint, e.g. http://localhost:11434/v1 */
     endpoint?: string;
     model?: string;
+    /** Optional bearer token for an authenticated endpoint (Cohere/OpenRouter/Groq). */
+    apiKey?: string;
   };
   byok?: {
     /** Which API the key in ANTHROPIC_API_KEY / OPENAI_API_KEY belongs to. */

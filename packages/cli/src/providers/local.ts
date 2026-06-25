@@ -5,16 +5,20 @@ const DEFAULT_ENDPOINT = "http://localhost:11434/v1";
 const DEFAULT_MODEL = "llama3.1";
 
 /**
- * Calls a local OpenAI-compatible chat-completions endpoint (Ollama,
- * llama.cpp server, LM Studio, ...). Configure with:
+ * Calls any OpenAI-compatible chat-completions endpoint — local (Ollama, llama.cpp,
+ * LM Studio) OR a hosted, authenticated one (Cohere/OpenRouter/Groq/...). Configure with:
  *
  *   personaxis config set provider local
  *   personaxis config set local.endpoint http://localhost:11434/v1
  *   personaxis config set local.model llama3.1
+ *
+ * Env overrides (so the same vars that drive the REPL appraiser also drive compile):
+ *   PERSONAXIS_ENDPOINT, PERSONAXIS_MODEL, PERSONAXIS_API_KEY (sends `Authorization: Bearer`).
  */
 export function createLocalProvider(config: PersonaxisConfig): Provider {
-  const endpoint = config.local?.endpoint ?? DEFAULT_ENDPOINT;
-  const model = config.local?.model ?? DEFAULT_MODEL;
+  const endpoint = process.env.PERSONAXIS_ENDPOINT ?? config.local?.endpoint ?? DEFAULT_ENDPOINT;
+  const model = process.env.PERSONAXIS_MODEL ?? config.local?.model ?? DEFAULT_MODEL;
+  const apiKey = process.env.PERSONAXIS_API_KEY ?? config.local?.apiKey;
 
   return {
     name: "local",
@@ -22,7 +26,7 @@ export function createLocalProvider(config: PersonaxisConfig): Provider {
     async run(prompt: string): Promise<ProviderRunResult> {
       const res = await fetch(`${endpoint.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
         body: JSON.stringify({
           model,
           messages: [{ role: "user", content: prompt }],

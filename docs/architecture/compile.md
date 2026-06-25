@@ -8,12 +8,12 @@ Source: `packages/cli/src/commands/{compile,decompile}.ts`,
 
 LLM-based, provider-agnostic (`local | byok | agent | remote`). Input: the full
 `personaxis.md` (+ `policy.yaml`/`state.json` as reference + a capped resource manifest).
-Output: the persona-prompting document (`PERSONA.md` / `persona.md`).
+Output: the persona-prompting document (`PERSONA.md`).
 
 **Canonical output paths** (see [multi-persona.md](./multi-persona.md)):
 - root → `<repo>/PERSONA.md` (one level above `.personaxis/`); also injects `@PERSONA.md`
   into `CLAUDE.md`/`AGENTS.md`.
-- sub → `.personaxis/personas/<slug>/persona.md` (inside its folder).
+- sub → `.personaxis/personas/<slug>/PERSONA.md` (inside its folder).
 - `--platform claude-code|codex` → ALSO exports the host placement.
 
 Resource paths in the compiled doc are relative to where it lives: `./` for an in-folder sub,

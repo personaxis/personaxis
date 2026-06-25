@@ -27,7 +27,7 @@ docs/
 | Artifact | What | Mutability | Who writes it |
 |---|---|---|---|
 | `.personaxis/[personas/<slug>/]personaxis.md` | The quantitative + persona-prompting **spec** (source of truth) | Versioned; humans, or the persona under governance | `decompile`, governed self-edits |
-| `PERSONA.md` (root) · `.personaxis/personas/<slug>/persona.md` (sub) | The **compiled, LLM-facing** document (system-prompt slot #1) | Generated | `compile` |
+| `PERSONA.md` (root) · `.personaxis/personas/<slug>/PERSONA.md` (sub) | The **compiled, LLM-facing** document (system-prompt slot #1) | Generated | `compile` |
 | `state.json` | Mutable **runtime** dials (mood/affect) | Runtime | the state engine |
 
 Resources (`memory.md`, `memory/`, `references/`, `examples/`, `skills/`, `assets/`,

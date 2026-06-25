@@ -20,7 +20,7 @@ Source: `packages/cli/src/targets/{claude-code.ts, codex.ts, placement.ts}`;
 
 3. **The host routes** — Claude Code/Codex read the baseline as the repo-wide behavior and
    dispatch task-specific work to the subagents by their `description`. The canonical
-   `.personaxis/personas/<slug>/persona.md` stays the source; the host file is an export.
+   `.personaxis/personas/<slug>/PERSONA.md` stays the source; the host file is an export.
 
 ## What we facilitate (the value)
 
@@ -49,5 +49,5 @@ keeps all of that honest (validate / lint / compile / decompile / push / pull).
 
 ```bash
 personaxis compile --root                 # writes PERSONA.md + injects @PERSONA.md into CLAUDE.md
-personaxis compile cmo --platform codex   # writes the canonical persona.md AND .codex/agents/cmo.toml
+personaxis compile cmo --platform codex   # writes the canonical PERSONA.md AND .codex/agents/cmo.toml
 ```

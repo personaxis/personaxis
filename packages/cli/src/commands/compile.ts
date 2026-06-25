@@ -101,11 +101,11 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   //   sub-persona   -> .personaxis/personas/<slug>/persona.md  (INSIDE its own folder)
   // This mirrors the resource layout (a sub's files live in its folder) and lets the
   // structure recurse (a sub can itself have .personaxis/personas/<sub2>/).
-  const canonicalOutPath = isSubagent ? join(baseDir, "persona.md") : resolve(baseDir, "..", "PERSONA.md");
+  const canonicalOutPath = isSubagent ? join(baseDir, "PERSONA.md") : resolve(baseDir, "..", "PERSONA.md");
   const canonicalRel = relative(process.cwd(), canonicalOutPath).replace(/\\/g, "/");
 
   const target: CompileTargetInfo = isSubagent
-    ? { label: `sub-persona "${slug}" (.personaxis/personas/${slug}/persona.md)`, outputPath: canonicalRel, isSubagent: true, slug }
+    ? { label: `sub-persona "${slug}" (.personaxis/personas/${slug}/PERSONA.md)`, outputPath: canonicalRel, isSubagent: true, slug }
     : { label: "root persona (repo-root PERSONA.md)", outputPath: canonicalRel, isSubagent: false };
 
   // Fold APPLIED governed self-edits so a recompile reflects what the persona evolved into.
@@ -114,7 +114,10 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 
   const provider = resolveProvider(opts.provider);
   const result = await runProviderOrExit(provider, prompt, opts.fromFile);
-  const compiledText = result.text.trim();
+  let compiledText = result.text.trim();
+  // Some providers wrap the whole document in a ```fence``` despite instructions — strip it.
+  const fence = compiledText.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
+  if (fence) compiledText = fence[1].trim();
 
   const outPath = resolve(opts.out ?? canonicalOutPath);
 
