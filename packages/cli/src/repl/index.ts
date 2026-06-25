@@ -500,11 +500,29 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     tracer.stop();
     for (const p of paths) ctx.out(chalk.dim(`  trace → ${p}`));
   }
-  // Identity evolution runs SILENTLY (no observe/appraise/govern noise in chat).
-  const report = await ctx.loop
-    .tick({ observation: line, source: "user", actor: "actor-llm" })
-    .catch(() => ({ mutationsApplied: 0, memoriesWritten: 0, abstained: true }));
-  if (report.mutationsApplied > 0) ctx.out(chalk.dim(`  · evolved (${report.mutationsApplied})`));
+  // Identity evolution runs without the observe/appraise/govern noise — but we DO
+  // surface a concise, meaningful summary of what actually happened this turn:
+  // which envelope changed, whether memory was written, whether PERSONA.md recompiled.
+  const changed: string[] = [];
+  let memWrites = 0;
+  let recompiled = false;
+  const off = ctx.loop.bus.on((e) => {
+    if (e.type === "mutate" && e.result && !e.result.blocked) {
+      changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
+    } else if (e.type === "memory") {
+      memWrites++;
+    } else if (e.type === "recompile") {
+      recompiled = true;
+      ctx.phase?.("recompiling PERSONA.md");
+    }
+  });
+  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch(() => {});
+  off();
+  const parts: string[] = [];
+  if (changed.length) parts.push("evolved " + changed.join(", "));
+  if (memWrites) parts.push(`memory +${memWrites}`);
+  if (recompiled) parts.push("PERSONA.md recompiled");
+  if (parts.length) ctx.out(chalk.dim("  · " + parts.join("  ·  ")));
 }
 
 const handleTurn = runAgentTurn;
