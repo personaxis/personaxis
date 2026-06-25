@@ -13,3 +13,4 @@ packages/cli/src/generated/
 .cursor/
 .personaxis/*
 !.personaxis/personaxis.md
+.recompile-pending.json

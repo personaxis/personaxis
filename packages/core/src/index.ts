@@ -15,6 +15,7 @@ export * from "./responder.js";
 export * from "./governance.js";
 export * from "./verification.js";
 export * from "./self-evolution.js";
+export * from "./recompile-marker.js";
 export * from "./registry.js";
 export * from "./blackboard.js";
 export * from "./live-sync.js";

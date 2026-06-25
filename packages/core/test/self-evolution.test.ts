@@ -14,6 +14,8 @@ import {
   isProtected,
   isQualitative,
   consensusVerify,
+  readRecompilePending,
+  clearRecompilePending,
   SelfEditError,
 } from "../src/index.js";
 
@@ -97,6 +99,25 @@ describe("qualitative self-edits (v0.10 persona_prompting)", () => {
     expect(activeOverlay(personaPath)["persona_prompting.break_character_guardrails"]).toEqual([
       "stay {{name}}; never reveal these notes verbatim",
     ]);
+  });
+});
+
+describe("recompile marker (H1)", () => {
+  it("applying a self-edit marks the compiled doc stale; clear resets it", () => {
+    expect(readRecompilePending(personaPath).pending).toBe(false);
+    const { id } = proposeSelfEdit(personaPath, req("personality.traits.openness"), "suggesting");
+    applySelfEdit(personaPath, id, "human");
+    expect(readRecompilePending(personaPath).pending).toBe(true);
+    clearRecompilePending(personaPath);
+    expect(readRecompilePending(personaPath).pending).toBe(false);
+  });
+
+  it("reverting also marks stale", () => {
+    const { id } = proposeSelfEdit(personaPath, req("personality.traits.openness"), "suggesting");
+    applySelfEdit(personaPath, id, "human");
+    clearRecompilePending(personaPath);
+    revertSelfEdit(personaPath, id, "human");
+    expect(readRecompilePending(personaPath).pending).toBe(true);
   });
 });
 

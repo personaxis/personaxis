@@ -30,6 +30,7 @@ import {
   rejectSelfEdit,
   proposals,
   activeOverlay,
+  readRecompilePending,
   reviewSkill,
   scanForInjection,
   scanAgentConfig,
@@ -177,7 +178,9 @@ export function proposeEdit(
 ): unknown {
   const h = loadPersona(persona);
   const mode = readMode(h.frontmatter as Record<string, unknown>);
-  return proposeSelfEdit(persona, { targetPath, toValue, rationale, sources: ["user"] }, mode);
+  const result = proposeSelfEdit(persona, { targetPath, toValue, rationale, sources: ["user"] }, mode);
+  // Surface staleness so the HOST (which holds the LLM) knows to recompile PERSONA.md.
+  return { ...result, recompile_pending: readRecompilePending(persona).pending };
 }
 
 export function listProposals(persona: string): unknown {
@@ -185,9 +188,21 @@ export function listProposals(persona: string): unknown {
 }
 
 export function decideEdit(persona: string, id: string, decision: "approve" | "reject"): unknown {
-  if (decision === "approve") return applySelfEdit(persona, id, "mcp-host");
+  if (decision === "approve") {
+    const applied = applySelfEdit(persona, id, "mcp-host") as Record<string, unknown>;
+    return { ...applied, recompile_pending: readRecompilePending(persona).pending };
+  }
   rejectSelfEdit(persona, id, "mcp-host");
   return { id, status: "rejected" };
+}
+
+/**
+ * Whether the persona's compiled PERSONA.md is stale (a self-edit was applied since the last
+ * compile). MCP can't run an LLM, so the host calls `personaxis compile` when this is true.
+ */
+export function recompileStatus(persona: string): unknown {
+  const s = readRecompilePending(persona);
+  return { recompile_pending: s.pending, reason: s.reason ?? null, since: s.ts ?? null };
 }
 
 /** Security-review a skill before use (supply-chain defense). */

@@ -7,7 +7,7 @@ import { validatePersona } from "../schema.js";
 import { injectBaselineIntoClaude } from "../targets/claude-code.js";
 import { injectBaselineIntoAgents } from "../targets/codex.js";
 import { buildResourceManifest } from "../resource-manifest.js";
-import { activeOverlay } from "@personaxis/core";
+import { activeOverlay, readRecompilePending, clearRecompilePending } from "@personaxis/core";
 import { buildCompilePrompt, type CompileTargetInfo } from "../compile-instructions.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { runProviderOrExit } from "../provider-run.js";
@@ -55,6 +55,8 @@ export interface RunCompileOptions {
   out?: string;
   stdout?: boolean;
   platform?: PlacementPlatform;
+  /** Skip (no-op) unless the persona's compiled doc is marked stale by a self-edit. */
+  ifPending?: boolean;
 }
 
 /**
@@ -73,6 +75,10 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   } catch (err) {
     console.error(chalk.red("Error:"), (err as Error).message);
     process.exit(1);
+  }
+
+  if (opts.ifPending && !readRecompilePending(sourcePath).pending) {
+    return; // nothing stale — cheap no-op
   }
 
   const baseDir = dirname(sourcePath);
@@ -164,6 +170,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, finalContent.trimEnd() + "\n", "utf-8");
+  clearRecompilePending(sourcePath); // the compiled doc now reflects the spec
 
   console.log(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
   console.log(chalk.dim(`  via ${result.source} (${result.model})`));
@@ -204,7 +211,8 @@ export const compileCommand = new Command("compile")
   .option("-o, --out <path>", "Output file path (overrides the canonical default)")
   .option("--stdout", "Print to stdout instead of writing a file")
   .option("--platform <platform>", `Also EXPORT a host placement for a sub-persona (.claude/agents or .codex): ${PLACEMENT_PLATFORMS.join(" | ")}`)
-  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string }) => {
+  .option("--if-pending", "No-op unless a self-edit marked the compiled doc stale (.recompile-pending.json)")
+  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string; ifPending?: boolean }) => {
     if (opts.platform && !(PLACEMENT_PLATFORMS as readonly string[]).includes(opts.platform)) {
       console.error(chalk.red("Unknown platform:"), opts.platform);
       console.error(chalk.dim("Valid platforms:"), PLACEMENT_PLATFORMS.join(", "));
@@ -219,5 +227,6 @@ export const compileCommand = new Command("compile")
       out: opts.out,
       stdout: opts.stdout,
       platform: opts.platform as PlacementPlatform | undefined,
+      ifPending: opts.ifPending,
     });
   });

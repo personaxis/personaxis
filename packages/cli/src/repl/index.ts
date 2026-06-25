@@ -26,6 +26,7 @@ import {
   readMemory,
   prepareMemoryEntry,
   commitMemoryEntry,
+  readRecompilePending,
   verifyMemoryChain,
   overseerView,
   personaTheme,
@@ -67,8 +68,9 @@ import {
 } from "@personaxis/tui/visual";
 import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
 import { writeStarterPersona } from "../starter.js";
-import { isSubagentPath, slugChainFromPath } from "../load.js";
+import { isSubagentPath, slugChainFromPath, slugAddressFromPath } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/mode.js";
+import { runCompile } from "../commands/compile.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 
 interface ReplOptions {
@@ -525,6 +527,30 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   if (memWrites) parts.push(`memory +${memWrites}`);
   if (recompiled) parts.push("PERSONA.md recompiled");
   if (parts.length) ctx.out(chalk.dim("  · " + parts.join("  ·  ")));
+
+  // If a governed self-edit marked the compiled doc stale, refresh it (H1).
+  await maybeRecompile(ctx);
+}
+
+/**
+ * Recompile PERSONA.md when a self-edit marked it stale (`.recompile-pending.json`). Uses the
+ * authenticated `local` provider (PERSONAXIS_* env) when configured; otherwise just notifies.
+ * Best-effort: a failed recompile never breaks the turn.
+ */
+async function maybeRecompile(ctx: Ctx): Promise<void> {
+  if (!readRecompilePending(ctx.handle.personaPath).pending) return;
+  if (!llmConfig()) {
+    ctx.out(chalk.dim("  · PERSONA.md is stale — run `personaxis compile` to refresh it"));
+    return;
+  }
+  try {
+    ctx.phase?.("recompiling PERSONA.md");
+    const address = slugAddressFromPath(ctx.handle.personaPath);
+    await runCompile(address ? { slug: address, provider: "local" } : { root: true, provider: "local" });
+    ctx.out(chalk.dim("  · PERSONA.md recompiled (self-edit applied)"));
+  } catch (e) {
+    ctx.out(chalk.dim(`  · recompile deferred: ${(e as Error).message}`));
+  }
 }
 
 const handleTurn = runAgentTurn;

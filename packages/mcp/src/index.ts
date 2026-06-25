@@ -151,6 +151,19 @@ export function buildServer(): McpServer {
   );
 
   server.tool(
+    "persona_recompile_status",
+    "Whether the persona's compiled PERSONA.md is STALE — a governed self-edit was applied since the last compile. MCP cannot run an LLM, so when recompile_pending is true the host should run `personaxis compile` (or `compile --if-pending`) to refresh PERSONA.md.",
+    { ...personaArg },
+    async ({ persona }) => {
+      try {
+        return ok(svc.recompileStatus(persona));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
     "persona_propose_edit",
     "Propose a governed edit to the persona's OWN spec (not just runtime state). Protected paths (identity, character, safety/honesty, affect universals, persona constraints) are refused. In 'suggesting' mode it queues for human approval; in 'autonomous' (sandbox) it auto-applies; in 'locked' it is refused. Every step is an append-only, reversible ledger event.",
     {

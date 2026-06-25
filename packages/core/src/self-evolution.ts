@@ -24,6 +24,7 @@ import { createHash } from "node:crypto";
 import type { ProvenanceSource } from "./appraisal.js";
 import type { ImprovementMode } from "./governance.js";
 import { sensitiveActionGate } from "./provenance.js";
+import { markRecompilePending } from "./recompile-marker.js";
 
 const PROTECTED_PREFIXES = [
   "apiVersion",
@@ -285,6 +286,8 @@ export function applySelfEdit(
   const version = nextVersion(personaPath);
   append(personaPath, { id, op: "approve", ts: new Date().toISOString(), actor: approver });
   append(personaPath, { id, op: "apply", ts: new Date().toISOString(), actor: approver, version });
+  // The compiled PERSONA.md no longer reflects the spec — mark it stale for a recompile.
+  markRecompilePending(personaPath, `self-edit ${id} applied (${view.targetPath})`);
   return { status: "applied", version, consensus };
 }
 
@@ -299,6 +302,7 @@ export function revertSelfEdit(personaPath: string, id: string, actor: string): 
     throw new SelfEditError(`proposal ${id} is not applied; nothing to revert`);
   }
   append(personaPath, { id, op: "revert", ts: new Date().toISOString(), actor });
+  markRecompilePending(personaPath, `self-edit ${id} reverted`);
 }
 
 /** Fold the ledger into the current proposal views. */
