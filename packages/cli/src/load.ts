@@ -75,7 +75,10 @@ export function resolvePersonaSourcePath(target?: string): string {
     const resolved = resolve(target);
     if (existsSync(resolved)) return resolved;
 
-    const slugPath = resolve(process.cwd(), PERSONAXIS_DIR, "personas", target, "personaxis.md");
+    // A slug address may be NESTED ("cmo/legal" => personas/cmo/personas/legal/…).
+    const segs = target.split("/").filter(Boolean);
+    const slugRel = "personas/" + segs.join("/personas/");
+    const slugPath = resolve(process.cwd(), PERSONAXIS_DIR, slugRel, "personaxis.md");
     if (existsSync(slugPath)) return slugPath;
 
     throw new Error(
@@ -104,11 +107,32 @@ export function isSubagentPath(filePath: string): boolean {
   return filePath.replace(/\\/g, "/").includes(`${PERSONAXIS_DIR}/personas/`);
 }
 
-/** Extracts `<slug>` from a `.personaxis/personas/<slug>/...` path. */
-export function slugFromPath(filePath: string): string {
+/**
+ * The full slug chain for a (possibly NESTED) sub-persona path. A persona at
+ * `.personaxis/personas/cmo/personas/legal/personaxis.md` yields `["cmo", "legal"]`.
+ * The root persona yields `[]`. Supports unlimited nesting depth.
+ */
+export function slugChainFromPath(filePath: string): string[] {
   const normalized = filePath.replace(/\\/g, "/");
-  const match = normalized.match(/\.personaxis\/personas\/([^/]+)\//);
-  return match?.[1] ?? basename(dirname(filePath));
+  const idx = normalized.indexOf(`${PERSONAXIS_DIR}/personas/`);
+  if (idx < 0) return [];
+  const tail = normalized.slice(idx); // .personaxis/personas/<slug>[/personas/<slug>…]
+  const chain: string[] = [];
+  const re = /personas\/([^/]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(tail))) chain.push(m[1]);
+  return chain;
+}
+
+/** The hierarchical address for a sub-persona path, e.g. `"cmo/legal"` ("" for root). */
+export function slugAddressFromPath(filePath: string): string {
+  return slugChainFromPath(filePath).join("/");
+}
+
+/** The LAST slug segment (display name) of a `.personaxis/personas/.../<slug>/...` path. */
+export function slugFromPath(filePath: string): string {
+  const chain = slugChainFromPath(filePath);
+  return chain.length ? chain[chain.length - 1] : basename(dirname(filePath));
 }
 
 export function loadPersonaFile(filePath?: string): LoadResult {

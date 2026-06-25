@@ -67,9 +67,9 @@ import {
 } from "@personaxis/tui/visual";
 import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
 import { writeStarterPersona } from "../starter.js";
-import { isSubagentPath, slugFromPath } from "../load.js";
+import { isSubagentPath, slugChainFromPath } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/mode.js";
-import { discoverSubPersonas, colorForSlug, type SubPersonaRef } from "./roster.js";
+import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 
 interface ReplOptions {
   persona?: string;
@@ -162,11 +162,13 @@ function appraiserLabel(): string {
  */
 function crossPersonaDenies(personaPath: string): string[] {
   const tree = "\\.personaxis[\\\\/]+personas[\\\\/]+";
-  if (isSubagentPath(personaPath)) {
-    const slug = slugFromPath(personaPath).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return [`${tree}(?!${slug}[\\\\/])`];
-  }
-  return [tree];
+  const chain = slugChainFromPath(personaPath);
+  if (chain.length === 0) return [tree]; // root: writes none of the personas tree
+  // A nested persona may write ONLY its own subtree:
+  //   .personaxis/personas/<c1>/personas/<c2>/…/personas/<cn>/…
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const own = chain.map(esc).join("[\\\\/]+personas[\\\\/]+") + "[\\\\/]";
+  return [`${tree}(?!${own})`];
 }
 
 function buildPolicy(ctx: Ctx): Policy {
@@ -616,6 +618,11 @@ async function runLineMode(ctx: Ctx): Promise<void> {
   await awaken(ctx.handle.frontmatter, readState(ctx.handle.statePath));
   stdout.write(voiceWrap(ctx.theme, `  ${ctx.name} is awake`) + chalk.dim(` · mode=${ctx.mode} · posture=${POSTURES[ctx.postureIndex]}\n\n`));
 
+  const roster = buildRoster(ctx);
+  if (roster.subs.length) {
+    stdout.write(chalk.dim(`  sub-personas: `) + roster.subs.map((s) => chalk.ansi256(roster.color(s.address) ?? 39).bold(`@${s.address}`)).join("  ") + chalk.dim(`  ·  @address · @all\n\n`));
+  }
+
   const rl = readline.createInterface({ input: stdin, output: stdout });
   for await (const raw of rl) {
     const line = raw.trim();
@@ -623,7 +630,7 @@ async function runLineMode(ctx: Ctx): Promise<void> {
       if (line.startsWith("/")) {
         if (await runCommand(line, ctx)) break;
       } else {
-        await handleTurn(line, ctx);
+        await dispatchTurn(line, ctx, roster);
       }
     }
   }
@@ -637,26 +644,107 @@ function fmtK(n: number): string {
 }
 
 /**
- * Parse leading @mentions for multi-persona routing. `@all` targets every sub-persona;
- * `@slug …` (one or more) targets specific ones. Unknown @tokens are left in the message
- * (so an email or handle isn't mis-routed). No mention => the ROOT persona.
+ * Parse leading @mentions for multi-persona routing, by hierarchical address:
+ *   `@all`         → every sub-persona in the tree
+ *   `@cmo`         → the sub-persona "cmo"
+ *   `@cmo/legal`   → the nested sub-persona "cmo/legal"
+ *   `@cmo/all`     → every persona in cmo's subtree
+ * One or more mentions may lead the line. Unknown @tokens are left in the message (so an
+ * email/handle isn't mis-routed). No mention => the ROOT persona.
  */
-function parseMentions(line: string, subs: SubPersonaRef[]): { targets: string[]; rest: string } {
-  const known = new Set(subs.map((s) => s.slug));
+export function parseMentions(line: string, subs: SubPersonaRef[]): { targets: string[]; rest: string } {
+  const byAddr = new Set(subs.map((s) => s.address));
   let rest = line.trim();
   const targets: string[] = [];
-  let all = false;
   for (;;) {
-    const m = rest.match(/^@([A-Za-z0-9_-]+)\s*/);
+    const m = rest.match(/^@([A-Za-z0-9_/-]+)\s*/);
     if (!m) break;
-    const tok = m[1];
-    if (tok === "all") all = true;
-    else if (known.has(tok)) targets.push(tok);
-    else break;
+    const tok = m[1].replace(/\/$/, "");
+    if (tok === "all") {
+      for (const s of subs) targets.push(s.address);
+    } else if (tok.endsWith("/all")) {
+      const pre = tok.slice(0, -3); // keep trailing "/"
+      for (const s of subs) if (s.address.startsWith(pre)) targets.push(s.address);
+    } else if (byAddr.has(tok)) {
+      targets.push(tok);
+    } else {
+      break; // unknown — leave it in the message
+    }
     rest = rest.slice(m[0].length);
   }
-  const list = all ? subs.map((s) => s.slug) : [...new Set(targets)];
-  return { targets: list, rest: rest.trim() };
+  return { targets: [...new Set(targets)], rest: rest.trim() };
+}
+
+interface Roster {
+  subs: SubPersonaRef[];
+  color: (address: string) => number | undefined;
+  getSub: (address: string) => Ctx | undefined;
+}
+
+/**
+ * Build the multi-persona roster for a root context: discover the whole sub-persona tree,
+ * assign each a fixed color (by full address), lazily materialize a Ctx per sub (sharing the
+ * root's screen + meter), and make the root aware of the tree it can delegate to.
+ */
+function buildRoster(rootCtx: Ctx): Roster {
+  const subs = discoverTree(rootCtx.handle.personaPath);
+  const subColor = new Map<string, number>();
+  const taken = new Set<number>();
+  for (const s of subs) subColor.set(s.address, colorForSlug(s.address, taken));
+  const cache = new Map<string, Ctx>();
+  const getSub = (address: string): Ctx | undefined => {
+    const ref = subs.find((s) => s.address === address);
+    if (!ref) return undefined;
+    let c = cache.get(address);
+    if (!c) {
+      c = makeCtx(ref.path, rootCtx.meter, subColor.get(address));
+      c.out = rootCtx.out;
+      c.approve = rootCtx.approve;
+      c.phase = rootCtx.phase;
+      cache.set(address, c);
+    }
+    return c;
+  };
+  if (subs.length) {
+    rootCtx.personaDoc +=
+      `\n\n## Sub-personas you can delegate to\nAddress with @address (also @all, or @parent/all). You may READ their files but never edit them.\n` +
+      subs.map((s) => `${"  ".repeat(s.depth - 1)}- @${s.address}`).join("\n");
+  }
+  return { subs, color: (a) => subColor.get(a), getSub };
+}
+
+/**
+ * Route one user line to the ROOT or to addressed sub-personas (@address/@all). Replies come
+ * from each target; every delegation is recorded in the root's hash-chained memory.
+ */
+async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, setPhase?: (s: string) => void): Promise<void> {
+  const { targets, rest } = parseMentions(line, roster.subs);
+  const msg = rest || line;
+  if (targets.length === 0) {
+    await handleTurn(msg, rootCtx);
+    return;
+  }
+  for (const addr of targets) {
+    const sub = roster.getSub(addr);
+    if (!sub) {
+      rootCtx.out(chalk.yellow(`  no sub-persona @${addr}`));
+      continue;
+    }
+    setPhase?.(`@${addr} thinking`);
+    await handleTurn(msg, sub);
+    try {
+      commitMemoryEntry(
+        rootCtx.handle.personaPath,
+        prepareMemoryEntry(rootCtx.handle.personaPath, {
+          content: `Delegated to @${addr}: "${msg.slice(0, 120)}"`,
+          source: "synthesis",
+          tags: ["delegation", addr],
+        }),
+      );
+    } catch {
+      /* memory write is best-effort */
+    }
+  }
 }
 
 // ── TTY: minimalist interactive REPL in the NORMAL buffer ────────────────────
@@ -665,30 +753,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   let screen: Screen;
   let lastMs = 0;
 
-  // ── Multi-persona roster (project-local sub-personas under .personaxis/personas) ──
-  const subs = discoverSubPersonas(ctx.handle.personaPath);
-  const subColor = new Map<string, number>();
-  const takenColors = new Set<number>();
-  for (const s of subs) subColor.set(s.slug, colorForSlug(s.slug, takenColors));
-  const subCtx = new Map<string, Ctx>();
-  const getSub = (slug: string): Ctx | undefined => {
-    const ref = subs.find((s) => s.slug === slug);
-    if (!ref) return undefined;
-    let c = subCtx.get(slug);
-    if (!c) {
-      c = makeCtx(ref.path, ctx.meter, subColor.get(slug));
-      c.out = ctx.out;
-      c.approve = ctx.approve;
-      c.phase = ctx.phase;
-      subCtx.set(slug, c);
-    }
-    return c;
-  };
-  // Root awareness: the root persona knows which sub-personas exist and can delegate.
-  if (subs.length) {
-    ctx.personaDoc += `\n\n## Sub-personas you can delegate to\nAddress them with @slug (or @all). You may READ their files but never edit them.\n` +
-      subs.map((s) => `- @${s.slug}`).join("\n");
-  }
+  const roster = buildRoster(ctx);
 
   // Status line shown BELOW the input. Labels are explicit so "locked" etc. are
   // unambiguous. Width-aware: drops low-priority segments on narrow terminals.
@@ -724,39 +789,12 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
         return;
       }
       // Chat/agent turn — route to the ROOT or to sub-personas via @mentions.
-      const { targets, rest } = parseMentions(line, subs);
-      const msg = rest || line;
       screen.print("");
       screen.print(chalk.bgAnsi256(238).whiteBright(`  › ${line}  `), "user");
       screen.setBusy(true, "thinking");
       const t0 = Date.now();
       try {
-        if (targets.length === 0) {
-          await handleTurn(msg, ctx);
-        } else {
-          for (const slug of targets) {
-            const sub = getSub(slug);
-            if (!sub) {
-              screen.print(chalk.yellow(`  no sub-persona @${slug}`));
-              continue;
-            }
-            screen.setPhase(`@${slug} thinking`);
-            await handleTurn(msg, sub);
-            // Root awareness: the root remembers what was delegated to whom.
-            try {
-              commitMemoryEntry(
-                ctx.handle.personaPath,
-                prepareMemoryEntry(ctx.handle.personaPath, {
-                  content: `Delegated to @${slug}: "${msg.slice(0, 120)}"`,
-                  source: "synthesis",
-                  tags: ["delegation", slug],
-                }),
-              );
-            } catch {
-              /* memory write is best-effort */
-            }
-          }
-        }
+        await dispatchTurn(line, ctx, roster, (p) => screen.setPhase(p));
       } finally {
         screen.setBusy(false);
       }
@@ -773,8 +811,8 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
 
   screen.start();
   screen.print(replyLine(ctx, "awake — talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");
-  if (subs.length) {
-    const tags = subs.map((s) => chalk.ansi256(subColor.get(s.slug)!).bold(`@${s.slug}`)).join("  ");
-    screen.print(chalk.dim(`  sub-personas: `) + tags + chalk.dim("  ·  address with @slug or @all"));
+  if (roster.subs.length) {
+    const tags = roster.subs.map((s) => chalk.ansi256(roster.color(s.address) ?? 39).bold(`@${s.address}`)).join("  ");
+    screen.print(chalk.dim(`  sub-personas: `) + tags + chalk.dim("  ·  @address · @all · @parent/all"));
   }
 }
