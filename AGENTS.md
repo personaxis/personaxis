@@ -62,4 +62,6 @@ node dist/index.js state show -f ../persona.md/.personaxis/personas/cmo/state.js
 Always read @PERSONA.md at project root before acting.
 Apply everything defined there to every decision, regardless of role.
 Read your own @PERSONA.md too if one was provided to you.
+
+The persona file conforms to the PERSONA.md spec: ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, reflexive_self_regulation, persona) plus governance and security. The reflexive_self_regulation.hard_limits are categorical absolutes and are never crossed.
 <!-- PERSONA:BASELINE:END -->
