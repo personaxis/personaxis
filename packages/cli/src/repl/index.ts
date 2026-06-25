@@ -24,6 +24,8 @@ import {
   extractEnvelopes,
   readMode,
   readMemory,
+  prepareMemoryEntry,
+  commitMemoryEntry,
   verifyMemoryChain,
   overseerView,
   personaTheme,
@@ -65,7 +67,9 @@ import {
 } from "@personaxis/tui/visual";
 import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
 import { writeStarterPersona } from "../starter.js";
+import { isSubagentPath, slugFromPath } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/mode.js";
+import { discoverSubPersonas, colorForSlug, type SubPersonaRef } from "./roster.js";
 
 interface ReplOptions {
   persona?: string;
@@ -147,9 +151,31 @@ function appraiserLabel(): string {
   return llm ? `${llm.model} @ ${llm.endpoint}` : "heuristic (offline — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL)";
 }
 
+/**
+ * Cross-persona isolation (read-only across the roster): a persona may READ any other
+ * persona's files but never WRITE them. We add deny-list regexes that match writes into
+ * the `.personaxis/personas/` tree outside the persona's OWN subtree:
+ *   - root persona  -> deny ALL writes under .personaxis/personas/ (it owns none of them)
+ *   - sub "<slug>"  -> deny writes under .personaxis/personas/ EXCEPT .../<slug>/
+ * Reads are unaffected. Deny has highest precedence in the policy engine, so this holds
+ * regardless of the sandbox posture.
+ */
+function crossPersonaDenies(personaPath: string): string[] {
+  const tree = "\\.personaxis[\\\\/]+personas[\\\\/]+";
+  if (isSubagentPath(personaPath)) {
+    const slug = slugFromPath(personaPath).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return [`${tree}(?!${slug}[\\\\/])`];
+  }
+  return [tree];
+}
+
 function buildPolicy(ctx: Ctx): Policy {
   const base = policyFromFrontmatter(ctx.handle.frontmatter as Record<string, unknown>, process.cwd());
-  return { ...base, sandbox: POSTURES[ctx.postureIndex] };
+  return {
+    ...base,
+    sandbox: POSTURES[ctx.postureIndex],
+    deny: [...base.deny, ...crossPersonaDenies(ctx.handle.personaPath)],
+  };
 }
 
 function readGoalText(handle: PersonaHandle): string | undefined {
@@ -511,45 +537,59 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)} — ${chalk.bold(name)} is ready.\n`);
   }
 
-  const handle = loadPersona(personaPath);
-  ensureState(handle);
-  const mode = readMode(handle.frontmatter as Record<string, unknown>);
-  const name = displayName(handle.frontmatter);
-  const theme = personaTheme(handle.frontmatter);
-  const compiledCandidate = resolve(dirname(dirname(personaPath)), "PERSONA.md");
-  // The LLM-facing system prompt is the COMPILED PERSONA.md (qualitative, slot #1).
-  // Fall back to the personaxis.md body only when no compiled doc exists.
-  const personaDoc = existsSync(compiledCandidate) ? readFileSync(compiledCandidate, "utf-8") : handle.body;
-  const loop = new LivingLoop(personaPath, {
-    appraiser: pickAppraiser(),
-    recompile: makeRecompileHook(existsSync(compiledCandidate) ? compiledCandidate : undefined),
-  });
-
-  const llm0 = llmConfig();
-  const meter = new ContextMeter(llm0 ? cachedContextWindow(llm0.model) : 0);
-  if (llm0) void resolveContextWindow(llm0).then((w) => (meter.limit = w)).catch(() => {});
-
-  const ctx: Ctx = {
-    handle,
-    loop,
-    responder: pickResponder(),
-    theme,
-    name,
-    mode,
-    out: (t) => stdout.write(t + "\n"),
-    postureIndex: POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox),
-    approve: async () => "deny",
-    personaDoc,
-    conversation: [],
-    meter,
-  };
-  if (ctx.postureIndex < 0) ctx.postureIndex = 1;
+  const meter = makeMeter();
+  const ctx = makeCtx(personaPath, meter);
 
   if (stdin.isTTY) {
     await runScreenMode(ctx);
   } else {
     await runLineMode(ctx);
   }
+}
+
+/** A fresh context-window meter for the session (background-resolves the real window). */
+function makeMeter(): ContextMeter {
+  const llm0 = llmConfig();
+  const meter = new ContextMeter(llm0 ? cachedContextWindow(llm0.model) : 0);
+  if (llm0) void resolveContextWindow(llm0).then((w) => (meter.limit = w)).catch(() => {});
+  return meter;
+}
+
+/**
+ * Build a REPL context for ANY persona (root or a sub-persona), sharing the session
+ * meter. The compiled system prompt is resolved per the artifact model: a sub-persona's
+ * lives INSIDE its folder (./persona.md), the root's at the repo root (../PERSONA.md).
+ * `out`/`approve`/`phase` default here; the active mode runner rebinds them to the screen.
+ */
+function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number): Ctx {
+  const handle = loadPersona(personaPath);
+  ensureState(handle);
+  const isSub = isSubagentPath(personaPath);
+  const compiled = isSub
+    ? join(dirname(personaPath), "persona.md")
+    : resolve(dirname(dirname(personaPath)), "PERSONA.md");
+  const personaDoc = existsSync(compiled) ? readFileSync(compiled, "utf-8") : handle.body;
+  const loop = new LivingLoop(personaPath, {
+    appraiser: pickAppraiser(),
+    recompile: makeRecompileHook(existsSync(compiled) ? compiled : undefined),
+  });
+  let postureIndex = POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox);
+  if (postureIndex < 0) postureIndex = 1;
+  return {
+    handle,
+    loop,
+    responder: pickResponder(),
+    theme: personaTheme(handle.frontmatter),
+    name: displayName(handle.frontmatter),
+    mode: readMode(handle.frontmatter as Record<string, unknown>),
+    out: (t) => stdout.write(t + "\n"),
+    postureIndex,
+    approve: async () => "deny",
+    personaDoc,
+    conversation: [],
+    meter,
+    replyColor,
+  };
 }
 
 // ── Non-TTY: simple line reader (pipes/CI) ───────────────────────────────────
@@ -578,11 +618,59 @@ function fmtK(n: number): string {
   return n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n);
 }
 
+/**
+ * Parse leading @mentions for multi-persona routing. `@all` targets every sub-persona;
+ * `@slug …` (one or more) targets specific ones. Unknown @tokens are left in the message
+ * (so an email or handle isn't mis-routed). No mention => the ROOT persona.
+ */
+function parseMentions(line: string, subs: SubPersonaRef[]): { targets: string[]; rest: string } {
+  const known = new Set(subs.map((s) => s.slug));
+  let rest = line.trim();
+  const targets: string[] = [];
+  let all = false;
+  for (;;) {
+    const m = rest.match(/^@([A-Za-z0-9_-]+)\s*/);
+    if (!m) break;
+    const tok = m[1];
+    if (tok === "all") all = true;
+    else if (known.has(tok)) targets.push(tok);
+    else break;
+    rest = rest.slice(m[0].length);
+  }
+  const list = all ? subs.map((s) => s.slug) : [...new Set(targets)];
+  return { targets: list, rest: rest.trim() };
+}
+
 // ── TTY: minimalist interactive REPL in the NORMAL buffer ────────────────────
 async function runScreenMode(ctx: Ctx): Promise<void> {
   const commands: SlashItem[] = COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
   let screen: Screen;
   let lastMs = 0;
+
+  // ── Multi-persona roster (project-local sub-personas under .personaxis/personas) ──
+  const subs = discoverSubPersonas(ctx.handle.personaPath);
+  const subColor = new Map<string, number>();
+  const takenColors = new Set<number>();
+  for (const s of subs) subColor.set(s.slug, colorForSlug(s.slug, takenColors));
+  const subCtx = new Map<string, Ctx>();
+  const getSub = (slug: string): Ctx | undefined => {
+    const ref = subs.find((s) => s.slug === slug);
+    if (!ref) return undefined;
+    let c = subCtx.get(slug);
+    if (!c) {
+      c = makeCtx(ref.path, ctx.meter, subColor.get(slug));
+      c.out = ctx.out;
+      c.approve = ctx.approve;
+      c.phase = ctx.phase;
+      subCtx.set(slug, c);
+    }
+    return c;
+  };
+  // Root awareness: the root persona knows which sub-personas exist and can delegate.
+  if (subs.length) {
+    ctx.personaDoc += `\n\n## Sub-personas you can delegate to\nAddress them with @slug (or @all). You may READ their files but never edit them.\n` +
+      subs.map((s) => `- @${s.slug}`).join("\n");
+  }
 
   // Status line shown BELOW the input. Labels are explicit so "locked" etc. are
   // unambiguous. Width-aware: drops low-priority segments on narrow terminals.
@@ -617,13 +705,40 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
         }
         return;
       }
-      // Chat/agent turn — the user's message echoed with a distinct background.
+      // Chat/agent turn — route to the ROOT or to sub-personas via @mentions.
+      const { targets, rest } = parseMentions(line, subs);
+      const msg = rest || line;
       screen.print("");
       screen.print(chalk.bgAnsi256(238).whiteBright(`  › ${line}  `), "user");
       screen.setBusy(true, "thinking");
       const t0 = Date.now();
       try {
-        await handleTurn(line, ctx);
+        if (targets.length === 0) {
+          await handleTurn(msg, ctx);
+        } else {
+          for (const slug of targets) {
+            const sub = getSub(slug);
+            if (!sub) {
+              screen.print(chalk.yellow(`  no sub-persona @${slug}`));
+              continue;
+            }
+            screen.setPhase(`@${slug} thinking`);
+            await handleTurn(msg, sub);
+            // Root awareness: the root remembers what was delegated to whom.
+            try {
+              commitMemoryEntry(
+                ctx.handle.personaPath,
+                prepareMemoryEntry(ctx.handle.personaPath, {
+                  content: `Delegated to @${slug}: "${msg.slice(0, 120)}"`,
+                  source: "synthesis",
+                  tags: ["delegation", slug],
+                }),
+              );
+            } catch {
+              /* memory write is best-effort */
+            }
+          }
+        }
       } finally {
         screen.setBusy(false);
       }
@@ -639,5 +754,9 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   };
 
   screen.start();
-  screen.print(voiceWrap(ctx.theme, `${shortName(ctx)} is awake`) + chalk.dim(" — talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");
+  screen.print(replyLine(ctx, "awake — talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");
+  if (subs.length) {
+    const tags = subs.map((s) => chalk.ansi256(subColor.get(s.slug)!).bold(`@${s.slug}`)).join("  ");
+    screen.print(chalk.dim(`  sub-personas: `) + tags + chalk.dim("  ·  address with @slug or @all"));
+  }
 }
