@@ -95,9 +95,17 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   const stateJson = readSibling(baseDir, "state.json");
   const resourceManifest = buildResourceManifest(baseDir);
 
+  // Canonical compiled-document location:
+  //   root persona  -> <repo>/PERSONA.md           (one level ABOVE .personaxis/)
+  //   sub-persona   -> .personaxis/personas/<slug>/persona.md  (INSIDE its own folder)
+  // This mirrors the resource layout (a sub's files live in its folder) and lets the
+  // structure recurse (a sub can itself have .personaxis/personas/<sub2>/).
+  const canonicalOutPath = isSubagent ? join(baseDir, "persona.md") : resolve(baseDir, "..", "PERSONA.md");
+  const canonicalRel = relative(process.cwd(), canonicalOutPath).replace(/\\/g, "/");
+
   const target: CompileTargetInfo = isSubagent
-    ? { label: `Claude Code subagent .claude/agents/${slug}.md`, outputPath: `.claude/agents/${slug}.md`, isSubagent: true, slug }
-    : { label: "repo-root PERSONA.md (root mode)", outputPath: "PERSONA.md", isSubagent: false };
+    ? { label: `sub-persona "${slug}" (.personaxis/personas/${slug}/persona.md)`, outputPath: canonicalRel, isSubagent: true, slug }
+    : { label: "root persona (repo-root PERSONA.md)", outputPath: canonicalRel, isSubagent: false };
 
   const prompt = buildCompilePrompt({ personaxisMd: raw, policyYaml, stateJson, resourceManifest, target });
 
@@ -105,16 +113,18 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   const result = await runProviderOrExit(provider, prompt, opts.fromFile);
   const compiledText = result.text.trim();
 
-  const platform = opts.platform ?? "claude-code";
-  const placement = placeCompiledDocument(compiledText, target, platform);
-  const outPath = resolve(opts.out ?? placement.path);
+  const outPath = resolve(opts.out ?? canonicalOutPath);
 
   if (opts.stdout) {
-    process.stdout.write(placement.content + "\n");
+    process.stdout.write(compiledText + "\n");
     return;
   }
 
-  let finalContent = placement.content;
+  let finalContent = compiledText;
+  // The canonical persona.md is the markdown representation; skills materialize in the
+  // claude-code convention by default. An explicit --platform additionally EXPORTS a
+  // host placement (.claude/agents/<slug>.md or .codex/agents/<slug>.toml) below.
+  const skillsPlatform = (opts.platform as "claude-code" | "codex" | undefined) ?? "claude-code";
 
   // D.2/D.3/D.3b: resolve `extensions.skills`, materialize local skills to
   // this platform's discovery directory, write skills-manifest.json, and
@@ -124,7 +134,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   let materializedSkills: ReturnType<typeof materializeLocalSkills> = [];
 
   if (declaredSkills.length || hasSkillsDir) {
-    materializedSkills = materializeLocalSkills(declaredSkills, baseDir, platform);
+    materializedSkills = materializeLocalSkills(declaredSkills, baseDir, skillsPlatform);
     writeSkillsManifest(declaredSkills, baseDir);
 
     for (const skill of declaredSkills) {
@@ -143,7 +153,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   }
 
   if (isSubagent) {
-    finalContent = applySkillsToSubagent(finalContent, platform, declaredSkills, materializedSkills);
+    finalContent = applySkillsToSubagent(finalContent, skillsPlatform, declaredSkills, materializedSkills);
   }
 
   mkdirSync(dirname(outPath), { recursive: true });
@@ -151,6 +161,17 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 
   console.log(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
   console.log(chalk.dim(`  via ${result.source} (${result.model})`));
+
+  // Optional host export: place the compiled sub-persona into the host agent's
+  // subagent convention so Claude Code / Codex can route to it. Only when --platform
+  // is given and we're not overriding the output path.
+  if (isSubagent && opts.platform && !opts.out) {
+    const placement = placeCompiledDocument(finalContent, { ...target, outputPath: `.claude/agents/${slug}.md` }, opts.platform as PlacementPlatform);
+    const placedPath = resolve(placement.path);
+    mkdirSync(dirname(placedPath), { recursive: true });
+    writeFileSync(placedPath, placement.content.trimEnd() + "\n", "utf-8");
+    console.log(chalk.green("✓"), chalk.dim("host export →"), relative(process.cwd(), placedPath).replace(/\\/g, "/"));
+  }
 
   if (!isSubagent) {
     injectRootBaselines();
@@ -169,14 +190,14 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 }
 
 export const compileCommand = new Command("compile")
-  .description("Compile .personaxis/[personas/<slug>/]personaxis.md to PERSONA.md / <slug>.md")
+  .description("Compile personaxis.md -> canonical PERSONA.md (root) / .personaxis/personas/<slug>/persona.md (sub)")
   .argument("[slug]", "Subagent slug to compile (defaults to the root persona)")
-  .option("--root", "Compile the root persona (.personaxis/personaxis.md -> PERSONA.md). Default when [slug] is omitted.")
+  .option("--root", "Compile the root persona (.personaxis/personaxis.md -> repo-root PERSONA.md). Default when [slug] is omitted.")
   .option("--provider <name>", "Override the configured provider (local | byok | agent | remote)")
   .option("--from-file <path>", "Use this file's contents as the compiled output instead of calling the provider")
-  .option("-o, --out <path>", "Output file path (overrides default)")
+  .option("-o, --out <path>", "Output file path (overrides the canonical default)")
   .option("--stdout", "Print to stdout instead of writing a file")
-  .option("--platform <platform>", `Subagent placement convention (only applies with [slug]): ${PLACEMENT_PLATFORMS.join(" | ")}`, "claude-code")
+  .option("--platform <platform>", `Also EXPORT a host placement for a sub-persona (.claude/agents or .codex): ${PLACEMENT_PLATFORMS.join(" | ")}`)
   .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string }) => {
     if (opts.platform && !(PLACEMENT_PLATFORMS as readonly string[]).includes(opts.platform)) {
       console.error(chalk.red("Unknown platform:"), opts.platform);

@@ -91,7 +91,9 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
       `(reflexive_self_regulation.hard_limits + persona.constraints), and "Staying in character" must ` +
       `explicitly state it NEVER overrides those limits. (2) The "Memory & resources" section must ` +
       `reproduce the resource manifest below verbatim (bullet list), with paths relative to ` +
-      `${target.outputPath} (e.g. "${target.isSubagent ? `./.personaxis/personas/${target.slug}/` : "./.personaxis/"}memory.md").`,
+      `${target.outputPath} (e.g. "${target.isSubagent ? "./" : "./.personaxis/"}memory.md" — a sub-persona's ` +
+      `compiled persona.md lives INSIDE its own folder, so its resources are "./"; the root PERSONA.md ` +
+      `lives at the repo root, so its resources are "./.personaxis/").`,
     ``,
     `Output ONLY the compiled document. Do not wrap it in a code block.`,
     section("personaxis.md (quantitative spec + persona_prompting source, source of truth)", input.personaxisMd),
