@@ -130,13 +130,29 @@ export class Screen {
     const promptLine = this.hooks.prompt() + typed;
 
     if (this.menuOpen) {
-      const items = this.matches().slice(0, 8);
-      const menu = items.map((c, i) => {
-        const sel = i === this.menuIndex;
-        const name = (sel ? chalk.black.bgCyan(` /${c.name} `) : chalk.cyan(` /${c.name} `)).padEnd(sel ? 28 : 20);
-        return "  " + name + chalk.dim(c.desc.slice(0, this.cols() - 30));
+      const items = this.matches();
+      // Windowed + scrollable: the visible slice follows the cursor, and its height
+      // adapts to the terminal so the menu never overruns small windows.
+      const rows = this.out.rows ?? 24;
+      const maxVisible = Math.max(3, Math.min(items.length, rows - 7));
+      let start = 0;
+      if (items.length > maxVisible) {
+        start = Math.min(Math.max(0, this.menuIndex - Math.floor(maxVisible / 2)), items.length - maxVisible);
+      }
+      const visible = items.slice(start, start + maxVisible);
+      const up = start > 0 ? "↑" : " ";
+      const down = start + maxVisible < items.length ? "↓" : " ";
+      const head = items.length > maxVisible
+        ? chalk.dim(`  ┄ ${up}${down} ${this.menuIndex + 1}/${items.length} · Tab fill · Enter run · Esc close ┄`)
+        : chalk.dim("  ┄ ↑↓ select · Tab fill · Enter run · Esc close ┄");
+      const menu = visible.map((c, i) => {
+        const idx = start + i;
+        const sel = idx === this.menuIndex;
+        const label = sel ? chalk.black.bgCyan(` /${c.name} `) : chalk.cyan(` /${c.name} `);
+        const pad = " ".repeat(Math.max(0, (sel ? 26 : 20) - (c.name.length + 3)));
+        return "  " + label + pad + chalk.dim(c.desc.slice(0, Math.max(8, this.cols() - 30)));
       });
-      return [promptLine, chalk.dim("  ┄┄ ↑↓ select · Tab fill · Enter run · Esc close ┄┄"), ...menu];
+      return [promptLine, head, ...menu];
     }
     // Status line BELOW the input, separated by a rule.
     return [promptLine, this.rule(), this.hooks.status()];

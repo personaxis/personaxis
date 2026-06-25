@@ -105,6 +105,8 @@ interface Ctx {
   /** The LLM-facing system prompt = the COMPILED PERSONA.md (slot #1), not the
    * quantitative personaxis.md body. Resources/memory are injected by the agent. */
   personaDoc: string;
+  /** Fixed reply color for a sub-persona (ansi256). Undefined => root (default fg). */
+  replyColor?: number;
   /** Persistent conversation (no system message) for chat continuity. */
   conversation: ChatMessage[];
   /** Session-level context-window meter (persists across turns). */
@@ -394,24 +396,28 @@ async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   return (await cmd.run(arg, ctx)) === true;
 }
 
-/** A clean, short persona name from the spec metadata — never a sliced URL/path. */
+/**
+ * The name shown in chat. Per the spec model this is the persona's chosen
+ * identity.display_name (v0.10 short_name overrides it as an explicit chat handle);
+ * it NEVER falls back to metadata.name. Falls back to canonical_id only if both are
+ * absent, and truncates an over-long handle rather than dropping to the package id.
+ */
 function shortName(ctx: Ctx): string {
   const id = ctx.handle.frontmatter.identity as { short_name?: string; display_name?: string; canonical_id?: string } | undefined;
-  const meta = ctx.handle.frontmatter.metadata as { name?: string } | undefined;
-  const clean = (s: string | undefined): string | undefined => {
-    if (!s) return undefined;
-    // Reject package/URL-looking ids (contain / or multiple dots); keep real names.
-    if (/[\/\\]/.test(s) || (s.match(/\./g)?.length ?? 0) > 0) return undefined;
-    return s.length <= 24 ? s : undefined;
-  };
-  return (
-    clean(id?.short_name) ??
-    clean(id?.display_name) ??
-    clean(meta?.name) ??
-    clean(id?.canonical_id) ??
-    // last resort: first word of the display name, stripped of @ and path chars
-    (ctx.name.split(/[\s/]+/)[0].replace(/^@/, "").replace(/\.[a-z]+$/i, "").slice(0, 20) || "persona")
-  );
+  const pick = id?.short_name?.trim() || id?.display_name?.trim() || id?.canonical_id?.trim() || "persona";
+  return pick.length <= 32 ? pick : pick.slice(0, 31) + "…";
+}
+
+/**
+ * Format a persona's reply line. The ROOT persona speaks in the terminal's default
+ * foreground (white on dark, black on light) so it reads as "the" voice; a sub-persona
+ * (ctx.replyColor set) gets its own FIXED, auto-assigned color so you can tell who spoke.
+ * The name is always bold; only the body is tinted.
+ */
+function replyLine(ctx: Ctx, text: string): string {
+  const name = ctx.replyColor !== undefined ? chalk.ansi256(ctx.replyColor).bold(shortName(ctx)) : chalk.bold(shortName(ctx));
+  const body = ctx.replyColor !== undefined ? chalk.ansi256(ctx.replyColor)(text) : text;
+  return `${name}: ${body}`;
 }
 
 /**
@@ -427,7 +433,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     const reply = await ctx.responder
       .respond({ message: line, personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content), state: cur.values, name: shortName(ctx) })
       .catch((e) => `(responder error: ${(e as Error).message})`);
-    ctx.out(voiceWrap(ctx.theme, `${shortName(ctx)}: ${reply}`), "persona");
+    ctx.out(replyLine(ctx, reply), "persona");
     await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
     return;
   }
@@ -457,7 +463,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   });
   const result = await agent.run(line);
   ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
-  ctx.out(voiceWrap(ctx.theme, `${shortName(ctx)}: ${result.summary || "…"}`), "persona");
+  ctx.out(replyLine(ctx, result.summary || "…"), "persona");
   // Only surface the budget line when something noteworthy happened (a multi-step
   // task or an early stop) — not on every one-shot chat reply.
   if (result.budget.steps > 1 || (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met")) {
@@ -578,13 +584,18 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   let screen: Screen;
   let lastMs = 0;
 
-  // Status line shown BELOW the input: conversation tokens · last response time · mode.
+  // Status line shown BELOW the input. Labels are explicit so "locked" etc. are
+  // unambiguous. Width-aware: drops low-priority segments on narrow terminals.
   const status = (): string => {
     const m = ctx.meter;
-    const tok = m.limit ? `${fmtK(m.used)}/${fmtK(m.limit)} tok` : "offline";
-    const pct = m.limit ? ` ${Math.round(m.pct * 100)}%` : "";
-    const last = lastMs ? `last ${(lastMs / 1000).toFixed(1)}s` : "ready";
-    return chalk.dim(`  ${tok}${pct}  ·  ${last}  ·  ${ctx.mode}  ·  ${POSTURES[ctx.postureIndex]}  ·  shift+tab`);
+    const cols = stdout.columns ?? 80;
+    const seg: string[] = [];
+    seg.push(m.limit ? `ctx ${fmtK(m.used)}/${fmtK(m.limit)} ${Math.round(m.pct * 100)}%` : "offline");
+    if (lastMs) seg.push(`reply ${(lastMs / 1000).toFixed(1)}s`);
+    seg.push(`improve:${ctx.mode}`);
+    if (cols >= 64) seg.push(`sandbox:${POSTURES[ctx.postureIndex]}`);
+    if (cols >= 86) seg.push("shift+tab");
+    return chalk.dim("  " + seg.join("  ·  "));
   };
 
   screen = new Screen({
