@@ -438,16 +438,25 @@ function shortName(ctx: Ctx): string {
   return pick.length <= 32 ? pick : pick.slice(0, 31) + "…";
 }
 
+/** A small, stable per-persona sigil glyph (a mid-density char from its themed set). */
+function personaGlyph(ctx: Ctx): string {
+  const g = ctx.theme.glyphs;
+  return g[Math.min(4, g.length - 1)] ?? "◇";
+}
+
 /**
  * Format a persona's reply line. The ROOT persona speaks in the terminal's default
  * foreground (white on dark, black on light) so it reads as "the" voice; a sub-persona
  * (ctx.replyColor set) gets its own FIXED, auto-assigned color so you can tell who spoke.
- * The name is always bold; only the body is tinted.
+ * A small per-persona sigil glyph prefixes the name (a sober, identifying microdetail).
  */
 function replyLine(ctx: Ctx, text: string): string {
-  const name = ctx.replyColor !== undefined ? chalk.ansi256(ctx.replyColor).bold(shortName(ctx)) : chalk.bold(shortName(ctx));
-  const body = ctx.replyColor !== undefined ? chalk.ansi256(ctx.replyColor)(text) : text;
-  return `${name}: ${body}`;
+  const glyph = personaGlyph(ctx);
+  if (ctx.replyColor !== undefined) {
+    const c = chalk.ansi256(ctx.replyColor);
+    return `${c.bold(glyph)} ${c.bold(shortName(ctx))}: ${c(text)}`;
+  }
+  return `${chalk.dim(glyph)} ${chalk.bold(shortName(ctx))}: ${text}`;
 }
 
 /**
