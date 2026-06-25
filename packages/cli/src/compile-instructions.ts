@@ -29,6 +29,9 @@ export interface CompilePromptInput {
   stateJson?: string;
   resourceManifest: string;
   target: CompileTargetInfo;
+  /** Applied governed self-edits (dot-path -> value). Authoritative overrides over the
+   * raw spec, so a recompile reflects what the persona has evolved into. */
+  appliedOverlay?: Record<string, unknown>;
 }
 
 export interface DecompilePromptInput {
@@ -95,8 +98,14 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
       `compiled persona.md lives INSIDE its own folder, so its resources are "./"; the root PERSONA.md ` +
       `lives at the repo root, so its resources are "./.personaxis/").`,
     ``,
+    input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0
+      ? `Applied self-edits OVERRIDE the spec below: where a dot-path here conflicts with the spec, use THIS value (the persona has governed-evolved into it).`
+      : "",
     `Output ONLY the compiled document. Do not wrap it in a code block.`,
     section("personaxis.md (quantitative spec + persona_prompting source, source of truth)", input.personaxisMd),
+    input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0
+      ? section("Applied self-edits (dot-path -> value, AUTHORITATIVE overrides)", JSON.stringify(input.appliedOverlay, null, 2))
+      : "",
     section("policy.yaml (operational policy - reference only, do not restate verbatim)", input.policyYaml),
     section("state.json (current runtime state - reference only)", input.stateJson),
     section("Resource manifest (paths only, never file contents)", input.resourceManifest),

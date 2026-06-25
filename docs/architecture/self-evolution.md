@@ -67,14 +67,23 @@ role adoption, character card, voice exemplars, scene contracts, guardrails (see
 [compile.md](./compile.md) and the methodology in `persona.md/docs/PERSONA_PROMPTING.md`).
 `state.json` is reference-only; the compile is driven by the spec.
 
-## 5. Honest gaps (Planned)
+## 5. Recompile triggers
 
-- **Auto-recompile after a self-edit** is not yet wired: applying a self-edit updates the
-  overlay/ledger but does not automatically re-run `compile`. Today you recompile with
-  `personaxis compile`. (Tracked.)
-- **Overlay-aware compile**: compile reads the raw `personaxis.md`; it does not yet fold the
-  active overlay before compiling, so an applied numeric self-edit isn't reflected in
-  `PERSONA.md` until the spec itself is updated + recompiled. (Tracked.)
+- **Quantitative drift → auto-recompile (Implemented).** When the Living Loop applies one or
+  more envelope mutations, it fires a `recompile` event and calls the recompile hook
+  (`loop.ts` step 4), so `PERSONA.md` reflects the new state. The REPL surfaces this as
+  `· PERSONA.md recompiled` in the per-turn summary.
+- **Overlay-aware compile (Implemented).** `compile` now folds the **active overlay** (applied
+  governed self-edits) into the prompt as authoritative overrides (`activeOverlay`), so a
+  recompile reflects what the persona evolved into — including *qualitative*
+  `persona_prompting` edits — without machine-rewriting the commented spec.
+
+### Honest gaps (Planned)
+
+- **Auto-recompile after a ledger apply outside the loop** (e.g. an MCP `persona_propose_edit`
+  applied in `autonomous` mode) is not auto-triggered: it records the edit; you then run
+  `personaxis compile` (which now folds the overlay). Wiring a provider-backed recompile into
+  the MCP apply path is tracked.
 
 ## Verify it yourself
 

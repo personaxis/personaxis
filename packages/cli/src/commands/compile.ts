@@ -7,6 +7,7 @@ import { validatePersona } from "../schema.js";
 import { injectBaselineIntoClaude } from "../targets/claude-code.js";
 import { injectBaselineIntoAgents } from "../targets/codex.js";
 import { buildResourceManifest } from "../resource-manifest.js";
+import { activeOverlay } from "@personaxis/core";
 import { buildCompilePrompt, type CompileTargetInfo } from "../compile-instructions.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { runProviderOrExit } from "../provider-run.js";
@@ -107,7 +108,9 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
     ? { label: `sub-persona "${slug}" (.personaxis/personas/${slug}/persona.md)`, outputPath: canonicalRel, isSubagent: true, slug }
     : { label: "root persona (repo-root PERSONA.md)", outputPath: canonicalRel, isSubagent: false };
 
-  const prompt = buildCompilePrompt({ personaxisMd: raw, policyYaml, stateJson, resourceManifest, target });
+  // Fold APPLIED governed self-edits so a recompile reflects what the persona evolved into.
+  const appliedOverlay = activeOverlay(sourcePath);
+  const prompt = buildCompilePrompt({ personaxisMd: raw, policyYaml, stateJson, resourceManifest, target, appliedOverlay });
 
   const provider = resolveProvider(opts.provider);
   const result = await runProviderOrExit(provider, prompt, opts.fromFile);
