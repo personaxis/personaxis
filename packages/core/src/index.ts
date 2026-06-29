@@ -23,6 +23,7 @@ export * from "./sync.js";
 export * from "./skill-review.js";
 export * from "./skill-lifecycle.js";
 export * from "./memory.js";
+export * from "./sessions.js";
 export * from "./provenance.js";
 export * from "./injection.js";
 export * from "./config-scan.js";

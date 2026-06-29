@@ -24,8 +24,18 @@ import {
   extractEnvelopes,
   readMode,
   readMemory,
+  readMemoryTypes,
   prepareMemoryEntry,
   commitMemoryEntry,
+  newSessionId,
+  ensureSession,
+  appendTurn,
+  loadConversation,
+  listSessions,
+  renameSession,
+  findSession,
+  fallbackName,
+  nameSession,
   readRecompilePending,
   verifyMemoryChain,
   overseerView,
@@ -116,6 +126,12 @@ interface Ctx {
   replyColor?: number;
   /** Persistent conversation (no system message) for chat continuity. */
   conversation: ChatMessage[];
+  /** Id of the on-disk session backing this conversation. */
+  sessionId: string;
+  /** Whether the session file (header) has been written yet (lazy on first turn). */
+  sessionStarted: boolean;
+  /** Whether the session has been auto-named yet. */
+  sessionNamed: boolean;
   /** Session-level context-window meter (persists across turns). */
   meter: ContextMeter;
   /** Update the spinner phase label (Screen mode only). */
@@ -361,6 +377,37 @@ const COMMANDS: CommandDef[] = [
     },
   },
   {
+    name: "sessions",
+    desc: "list saved conversations (/resume to continue one)",
+    run: (_a, ctx) => {
+      const list = listSessions(ctx.handle.personaPath);
+      if (!list.length) return void ctx.out(chalk.dim("  no saved sessions yet."));
+      ctx.out(chalk.bold(`  Sessions (${list.length})`));
+      for (const s of list.slice(0, 12)) {
+        const when = s.updated.slice(0, 16).replace("T", " ");
+        const live = s.id === ctx.sessionId ? chalk.green(" ● live") : "";
+        ctx.out(`  ${chalk.cyan(s.name)}${live} ${chalk.dim(`· ${s.turns} turn(s) · ${when} · ${s.id}`)}`);
+      }
+    },
+  },
+  {
+    name: "resume",
+    desc: "resume a saved conversation: /resume <id|name>",
+    run: async (arg, ctx) => {
+      const q = arg.trim();
+      if (!q) return void ctx.out(chalk.dim("  usage: /resume <id|name> — see /sessions"));
+      const s = findSession(ctx.handle.personaPath, q);
+      if (!s) return void ctx.out(chalk.yellow(`  no session matching "${q}" — see /sessions`));
+      const conv = loadConversation(ctx.handle.personaPath, s.id);
+      ctx.conversation = conv;
+      ctx.sessionId = s.id;
+      ctx.sessionStarted = true;
+      ctx.sessionNamed = true;
+      ctx.meter.estimate([{ role: "system", content: "" }, ...conv]);
+      ctx.out(chalk.green(`  ✓ resumed "${s.name}"`) + chalk.dim(` · ${conv.length} message(s) restored`));
+    },
+  },
+  {
     name: "mode",
     desc: "show/cycle the sandbox posture (shift+tab)",
     run: (_a, ctx) => {
@@ -474,6 +521,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       .respond({ message: line, personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content), state: cur.values, name: shortName(ctx) })
       .catch((e) => `(responder error: ${(e as Error).message})`);
     ctx.out(replyLine(ctx, reply), "persona");
+    await recordTurn(ctx, line, reply);
     await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
     return;
   }
@@ -505,6 +553,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const result = await agent.run(line);
   ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
   ctx.out(replyLine(ctx, result.summary || "…"), "persona");
+  await recordTurn(ctx, line, result.summary || "…");
   // Only surface the budget line when something noteworthy happened (a multi-step
   // task or an early stop) — not on every one-shot chat reply.
   if (result.budget.steps > 1 || (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met")) {
@@ -644,9 +693,51 @@ function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number):
     approve: async () => "deny",
     personaDoc,
     conversation: [],
+    sessionId: newSessionId(),
+    sessionStarted: false,
+    sessionNamed: false,
     meter,
     replyColor,
   };
+}
+
+/** Lazily create the on-disk session (header) for a ctx, seeded by the first message. */
+function ensureCtxSession(ctx: Ctx, seedMsg: string): void {
+  if (ctx.sessionStarted) return;
+  const isSub = isSubagentPath(ctx.handle.personaPath);
+  const address = slugAddressFromPath(ctx.handle.personaPath);
+  ensureSession(ctx.handle.personaPath, {
+    id: ctx.sessionId,
+    kind: isSub ? "sub" : "root",
+    participants: [address || "(root)"],
+    name: fallbackName(seedMsg),
+    created: new Date().toISOString(),
+    persona: address,
+  });
+  ctx.sessionStarted = true;
+}
+
+/** Append a completed user/assistant exchange to the persona's session; auto-name once. */
+async function recordTurn(ctx: Ctx, userMsg: string, assistantMsg: string): Promise<void> {
+  try {
+    ensureCtxSession(ctx, userMsg);
+    const from = slugAddressFromPath(ctx.handle.personaPath) || "(root)";
+    appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "user", content: userMsg });
+    appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "assistant", content: assistantMsg, from });
+    if (!ctx.sessionNamed) {
+      ctx.sessionNamed = true;
+      const llm = llmConfig();
+      if (llm) {
+        try {
+          renameSession(ctx.handle.personaPath, ctx.sessionId, await nameSession(llm, userMsg));
+        } catch {
+          /* keep the deterministic fallback name */
+        }
+      }
+    }
+  } catch {
+    /* session logging is best-effort and must never break a turn */
+  }
 }
 
 // ── Non-TTY: simple line reader (pipes/CI) ───────────────────────────────────
@@ -767,17 +858,28 @@ async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, setPhase
     }
     setPhase?.(`@${addr} thinking`);
     await handleTurn(msg, sub);
+    // Record the delegation for provenance: a note in the ROOT's session (the sub logged
+    // its own turn in its own session), and an episodic memory ONLY if the root's spec
+    // enables episodic memory (honors memory.types.episodic — fixes the prior leak).
     try {
-      commitMemoryEntry(
-        rootCtx.handle.personaPath,
-        prepareMemoryEntry(rootCtx.handle.personaPath, {
-          content: `Delegated to @${addr}: "${msg.slice(0, 120)}"`,
-          source: "synthesis",
-          tags: ["delegation", addr],
-        }),
-      );
+      ensureCtxSession(rootCtx, msg);
+      appendTurn(rootCtx.handle.personaPath, rootCtx.sessionId, {
+        role: "note",
+        content: `Delegated to @${addr}: "${msg.slice(0, 120)}"`,
+        from: "(root)",
+      });
+      if (readMemoryTypes(rootCtx.handle.frontmatter as Record<string, unknown>).episodic) {
+        commitMemoryEntry(
+          rootCtx.handle.personaPath,
+          prepareMemoryEntry(rootCtx.handle.personaPath, {
+            content: `Delegated to @${addr}: "${msg.slice(0, 120)}"`,
+            source: "synthesis",
+            tags: ["delegation", addr],
+          }),
+        );
+      }
     } catch {
-      /* memory write is best-effort */
+      /* delegation logging is best-effort */
     }
   }
 }
