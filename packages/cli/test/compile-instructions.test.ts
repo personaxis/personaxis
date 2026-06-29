@@ -18,6 +18,12 @@ describe("compile prompt — persona-prompting (v0.10)", () => {
     expect(p).toMatch(/break.?character/i);
   });
 
+  it("enforces faithful density: one source per fact + no numeric state in the doc", () => {
+    expect(p).toMatch(/ONE SOURCE PER FACT/);
+    expect(p).toMatch(/NO NUMERIC STATE/);
+    expect(p).toMatch(/purely qualitative/i);
+  });
+
   it("folds applied self-edits as authoritative overrides when present", () => {
     const withOverlay = buildCompilePrompt({
       personaxisMd: "---\nx: 1\n---\n",

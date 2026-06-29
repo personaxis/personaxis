@@ -101,6 +101,16 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
     input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0
       ? `Applied self-edits OVERRIDE the spec below: where a dot-path here conflicts with the spec, use THIS value (the persona has governed-evolved into it).`
       : "",
+    `Faithfulness & density (avoid the two failure modes — generic filler and redundancy):`,
+    `- ONE SOURCE PER FACT: state each fact, rule, trait, or limit in exactly ONE section. The only ` +
+      `permitted restatement is a hard limit (it lives in "Hard limits" and is REFERENCED, not repeated, ` +
+      `in "Staying in character"). Do not echo the same trait/value across multiple sections.`,
+    `- CONCENTRATE the whole spec: every meaningful layer field (character virtues, values_and_drives, ` +
+      `cognition/uncertainty policy, metacognition, affect tendencies, memory posture) must surface in ` +
+      `its natural section — do not drop fields, but do not pad. Prefer the persona's CONCRETE language ` +
+      `over restating the YAML; never quote field names or YAML verbatim.`,
+    `- NO NUMERIC STATE: never include runtime numbers, trait/affect tables, sigil seeds, or a ` +
+      `"live state" block. The compiled document is purely qualitative; state lives in state.json.`,
     `Output ONLY the compiled document. Do not wrap it in a code block.`,
     section("personaxis.md (quantitative spec + persona_prompting source, source of truth)", input.personaxisMd),
     input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0
