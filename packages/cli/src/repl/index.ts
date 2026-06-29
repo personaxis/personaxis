@@ -27,6 +27,9 @@ import {
   readMemoryTypes,
   prepareMemoryEntry,
   commitMemoryEntry,
+  proposals,
+  applySelfEdit,
+  rejectSelfEdit,
   newSessionId,
   ensureSession,
   appendTurn,
@@ -332,6 +335,46 @@ const COMMANDS: CommandDef[] = [
     run: (arg, ctx) => runAgent(arg, ctx),
   },
   {
+    name: "review",
+    desc: "review queued self-edits: /review [approve|reject] <id|all>",
+    run: async (arg, ctx) => {
+      const p = ctx.handle.personaPath;
+      const pending = proposals(p).filter((x) => x.status === "pending");
+      const [verb, which] = arg.trim().split(/\s+/).filter(Boolean);
+      if (!verb) {
+        if (!pending.length) return void ctx.out(chalk.dim("  no pending self-edit proposals."));
+        ctx.out(chalk.bold(`  Pending self-edits (${pending.length})`));
+        for (const x of pending) {
+          ctx.out(`  ${chalk.cyan(x.id)} ${chalk.dim(x.targetPath)}`);
+          ctx.out(`     → ${chalk.dim(JSON.stringify(x.toValue).slice(0, 100))}`);
+          ctx.out(`     ${chalk.dim(x.rationale)}`);
+        }
+        ctx.out(chalk.dim("  /review approve <id|all>  ·  /review reject <id|all>"));
+        return;
+      }
+      if (verb !== "approve" && verb !== "reject") return void ctx.out(chalk.yellow("  usage: /review [approve|reject] <id|all>"));
+      if (!which) return void ctx.out(chalk.yellow(`  usage: /review ${verb} <id|all>`));
+      const targets = which === "all" ? pending : pending.filter((x) => x.id === which);
+      if (!targets.length) return void ctx.out(chalk.yellow(`  no pending proposal "${which}" — see /review`));
+      let approved = 0;
+      for (const x of targets) {
+        try {
+          if (verb === "approve") {
+            const r = applySelfEdit(p, x.id, "user");
+            approved++;
+            ctx.out(chalk.green(`  ✓ applied ${x.id}`) + chalk.dim(` ${x.targetPath} → v${r.version}`));
+          } else {
+            rejectSelfEdit(p, x.id, "user");
+            ctx.out(chalk.dim(`  ✗ rejected ${x.id} ${x.targetPath}`));
+          }
+        } catch (e) {
+          ctx.out(chalk.red(`  ${x.id}: ${(e as Error).message}`));
+        }
+      }
+      if (approved > 0) await maybeRecompile(ctx);
+    },
+  },
+  {
     name: "audit",
     desc: "mutation log + memory-chain integrity",
     run: (_a, ctx) => {
@@ -570,6 +613,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const changed: string[] = [];
   let memWrites = 0;
   const memKinds: string[] = [];
+  const selfEdits: string[] = [];
   let recompiled = false;
   const off = ctx.loop.bus.on((e) => {
     if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
@@ -578,6 +622,9 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       memWrites++;
     } else if (e.type === "memory-kind") {
       memKinds.push(`${e.kind} ${e.detail}`);
+    } else if (e.type === "self-edit") {
+      if (e.op === "queued") selfEdits.push(`proposed ${e.targetPath} (/review)`);
+      else if (e.op === "applied") selfEdits.push(`self-edit applied: ${e.targetPath}`);
     } else if (e.type === "recompile") {
       recompiled = true;
       ctx.phase?.("recompiling PERSONA.md");
@@ -587,6 +634,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   off();
   const parts: string[] = [];
   if (changed.length) parts.push("evolved " + changed.join(", "));
+  if (selfEdits.length) parts.push(selfEdits.join(" · "));
   if (memWrites) parts.push(`memory +${memWrites} episodic`);
   if (memKinds.length) parts.push(memKinds.join(" · "));
   if (recompiled) parts.push("PERSONA.md recompiled");

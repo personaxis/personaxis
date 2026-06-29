@@ -12,6 +12,7 @@
 import { extractEnvelopes } from "./envelopes.js";
 import {
   governMutations,
+  governQualitative,
   readMode,
   readMaxStepDelta,
   type GovernanceConfig,
@@ -26,10 +27,10 @@ import {
   readMemoryTypes,
   consolidateSemantic,
 } from "./memory.js";
-import { recordEvaluation, scoreMemoryEntry } from "./memory-kinds.js";
+import { recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
-import { activeOverlay, applyOverlay } from "./self-evolution.js";
+import { activeOverlay, applyOverlay, proposeSelfEdit, isQualitative, isProtected, SelfEditError } from "./self-evolution.js";
 import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
@@ -161,6 +162,47 @@ export class LivingLoop {
         if (result.to !== result.from) mutationsApplied++;
       }
       if (admitted.length > 0) writeState(this.handle.statePath, state);
+
+      // 3b. evolve QUALITATIVE — the appraiser may propose prose self-edits to
+      // persona_prompting. Governed by improvement_policy.mode via governQualitative:
+      // locked → none; suggesting → queued for /review; autonomous → auto-applied (still
+      // gated by consensus verifiers + protected paths + the self_edit provenance gate,
+      // which requires a `user`-trust justification). A malicious injection blocks ALL
+      // self-edits this turn. Self-edits do NOT count as envelope mutations — keeping the
+      // `mutationsApplied` metric (and the injection eval) about numbers only.
+      const selfEdits = signal.selfEdits ?? [];
+      if (!injectionBlocked && selfEdits.length > 0 && signal.confidence >= 0.6) {
+        const action = governQualitative(gov.mode);
+        if (action !== "block") {
+          for (const se of selfEdits) {
+            if (!isQualitative(se.targetPath) || isProtected(se.targetPath)) {
+              bus.emit({ type: "self-edit", op: "rejected", targetPath: se.targetPath, reason: "not a governed qualitative path" });
+              continue;
+            }
+            try {
+              const r = proposeSelfEdit(
+                this.handle.personaPath,
+                { targetPath: se.targetPath, toValue: se.toValue, rationale: se.rationale, sources: [input.source] },
+                gov.mode,
+                input.actor ?? "actor-llm",
+              );
+              bus.emit({ type: "self-edit", op: r.status === "applied" ? "applied" : "queued", targetPath: se.targetPath, id: r.id });
+            } catch (e) {
+              const reason = e instanceof SelfEditError ? e.message : (e as Error).message;
+              bus.emit({ type: "self-edit", op: "rejected", targetPath: se.targetPath, reason });
+            }
+          }
+        }
+      }
+
+      // 3c. user preferences — written only when declared (memory.types.user_preferences)
+      // and never under a malicious injection.
+      const memTypesForPrefs = readMemoryTypes(fm);
+      const prefs = signal.preferences ?? [];
+      if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
+        for (const pref of prefs) setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale);
+        bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `+${prefs.length} pref(s)` });
+      }
 
       // 5. memory — HONOR memory.types (spec fidelity). Episodic writes only when
       // the persona declares `memory.types.episodic`; otherwise nothing is logged.

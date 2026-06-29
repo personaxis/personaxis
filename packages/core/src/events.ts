@@ -17,6 +17,7 @@ export type LoopEvent =
   | { type: "mutate"; result: MutationResult }
   | { type: "memory"; entry: MemoryEntry }
   | { type: "memory-kind"; kind: "procedural" | "autobiographical" | "user_preferences" | "evaluations"; detail: string }
+  | { type: "self-edit"; op: "queued" | "applied" | "rejected"; targetPath: string; id?: string; reason?: string }
   | { type: "anomaly"; kind: string; detail: string }
   | { type: "recompile"; reason: string }
   | { type: "abstain"; reason: string }

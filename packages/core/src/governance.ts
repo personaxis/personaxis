@@ -89,6 +89,23 @@ function judge(
   return { field: p.field, admitted: true, delta: bounded, reason: p.reason + note };
 }
 
+/**
+ * Govern a QUALITATIVE self-edit (prose) by improvement_policy.mode. This is a SEPARATE
+ * layer from `judge` (which governs numeric envelope mutations): qualitative edits to the
+ * spec's character material are higher-stakes, so the mode means something different here —
+ *   locked      → block (no proposal at all);
+ *   suggesting  → queue the proposal for human review (/review), never auto-apply;
+ *   autonomous  → auto-apply, still gated by consensus verifiers + the protected-path list.
+ * (Envelope mutations remain reversible/clamped, so suggesting==autonomous for them — see
+ * `judge`. Decoupling avoids weakening the numeric drift guard while making prose evolution
+ * actually respect the posture.)
+ */
+export function governQualitative(mode: ImprovementMode): "block" | "queue" | "auto" {
+  if (mode === "locked") return "block";
+  if (mode === "autonomous") return "auto";
+  return "queue"; // suggesting
+}
+
 /** Read improvement_policy.mode from frontmatter, defaulting to locked. */
 export function readMode(frontmatter: Record<string, unknown>): ImprovementMode {
   const ip = frontmatter.improvement_policy as { mode?: unknown } | undefined;

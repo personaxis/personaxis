@@ -405,21 +405,9 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   // reference runtime. Warn so the spec never silently over-promises behavior.
   const mem = asObj(data.memory);
   const memTypes = mem ? asObj(mem.types) : undefined;
-  // procedural, autobiographical and evaluations are now enforced (F4); user_preferences
-  // is populated by the appraiser (F5) — keep its honesty warning until that lands.
-  const UNENFORCED_TYPES = ["user_preferences"];
-  if (memTypes) {
-    for (const t of UNENFORCED_TYPES) {
-      if (memTypes[t] === true) {
-        findings.push({
-          rule: "memory-type-unenforced",
-          severity: "warning",
-          path: `memory.types.${t}`,
-          message: `'${t}' memory is declared but NOT yet enforced by this runtime. It will be ignored until implemented.`,
-        });
-      }
-    }
-  }
+  // All six memory.types are now enforced by the runtime (episodic, semantic, procedural,
+  // autobiographical, user_preferences, evaluations) — no honesty warning needed here.
+  void memTypes;
   for (const policy of ["consolidation_policy", "retrieval_policy", "write_policy"]) {
     if (mem && mem[policy] !== undefined) {
       findings.push({

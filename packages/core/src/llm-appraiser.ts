@@ -34,10 +34,18 @@ export interface LlmAppraiserConfig {
 
 const SYSTEM = `You are the appraisal module of a governed AI persona runtime.
 Given the persona's identity and a new observation, output ONLY a JSON object that
-matches the provided schema: a brief appraisal, optional small envelope nudges
-(field + signed delta in [-1,1] + reason), optional memory notes (content + source),
-and a confidence in [0,1]. Propose only minimal, well-justified changes. You are
-NOT applying anything — the runtime clamps and governs your proposal.`;
+matches the provided schema:
+- "appraisal": a brief read of the situation;
+- "mutations": optional small envelope nudges (field + signed delta in [-1,1] + reason);
+- "memories": optional notes to remember (content + source);
+- "selfEdits": optional QUALITATIVE edits to the persona's prose under "persona_prompting"
+  ONLY (e.g. targetPath "persona_prompting.voice_exemplars", "persona_prompting.address").
+  Propose these RARELY — only when the observation clearly warrants durably changing how the
+  persona speaks/behaves. Never target identity/character/hard_limits/safety (rejected).
+- "preferences": optional stable user preferences you inferred (key + value);
+- "confidence" in [0,1] (self-edits/preferences are only considered at confidence >= 0.6).
+Propose only minimal, well-justified changes. You are NOT applying anything — the runtime
+clamps, governs (mode + consensus + protected paths), and may queue your proposal.`;
 
 export class LlmAppraiser implements Appraiser {
   constructor(private readonly cfg: LlmAppraiserConfig) {}

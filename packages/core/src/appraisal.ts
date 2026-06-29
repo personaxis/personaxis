@@ -27,6 +27,27 @@ export interface ProposedMemory {
   tags?: string[];
 }
 
+/**
+ * A proposed QUALITATIVE self-edit to the spec's prose material (governed downstream by
+ * improvement_policy.mode + consensus verifiers + the protected-path list). The engine —
+ * not the model — decides whether it is queued, applied, or rejected.
+ */
+export interface ProposedSelfEdit {
+  /** Dot-path into the spec; only qualitative prefixes (persona_prompting.*) are honored. */
+  targetPath: string;
+  /** The proposed new value (string/array/object of prose). */
+  toValue: unknown;
+  /** One-line justification (required for audit + the rationale verifier). */
+  rationale: string;
+}
+
+/** A proposed stable user preference (memory.types.user_preferences). */
+export interface ProposedPreference {
+  key: string;
+  value: string;
+  rationale?: string;
+}
+
 export interface AppraisalSignal {
   /** Free-text appraisal of the current situation (kept short). */
   appraisal: string;
@@ -34,6 +55,10 @@ export interface AppraisalSignal {
   mutations: ProposedMutation[];
   /** Proposed memory writes (verified + lineage-tagged downstream). */
   memories: ProposedMemory[];
+  /** Proposed qualitative self-edits to persona_prompting (governed by mode + consensus). */
+  selfEdits?: ProposedSelfEdit[];
+  /** Proposed stable user preferences (written only when user_preferences is enabled). */
+  preferences?: ProposedPreference[];
   /** Model's self-reported confidence in [0,1] (drives abstain/disclose). */
   confidence: number;
 }
@@ -74,6 +99,34 @@ export const APPRAISAL_JSON_SCHEMA = {
           content: { type: "string", maxLength: 500 },
           source: { type: "string", enum: ["user", "tool", "internal", "synthesis"] },
           tags: { type: "array", items: { type: "string" }, maxItems: 6 },
+        },
+      },
+    },
+    selfEdits: {
+      type: "array",
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["targetPath", "toValue", "rationale"],
+        properties: {
+          targetPath: { type: "string" },
+          toValue: {},
+          rationale: { type: "string", maxLength: 240 },
+        },
+      },
+    },
+    preferences: {
+      type: "array",
+      maxItems: 4,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["key", "value"],
+        properties: {
+          key: { type: "string" },
+          value: { type: "string", maxLength: 200 },
+          rationale: { type: "string", maxLength: 200 },
         },
       },
     },
@@ -140,6 +193,8 @@ export function parseAppraisalSignal(raw: unknown): AppraisalSignal {
   const o = (raw ?? {}) as Record<string, unknown>;
   const mutations = Array.isArray(o.mutations) ? o.mutations : [];
   const memories = Array.isArray(o.memories) ? o.memories : [];
+  const selfEdits = Array.isArray(o.selfEdits) ? o.selfEdits : [];
+  const preferences = Array.isArray(o.preferences) ? o.preferences : [];
   return {
     appraisal: typeof o.appraisal === "string" ? o.appraisal : "",
     confidence:
@@ -162,6 +217,14 @@ export function parseAppraisalSignal(raw: unknown): AppraisalSignal {
         source: isSource(m.source) ? m.source : "internal",
         tags: Array.isArray(m.tags) ? (m.tags as string[]).filter((t) => typeof t === "string") : [],
       })),
+    selfEdits: selfEdits
+      .map((s) => s as Record<string, unknown>)
+      .filter((s) => typeof s.targetPath === "string" && "toValue" in s && typeof s.rationale === "string")
+      .map((s) => ({ targetPath: s.targetPath as string, toValue: s.toValue, rationale: s.rationale as string })),
+    preferences: preferences
+      .map((p) => p as Record<string, unknown>)
+      .filter((p) => typeof p.key === "string" && typeof p.value === "string")
+      .map((p) => ({ key: p.key as string, value: p.value as string, ...(typeof p.rationale === "string" ? { rationale: p.rationale } : {}) })),
   };
 }
 
