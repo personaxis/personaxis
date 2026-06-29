@@ -76,6 +76,23 @@ describe("two-axis policy decisions", () => {
   });
 });
 
+describe("posture changes the decision for the SAME command", () => {
+  // A read-only command (e.g. getting the date) passes in ALL postures — which is why a
+  // user testing only reads sees "no difference". The difference shows on a WRITE:
+  it("a workspace write: deny (read-only) → ask (workspace-write) → allow (danger)", () => {
+    const write = "echo hi > src/out.txt";
+    expect(evaluateCommand(write, policy({ sandbox: "read-only" })).decision).toBe("deny");
+    expect(evaluateCommand(write, policy({ sandbox: "workspace-write", approval: "on-request" })).decision).toBe("ask");
+    expect(evaluateCommand(write, policy({ sandbox: "danger-full-access", approval: "never" })).decision).toBe("allow");
+  });
+
+  it("a read (date/cat) is allowed in EVERY posture — the user's 'no difference' case", () => {
+    for (const sandbox of ["read-only", "workspace-write", "danger-full-access"] as const) {
+      expect(evaluateCommand("cat README.md", policy({ sandbox, approval: "never" })).decision).toBe("allow");
+    }
+  });
+});
+
 describe("v0.8: policy from a persona's declared permissions", () => {
   it("builds a policy from frontmatter.permissions and enforces it", () => {
     const fm = {
