@@ -19,7 +19,7 @@ import { relative } from "path";
 import { Command } from "commander";
 import chalk from "chalk";
 import { resolvePersonaSourcePath } from "../load.js";
-import { readMode, type ImprovementMode } from "@personaxis/core";
+import { readMode, readMemoryTypes, appendAutobiographical, type ImprovementMode } from "@personaxis/core";
 import matter from "gray-matter";
 
 export const MODES: ImprovementMode[] = ["locked", "suggesting", "autonomous"];
@@ -65,6 +65,14 @@ export function runMode(target?: string, newMode?: ImprovementMode): ModeResult 
     return { path, previous, current: previous, changed: false };
   }
   writeFileSync(path, setModeInFrontmatter(raw, newMode), "utf-8");
+  // autobiographical — a change of self-improvement posture is an identity-level milestone.
+  if (readMemoryTypes(matter(raw).data as Record<string, unknown>).autobiographical) {
+    try {
+      appendAutobiographical(path, { event: "improvement mode changed", detail: `${previous} → ${newMode}`, tags: ["mode"] });
+    } catch {
+      /* milestone logging is best-effort */
+    }
+  }
   return { path, previous, current: newMode, changed: true };
 }
 

@@ -26,6 +26,7 @@ import {
   readMemoryTypes,
   consolidateSemantic,
 } from "./memory.js";
+import { recordEvaluation, scoreMemoryEntry } from "./memory-kinds.js";
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
 import { activeOverlay, applyOverlay } from "./self-evolution.js";
@@ -165,6 +166,7 @@ export class LivingLoop {
       // the persona declares `memory.types.episodic`; otherwise nothing is logged.
       const memTypes = readMemoryTypes(fm);
       let memoriesWritten = 0;
+      const written: ReturnType<typeof prepareMemoryEntry>[] = [];
       if (memTypes.episodic) {
         for (const mem of signal.memories) {
           const entry = prepareMemoryEntry(this.handle.personaPath, {
@@ -179,6 +181,7 @@ export class LivingLoop {
           }
           commitMemoryEntry(this.handle.personaPath, entry);
           bus.emit({ type: "memory", entry });
+          written.push(entry);
           memoriesWritten++;
         }
       } else if (signal.memories.length > 0) {
@@ -195,6 +198,28 @@ export class LivingLoop {
           const c = consolidateSemantic(this.handle.personaPath);
           bus.emit({ type: "recompile", reason: `semantic consolidation (${c.count} entries → memory.md)` });
         }
+      }
+
+      // evaluations — deterministic quality/utility scoring of what was written this turn.
+      if (memTypes.evaluations) {
+        let evals = 0;
+        if (written.length > 0) {
+          for (const entry of written) {
+            for (const s of scoreMemoryEntry(entry, { injectionBlocked })) {
+              recordEvaluation(this.handle.personaPath, s);
+              evals++;
+            }
+          }
+        } else {
+          recordEvaluation(this.handle.personaPath, {
+            target: "turn",
+            dimension: "safety",
+            score: injectionBlocked ? 0 : 1,
+            rationale: injectionBlocked ? "injection blocked this turn" : "no injection signal",
+          });
+          evals++;
+        }
+        if (evals > 0) bus.emit({ type: "memory-kind", kind: "evaluations", detail: `+${evals} eval(s)` });
       }
 
       // 4. recompile on drift (after state changes so the doc reflects them)

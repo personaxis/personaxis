@@ -44,6 +44,7 @@ import {
   readMemoryTypes,
   type AgentOutcome,
 } from "./memory.js";
+import { appendProcedural, readProcedural, readPreferences, readAutobiographical } from "./memory-kinds.js";
 import { loadPersona, readState, writeState } from "./persona.js";
 import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow } from "./context.js";
 
@@ -167,6 +168,13 @@ export class PersonaAgent {
     if (semantic.trim()) parts.push("\n# Long-term memory (memory.md)\n" + semantic.slice(0, 2500));
     const mem = readLiveMemory(p).slice(-6);
     if (mem.length) parts.push("\n# Recent memory\n" + mem.map((m) => `- [${m.source}] ${m.content}`).join("\n"));
+    // Other memory kinds (only present when the persona enabled them — producers gate on flags).
+    const prefs = Object.entries(readPreferences(p));
+    if (prefs.length) parts.push("\n# User preferences\n" + prefs.map(([k, v]) => `- ${k}: ${v.value}`).join("\n"));
+    const proc = readProcedural(p).slice(-3);
+    if (proc.length) parts.push("\n# How-to memory (procedural)\n" + proc.map((x) => `- ${x.task} → ${x.procedure}`).join("\n"));
+    const auto = readAutobiographical(p).slice(-3);
+    if (auto.length) parts.push("\n# Identity milestones\n" + auto.map((x) => `- ${x.event}${x.detail ? `: ${x.detail}` : ""}`).join("\n"));
     return parts.join("\n");
   }
 
@@ -186,13 +194,22 @@ export class PersonaAgent {
     if (!p) return;
     try {
       const handle = loadPersona(p);
-      if (readMemoryTypes(handle.frontmatter as Record<string, unknown>).episodic) {
+      const memTypes = readMemoryTypes(handle.frontmatter as Record<string, unknown>);
+      if (memTypes.episodic) {
         const entry = prepareMemoryEntry(p, {
           content: `agent run [${outcome}] "${task}": ${summary.replace(/\n+/g, " ").slice(0, 240)}`,
           source: "synthesis",
           tags: ["agent-run", outcome],
         });
         commitMemoryEntry(p, entry);
+      }
+      // procedural — a successful run is a reusable "how-to" keyed by the task.
+      if (memTypes.procedural && outcome === "success") {
+        appendProcedural(p, {
+          task: task.slice(0, 160),
+          procedure: summary.replace(/\n+/g, " ").slice(0, 400),
+          tags: [`steps:${step}`],
+        });
       }
       // Structured resumption pointer in state.json (not prose).
       const st = readState(handle.statePath);

@@ -569,12 +569,15 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // which envelope changed, whether memory was written, whether PERSONA.md recompiled.
   const changed: string[] = [];
   let memWrites = 0;
+  const memKinds: string[] = [];
   let recompiled = false;
   const off = ctx.loop.bus.on((e) => {
     if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
       changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
     } else if (e.type === "memory") {
       memWrites++;
+    } else if (e.type === "memory-kind") {
+      memKinds.push(`${e.kind} ${e.detail}`);
     } else if (e.type === "recompile") {
       recompiled = true;
       ctx.phase?.("recompiling PERSONA.md");
@@ -584,7 +587,8 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   off();
   const parts: string[] = [];
   if (changed.length) parts.push("evolved " + changed.join(", "));
-  if (memWrites) parts.push(`memory +${memWrites}`);
+  if (memWrites) parts.push(`memory +${memWrites} episodic`);
+  if (memKinds.length) parts.push(memKinds.join(" · "));
   if (recompiled) parts.push("PERSONA.md recompiled");
   if (parts.length) ctx.out(chalk.dim("  · " + parts.join("  ·  ")));
 
