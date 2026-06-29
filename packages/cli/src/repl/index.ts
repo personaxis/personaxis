@@ -86,6 +86,7 @@ import { runMode, isMode, MODES } from "../commands/mode.js";
 import { runCompile } from "../commands/compile.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import { buildAwarenessBlock } from "./awareness.js";
+import { buildResourceManifest } from "../resource-manifest.js";
 
 interface ReplOptions {
   persona?: string;
@@ -261,20 +262,29 @@ const COMMANDS: CommandDef[] = [
   { name: "help", desc: "show commands", run: (_a, ctx) => void ctx.out(helpText()) },
   {
     name: "persona",
-    desc: "show identity + sigil",
+    desc: "identity, role, sub-personas, resources + sigil",
     run: (_a, ctx) => {
+      const p = ctx.handle.personaPath;
       const id = ctx.handle.frontmatter.identity as { display_name?: string; system_identity?: { purpose?: string } } | undefined;
-      ctx.out(chalk.bold(`  ${ctx.name}`));
+      const address = slugAddressFromPath(p);
+      const role = isSubagentPath(p) && address ? `sub-persona @${address}` : "root persona";
+      ctx.out(chalk.bold(`  ${ctx.name}`) + chalk.dim(`  · ${role}`));
       if (id?.system_identity?.purpose) ctx.out(`  ${chalk.dim("purpose:")} ${id.system_identity.purpose}`);
+      ctx.out(chalk.dim(`  improve: ${ctx.mode} · sandbox: ${POSTURES[ctx.postureIndex]}`));
+      // sub-personas this persona can delegate to
+      const subs = discoverTree(p);
+      if (subs.length) {
+        ctx.out(chalk.bold("  Sub-personas"));
+        for (const s of subs) ctx.out(`  ${"  ".repeat(s.depth - 1)}${chalk.cyan(`@${s.address}`)}`);
+      }
+      // resource inventory beside the spec
+      const manifest = buildResourceManifest(dirname(p));
+      if (manifest.trim()) {
+        ctx.out(chalk.bold("  Resources"));
+        for (const line of manifest.split("\n")) ctx.out(`  ${chalk.dim(line.replace(/^- /, ""))}`);
+      }
+      // the living sigil (sober microdetail)
       ctx.out(sigilLines(ctx.theme, readState(ctx.handle.statePath).values).join("\n"));
-    },
-  },
-  {
-    name: "sigil",
-    desc: "render the living sigil",
-    run: (_a, ctx) => {
-      const st = readState(ctx.handle.statePath);
-      ctx.out(sigilLines(ctx.theme, st.values, 0).join("\n"));
       ctx.out(chalk.dim(`  seed #${ctx.theme.seed.toString(16)} · voice ${ctx.theme.voice.density}`));
     },
   },
@@ -310,29 +320,6 @@ const COMMANDS: CommandDef[] = [
         ctx.out(chalk.red(`  could not set mode: ${(e as Error).message}`));
       }
     },
-  },
-  {
-    name: "evolve",
-    desc: "run one Living-Loop cycle on <text> (shows the governed steps)",
-    run: async (arg, ctx) => {
-      if (!arg) return void ctx.out(chalk.yellow("  usage: /evolve <observation text>"));
-      const off = ctx.loop.bus.on((e) => {
-        const l = eventLine(ctx.theme, e);
-        if (l) ctx.out(l, "activity");
-      });
-      try {
-        await ctx.loop.tick({ observation: arg, source: "user", actor: "actor-llm" });
-      } catch (e) {
-        ctx.out(chalk.dim(`  loop skipped: ${(e as Error).message}`));
-      } finally {
-        off();
-      }
-    },
-  },
-  {
-    name: "do",
-    desc: "hand the persona a TASK to execute (governed agent)",
-    run: (arg, ctx) => runAgent(arg, ctx),
   },
   {
     name: "review",
@@ -396,11 +383,15 @@ const COMMANDS: CommandDef[] = [
   },
   {
     name: "overseer",
-    desc: "environment view",
+    desc: "cross-machine/project registry view (optional infra)",
     run: (_a, ctx) => {
       const v = overseerView();
       ctx.out(chalk.bold.magentaBright("  overseer") + chalk.dim(` · machine ${v.machine}`));
       ctx.out(`  personas ${v.personas} · projects ${v.projects} · collections ${v.collections}`);
+      if (v.personas === 0 && v.projects === 0 && v.collections === 0) {
+        ctx.out(chalk.dim("  (empty) the overseer is OPTIONAL infra for reusing a persona across machines/projects,"));
+        ctx.out(chalk.dim("  complementing git — not replacing it. Populate with: personaxis personas add · personaxis push"));
+      }
     },
   },
   { name: "model", desc: "show the model in use", run: (_a, ctx) => void ctx.out(chalk.dim(`  model: ${appraiserLabel()}`)) },
@@ -543,11 +534,12 @@ function personaGlyph(ctx: Ctx): string {
  */
 function replyLine(ctx: Ctx, text: string): string {
   const glyph = personaGlyph(ctx);
+  const name = shortName(ctx);
   if (ctx.replyColor !== undefined) {
     const c = chalk.ansi256(ctx.replyColor);
-    return `${c.bold(glyph)} ${c.bold(shortName(ctx))}: ${c(text)}`;
+    return `${c.dim(glyph)} ${c.bold.underline(name)} ${c.dim("›")}  ${c(text)}`;
   }
-  return `${chalk.dim(glyph)} ${chalk.bold(shortName(ctx))}: ${text}`;
+  return `${chalk.dim(glyph)} ${chalk.bold.underline(name)} ${chalk.dim("›")}  ${text}`;
 }
 
 /**
@@ -666,10 +658,6 @@ async function maybeRecompile(ctx: Ctx): Promise<void> {
 }
 
 const handleTurn = runAgentTurn;
-async function runAgent(task: string, ctx: Ctx): Promise<void> {
-  if (!task) return void ctx.out(chalk.yellow("  usage: /do <task to accomplish>"));
-  return runAgentTurn(task, ctx);
-}
 
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   let personaPath = resolvePersonaPath(opts.persona);
