@@ -520,7 +520,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   let memWrites = 0;
   let recompiled = false;
   const off = ctx.loop.bus.on((e) => {
-    if (e.type === "mutate" && e.result && !e.result.blocked) {
+    if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
       changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
     } else if (e.type === "memory") {
       memWrites++;

@@ -3,8 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  renderLiveBlock,
-  upsertLiveBlock,
+  stripLiveBlock,
   liveSync,
   makeRecompileHook,
   loadPersona,
@@ -49,38 +48,47 @@ function st(): StateFile {
 }
 
 describe("live-sync", () => {
-  it("renders a delimited block with the current values", () => {
-    const block = renderLiveBlock(loadPersona(personaPath), st());
-    expect(block).toContain(LIVE_START);
-    expect(block).toContain(LIVE_END);
-    expect(block).toContain("mood.tone");
-    expect(block).toContain("0.120");
+  it("stripLiveBlock is a no-op when no block is present", () => {
+    const doc = "# T\n\nBody.\n";
+    expect(stripLiveBlock(doc)).toBe(doc);
   });
 
-  it("upsert appends when absent and replaces when present (idempotent)", () => {
-    const block1 = renderLiveBlock(loadPersona(personaPath), st());
-    let doc = upsertLiveBlock("# T\nbody\n", block1);
-    expect((doc.match(new RegExp(LIVE_START, "g")) ?? []).length).toBe(1);
-    // upsert again -> still exactly one block
-    doc = upsertLiveBlock(doc, block1);
-    expect((doc.match(new RegExp(LIVE_START, "g")) ?? []).length).toBe(1);
+  it("stripLiveBlock removes a residual block and surrounding blank space", () => {
+    const doc = `# T\n\nBody.\n\n${LIVE_START}\n> stuff\n${LIVE_END}\n`;
+    const cleaned = stripLiveBlock(doc);
+    expect(cleaned).not.toContain(LIVE_START);
+    expect(cleaned).not.toContain(LIVE_END);
+    expect(cleaned).toContain("Body.");
+    // idempotent
+    expect(stripLiveBlock(cleaned)).toBe(cleaned);
   });
 
-  it("liveSync updates the compiled doc and writes the .live marker", () => {
+  it("liveSync writes the .live marker and never injects numeric state into the doc", () => {
     const handle = loadPersona(personaPath);
+    const before = readFileSync(compiledPath, "utf-8");
     const marker = liveSync(handle, compiledPath, st());
-    expect(readFileSync(compiledPath, "utf-8")).toContain(LIVE_START);
+    const after = readFileSync(compiledPath, "utf-8");
+    expect(after).toBe(before); // prose untouched
+    expect(after).not.toContain(LIVE_START);
     expect(existsSync(join(dir, ".live.json"))).toBe(true);
     expect(marker.mutations).toBe(1);
     expect(marker.state_hash).toMatch(/^[0-9a-f]{16}$/);
   });
 
-  it("recompile hook reads state and syncs", async () => {
+  it("liveSync self-heals a doc that still carries an old live block", () => {
+    writeFileSync(compiledPath, `# T\n\nBody.\n\n${LIVE_START}\n> old\n${LIVE_END}\n`);
+    const handle = loadPersona(personaPath);
+    liveSync(handle, compiledPath, st());
+    expect(readFileSync(compiledPath, "utf-8")).not.toContain(LIVE_START);
+  });
+
+  it("recompile hook reads state and writes the marker without touching prose", async () => {
     const handle = loadPersona(personaPath);
     writeState(handle.statePath, st());
+    const before = readFileSync(compiledPath, "utf-8");
     const hook = makeRecompileHook(compiledPath);
     await hook(handle);
-    expect(readFileSync(compiledPath, "utf-8")).toContain("mood.tone");
+    expect(readFileSync(compiledPath, "utf-8")).toBe(before);
     expect(existsSync(join(dir, ".live.json"))).toBe(true);
   });
 });
