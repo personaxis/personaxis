@@ -32,18 +32,27 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | Command | What it does |
 |---|---|
 | `/help` | List commands. |
-| `/persona` | Show the active persona summary. |
+| `/persona` | Identity, role (root/sub), sub-personas, resources + sigil. |
 | `/state` | Show runtime state + envelopes. |
-| `/improve [mode]` | View/set self-improvement mode (≠ `/mode`). |
+| `/improve [mode]` | View/set self-improvement mode `locked\|suggesting\|autonomous` (≠ `/mode`). |
+| `/review [approve\|reject] <id\|all>` | Review the queue of proposed qualitative self-edits. |
 | `/mode` | Cycle the sandbox posture (shift+tab also). |
-| `/evolve <text>` | Run one governed Living-Loop cycle (shows the steps). |
-| `/do <task>` | Hand the persona a task (governed Agent Loop). |
 | `/memory` | Inspect memory + verify the hash chain. |
-| `/audit` | Governance/overseer view. |
+| `/audit` | Mutation log + memory-chain integrity. |
+| `/sessions` | List saved conversations (`● live` marks the current one). |
+| `/resume <id\|name>` | Resume a saved conversation. |
+| `/compact` | Compact the conversation context (also auto at ~80%). |
 | `/goal` | Set / show / clear a standing goal. |
 | `/loop` | Run N internal ticks. |
-| `/compact` | Compact the conversation context. |
+| `/overseer` | Cross-machine/project registry view (optional infra). |
 | `/exit` | Leave. |
 
+> Chatting plain text both converses AND uses tools (one governed agent loop) — there is no
+> separate `/do`. Evolution runs every turn — there is no separate `/evolve`. The sigil is
+> folded into `/persona`.
+
 **Multi-persona** (not slash-commands): address sub-personas inline with `@slug …` or
-`@all …`. See [multi-persona](../architecture/multi-persona.md).
+`@all …`. See [multi-persona](../architecture/multi-persona.md). New feature docs:
+[memory](../architecture/memory.md), [sessions](../architecture/sessions.md),
+[self-evolution](../architecture/self-evolution.md), [awareness](../architecture/awareness.md),
+[sandbox](../architecture/sandbox.md).

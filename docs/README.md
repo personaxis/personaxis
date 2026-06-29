@@ -13,11 +13,14 @@ The spec itself (normative field reference) lives in the sibling `persona.md` re
 ```
 docs/
   architecture/        how the system works, end to end
-    self-evolution.md    how personaxis.md self-edits, and how it compiles to PERSONA.md (the "living" loop)
-    compile.md           compile / decompile, the artifact model, canonical output paths
+    self-evolution.md    how personaxis.md self-edits (numeric + qualitative), and how it compiles to PERSONA.md (the "living" loop)
+    compile.md           compile / decompile, the artifact model, canonical output paths, purely-qualitative compiled doc
     multi-persona.md     root + sub-personas, @routing, isolation, per-persona colors
     agent-adoption.md    how Claude Code / Codex / Hermes adopt a personaxis persona
-    memory.md            episodic (hash-chained) + semantic memory, consolidation
+    memory.md            the six memory.types (episodic, semantic, procedural, autobiographical, user_preferences, evaluations)
+    sessions.md          persistent per-persona conversations, /sessions, /resume, vs /compact
+    awareness.md         runtime structural self-knowledge (root vs sub, address, sub-tree, resources)
+    sandbox.md           two-axis permission policy, postures, the honest Windows limit
   commands/            one entry per CLI command (validate, compile, improve, …)
     README.md            command index
 ```

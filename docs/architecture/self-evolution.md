@@ -59,6 +59,48 @@ Defense in depth, all in `self-evolution.ts`:
 > State note: self-edits go to the **ledger**, not `state.json`. `state.json` holds
 > operational runtime dials (mood/affect), which the state engine clamps + logs separately.
 
+## 3b. Qualitative self-edits in the Living Loop (live)
+
+The loop no longer evolves only numbers. Each turn the appraiser may emit qualitative
+`selfEdits[]` targeting the `persona_prompting` block alongside its numeric signal
+(`loop.ts` step 3b; `appraisal.ts` / `llm-appraiser.ts`). These run through a **separate
+governance layer** from the numeric envelope `judge`:
+
+- **Numeric** envelopes go through the state engine's clamp + drift guard
+  (`governance.max_step_delta`). For numbers, `suggesting` and `autonomous` behave the
+  same — mutations are cheap, clamped, and reversible.
+- **Qualitative** prose goes through `governQualitative(mode)` (`governance.ts`), which maps
+  the mode to `block | queue | auto`. This layer **does not** touch the numeric drift guard.
+  Here the modes genuinely differ:
+
+| mode | `governQualitative` | qualitative behavior |
+|---|---|---|
+| `locked` | `block` | proposes nothing. |
+| `suggesting` | `queue` | enqueues `pending` in `self-edits.jsonl`; NEVER auto-applies. |
+| `autonomous` | `auto` | auto-applies, still gated (see below). |
+
+Even under `autonomous`, an auto-apply must clear **all** of: the unanimous consensus
+verifiers (§3), the `PROTECTED_PREFIXES` list (`identity`/`character`/`hard_limits`/`safety`
+are never editable), and the `sensitiveActionGate("self_edit")` provenance gate, which
+requires a `user`-trust justification (trust level 3). Consequently an **internal tick can
+never auto-edit** — only an edit justified by the user clears the gate.
+
+Hardening:
+
+- A malicious **injection** in the observation blocks **every** self-edit that turn
+  (defense in depth), independent of mode.
+- Self-edits do **not** count as `mutationsApplied` — that metric (and the injection eval)
+  stays about numbers only.
+- On apply, the loop writes `.recompile-pending.json`; the REPL then recompiles `PERSONA.md`
+  so the applied overlay (including qualitative edits) reaches the compiled doc.
+
+## 3c. Reviewing the queue (`/review`)
+
+Under `suggesting`, proposals sit in `self-edits.jsonl` as `pending`. In the REPL,
+`/review` lists them and `approve`/`reject <id|all>` resolves them — an `approve` mints the
+`PersonaVersion` and applies the overlay; a `reject` closes the entry. Nothing in
+`suggesting` mode reaches the compiled doc until you approve it.
+
 ## 4. From spec to `PERSONA.md` (compile)
 
 `personaxis compile` takes `personaxis.md` (including the `persona_prompting` block) and asks

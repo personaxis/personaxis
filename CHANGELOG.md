@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.11.0] - 2026-06-29
+
+Runtime/correctness release (no spec field changes; `spec_version` stays `0.10.0`). Closes the
+gap between what the spec declared and what the runtime actually did.
+
+### Added
+- **Persistent sessions** per persona under `.personaxis/[personas/<slug>/]sessions/<id>.jsonl`;
+  `/sessions` lists them and `/resume <id|name>` continues one. Auto-named from the first message.
+- **Qualitative self-evolution in the live loop**: each turn the appraiser may propose governed
+  self-edits to `persona_prompting`; `improvement_policy.mode` now takes effect at runtime
+  (`locked` blocks, `suggesting` queues for `/review`, `autonomous` auto-applies — all gated by
+  consensus + protected paths + a `user`-trust provenance gate). New `/review` command.
+- **All six `memory.types` enforced**: `procedural`, `autobiographical`, `user_preferences`,
+  `evaluations` are implemented (were declared-but-unenforced); each producer honors its flag.
+- **Runtime structure awareness**: the system prompt states whether a persona is root or a sub,
+  its address, its sub-persona tree, and its `.personaxis/` resource inventory.
+
+### Changed
+- `PERSONA.md` is now purely qualitative: the numeric `LIVE-STATE` block is no longer injected
+  into the compiled doc (state lives in `state.json`/`.live.json`); old blocks self-heal.
+- `/persona` absorbs `/sigil` (role, sub-personas, resources, mode, posture, sigil).
+- Compile prompt: one-source-per-fact + no numeric state.
+- Reply format `‹glyph› Name ›  text` so it is clear who spoke.
+
+### Removed
+- Redundant REPL commands `/do` and `/evolve` (plain chat already uses tools; every turn already
+  runs a governed tick).
+
+### Fixed
+- No-op mutations (`0.98→0.98`) are no longer printed as "evolved".
+- Delegation no longer writes episodic memory when `memory.types.episodic` is `false`.
+
+---
+
 ## [Unreleased]
 
 ### Added

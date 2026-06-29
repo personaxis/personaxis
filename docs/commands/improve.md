@@ -11,11 +11,15 @@ personaxis improve [mode] [--persona <path>]
 - no `mode` → print the current mode.
 - `mode` ∈ `locked | suggesting | autonomous`.
 
-| mode | behavior |
+| mode | behavior (qualitative self-edits to `persona_prompting`) |
 |---|---|
 | `locked` | the spec never self-edits — humans only. |
-| `suggesting` | the persona PROPOSES edits; they queue for approval (consensus). |
-| `autonomous` | proposals auto-apply, still gated by consensus + protected paths. |
+| `suggesting` | the persona PROPOSES edits; they QUEUE in the ledger for batch approval via `/review`. |
+| `autonomous` | proposals auto-apply, still gated by consensus + protected paths + the `user`-trust provenance gate. |
+
+> The mode governs **qualitative** evolution (prose). Numeric envelope nudges (mood/affect) are
+> cheap, clamped and reversible, so `suggesting` and `autonomous` behave the same for them — only
+> `locked` stops them. Review queued qualitative proposals with `/review` in the REPL.
 
 ## How it writes
 Comment-preserving text surgery on the `improvement_policy.mode` line in the `personaxis.md`

@@ -14,18 +14,23 @@ sub-personas.
 | Command | What it does |
 |---|---|
 | `/help` | List commands. |
-| `/persona` | Show the active persona summary. |
+| `/persona` | Identity, role (root/sub), sub-personas, resources + sigil. |
 | `/state` | Runtime state + envelopes. |
 | `/improve [mode]` | View/set self-improvement mode (`locked`/`suggesting`/`autonomous`). |
+| `/review [approve\|reject] <id\|all>` | Review queued qualitative self-edits (see [self-evolution](../architecture/self-evolution.md)). |
 | `/mode` | Cycle the sandbox posture (also shift+tab). |
-| `/evolve <text>` | Run one governed Living-Loop cycle (shows the steps). |
-| `/do <task>` | Hand the persona a task (governed Agent Loop). |
-| `/memory` | Inspect memory + verify the hash chain. |
-| `/audit` | Governance / overseer view. |
+| `/memory` | Inspect memory + verify the hash chain (all six [memory types](../architecture/memory.md)). |
+| `/audit` | Mutation log + memory-chain integrity. |
+| `/sessions` | List saved conversations (`● live` = current). |
+| `/resume <id\|name>` | Resume a saved conversation (see [sessions](../architecture/sessions.md)). |
+| `/compact` | Compact the conversation context (auto at ~80%). |
 | `/goal` | Set / show / clear a standing goal. |
 | `/loop` | Run N internal ticks. |
-| `/compact` | Compact the conversation context. |
+| `/overseer` | Cross-machine/project registry view (optional infra). |
 | `/exit` | Leave. |
+
+> No `/do` (plain chat already uses tools) and no `/evolve` (every turn already runs a
+> governed Living-Loop tick). The sigil is shown by `/persona`.
 
 ## UI
 A normal-buffer CLI (native scroll/selection): a status bar below the input

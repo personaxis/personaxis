@@ -19,6 +19,25 @@ Output: the persona-prompting document (`PERSONA.md`).
 Resource paths in the compiled doc are relative to where it lives: `./` for an in-folder sub,
 `./.personaxis/` for the root.
 
+### The compiled doc is purely qualitative (no runtime state)
+
+`PERSONA.md` carries character and behavior only — never runtime numbers. The compile prompt
+enforces this (`compile-instructions.ts`):
+
+- **NO NUMERIC STATE** — "never include runtime numbers, trait/affect tables, sigil seeds, or
+  a 'live state' block. The compiled document is purely qualitative; state lives in
+  `state.json`."
+- **ONE SOURCE PER FACT** — each fact, rule, trait, or limit appears in exactly one section;
+  the only permitted restatement is a hard limit (referenced, not repeated).
+
+State drift reaches a host through a `.live.json` notify marker beside the persona, not the
+prose: `liveSync` (`packages/core/src/live-sync.ts`) writes the marker (state hash + counts +
+current values) and **self-heals** older docs by stripping any residual `LIVE-STATE` block
+(`stripLiveBlock`). Earlier versions injected a numeric live-state table into `PERSONA.md`;
+that injection is gone, and the strip is idempotent so stale tables disappear on next sync.
+See [self-evolution.md](./self-evolution.md) for how the active overlay (applied governed
+self-edits) folds into compile as authoritative overrides.
+
 ## Decompile (edited compiled doc → proposed `personaxis.md`)
 
 Reverse direction for hand-edits: maps prose changes back to spec fields, including
