@@ -72,6 +72,7 @@ import { isSubagentPath, slugChainFromPath, slugAddressFromPath } from "../load.
 import { runMode, isMode, MODES } from "../commands/mode.js";
 import { runCompile } from "../commands/compile.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
+import { buildAwarenessBlock } from "./awareness.js";
 
 interface ReplOptions {
   persona?: string;
@@ -490,6 +491,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     llm,
     policy: buildPolicy(ctx),
     personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
+    awareness: buildAwarenessBlock(ctx.handle.personaPath),
     goal: readGoalText(ctx.handle),
     onApproval: ctx.approve,
     budget: readAgentBudget(fm),
@@ -740,11 +742,9 @@ function buildRoster(rootCtx: Ctx): Roster {
     }
     return c;
   };
-  if (subs.length) {
-    rootCtx.personaDoc +=
-      `\n\n## Sub-personas you can delegate to\nAddress with @address (also @all, or @parent/all). You may READ their files but never edit them.\n` +
-      subs.map((s) => `${"  ".repeat(s.depth - 1)}- @${s.address}`).join("\n");
-  }
+  // The sub-persona tree is surfaced to the LLM via the runtime awareness block
+  // (buildAwarenessBlock), which covers root AND every sub — so we no longer bake it
+  // into personaDoc here.
   return { subs, color: (a) => subColor.get(a), getSub };
 }
 

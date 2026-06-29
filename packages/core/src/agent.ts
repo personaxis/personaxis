@@ -57,6 +57,8 @@ export interface AgentOptions {
   policy?: Policy;
   /** Persona identity document (system-prompt slot #1). */
   personaBody?: string;
+  /** Structural self-awareness (role root/sub, own address, sub-tree, resource inventory). */
+  awareness?: string;
   /** Optional standing goal injected into the task context. */
   goal?: string;
   /** Called when a tool's verdict is `ask`. Non-interactive hosts should deny. */
@@ -137,6 +139,7 @@ export class PersonaAgent {
       `os: ${process.platform} (use commands valid for this OS — e.g. PowerShell/cmd on win32)`,
       `workspace: ${this.policy.workspaceRoot}`,
       `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
+      this.opts.awareness ? `\n${this.opts.awareness}` : "",
       this.opts.goal ? `\n# Standing goal\n${this.opts.goal}` : "",
       this.resumeContext(),
     ].filter(Boolean).join("\n");
