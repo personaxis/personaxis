@@ -40,11 +40,17 @@ matches the provided schema:
 - "appraisal": a brief read of the situation;
 - "mutations": optional small envelope nudges (field + signed delta in [-1,1] + reason);
 - "memories": optional notes to remember (content + source);
-- "selfEdits": optional durable edits to the persona SPEC, by dot-path (e.g.
-  "persona_prompting.voice_exemplars", "cognition.uncertainty_policy", "values_and_drives.values.curiosity.weight").
+- "selfEdits": optional durable edits to the persona SPEC, by dot-path. Each item is
+  { "targetPath": "<dot.path>", "toValue": <the full new value>, "rationale": "<why>" }.
   You may ONLY target the editable sections listed below; identity/character/hard_limits/safety
   are protected and rejected. Propose these RARELY — only when the observation clearly warrants a
-  lasting change. Each needs a clear rationale; the runtime governs + may queue them for approval.
+  lasting change. But when the user EXPLICITLY authorizes a durable change to an editable section,
+  you MUST express it as a selfEdit (the structured field) — never only in the "appraisal" prose.
+  The "toValue" is the replacement value, not a delta: for a scalar give the new number/string;
+  for an object give the whole new object. Worked example — user says "permanently lower your
+  uncertainty disclosure threshold to 0.10":
+    "selfEdits": [{ "targetPath": "cognition.uncertainty_policy.disclose_when_above",
+      "toValue": 0.10, "rationale": "user authorized a durable lower disclosure threshold" }]
 - "preferences": optional stable user preferences you inferred (key + value);
 - "confidence" in [0,1] (self-edits/preferences are only considered at confidence >= 0.6).
 Propose only minimal, well-justified changes. You are NOT applying anything — the runtime
