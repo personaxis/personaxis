@@ -164,17 +164,34 @@ export class PersonaAgent {
     } catch {
       /* state may not exist yet */
     }
+    // As each memory kind is injected, emit a `memory-recall` event so the UI can show WHICH
+    // memories were actually used to answer this turn (the user asked to see this), not just writes.
     const semantic = readSemanticMemory(p);
-    if (semantic.trim()) parts.push("\n# Long-term memory (memory.md)\n" + semantic.slice(0, 2500));
+    if (semantic.trim()) {
+      parts.push("\n# Long-term memory (memory.md)\n" + semantic.slice(0, 2500));
+      this.bus.emit({ type: "memory-recall", kind: "semantic", count: 1, detail: "memory.md" });
+    }
     const mem = readLiveMemory(p).slice(-6);
-    if (mem.length) parts.push("\n# Recent memory\n" + mem.map((m) => `- [${m.source}] ${m.content}`).join("\n"));
+    if (mem.length) {
+      parts.push("\n# Recent memory\n" + mem.map((m) => `- [${m.source}] ${m.content}`).join("\n"));
+      this.bus.emit({ type: "memory-recall", kind: "episodic", count: mem.length, detail: mem[mem.length - 1].content.slice(0, 60) });
+    }
     // Other memory kinds (only present when the persona enabled them — producers gate on flags).
     const prefs = Object.entries(readPreferences(p));
-    if (prefs.length) parts.push("\n# User preferences\n" + prefs.map(([k, v]) => `- ${k}: ${v.value}`).join("\n"));
+    if (prefs.length) {
+      parts.push("\n# User preferences\n" + prefs.map(([k, v]) => `- ${k}: ${v.value}`).join("\n"));
+      this.bus.emit({ type: "memory-recall", kind: "user_preferences", count: prefs.length, detail: prefs.map(([k]) => k).slice(0, 4).join(", ") });
+    }
     const proc = readProcedural(p).slice(-3);
-    if (proc.length) parts.push("\n# How-to memory (procedural)\n" + proc.map((x) => `- ${x.task} → ${x.procedure}`).join("\n"));
+    if (proc.length) {
+      parts.push("\n# How-to memory (procedural)\n" + proc.map((x) => `- ${x.task} → ${x.procedure}`).join("\n"));
+      this.bus.emit({ type: "memory-recall", kind: "procedural", count: proc.length, detail: proc[proc.length - 1].task.slice(0, 50) });
+    }
     const auto = readAutobiographical(p).slice(-3);
-    if (auto.length) parts.push("\n# Identity milestones\n" + auto.map((x) => `- ${x.event}${x.detail ? `: ${x.detail}` : ""}`).join("\n"));
+    if (auto.length) {
+      parts.push("\n# Identity milestones\n" + auto.map((x) => `- ${x.event}${x.detail ? `: ${x.detail}` : ""}`).join("\n"));
+      this.bus.emit({ type: "memory-recall", kind: "autobiographical", count: auto.length, detail: auto[auto.length - 1].event.slice(0, 50) });
+    }
     return parts.join("\n");
   }
 

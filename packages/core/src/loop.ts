@@ -246,23 +246,24 @@ export class LivingLoop {
       }
 
       // evaluations — deterministic quality/utility scoring of what was written this turn.
+      // Each score is surfaced individually (target + dimension + score) so the UI can show WHAT
+      // was judged, not an opaque "+N eval(s)"; a compact rollup is kept for the one-line summary.
       if (memTypes.evaluations) {
         let evals = 0;
+        const emitScore = (s: { target: string; dimension: string; score: number; rationale: string }): void => {
+          recordEvaluation(this.handle.personaPath, s as Parameters<typeof recordEvaluation>[1]);
+          bus.emit({ type: "evaluation", target: s.target, dimension: s.dimension, score: s.score, rationale: s.rationale });
+          evals++;
+        };
         if (written.length > 0) {
-          for (const entry of written) {
-            for (const s of scoreMemoryEntry(entry, { injectionBlocked })) {
-              recordEvaluation(this.handle.personaPath, s);
-              evals++;
-            }
-          }
+          for (const entry of written) for (const s of scoreMemoryEntry(entry, { injectionBlocked })) emitScore(s);
         } else {
-          recordEvaluation(this.handle.personaPath, {
+          emitScore({
             target: "turn",
             dimension: "safety",
             score: injectionBlocked ? 0 : 1,
             rationale: injectionBlocked ? "injection blocked this turn" : "no injection signal",
           });
-          evals++;
         }
         if (evals > 0) bus.emit({ type: "memory-kind", kind: "evaluations", detail: `+${evals} eval(s)` });
       }

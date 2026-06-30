@@ -28,8 +28,14 @@ import {
   prepareMemoryEntry,
   commitMemoryEntry,
   proposals,
+  activeOverlay,
   applySelfEdit,
   rejectSelfEdit,
+  readProcedural,
+  readAutobiographical,
+  readPreferences,
+  readEvaluations,
+  readSemanticMemory,
   newSessionId,
   ensureSession,
   appendTurn,
@@ -243,7 +249,9 @@ function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
       return e.passed ? chalk.green(`  verify · ok (${e.passes}/${e.quorum})`) : chalk.red(`  verify · FAILED (${e.passes}/${e.quorum})`);
     case "agent-budget":
     case "context-meter":
-      return null; // shown in the status bar, not inline
+    case "memory-recall":
+    case "evaluation":
+      return null; // surfaced in the concise per-turn summary (not inline noise) / status bar
     case "context-compacted":
       return chalk.dim(`  · context compacted (${e.removed} msgs freed)`);
     default:
@@ -290,13 +298,25 @@ const COMMANDS: CommandDef[] = [
   },
   {
     name: "state",
-    desc: "envelope values + mutations",
+    desc: "live mutable surface: envelopes + applied self-edits + pending proposals",
     run: (_a, ctx) => {
+      const p = ctx.handle.personaPath;
       const st = readState(ctx.handle.statePath);
       const env = extractEnvelopes(ctx.handle.frontmatter);
-      ctx.out(chalk.bold("  Envelope values"));
+      // (1) quantitative — the numeric envelope state.
+      ctx.out(chalk.bold("  Envelope values") + chalk.dim("  (quantitative)"));
       ctx.out(envelopeBars(ctx.theme, st.values, env.envelopes));
       ctx.out(chalk.dim(`  mutation_log: ${st.mutation_log.length} entries`));
+      // (2) qualitative — self-edits already APPLIED to the spec (the overlay). This is the rest of
+      // the mutable surface beyond the 9 numbers: any non-protected section may live here now.
+      const overlay = activeOverlay(p);
+      const keys = Object.keys(overlay);
+      ctx.out(chalk.bold("  Applied self-edits") + chalk.dim("  (qualitative overlay)"));
+      if (!keys.length) ctx.out(chalk.dim("  (none) — no spec section has self-evolved yet"));
+      else for (const k of keys) ctx.out(`  ${chalk.cyan(k)} ${chalk.dim("→ " + JSON.stringify(overlay[k]).slice(0, 72))}`);
+      // (3) governance queue — proposals awaiting /review.
+      const pending = proposals(p).filter((x) => x.status === "pending");
+      if (pending.length) ctx.out(chalk.yellow(`  ${pending.length} pending proposal(s)`) + chalk.dim(" — /review"));
     },
   },
   {
@@ -375,22 +395,57 @@ const COMMANDS: CommandDef[] = [
   },
   {
     name: "audit",
-    desc: "mutation log + memory-chain integrity",
+    desc: "mutation log + memory-chain integrity + self-edit ledger + recent evaluations",
     run: (_a, ctx) => {
+      const p = ctx.handle.personaPath;
       const st = readState(ctx.handle.statePath);
-      const chain = verifyMemoryChain(ctx.handle.personaPath);
+      const chain = verifyMemoryChain(p);
       ctx.out(chalk.bold("  Mutation log (last 8)"));
       for (const m of st.mutation_log.slice(-8)) ctx.out(`  ${chalk.dim(m.ts)} ${m.field}: ${m.from} → ${m.to}${m.clamped ? chalk.yellow(" clamped") : ""}`);
       ctx.out("  memory chain: " + (chain.ok ? chalk.green("intact ✓") : chalk.red(`broken at #${chain.brokenAt}`)));
+      // self-edit ledger — what the persona changed about ITSELF, and the governance verdict.
+      const all = proposals(p);
+      if (all.length) {
+        ctx.out(chalk.bold("  Self-edit ledger (last 6)"));
+        for (const x of all.slice(-6)) {
+          const c = x.status === "applied" ? chalk.green : x.status === "pending" ? chalk.yellow : chalk.red;
+          ctx.out(`  ${chalk.dim(x.id)} ${c(x.status)} ${chalk.dim(x.targetPath)}`);
+        }
+      }
+      // evaluations — quality/utility scores, with the target + dimension + score that "+N eval(s)" hid.
+      const evals = readEvaluations(p);
+      if (evals.length) {
+        ctx.out(chalk.bold(`  Evaluations (${evals.length}, last 6)`));
+        for (const ev of evals.slice(-6)) {
+          const c = ev.score >= 0.66 ? chalk.green : ev.score >= 0.33 ? chalk.yellow : chalk.red;
+          ctx.out(`  ${chalk.dim(ev.target)} ${ev.dimension} ${c(ev.score.toFixed(2))} ${chalk.dim(ev.rationale)}`);
+        }
+      }
     },
   },
   {
     name: "memory",
-    desc: "list recent episodic memory",
+    desc: "all declared memory kinds: episodic, semantic, procedural, autobiographical, preferences, evaluations",
     run: (_a, ctx) => {
-      const mem = readMemory(ctx.handle.personaPath);
-      ctx.out(chalk.bold(`  Episodic memory (${mem.length} entries, last 6)`));
-      for (const m of mem.slice(-6)) ctx.out(`  ${chalk.dim(m.ts)} ${chalk.cyan(`[${m.source}]`)} ${m.content.slice(0, 70)}`);
+      const p = ctx.handle.personaPath;
+      const types = readMemoryTypes(ctx.handle.frontmatter as Record<string, unknown>);
+      // A small helper: a header + recent rows, or a one-line "(off)" / "(empty)" note per kind.
+      const section = (label: string, enabled: boolean, rows: string[]): void => {
+        if (!enabled) return void ctx.out(chalk.bold(`  ${label}`) + chalk.dim("  (off in memory.types)"));
+        ctx.out(chalk.bold(`  ${label}`) + chalk.dim(`  (${rows.length})`));
+        if (!rows.length) return void ctx.out(chalk.dim("  (empty)"));
+        for (const r of rows.slice(-4)) ctx.out(`  ${r}`);
+      };
+      const epi = readMemory(p);
+      section("Episodic", types.episodic, epi.map((m) => `${chalk.dim(m.ts.slice(0, 19))} ${chalk.cyan(`[${m.source}]`)} ${m.content.slice(0, 64)}`));
+      // semantic lives in memory.md (consolidated); show the first few non-empty lines.
+      const sem = readSemanticMemory(p).split("\n").map((l) => l.trim()).filter(Boolean).map((l) => chalk.dim(l.slice(0, 70)));
+      section("Semantic (memory.md)", types.semantic, sem);
+      section("Procedural", types.procedural, readProcedural(p).map((x) => `${chalk.dim(x.ts.slice(0, 19))} ${x.task.slice(0, 40)} → ${chalk.dim(x.procedure.slice(0, 40))}`));
+      section("Autobiographical", types.autobiographical, readAutobiographical(p).map((x) => `${chalk.dim(x.ts.slice(0, 19))} ${x.event}${x.detail ? chalk.dim(`: ${x.detail.slice(0, 40)}`) : ""}`));
+      const prefs = Object.entries(readPreferences(p));
+      section("User preferences", types.user_preferences, prefs.map(([k, v]) => `${chalk.cyan(k)} = ${v.value.slice(0, 50)}`));
+      section("Evaluations", types.evaluations, readEvaluations(p).map((ev) => `${chalk.dim(ev.target)} ${ev.dimension} ${ev.score.toFixed(2)} ${chalk.dim(ev.rationale.slice(0, 40))}`));
     },
   },
   {
@@ -575,8 +630,12 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
 
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
   const bus = new EventBus();
+  // Which memories were RECALLED to answer this turn (emitted by the agent's resumeContext
+  // before the loop listener below exists) — collected here for the concise per-turn summary.
+  const recalls: string[] = [];
   bus.on((e) => {
     ctx.phase?.(phaseFor(e));
+    if (e.type === "memory-recall") recalls.push(`${e.kind}×${e.count}${e.detail ? ` (${e.detail})` : ""}`);
     const l = renderEvent(ctx.theme, e);
     if (l) ctx.out(l, "activity");
   });
@@ -616,15 +675,21 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // which envelope changed, whether memory was written, whether PERSONA.md recompiled.
   const changed: string[] = [];
   let memWrites = 0;
+  const memWriteKinds: string[] = []; // snippets of episodic memory CREATED this turn
   const memKinds: string[] = [];
+  const evals: string[] = []; // individual quality scores (target · dimension · score)
   const selfEdits: string[] = [];
   const off = ctx.loop.bus.on((e) => {
     if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
       changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
     } else if (e.type === "memory") {
       memWrites++;
+      memWriteKinds.push(`[${e.entry.source}] ${e.entry.content.slice(0, 48)}`);
+    } else if (e.type === "evaluation") {
+      // Real detail, not "+N eval(s)": e.g. "#a1b2c3d4 usefulness 0.74".
+      evals.push(`${e.target} ${e.dimension} ${e.score.toFixed(2)}`);
     } else if (e.type === "memory-kind") {
-      memKinds.push(`${e.kind} ${e.detail}`);
+      if (e.kind !== "evaluations") memKinds.push(`${e.kind} ${e.detail}`); // evaluations shown in detail below
     } else if (e.type === "self-edit") {
       if (e.op === "queued") selfEdits.push(`proposed ${e.targetPath} (/review)`);
       else if (e.op === "applied") selfEdits.push(`self-edit applied: ${e.targetPath}`);
@@ -635,10 +700,12 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch(() => {});
   off();
   const parts: string[] = [];
+  if (recalls.length) parts.push("recalled " + recalls.join(", "));
   if (changed.length) parts.push("evolved " + changed.join(", "));
   if (selfEdits.length) parts.push(selfEdits.join(" · "));
-  if (memWrites) parts.push(`memory +${memWrites} episodic`);
+  if (memWrites) parts.push(`memory +${memWrites} episodic` + (memWriteKinds.length ? ` (${memWriteKinds[memWriteKinds.length - 1]})` : ""));
   if (memKinds.length) parts.push(memKinds.join(" · "));
+  if (evals.length) parts.push("evaluated " + evals.slice(0, 4).join(" · ") + (evals.length > 4 ? ` +${evals.length - 4} more` : ""));
   if (parts.length) ctx.out(chalk.dim("  · " + parts.join("  ·  ")));
 
   // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline —
