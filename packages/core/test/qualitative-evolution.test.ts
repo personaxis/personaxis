@@ -9,6 +9,8 @@ import {
   activeOverlay,
   readRecompilePending,
   governQualitative,
+  editGate,
+  editableLayers,
   type Appraiser,
   type AppraisalSignal,
   type StateFile,
@@ -66,6 +68,56 @@ describe("governQualitative", () => {
     expect(governQualitative("locked")).toBe("block");
     expect(governQualitative("suggesting")).toBe("queue");
     expect(governQualitative("autonomous")).toBe("auto");
+  });
+});
+
+describe("editGate composes safety floor + declared policy + mode (whole-spec)", () => {
+  it("the safety floor is never editable, whatever the policy/mode says", () => {
+    const fm = { governance: { per_layer_edit_policy: { character: "open" } } };
+    expect(editGate("character.virtues.honesty.enforcement", fm, "autonomous")).toBe("block");
+    expect(editGate("identity.display_name", fm, "autonomous")).toBe("block");
+  });
+
+  it("ANY non-protected layer is editable by default (follows the mode)", () => {
+    const fm = {}; // no declared policy
+    expect(editGate("cognition.uncertainty_policy.disclose_when_above", fm, "autonomous")).toBe("auto");
+    expect(editGate("cognition.uncertainty_policy.disclose_when_above", fm, "suggesting")).toBe("queue");
+    expect(editGate("cognition.uncertainty_policy.disclose_when_above", fm, "locked")).toBe("block");
+  });
+
+  it("the author's declared policy overrides the mode (forces review, or locks)", () => {
+    const fm = { governance: { per_layer_edit_policy: { cognition: "human_approval_required", memory: "locked" } } };
+    expect(editGate("cognition.x", fm, "autonomous")).toBe("queue"); // forced review even in autonomous
+    expect(editGate("memory.x", fm, "autonomous")).toBe("block");    // locked by the author
+  });
+
+  it("editableLayers excludes the floor and author-locked layers", () => {
+    const fm = { governance: { per_layer_edit_policy: { memory: "locked" } } };
+    const layers = editableLayers(fm, "autonomous");
+    expect(layers).toContain("cognition");
+    expect(layers).toContain("persona_prompting");
+    expect(layers).not.toContain("identity");   // floor
+    expect(layers).not.toContain("character");   // floor
+    expect(layers).not.toContain("memory");      // author-locked
+  });
+});
+
+describe("whole-spec self-evolution (not just persona_prompting)", () => {
+  it("autonomous applies a self-edit to a NON-persona_prompting layer (cognition)", async () => {
+    writeFileSync(personaPath, fixture("autonomous"));
+    seed();
+    const cognitionEdit: AppraisalSignal = {
+      appraisal: "tighten uncertainty disclosure",
+      confidence: 0.9,
+      mutations: [],
+      memories: [],
+      selfEdits: [{ targetPath: "cognition.uncertainty_policy.disclose_when_above", toValue: 0.15, rationale: "user wants earlier disclosure of uncertainty" }],
+    };
+    const loop = new LivingLoop(personaPath, { appraiser: new FixedAppraiser(cognitionEdit) });
+    await loop.tick({ observation: "disclose uncertainty earlier", source: "user" });
+    const p = proposals(personaPath);
+    expect(p[0].status).toBe("applied");
+    expect(activeOverlay(personaPath)["cognition.uncertainty_policy.disclose_when_above"]).toBe(0.15);
   });
 });
 

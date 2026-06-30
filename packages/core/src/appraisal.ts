@@ -186,6 +186,8 @@ export interface AppraiseInput {
   personaBody: string;
   /** Current envelope fields the model may nudge. */
   mutableFields: string[];
+  /** Top-level spec sections the persona MAY propose qualitative self-edits to (editGate != block). */
+  editableSections?: string[];
 }
 
 /** Defensive parser: coerce arbitrary JSON into a valid AppraisalSignal. */

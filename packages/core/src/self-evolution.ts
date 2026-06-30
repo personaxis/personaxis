@@ -163,6 +163,61 @@ export function isQualitative(targetPath: string): boolean {
   return QUALITATIVE_PREFIXES.some((p) => targetPath === p || targetPath.startsWith(p + "."));
 }
 
+/** Top-level spec layer of a dot-path ("character.virtues.x" -> "character"). */
+export function topLayer(targetPath: string): string {
+  return targetPath.split(".")[0];
+}
+
+export type EditAction = "block" | "queue" | "auto";
+
+/**
+ * Decide how a proposed self-edit to `targetPath` is handled, composing THREE layers of control
+ * so the whole spec can evolve while staying safe — and the persona AUTHOR stays in charge:
+ *
+ *   1. the hard SAFETY FLOOR (`isProtected`) — identity/character/safety/hard_limits/governance/
+ *      permissions are NEVER editable, regardless of anything below;
+ *   2. the spec's DECLARED per-layer policy (`governance.per_layer_edit_policy`) — the author
+ *      marks each layer `locked` (never) / `human_approval_required` | `review_required` (always
+ *      queue for /review, even in autonomous) / `governance_controlled` | `open` (follow the mode);
+ *   3. the global `improvement_policy.mode` (locked | suggesting | autonomous).
+ *
+ * Layers without a declared policy default to `governance_controlled` (follow the mode), so a
+ * fresh persona can evolve out of the box; the author locks or gates any layer explicitly.
+ */
+export function editGate(
+  targetPath: string,
+  frontmatter: Record<string, unknown>,
+  mode: ImprovementMode,
+): EditAction {
+  if (isProtected(targetPath)) return "block";
+  const gov = frontmatter.governance as { per_layer_edit_policy?: Record<string, unknown> } | undefined;
+  const declared = gov?.per_layer_edit_policy?.[topLayer(targetPath)];
+  const policy = typeof declared === "string" ? declared : "governance_controlled";
+  switch (policy) {
+    case "locked":
+    case "none":
+    case "human_only":
+      return "block";
+    case "human_approval_required":
+    case "review_required":
+      return "queue"; // author forces human review, even in autonomous mode
+    case "governance_controlled":
+    case "open":
+      return mode === "locked" ? "block" : mode === "autonomous" ? "auto" : "queue";
+    default:
+      return "queue"; // unknown policy string -> safe default
+  }
+}
+
+/** The set of top-level layers a persona MAY self-edit (declared policy minus the safety floor). */
+export function editableLayers(frontmatter: Record<string, unknown>, mode: ImprovementMode): string[] {
+  const layers = [
+    "personality", "values_and_drives", "affect", "cognition", "memory", "metacognition",
+    "persona", "persona_prompting", "extensions", "agent_budget", "verification", "observability",
+  ];
+  return layers.filter((l) => editGate(l, frontmatter, mode) !== "block");
+}
+
 export interface ConsensusResult {
   passed: boolean;
   results: VerifierResult[];

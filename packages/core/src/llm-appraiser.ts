@@ -40,10 +40,11 @@ matches the provided schema:
 - "appraisal": a brief read of the situation;
 - "mutations": optional small envelope nudges (field + signed delta in [-1,1] + reason);
 - "memories": optional notes to remember (content + source);
-- "selfEdits": optional QUALITATIVE edits to the persona's prose under "persona_prompting"
-  ONLY (e.g. targetPath "persona_prompting.voice_exemplars", "persona_prompting.address").
-  Propose these RARELY — only when the observation clearly warrants durably changing how the
-  persona speaks/behaves. Never target identity/character/hard_limits/safety (rejected).
+- "selfEdits": optional durable edits to the persona SPEC, by dot-path (e.g.
+  "persona_prompting.voice_exemplars", "cognition.uncertainty_policy", "values_and_drives.values.curiosity.weight").
+  You may ONLY target the editable sections listed below; identity/character/hard_limits/safety
+  are protected and rejected. Propose these RARELY — only when the observation clearly warrants a
+  lasting change. Each needs a clear rationale; the runtime governs + may queue them for approval.
 - "preferences": optional stable user preferences you inferred (key + value);
 - "confidence" in [0,1] (self-edits/preferences are only considered at confidence >= 0.6).
 Propose only minimal, well-justified changes. You are NOT applying anything — the runtime
@@ -60,6 +61,9 @@ export class LlmAppraiser implements Appraiser {
       ``,
       `# Mutable envelope fields you may nudge`,
       input.mutableFields.join(", ") || "(none)",
+      ``,
+      `# Editable spec sections you may propose self-edits to`,
+      (input.editableSections ?? []).join(", ") || "(none — do not propose selfEdits)",
       ``,
       `# Observation [source: ${input.source}]`,
       input.observation,

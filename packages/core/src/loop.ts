@@ -12,7 +12,6 @@
 import { extractEnvelopes } from "./envelopes.js";
 import {
   governMutations,
-  governQualitative,
   readMode,
   readMaxStepDelta,
   type GovernanceConfig,
@@ -30,7 +29,7 @@ import {
 import { recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
-import { activeOverlay, applyOverlay, proposeSelfEdit, isQualitative, isProtected, SelfEditError } from "./self-evolution.js";
+import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers, SelfEditError } from "./self-evolution.js";
 import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
@@ -126,6 +125,7 @@ export class LivingLoop {
           source: input.source,
           personaBody: this.handle.body,
           mutableFields: Object.keys(env.envelopes),
+          editableSections: editableLayers(fm, readMode(fm)),
         });
       } catch (err) {
         bus.emit({ type: "error", message: `appraiser unavailable: ${(err as Error).message}` });
@@ -172,25 +172,28 @@ export class LivingLoop {
       // `mutationsApplied` metric (and the injection eval) about numbers only.
       const selfEdits = signal.selfEdits ?? [];
       if (!injectionBlocked && selfEdits.length > 0 && signal.confidence >= 0.6) {
-        const action = governQualitative(gov.mode);
-        if (action !== "block") {
-          for (const se of selfEdits) {
-            if (!isQualitative(se.targetPath) || isProtected(se.targetPath)) {
-              bus.emit({ type: "self-edit", op: "rejected", targetPath: se.targetPath, reason: "not a governed qualitative path" });
-              continue;
-            }
-            try {
-              const r = proposeSelfEdit(
-                this.handle.personaPath,
-                { targetPath: se.targetPath, toValue: se.toValue, rationale: se.rationale, sources: [input.source] },
-                gov.mode,
-                input.actor ?? "actor-llm",
-              );
-              bus.emit({ type: "self-edit", op: r.status === "applied" ? "applied" : "queued", targetPath: se.targetPath, id: r.id });
-            } catch (e) {
-              const reason = e instanceof SelfEditError ? e.message : (e as Error).message;
-              bus.emit({ type: "self-edit", op: "rejected", targetPath: se.targetPath, reason });
-            }
+        for (const se of selfEdits) {
+          // ANY spec section may be proposed; editGate composes the safety floor + the
+          // author's declared per-layer policy + the global mode into block | queue | auto.
+          const action = editGate(se.targetPath, fm, gov.mode);
+          if (action === "block") {
+            bus.emit({ type: "self-edit", op: "rejected", targetPath: se.targetPath, reason: "section is protected or locked by policy" });
+            continue;
+          }
+          // Map the gate to the effective mode proposeSelfEdit understands: a layer the author
+          // marked review-required QUEUES even when the global mode is autonomous.
+          const effectiveMode = action === "auto" ? "autonomous" : "suggesting";
+          try {
+            const r = proposeSelfEdit(
+              this.handle.personaPath,
+              { targetPath: se.targetPath, toValue: se.toValue, rationale: se.rationale, sources: [input.source] },
+              effectiveMode,
+              input.actor ?? "actor-llm",
+            );
+            bus.emit({ type: "self-edit", op: r.status === "applied" ? "applied" : "queued", targetPath: se.targetPath, id: r.id });
+          } catch (e) {
+            const reason = e instanceof SelfEditError ? e.message : (e as Error).message;
+            bus.emit({ type: "self-edit", op: "rejected", targetPath: se.targetPath, reason });
           }
         }
       }
