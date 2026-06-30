@@ -343,6 +343,10 @@ export class PersonaAgent {
 
         // No tool call → the model answered in prose; treat as a completion candidate.
         if (res.toolCalls.length === 0) {
+          // Persist the assistant's reply into the transcript BEFORE returning, so
+          // `lastMessages` (→ the REPL's ctx.conversation) carries it. Without this the
+          // next turn sees only the stacked user questions and re-answers them all.
+          messages.push({ role: "assistant", content: res.text || "" });
           const decision = await verifyCompletion(res.text || "(no action)");
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });

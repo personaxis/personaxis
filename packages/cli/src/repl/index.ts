@@ -362,6 +362,18 @@ const COMMANDS: CommandDef[] = [
     },
   },
   {
+    name: "compile",
+    desc: "recompile PERSONA.md from the (evolved) spec — explicit, may take a moment",
+    run: async (_a, ctx) => {
+      if (!readRecompilePending(ctx.handle.personaPath).pending) {
+        return void ctx.out(chalk.dim("  PERSONA.md is already up to date."));
+      }
+      if (!llmConfig()) return void ctx.out(chalk.dim("  needs a model (PERSONAXIS_ENDPOINT/MODEL) to recompile."));
+      ctx.out(chalk.dim("  recompiling PERSONA.md from the evolved spec…"));
+      await maybeRecompile(ctx);
+    },
+  },
+  {
     name: "audit",
     desc: "mutation log + memory-chain integrity",
     run: (_a, ctx) => {
@@ -606,7 +618,6 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   let memWrites = 0;
   const memKinds: string[] = [];
   const selfEdits: string[] = [];
-  let recompiled = false;
   const off = ctx.loop.bus.on((e) => {
     if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
       changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
@@ -617,10 +628,9 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     } else if (e.type === "self-edit") {
       if (e.op === "queued") selfEdits.push(`proposed ${e.targetPath} (/review)`);
       else if (e.op === "applied") selfEdits.push(`self-edit applied: ${e.targetPath}`);
-    } else if (e.type === "recompile") {
-      recompiled = true;
-      ctx.phase?.("recompiling PERSONA.md");
     }
+    // NB: the loop's "recompile" event is just the .live.json state marker (fast, internal) —
+    // not an LLM recompile of PERSONA.md, so we no longer surface it as noise every turn.
   });
   await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch(() => {});
   off();
@@ -629,11 +639,14 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   if (selfEdits.length) parts.push(selfEdits.join(" · "));
   if (memWrites) parts.push(`memory +${memWrites} episodic`);
   if (memKinds.length) parts.push(memKinds.join(" · "));
-  if (recompiled) parts.push("PERSONA.md recompiled");
   if (parts.length) ctx.out(chalk.dim("  · " + parts.join("  ·  ")));
 
-  // If a governed self-edit marked the compiled doc stale, refresh it (H1).
-  await maybeRecompile(ctx);
+  // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline —
+  // a full LLM compile would block every single turn (the "stuck thinking" hang). Just
+  // surface it; recompile happens on /compile, on /review approve, or on exit.
+  if (readRecompilePending(ctx.handle.personaPath).pending) {
+    ctx.out(chalk.dim("  · PERSONA.md stale (self-edits applied) — /compile to refresh"));
+  }
 }
 
 /**

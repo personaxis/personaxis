@@ -28,6 +28,8 @@ export interface LlmAppraiserConfig {
   apiKey?: string;
   /** Hard cap on the response; appraisal signals are tiny. */
   maxTokens?: number;
+  /** Abort the request after this many ms so a hung endpoint never blocks a turn (default 30s). */
+  timeoutMs?: number;
   /** Injected for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
 }
@@ -95,14 +97,23 @@ export class LlmAppraiser implements Appraiser {
     let lastErr = "no response";
     for (const responseFormat of strategies) {
       const body = responseFormat ? { ...base, response_format: responseFormat } : base;
-      const res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(this.cfg.apiKey ? { authorization: `Bearer ${this.cfg.apiKey}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
+      // Hard timeout so a slow/hung hosted endpoint never blocks the turn forever.
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs ?? 30_000);
+      let res: Response;
+      try {
+        res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(this.cfg.apiKey ? { authorization: `Bearer ${this.cfg.apiKey}` } : {}),
+          },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
 
       if (res.ok) {
         const json = (await res.json()) as {
