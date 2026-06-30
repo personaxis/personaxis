@@ -201,6 +201,11 @@ export function editGate(
     case "human_approval_required":
     case "review_required":
       return "queue"; // author forces human review, even in autonomous mode
+    case "auto_approved":
+      // Author pre-authorized this layer to auto-apply (still subject to the protected floor above,
+      // the consensus verifiers, and the user-trust provenance gate). `locked` is the master
+      // kill-switch and still wins; otherwise this overrides a global `suggesting` default.
+      return mode === "locked" ? "block" : "auto";
     case "governance_controlled":
     case "open":
       return mode === "locked" ? "block" : mode === "autonomous" ? "auto" : "queue";

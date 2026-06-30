@@ -73,10 +73,12 @@ which composes three layers:
 1. **Protected floor** (`PROTECTED_PREFIXES`) — `identity`, `character`, `hard_limits`, `safety`,
    `affect.regulation_policy`, `memory.deletion_policy`, `governance.max_step_delta`,
    `governance.per_layer_edit_policy`, `permissions`, … → **always `block`**, every mode.
-2. **The author's declared per-layer policy** — `governance.per_layer_edit_policy.<topLayer>`:
-   `locked`/`human_only` → `block`; `human_approval_required`/`review_required` → **always `queue`**
-   (forced review, even when the global mode is `autonomous`); `governance_controlled`/`open` →
-   follow the mode.
+2. **The author's declared per-layer policy** — `governance.per_layer_edit_policy.<topLayer>` (spec
+   enum `human_approval_required`/`review_required`/`auto_approved`/`governance_controlled`, plus the
+   runtime synonyms `locked`/`open`): `locked`/`human_only` → `block`;
+   `human_approval_required`/`review_required` → **always `queue`** (forced review, even when the
+   global mode is `autonomous`); `auto_approved` → **`auto`** (overrides a global `suggesting`; the
+   `locked` master switch still wins); `governance_controlled`/`open` → follow the mode.
 3. **The global mode** (`improvement_policy.mode`) for any layer the author left to follow it.
 
 The numeric envelope path is unchanged — it still goes through the state engine's clamp + drift

@@ -69,10 +69,13 @@ which composes three layers:
    the `safety` value + `safety_over_completion`, `affect.regulation_policy`, `memory.deletion_policy`,
    `governance.max_step_delta`, `governance.per_layer_edit_policy`, `permissions`. **Always blocked**,
    in every mode. This is the universal-invariant set the validator enforces.
-2. **The author's declared per-layer policy** — `governance.per_layer_edit_policy.<layer>`. Values:
-   `locked`/`human_only` (block), `human_approval_required`/`review_required` (always queue for
-   `/review`, even in autonomous), `governance_controlled`/`open` (follow the mode). This is the
-   "variable que indica qué secciones pueden editarse" you asked for — explicit, per-layer, auditable.
+2. **The author's declared per-layer policy** — `governance.per_layer_edit_policy.<layer>` (the spec
+   enum: `human_approval_required` / `review_required` / `auto_approved` / `governance_controlled`;
+   the runtime also accepts `locked`/`open` synonyms). Mapping: `locked`/`human_only` → block;
+   `human_approval_required`/`review_required` → always queue for `/review`, even in autonomous;
+   `auto_approved` → auto-apply (overrides a global `suggesting`, but `locked` mode still wins);
+   `governance_controlled`/`open` → follow the mode. This is the "variable que indica qué secciones
+   pueden editarse" you asked for — explicit, per-layer, auditable.
 3. **The global mode** (`improvement_policy.mode`) — see [§5](#5-the-three-improvement-modes).
 
 The result is `block | queue | auto`. Two more gates always apply: a **malicious-injection** scan

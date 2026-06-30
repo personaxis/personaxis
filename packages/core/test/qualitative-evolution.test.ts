@@ -91,6 +91,14 @@ describe("editGate composes safety floor + declared policy + mode (whole-spec)",
     expect(editGate("memory.x", fm, "autonomous")).toBe("block");    // locked by the author
   });
 
+  it("auto_approved (spec enum value) auto-applies even under suggesting, but locked still wins", () => {
+    const fm = { governance: { per_layer_edit_policy: { cognition: "auto_approved" } } };
+    expect(editGate("cognition.x", fm, "suggesting")).toBe("auto");  // per-layer upgrade over global suggesting
+    expect(editGate("cognition.x", fm, "autonomous")).toBe("auto");
+    expect(editGate("cognition.x", fm, "locked")).toBe("block");     // global kill-switch
+    expect(editGate("character.virtues.honesty.enforcement", fm, "autonomous")).toBe("block"); // floor still wins
+  });
+
   it("editableLayers excludes the floor and author-locked layers", () => {
     const fm = { governance: { per_layer_edit_policy: { memory: "locked" } } };
     const layers = editableLayers(fm, "autonomous");
