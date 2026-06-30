@@ -42,10 +42,22 @@ episodic entry it emits one `EvaluationEntry` per dimension:
 
 The loop runs this each turn and appends to `memory/evaluations.jsonl`.
 
-## Visibility
+## Visibility (per turn)
 
-Each producer emits a `memory-kind` event on the bus (`{ kind, detail }`). The REPL surfaces
-these per turn in the summary line, e.g. `evaluations +2`, `user_preferences +1`.
+You can see, every turn, both the memory **created** and the memory **used to answer** — plus
+the evaluations *with their actual scores*, not an opaque counter. Three bus events drive this:
+
+- **`memory`** — an episodic entry was written; the REPL shows `memory +1 episodic ([user] …)`.
+- **`memory-recall`** (`{ kind, count, detail }`, emitted by `agent.resumeContext`) — a memory
+  kind was injected to answer this turn; the REPL shows `recalled episodic×2 (…)`. This answers
+  "did it *use* any memory to respond?".
+- **`evaluation`** (`{ target, dimension, score, rationale }`, one per score from the loop) — the
+  REPL shows `evaluated #a1b2c3d4 usefulness 0.74 · turn safety 1.00`, instead of `+N eval(s)`.
+
+A compact `memory-kind` rollup (`{ kind, detail }`) is still emitted for `procedural` /
+`autobiographical` / `user_preferences`. Inspect the full picture any time with **`/memory`**
+(all six kinds, with `(off)` for a disabled type) and **`/audit`** (self-edit ledger + recent
+evaluations with scores). Tests: `packages/core/test/loop-observability.test.ts`.
 
 ## Cross-persona access: read-only
 

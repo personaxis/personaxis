@@ -14,12 +14,23 @@ gap between what the spec declared and what the runtime actually did.
 ### Added
 - **Persistent sessions** per persona under `.personaxis/[personas/<slug>/]sessions/<id>.jsonl`;
   `/sessions` lists them and `/resume <id|name>` continues one. Auto-named from the first message.
-- **Qualitative self-evolution in the live loop**: each turn the appraiser may propose governed
-  self-edits to `persona_prompting`; `improvement_policy.mode` now takes effect at runtime
-  (`locked` blocks, `suggesting` queues for `/review`, `autonomous` auto-applies — all gated by
-  consensus + protected paths + a `user`-trust provenance gate). New `/review` command.
+- **Whole-spec self-evolution in the live loop**: each turn the appraiser may propose governed
+  self-edits to **any** spec section (not just `persona_prompting`) — quantitative, qualitative,
+  or any other layer — except the protected safety floor. Editability is decided by `editGate`,
+  composing the protected floor + the author's declared `governance.per_layer_edit_policy.<layer>`
+  + the global `improvement_policy.mode` (`locked` blocks, `suggesting` queues for `/review`,
+  `autonomous` auto-applies; a layer marked `human_approval_required` is queued even in autonomous).
+  All gated by consensus verifiers + protected paths + a `user`-trust provenance gate. New `/review`
+  command. The appraiser prompt now teaches the exact `{ targetPath, toValue, rationale }` shape so
+  real models reliably emit structured self-edits instead of prose.
 - **All six `memory.types` enforced**: `procedural`, `autobiographical`, `user_preferences`,
   `evaluations` are implemented (were declared-but-unenforced); each producer honors its flag.
+- **Real per-turn observability**: new `memory-recall` (memory *used* to answer: kind+count+snippet)
+  and `evaluation` (target+dimension+score+rationale) bus events. The per-turn summary now shows
+  `recalled episodic×2 (…) · memory +1 episodic (…) · evaluated #hash usefulness 0.74` instead of an
+  opaque `+N eval(s)`. `/state` shows the **whole mutable surface** (envelopes + applied self-edit
+  overlay + pending proposals); `/memory` lists all six kinds; `/audit` adds the self-edit ledger +
+  recent evaluations.
 - **Runtime structure awareness**: the system prompt states whether a persona is root or a sub,
   its address, its sub-persona tree, and its `.personaxis/` resource inventory.
 
@@ -35,8 +46,19 @@ gap between what the spec declared and what the runtime actually did.
   runs a governed tick).
 
 ### Fixed
+- **Conversation turns**: assistant replies are now persisted into the transcript before returning,
+  so the next turn carries them — fixes the bug where the agent re-answered every prior question
+  each turn instead of only the current one.
+- **"Stuck thinking" hang**: a self-edit no longer triggers a blocking full LLM recompile on every
+  turn (it marks `PERSONA.md` stale → `/compile`); the LLM appraiser has a 30s request timeout so a
+  hung endpoint never blocks a turn.
 - No-op mutations (`0.98→0.98`) are no longer printed as "evolved".
 - Delegation no longer writes episodic memory when `memory.types.episodic` is `false`.
+
+### Docs
+- New [docs/CONCEPTS_FAQ.md](docs/CONCEPTS_FAQ.md): a single navigable answer to the common
+  conceptual questions (compile/decompile, sub-personas, what self-evolves and who decides, the
+  modes, the six memory kinds, sessions, the sandbox, every REPL command).
 
 ---
 

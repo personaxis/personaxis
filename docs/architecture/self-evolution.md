@@ -22,13 +22,15 @@ inline into the frontmatter (`improvement_policy.mode`), which is what the runti
 
 ## 2. What can change, and how it's chosen
 
-A self-edit targets a **dot-path**, not "a whole layer":
+A self-edit targets a **dot-path**, not "a whole layer". **Any spec section may be targeted**
+except the protected safety floor — quantitative *and* qualitative, in any layer:
 
 - **Quantitative** — envelope values/numbers, e.g. `personality.traits.openness.mean`,
   `affect.baseline.mood.tone`. These are clamped to the declared `mean ± range`.
-- **Qualitative (v0.10)** — because `persona_prompting` fields are structured, prose evolves
-  through the same path: `persona_prompting.voice_exemplars`,
-  `persona_prompting.scene_contracts`, `…break_character_guardrails`, etc.
+- **Qualitative / any other layer** — `persona_prompting.voice_exemplars`,
+  `cognition.uncertainty_policy.disclose_when_above`, `values_and_drives.values.curiosity.weight`,
+  `metacognition.*`, … Whether a given section is editable is decided by `editGate` (§3b), which
+  composes the protected floor + the author's declared per-layer policy + the global mode.
 
 **Who proposes it.** The **Living Loop** (`loop.ts`): `observe → appraise → govern → mutate
 → memory`. An *appraiser* (heuristic or LLM, `appraisal.ts`) reads the observation and emits
@@ -59,31 +61,42 @@ Defense in depth, all in `self-evolution.ts`:
 > State note: self-edits go to the **ledger**, not `state.json`. `state.json` holds
 > operational runtime dials (mood/affect), which the state engine clamps + logs separately.
 
-## 3b. Qualitative self-edits in the Living Loop (live)
+## 3b. Whole-spec self-edits in the Living Loop (live) — `editGate`
 
-The loop no longer evolves only numbers. Each turn the appraiser may emit qualitative
-`selfEdits[]` targeting the `persona_prompting` block alongside its numeric signal
-(`loop.ts` step 3b; `appraisal.ts` / `llm-appraiser.ts`). These run through a **separate
-governance layer** from the numeric envelope `judge`:
+The loop no longer evolves only numbers, and qualitative edits are **no longer limited to
+`persona_prompting`**. Each turn the appraiser may emit `selfEdits[]` targeting any editable
+section alongside its numeric signal (`loop.ts` step 3b; `appraisal.ts` / `llm-appraiser.ts`).
+The loop offers the appraiser the list of editable sections via `editableLayers(frontmatter, mode)`.
+Each proposed edit is resolved by **`editGate(targetPath, frontmatter, mode)`** → `block | queue | auto`,
+which composes three layers:
 
-- **Numeric** envelopes go through the state engine's clamp + drift guard
-  (`governance.max_step_delta`). For numbers, `suggesting` and `autonomous` behave the
-  same — mutations are cheap, clamped, and reversible.
-- **Qualitative** prose goes through `governQualitative(mode)` (`governance.ts`), which maps
-  the mode to `block | queue | auto`. This layer **does not** touch the numeric drift guard.
-  Here the modes genuinely differ:
+1. **Protected floor** (`PROTECTED_PREFIXES`) — `identity`, `character`, `hard_limits`, `safety`,
+   `affect.regulation_policy`, `memory.deletion_policy`, `governance.max_step_delta`,
+   `governance.per_layer_edit_policy`, `permissions`, … → **always `block`**, every mode.
+2. **The author's declared per-layer policy** — `governance.per_layer_edit_policy.<topLayer>`:
+   `locked`/`human_only` → `block`; `human_approval_required`/`review_required` → **always `queue`**
+   (forced review, even when the global mode is `autonomous`); `governance_controlled`/`open` →
+   follow the mode.
+3. **The global mode** (`improvement_policy.mode`) for any layer the author left to follow it.
 
-| mode | `governQualitative` | qualitative behavior |
-|---|---|---|
-| `locked` | `block` | proposes nothing. |
-| `suggesting` | `queue` | enqueues `pending` in `self-edits.jsonl`; NEVER auto-applies. |
-| `autonomous` | `auto` | auto-applies, still gated (see below). |
+The numeric envelope path is unchanged — it still goes through the state engine's clamp + drift
+guard (`governance.max_step_delta`), and for numbers `suggesting` and `autonomous` behave the same
+(mutations are cheap, clamped, reversible). The mode-level difference lives in the qualitative path:
 
-Even under `autonomous`, an auto-apply must clear **all** of: the unanimous consensus
-verifiers (§3), the `PROTECTED_PREFIXES` list (`identity`/`character`/`hard_limits`/`safety`
-are never editable), and the `sensitiveActionGate("self_edit")` provenance gate, which
-requires a `user`-trust justification (trust level 3). Consequently an **internal tick can
-never auto-edit** — only an edit justified by the user clears the gate.
+| mode | qualitative behavior (for a `governance_controlled`/`open` layer) |
+|---|---|
+| `locked` | proposes nothing. |
+| `suggesting` | enqueues `pending` in `self-edits.jsonl`; NEVER auto-applies. |
+| `autonomous` | auto-applies, still gated (see below). |
+
+Even when `editGate` returns `auto`, the apply must clear **all** of: the unanimous consensus
+verifiers (§3), the `PROTECTED_PREFIXES` floor, and the `sensitiveActionGate("self_edit")`
+provenance gate, which requires a `user`-trust justification (trust level 3). Consequently an
+**internal tick can never auto-edit** — only an edit justified by the user clears the gate.
+
+> `governQualitative(mode)` still exists (mode→action, used by tests) but the loop now uses
+> `editGate`, so the **author's per-layer policy** can override the mode (e.g. force review on a
+> sensitive layer while the rest of the spec follows `autonomous`).
 
 Hardening:
 
@@ -111,10 +124,12 @@ role adoption, character card, voice exemplars, scene contracts, guardrails (see
 
 ## 5. Recompile triggers
 
-- **Quantitative drift → auto-recompile (Implemented).** When the Living Loop applies one or
-  more envelope mutations, it fires a `recompile` event and calls the recompile hook
-  (`loop.ts` step 4), so `PERSONA.md` reflects the new state. The REPL surfaces this as
-  `· PERSONA.md recompiled` in the per-turn summary.
+- **Stale-marking, not inline recompile (Implemented).** A full LLM recompile on every turn was
+  the "stuck thinking" hang, so the loop no longer blocks the turn to recompile. When a self-edit
+  is applied it writes `.recompile-pending.json`; the REPL surfaces `· PERSONA.md stale (self-edits
+  applied) — /compile to refresh`. Recompile happens explicitly on `/compile`, on `/review approve`,
+  or on exit. (The fast `.live.json` numeric marker is written every turn but does **not** rewrite
+  the compiled prose.)
 - **Overlay-aware compile (Implemented).** `compile` now folds the **active overlay** (applied
   governed self-edits) into the prompt as authoritative overrides (`activeOverlay`), so a
   recompile reflects what the persona evolved into — including *qualitative*
@@ -131,8 +146,10 @@ role adoption, character card, voice exemplars, scene contracts, guardrails (see
 
 ```bash
 personaxis improve suggesting            # set the mode (writes improvement_policy.mode)
-# in the REPL: /evolve <observation>     # runs one governed Living-Loop cycle (shows the steps)
+# in the REPL: just chat                 # the Living Loop runs one governed cycle every turn
+# in the REPL: /review                   # see/approve queued self-edits; /state shows the overlay
 # MCP: persona_propose_edit              # propose a quantitative OR qualitative edit
 ```
-Tests: `packages/core/test/self-evolution.test.ts` (protected paths, consensus, qualitative
-edits, revert).
+Tests: `packages/core/test/self-evolution.test.ts` (protected paths, consensus, revert) and
+`qualitative-evolution.test.ts` (`editGate` composition; a self-edit to a non-`persona_prompting`
+layer is applied under `autonomous`).

@@ -8,6 +8,11 @@ The spec itself (normative field reference) lives in the sibling `persona.md` re
 [docs/SPEC.md](../../persona.md/docs/SPEC.md) and
 [docs/PERSONA_PROMPTING.md](../../persona.md/docs/PERSONA_PROMPTING.md).
 
+**New here? Start with [CONCEPTS_FAQ.md](CONCEPTS_FAQ.md)** — a single, navigable answer to the
+common conceptual questions (compile/decompile, sub-personas, what self-evolves and who decides,
+the modes, the six memory kinds, sessions, the sandbox, every REPL command), each linking to the
+deeper architecture doc below.
+
 ## Map
 
 ```
