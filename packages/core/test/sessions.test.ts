@@ -13,6 +13,7 @@ import {
   findSession,
   fallbackName,
   sessionsDir,
+  recordCompaction,
 } from "../src/index.js";
 
 let dir: string;
@@ -88,5 +89,31 @@ describe("sessions (F3)", () => {
     expect(sessionsDir(personaPath)).toBe(join(dir, ".personaxis", "sessions"));
     expect(listSessions(personaPath)).toEqual([]); // none yet
     expect(existsSync(sessionsDir(personaPath))).toBe(false);
+  });
+
+  it("a persisted /compact checkpoint survives reload: summary replaces older turns, later turns kept", () => {
+    const id = newSessionId();
+    ensureSession(personaPath, hdr(id));
+    appendTurn(personaPath, id, { role: "user", content: "q1" });
+    appendTurn(personaPath, id, { role: "assistant", content: "a1" });
+    appendTurn(personaPath, id, { role: "user", content: "q2" });
+    appendTurn(personaPath, id, { role: "assistant", content: "a2" });
+
+    recordCompaction(personaPath, id, "User asked q1 and q2; assistant answered a1, a2.");
+    // a turn AFTER the checkpoint is preserved verbatim
+    appendTurn(personaPath, id, { role: "user", content: "q3-after-compact" });
+
+    const conv = loadConversation(personaPath, id);
+    // [0] = the summary (as a user message), then only the post-checkpoint verbatim turn.
+    expect(conv[0].role).toBe("user");
+    expect(conv[0].content).toContain("q1 and q2");
+    expect(conv.some((m) => m.content === "q3-after-compact")).toBe(true);
+    // the raw pre-checkpoint turns are NOT rehydrated (folded into the summary)…
+    expect(conv.some((m) => m.content === "q1")).toBe(false);
+    expect(conv.some((m) => m.content === "a2")).toBe(false);
+    // …but they remain in the file for audit.
+    expect(readSession(personaPath, id).turns.some((t) => t.content === "q1")).toBe(true);
+    // the summary row is not counted as a conversational turn.
+    expect(listSessions(personaPath)[0].turns).toBe(5); // q1,a1,q2,a2,q3 (summary excluded)
   });
 });

@@ -31,8 +31,10 @@ export interface SessionHeader {
 
 export interface SessionTurn {
   type: "turn";
-  /** "note" marks a non-conversational provenance entry (e.g. a delegation record). */
-  role: "user" | "assistant" | "note";
+  /** "note" marks a non-conversational provenance entry (e.g. a delegation record).
+   *  "summary" is a persisted /compact checkpoint: on reload it REPLACES every turn before it
+   *  (which stay in the file for audit) and the verbatim turns after it are kept. */
+  role: "user" | "assistant" | "note" | "summary";
   content: string;
   ts: string;
   /** Who produced an assistant/note turn (address; "(root)" for the root). */
@@ -113,11 +115,34 @@ export function readSession(personaPath: string, id: string): { header?: Session
   };
 }
 
-/** Rehydrate a session into a ChatMessage[] for the agent (notes are dropped). */
+/**
+ * Persist a /compact checkpoint. Appends a `summary` turn; on reload it replaces every earlier
+ * turn (kept in the file for audit) so `/resume` returns the COMPACTED conversation, not the raw
+ * bloat. Verbatim turns appended AFTER this checkpoint are preserved until the next compaction.
+ * Best-effort: no-op if the session file doesn't exist yet.
+ */
+export function recordCompaction(personaPath: string, id: string, summary: string): void {
+  appendTurn(personaPath, id, { role: "summary", content: summary });
+}
+
+/**
+ * Rehydrate a session into a ChatMessage[] for the agent. Notes are dropped. If a /compact
+ * checkpoint (summary turn) exists, the LAST one replaces everything before it: the rehydrated
+ * conversation is `[<summary as a user message>, ...verbatim turns appended after the checkpoint]`.
+ */
 export function loadConversation(personaPath: string, id: string): ChatMessage[] {
-  return readSession(personaPath, id)
-    .turns.filter((t) => t.role === "user" || t.role === "assistant")
-    .map((t) => ({ role: t.role as "user" | "assistant", content: t.content }));
+  const turns = readSession(personaPath, id).turns;
+  let lastSummary = -1;
+  for (let i = 0; i < turns.length; i++) if (turns[i].role === "summary") lastSummary = i;
+  const out: ChatMessage[] = [];
+  if (lastSummary >= 0) {
+    out.push({ role: "user", content: `<summary of earlier conversation>\n${turns[lastSummary].content}\n</summary>` });
+  }
+  for (let i = lastSummary + 1; i < turns.length; i++) {
+    const t = turns[i];
+    if (t.role === "user" || t.role === "assistant") out.push({ role: t.role, content: t.content });
+  }
+  return out;
 }
 
 /** All sessions for a persona, newest-activity first. */
@@ -135,7 +160,7 @@ export function listSessions(personaPath: string): SessionSummary[] {
       kind: header?.kind ?? "root",
       created: header?.created ?? "",
       updated: turns.at(-1)?.ts ?? header?.created ?? "",
-      turns: turns.filter((t) => t.role !== "note").length,
+      turns: turns.filter((t) => t.role === "user" || t.role === "assistant").length,
       path: sessionFile(personaPath, id),
     });
   }
