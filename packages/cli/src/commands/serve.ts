@@ -21,6 +21,8 @@ import chalk from "chalk";
 import {
   LivingLoop,
   HeuristicAppraiser,
+  LlmAppraiser,
+  resolveModel,
   PersonaAgent,
   EventBus,
   Tracer,
@@ -101,7 +103,10 @@ async function route(
       const observation = String(body.observation ?? "");
       if (!observation.trim()) return json(res, 400, { error: "observation (non-empty string) is required" });
       const events: LoopEvent[] = [];
-      const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
+      // Use the persona's resolved model (config/env) for a real appraisal; fall back to the
+      // deterministic heuristic appraiser when no model is configured.
+      const m = resolveModel({ personaPath, frontmatter: handle.frontmatter as Record<string, unknown> });
+      const loop = new LivingLoop(personaPath, { appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser() });
       loop.bus.on((e) => events.push(e));
       const report = await loop.tick({ observation, source: (body.source as ProvenanceSource) ?? "user" });
       return json(res, 200, { report, events });
@@ -131,21 +136,20 @@ async function route(
       if (parseError) return json(res, 400, { error: "invalid JSON body" });
       const task = String(body.task ?? "");
       if (!task.trim()) return json(res, 400, { error: "task (non-empty string) is required" });
-      const endpoint = process.env.PERSONAXIS_ENDPOINT;
-      const model = process.env.PERSONAXIS_MODEL;
-      if (!endpoint || !model) return json(res, 400, { error: "agent requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL" });
+      const fm = handle.frontmatter as Record<string, unknown>;
+      const llm = resolveModel({ personaPath: handle.personaPath, frontmatter: fm });
+      if (!llm) return json(res, 400, { error: "agent requires a configured model (config.json local.endpoint/model or PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL)" });
       const events: LoopEvent[] = [];
       const bus = new EventBus();
       bus.on((e) => events.push(e));
-      const fm = handle.frontmatter as Record<string, unknown>;
       const agent = new PersonaAgent({
-        llm: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+        llm,
         policy: policyFromFrontmatter(fm, process.cwd()),
         personaBody: handle.body,
         onApproval: async () => "deny", // non-interactive HTTP: deny anything needing approval
         budget: readAgentBudget(fm),
         verification: readVerification(fm),
-        judge: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+        judge: llm,
         personaPath: handle.personaPath,
         bus,
       });

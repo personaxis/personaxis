@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
+import { globalConfigPath as coreGlobalConfigPath, projectConfigPath as coreProjectConfigPath } from "@personaxis/core";
 import type { ProviderName } from "./providers/types.js";
 
-const CONFIG_PATH = resolve(process.cwd(), ".personaxis", "config.json");
+/** "project" → <cwd>/.personaxis/config.json · "global" → ~/.personaxis/config.json (PERSONAXIS_HOME). */
+export type ConfigScope = "project" | "global";
 
 export interface PersonaxisConfig {
   /** Default provider for compile/decompile. Defaults to "agent" if unset. */
@@ -11,9 +13,13 @@ export interface PersonaxisConfig {
     /** OpenAI-compatible chat-completions endpoint, e.g. http://localhost:11434/v1 */
     endpoint?: string;
     model?: string;
-    /** Optional bearer token for an authenticated endpoint (Cohere/OpenRouter/Groq). */
+    /** Optional bearer token for an authenticated endpoint (dev only — the file must be gitignored). */
     apiKey?: string;
+    /** Name of the env var holding the key (preferred — the key never touches a file). */
+    apiKeyEnv?: string;
   };
+  /** Per-persona model overrides, keyed by slug. */
+  personas?: Record<string, { endpoint?: string; model?: string; apiKey?: string; apiKeyEnv?: string }>;
   byok?: {
     /** Which API the key in ANTHROPIC_API_KEY / OPENAI_API_KEY belongs to. */
     apiProvider?: "anthropic" | "openai";
@@ -25,20 +31,32 @@ export interface PersonaxisConfig {
   };
 }
 
-export function loadConfig(): PersonaxisConfig {
-  if (!existsSync(CONFIG_PATH)) return {};
+export function configPath(scope: ConfigScope = "project"): string {
+  return scope === "global" ? coreGlobalConfigPath() : resolve(coreProjectConfigPath(process.cwd()));
+}
+
+export function loadConfig(scope: ConfigScope = "project"): PersonaxisConfig {
+  const p = configPath(scope);
+  if (!existsSync(p)) return {};
   try {
-    return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as PersonaxisConfig;
+    return JSON.parse(readFileSync(p, "utf-8")) as PersonaxisConfig;
   } catch {
     return {};
   }
 }
 
-export function saveConfig(config: PersonaxisConfig): void {
-  mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
+export function saveConfig(config: PersonaxisConfig, scope: ConfigScope = "project"): void {
+  const p = configPath(scope);
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 
-export function configPath(): string {
-  return CONFIG_PATH;
+/** Set one model field in the `local` section of the chosen config scope. Used by `/model set`. */
+export function setModelSetting(key: string, value: string, global = false): void {
+  const scope: ConfigScope = global ? "global" : "project";
+  const field = key === "key-env" ? "apiKeyEnv" : key === "endpoint" ? "endpoint" : key === "model" ? "model" : key === "key" ? "apiKey" : undefined;
+  if (!field) throw new Error(`unknown model setting "${key}" (use: endpoint | model | key-env | key)`);
+  const config = loadConfig(scope);
+  config.local = { ...config.local, [field]: value };
+  saveConfig(config, scope);
 }

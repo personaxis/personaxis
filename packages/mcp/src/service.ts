@@ -10,6 +10,8 @@
 import {
   LivingLoop,
   HeuristicAppraiser,
+  LlmAppraiser,
+  resolveModel,
   PersonaAgent,
   EventBus,
   Tracer,
@@ -98,8 +100,11 @@ export async function observe(
   source: ProvenanceSource,
 ): Promise<unknown> {
   const events: LoopEvent[] = [];
-  ensureState(loadPersona(persona)); // seed state.json if missing
-  const loop = new LivingLoop(persona, { appraiser: new HeuristicAppraiser() });
+  const handle = loadPersona(persona);
+  ensureState(handle); // seed state.json if missing
+  // Use the persona's resolved model (config/env) for a real appraisal; fall back to heuristic.
+  const m = resolveModel({ personaPath: persona, frontmatter: handle.frontmatter as Record<string, unknown> });
+  const loop = new LivingLoop(persona, { appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser() });
   loop.bus.on((e) => events.push(e));
   // Best-effort: a tick failure must not crash the MCP server (mirror the REPL).
   try {
@@ -119,26 +124,25 @@ export async function observe(
  * allow-list). Requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL for tool-calling.
  */
 export async function agentRun(persona: string, task: string, maxSteps = 12): Promise<unknown> {
-  const endpoint = process.env.PERSONAXIS_ENDPOINT;
-  const model = process.env.PERSONAXIS_MODEL;
-  if (!endpoint || !model) {
-    return { error: "agent requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL (tool-calling model)" };
-  }
   const handle = loadPersona(persona);
+  const fm = handle.frontmatter as Record<string, unknown>;
+  const llm = resolveModel({ personaPath: persona, frontmatter: fm });
+  if (!llm) {
+    return { error: "agent requires a configured model (config.json local.endpoint/model or PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL)" };
+  }
   ensureState(handle);
   const events: LoopEvent[] = [];
   const bus = new EventBus();
   bus.on((e) => events.push(e));
-  const fm = handle.frontmatter as Record<string, unknown>;
   const agent = new PersonaAgent({
-    llm: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+    llm,
     policy: policyFromFrontmatter(fm, process.cwd()),
     personaBody: handle.body,
     onApproval: async () => "deny", // non-interactive host: deny anything needing approval
     maxSteps,
     budget: readAgentBudget(fm),
     verification: readVerification(fm),
-    judge: { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY },
+    judge: llm,
     personaPath: persona,
     bus,
   });

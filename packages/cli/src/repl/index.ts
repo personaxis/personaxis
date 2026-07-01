@@ -66,6 +66,8 @@ import {
   LlmResponder,
   ReflectiveResponder,
   makeRecompileHook,
+  resolveModel,
+  describeModel,
   type Appraiser,
   type Responder,
   type Policy,
@@ -91,6 +93,7 @@ import { writeStarterPersona } from "../starter.js";
 import { isSubagentPath, slugChainFromPath, slugAddressFromPath } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/mode.js";
 import { runCompile } from "../commands/compile.js";
+import { setModelSetting } from "../config.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { buildResourceManifest } from "../resource-manifest.js";
@@ -179,23 +182,31 @@ function phaseFor(e: LoopEvent): string {
   }
 }
 
-function llmConfig(): { endpoint: string; model: string; apiKey?: string } | undefined {
-  const endpoint = process.env.PERSONAXIS_ENDPOINT;
-  const model = process.env.PERSONAXIS_MODEL;
-  return endpoint && model ? { endpoint, model, apiKey: process.env.PERSONAXIS_API_KEY } : undefined;
+/**
+ * The resolved model for the (optionally persona-scoped) session. Delegates to core's layered
+ * resolveModel: env > frontmatter.runtime > per-persona config > project config > global config.
+ * So `personaxis config set --global local.endpoint …` once means no env exports per launch, and a
+ * persona can carry its own model. Env vars still work (highest precedence) for backward-compat.
+ */
+function llmConfig(ctx?: { personaPath?: string; frontmatter?: Record<string, unknown> }): { endpoint: string; model: string; apiKey?: string } | undefined {
+  return resolveModel({ personaPath: ctx?.personaPath, frontmatter: ctx?.frontmatter, cwd: process.cwd() });
 }
 
-function pickAppraiser(): Appraiser {
-  const llm = llmConfig();
+/** Convenience: build the llmConfig arg from a Ctx (its persona path + frontmatter). */
+function ctxModelArg(ctx: Ctx): { personaPath: string; frontmatter: Record<string, unknown> } {
+  return { personaPath: ctx.handle.personaPath, frontmatter: ctx.handle.frontmatter as Record<string, unknown> };
+}
+
+function pickAppraiser(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): Appraiser {
+  const llm = llmConfig(arg);
   return llm ? new LlmAppraiser(llm) : new HeuristicAppraiser();
 }
-function pickResponder(): Responder {
-  const llm = llmConfig();
+function pickResponder(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): Responder {
+  const llm = llmConfig(arg);
   return llm ? new LlmResponder(llm) : new ReflectiveResponder();
 }
-function appraiserLabel(): string {
-  const llm = llmConfig();
-  return llm ? `${llm.model} @ ${llm.endpoint}` : "heuristic (offline — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL)";
+function appraiserLabel(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): string {
+  return describeModel({ personaPath: arg?.personaPath, frontmatter: arg?.frontmatter, cwd: process.cwd() });
 }
 
 /**
@@ -406,7 +417,7 @@ const COMMANDS: CommandDef[] = [
       if (!readRecompilePending(ctx.handle.personaPath).pending) {
         return void ctx.out(chalk.dim("  PERSONA.md is already up to date."));
       }
-      if (!llmConfig()) return void ctx.out(chalk.dim("  needs a model (PERSONAXIS_ENDPOINT/MODEL) to recompile."));
+      if (!llmConfig(ctxModelArg(ctx))) return void ctx.out(chalk.dim("  needs a model — configure with /model or `personaxis config set --global local.endpoint/model`."));
       ctx.out(chalk.dim("  recompiling PERSONA.md from the evolved spec…"));
       await maybeRecompile(ctx);
     },
@@ -479,13 +490,34 @@ const COMMANDS: CommandDef[] = [
       }
     },
   },
-  { name: "model", desc: "show the model in use", run: (_a, ctx) => void ctx.out(chalk.dim(`  model: ${appraiserLabel()}`)) },
+  {
+    name: "model",
+    desc: "show the model, or set it: /model set <endpoint|model|key-env> <value> [global]",
+    run: (arg, ctx) => {
+      const parts = arg.trim().split(/\s+/).filter(Boolean);
+      if (parts[0] !== "set") {
+        ctx.out(chalk.dim(`  model: ${appraiserLabel(ctxModelArg(ctx))}`));
+        ctx.out(chalk.dim(`  set with: /model set endpoint <url> · /model set model <name> · /model set key-env <ENV_VAR> [global]`));
+        return;
+      }
+      const [, key, value, scope] = parts;
+      if (!key || !value) return void ctx.out(chalk.yellow("  usage: /model set <endpoint|model|key-env> <value> [global]"));
+      const global = scope === "global";
+      try {
+        setModelSetting(key, value, global);
+        ctx.out(chalk.green(`  ✓ ${key} set`) + chalk.dim(` (${global ? "global ~/.personaxis" : "project .personaxis"}/config.json)`));
+        ctx.out(chalk.dim(`  now: ${appraiserLabel(ctxModelArg(ctx))}`));
+      } catch (e) {
+        ctx.out(chalk.red(`  ${(e as Error).message}`));
+      }
+    },
+  },
   {
     name: "compact",
     desc: "summarize older turns to free context",
     run: async (_a, ctx) => {
-      const llm = llmConfig();
-      if (!llm) return void ctx.out(chalk.dim("  /compact needs a model."));
+      const llm = llmConfig(ctxModelArg(ctx));
+      if (!llm) return void ctx.out(chalk.dim("  /compact needs a model — configure with /model."));
       const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
       if (r.compacted) {
         ctx.conversation = r.messages.filter((m) => m.role !== "system");
@@ -641,7 +673,7 @@ function replyLine(ctx: Ctx, text: string): string {
  * reflective responder. Identity evolution (the Living Loop) still runs each turn.
  */
 async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
-  const llm = llmConfig();
+  const llm = llmConfig(ctxModelArg(ctx));
   if (!llm) {
     const cur = readState(ctx.handle.statePath);
     const reply = await ctx.responder
@@ -762,7 +794,7 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
  */
 async function maybeRecompile(ctx: Ctx): Promise<void> {
   if (!readRecompilePending(ctx.handle.personaPath).pending) return;
-  if (!llmConfig()) {
+  if (!llmConfig(ctxModelArg(ctx))) {
     ctx.out(chalk.dim("  · PERSONA.md is stale — run `personaxis compile` to refresh it"));
     return;
   }
@@ -834,8 +866,9 @@ function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number):
     ? join(dirname(personaPath), "PERSONA.md")
     : resolve(dirname(dirname(personaPath)), "PERSONA.md");
   const personaDoc = existsSync(compiled) ? readFileSync(compiled, "utf-8") : handle.body;
+  const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
   const loop = new LivingLoop(personaPath, {
-    appraiser: pickAppraiser(),
+    appraiser: pickAppraiser(modelArg),
     recompile: makeRecompileHook(existsSync(compiled) ? compiled : undefined),
   });
   let postureIndex = POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox);
@@ -843,7 +876,7 @@ function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number):
   return {
     handle,
     loop,
-    responder: pickResponder(),
+    responder: pickResponder(modelArg),
     theme: personaTheme(handle.frontmatter),
     name: displayName(handle.frontmatter),
     mode: readMode(handle.frontmatter as Record<string, unknown>),
@@ -885,7 +918,7 @@ async function recordTurn(ctx: Ctx, userMsg: string, assistantMsg: string): Prom
     appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "assistant", content: assistantMsg, from });
     if (!ctx.sessionNamed) {
       ctx.sessionNamed = true;
-      const llm = llmConfig();
+      const llm = llmConfig(ctxModelArg(ctx));
       if (llm) {
         try {
           renameSession(ctx.handle.personaPath, ctx.sessionId, await nameSession(llm, userMsg));
@@ -909,6 +942,7 @@ async function runLineMode(ctx: Ctx): Promise<void> {
   if (roster.subs.length) {
     stdout.write(chalk.dim(`  sub-personas: `) + roster.subs.map((s) => chalk.ansi256(roster.color(s.address) ?? 39).bold(`@${s.address}`)).join("  ") + chalk.dim(`  ·  @address · @all\n\n`));
   }
+  if (!llmConfig(ctxModelArg(ctx))) firstRunModelHint((s) => stdout.write(s + "\n"));
 
   const rl = readline.createInterface({ input: stdin, output: stdout });
   for await (const raw of rl) {
@@ -1115,4 +1149,15 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     const tags = roster.subs.map((s) => chalk.ansi256(roster.color(s.address) ?? 39).bold(`@${s.address}`)).join("  ");
     screen.print(chalk.dim(`  sub-personas: `) + tags + chalk.dim("  ·  @address · @all · @parent/all"));
   }
+  if (!llmConfig(ctxModelArg(ctx))) firstRunModelHint((s) => screen.print(s, "activity"));
+}
+
+/** Guide a first-time user to configure a model instead of silently falling back to heuristic mode. */
+function firstRunModelHint(out: (s: string) => void): void {
+  out(chalk.yellow("  No model configured — running in offline heuristic mode (no real reasoning)."));
+  out(chalk.dim("  Configure ONCE (global, all projects):"));
+  out(chalk.dim("    personaxis config set --global local.endpoint <openai-compatible-url>"));
+  out(chalk.dim("    personaxis config set --global local.model <model-name>"));
+  out(chalk.dim("    personaxis config set --global local.apiKeyEnv <ENV_VAR_WITH_YOUR_KEY>"));
+  out(chalk.dim("  …or in-session: /model set endpoint <url> · /model set model <name> · /model set key-env <ENV> global"));
 }

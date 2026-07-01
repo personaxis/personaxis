@@ -1,11 +1,16 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { loadConfig, saveConfig, configPath, type PersonaxisConfig } from "../config.js";
+import { loadConfig, saveConfig, configPath, type PersonaxisConfig, type ConfigScope } from "../config.js";
 
 const KNOWN_KEYS = [
   "provider",
   "local.endpoint",
   "local.model",
+  "local.apiKey",
+  "local.apiKeyEnv",
+  "personas.<slug>.endpoint",
+  "personas.<slug>.model",
+  "personas.<slug>.apiKeyEnv",
   "byok.apiProvider",
   "byok.model",
   "remote.apiBase",
@@ -25,9 +30,18 @@ function setPath(config: PersonaxisConfig, key: string, value: string): void {
   }
 
   const [section, field] = key.split(".");
-  if (section === "local" && (field === "endpoint" || field === "model")) {
+  if (section === "local" && (field === "endpoint" || field === "model" || field === "apiKey" || field === "apiKeyEnv")) {
     config.local = { ...config.local, [field]: value };
     return;
+  }
+  // personas.<slug>.<field> — per-persona model overrides.
+  if (section === "personas") {
+    const [, slug, pField] = key.split(".");
+    if (slug && (pField === "endpoint" || pField === "model" || pField === "apiKey" || pField === "apiKeyEnv")) {
+      config.personas = { ...config.personas, [slug]: { ...config.personas?.[slug], [pField]: value } };
+      return;
+    }
+    throw new Error(`Invalid personas key "${key}". Use personas.<slug>.{endpoint|model|apiKey|apiKeyEnv}`);
   }
   if (section === "byok" && field === "apiProvider") {
     if (!(BYOK_API_PROVIDER_VALUES as readonly string[]).includes(value)) {
@@ -57,41 +71,43 @@ function getPath(config: PersonaxisConfig, key: string): string | undefined {
 }
 
 const setCommand = new Command("set")
-  .description(`Set a provider config value. Known keys: ${KNOWN_KEYS.join(", ")}`)
-  .argument("<key>", "Config key, e.g. provider, local.endpoint, byok.apiProvider")
+  .description(`Set a config value. Known keys: ${KNOWN_KEYS.join(", ")}`)
+  .argument("<key>", "Config key, e.g. local.endpoint, personas.cmo.model, provider")
   .argument("<value>", "Value to set")
-  .action((key: string, value: string) => {
-    const config = loadConfig();
+  .option("-g, --global", "Write to the global config (~/.personaxis/config.json) instead of the project", false)
+  .action((key: string, value: string, opts: { global?: boolean }) => {
+    const scope: ConfigScope = opts.global ? "global" : "project";
+    const config = loadConfig(scope);
     try {
       setPath(config, key, value);
     } catch (err) {
       console.error(chalk.red("Error:"), (err as Error).message);
       process.exit(1);
     }
-    saveConfig(config);
-    console.log(chalk.green("✓"), `${key} = ${value}`, chalk.dim(`(${configPath()})`));
+    saveConfig(config, scope);
+    console.log(chalk.green("✓"), `${key} = ${value}`, chalk.dim(`(${configPath(scope)})`));
+    if (/apiKey$/.test(key)) console.log(chalk.yellow("  ! an inline key was written — ensure this config.json is gitignored. Prefer *.apiKeyEnv."));
   });
 
 const getCommand = new Command("get")
-  .description("Print a provider config value")
+  .description("Print a config value (project overrides global)")
   .argument("<key>", "Config key")
-  .action((key: string) => {
-    const config = loadConfig();
-    const value = getPath(config, key);
-    if (value === undefined) {
-      console.log(chalk.dim("(unset)"));
-      return;
-    }
-    console.log(value);
+  .option("-g, --global", "Read the global config only", false)
+  .action((key: string, opts: { global?: boolean }) => {
+    const scope: ConfigScope = opts.global ? "global" : "project";
+    const value = getPath(loadConfig(scope), key) ?? getPath(loadConfig("global"), key);
+    console.log(value === undefined ? chalk.dim("(unset)") : value);
   });
 
 const showCommand = new Command("show")
-  .description("Print the full provider config")
+  .description("Print the project + global config and where each file lives")
   .action(() => {
-    const config = loadConfig();
-    console.log(JSON.stringify(config, null, 2));
-    console.log(chalk.dim(`\nAPI keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, PERSONAXIS_API_TOKEN) are read from`));
-    console.log(chalk.dim(`the environment and are never stored in ${configPath()}.`));
+    console.log(chalk.bold("project"), chalk.dim(configPath("project")));
+    console.log(JSON.stringify(loadConfig("project"), null, 2));
+    console.log(chalk.bold("\nglobal"), chalk.dim(configPath("global")));
+    console.log(JSON.stringify(loadConfig("global"), null, 2));
+    console.log(chalk.dim(`\nPrecedence: env > project > global. The API key resolves from the env var named by`));
+    console.log(chalk.dim(`*.apiKeyEnv, else PERSONAXIS_API_KEY, else an inline *.apiKey (dev only — gitignore it).`));
   });
 
 export const configCommand = new Command("config")
