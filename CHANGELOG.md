@@ -11,6 +11,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Runtime/correctness release (no spec field changes; `spec_version` stays `0.10.0`). Closes the
 gap between what the spec declared and what the runtime actually did.
 
+### Added — living engine, config & UX (2026-07-01)
+- **Event-driven living engine**: `personaxis observe` runs ONE governed tick on the configured model
+  and recompiles `PERSONA.md` on drift (`--stdin` reads a Claude Code Stop-hook payload; `--strict`/
+  `--json` for programmatic hosts). `personaxis hooks install --host claude-code` wires a Stop hook so
+  every turn feeds a tick **on your model, not the host's**. `personaxis watch` is an optional local
+  daemon (recompile on manual spec edits + a drift heartbeat; `--once` for serverless cron/CI).
+- **`@personaxis/sdk`** — embed a living persona in a Node/TS backend (`class Persona`:
+  `compiledIdentity`/`state`/`observe`/`adjust`/`audit`). Modo 2 self-host.
+- **Layered model config** (no more env exports per launch): `resolveModel` resolves env > project >
+  global (`~/.personaxis/config.json`) with per-persona overrides (`personas[slug]` or frontmatter
+  `runtime`). API key resolves from the env var named by `apiKeyEnv` → `PERSONAXIS_API_KEY` → inline
+  (dev). `config set --global`, `/model set` in the REPL, and a first-run setup hint. REPL/`serve`/MCP
+  all use it.
+- **`/compact` persists**: a summary checkpoint survives `/resume` (no re-compacting after re-entering).
+- MCP server version → 0.11.0.
+
+### Fixed — sandbox & UX (2026-07-01)
+- **Sandbox postures now meaningfully differ**: `danger-full-access` allows risky ops without asking
+  (YOLO; deny-list still wins) — previously it still prompted like `workspace-write`. Changing the
+  posture mid-session now nudges the model to re-evaluate (it retries instead of parroting a prior
+  refusal from history).
+- **Per-turn telemetry** renders as a distinct labeled block (memory used/created, evolution,
+  evaluations), and `/` commands are visually separated from the reply.
+
 ### Added
 - **Persistent sessions** per persona under `.personaxis/[personas/<slug>/]sessions/<id>.jsonl`;
   `/sessions` lists them and `/resume <id|name>` continues one. Auto-named from the first message.

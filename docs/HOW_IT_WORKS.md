@@ -16,7 +16,13 @@ Nombres:
 - **Binario de la TUI:** `personaxis-dash`.
 - **Binario del servidor MCP:** `personaxis-mcp`.
 - **Paquetes npm (monorepo):** `@personaxis/core` (motor), `@personaxis/cli`,
-  `@personaxis/mcp`, `@personaxis/tui`.
+  `@personaxis/mcp`, `@personaxis/sdk` (embeber en un backend), `@personaxis/tui`.
+
+> **¿Cómo se usa en la práctica?** Hay dos modos (compañero de desarrollo local vs persona en runtime
+> dentro de una app) y cuatro superficies (librería/SDK · HTTP `serve` · MCP · daemon `watch`). El
+> "siempre vivo" se logra con **hooks** del host que disparan `personaxis observe` en TU modelo por
+> turno (sin gastar tokens del host). Ver [architecture/deployment.md](./architecture/deployment.md),
+> [configuration.md](./configuration.md) y [CONCEPTS_FAQ.md](./CONCEPTS_FAQ.md).
 
 La idea central: una persona puede **adaptarse** al usuario y al contexto sin dejar de ser
 segura, porque **toda evolución es clampeada, auditada y reversible**, y los **invariantes

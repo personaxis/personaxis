@@ -33,7 +33,10 @@ Sin publicar aún (desde el repo):
 
 > Equivalente CLI: `claude mcp add personaxis -- personaxis-mcp`
 
-## 2. Herramientas que expone (12)
+## 2. Herramientas que expone (16)
+
+> Lista resumida abajo; la referencia completa y en inglés está en
+> [claude-code.md](./claude-code.md). El servidor MCP es 0.11.0.
 
 | Tool | Para qué la llama el host |
 |---|---|

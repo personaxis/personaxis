@@ -17,16 +17,25 @@ deeper architecture doc below.
 
 ```
 docs/
+  CONCEPTS_FAQ.md      START HERE — direct answers to the common conceptual questions
+  configuration.md     model/endpoint/API-key config (global+project+per-persona, dev & prod)
+  providers.md         the local | byok | agent | remote providers for compile/decompile
   architecture/        how the system works, end to end
-    self-evolution.md    how personaxis.md self-edits (numeric + qualitative), and how it compiles to PERSONA.md (the "living" loop)
+    deployment.md        the two use-modes, the four surfaces, hooks, cross-OS, self-host vs SaaS
+    self-evolution.md    how personaxis.md self-edits (whole spec), and how it compiles to PERSONA.md (the "living" loop)
     compile.md           compile / decompile, the artifact model, canonical output paths, purely-qualitative compiled doc
     multi-persona.md     root + sub-personas, @routing, isolation, per-persona colors
-    agent-adoption.md    how Claude Code / Codex / Hermes adopt a personaxis persona
+    agent-adoption.md    how Claude Code / Codex adopt a personaxis persona
+    saas-managed.md      DESIGN (not built here) — the managed SaaS: serverless API + queue + workers + Postgres
     memory.md            the six memory.types (episodic, semantic, procedural, autobiographical, user_preferences, evaluations)
-    sessions.md          persistent per-persona conversations, /sessions, /resume, vs /compact
+    sessions.md          persistent per-persona conversations, /sessions, /resume, /compact (persisted)
     awareness.md         runtime structural self-knowledge (root vs sub, address, sub-tree, resources)
     sandbox.md           two-axis permission policy, postures, the honest Windows limit
-  commands/            one entry per CLI command (validate, compile, improve, …)
+  integrations/        how each host uses personaxis
+    claude-code.md       hooks (per-turn learning) + MCP (on-demand) + native subagent
+    claude-code-mcp.md   (español) MCP walkthrough
+    http-agents.md       personaxis serve — HTTP for non-MCP agents
+  commands/            one entry per CLI command (validate, compile, observe, watch, hooks, …)
     README.md            command index
 ```
 

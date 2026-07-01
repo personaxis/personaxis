@@ -486,7 +486,7 @@ const COMMANDS: CommandDef[] = [
       ctx.out(`  personas ${v.personas} · projects ${v.projects} · collections ${v.collections}`);
       if (v.personas === 0 && v.projects === 0 && v.collections === 0) {
         ctx.out(chalk.dim("  (empty) the overseer is OPTIONAL infra for reusing a persona across machines/projects,"));
-        ctx.out(chalk.dim("  complementing git — not replacing it. Populate with: personaxis personas add · personaxis push"));
+        ctx.out(chalk.dim("  complementing git — not replacing it. Populate with: personaxis personas import <path> · personaxis overseer register <slug>"));
       }
     },
   },

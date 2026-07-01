@@ -1,10 +1,33 @@
 # How big agents adopt a personaxis persona
 
-*How does Claude Code / Codex / Hermes actually "become" a persona for a repo, or pick up
+*How does Claude Code / Codex actually "become" a persona for a repo, or pick up
 sub-personas for specific tasks — and why is this better than hand-written agent prompts?*
 
 Source: `packages/cli/src/targets/{claude-code.ts, codex.ts, placement.ts}`;
 `packages/cli/src/commands/compile.ts`.
+
+## Supported compile targets
+
+`personaxis compile --platform <p>` places the compiled document into a host's subagent convention.
+The live targets are exactly those in `PLACEMENT_PLATFORMS` (`packages/cli/src/targets/placement.ts`):
+
+| Target | Status | Root output | Sub-persona output |
+|---|---|---|---|
+| `claude-code` | **Live** | `PERSONA.md` + `@PERSONA.md` injected into `CLAUDE.md` | `.claude/agents/<slug>.md` |
+| `codex` | **Live** | `PERSONA.md` + `AGENTS.md` baseline | `.codex/agents/<slug>.toml` |
+| `cursor` | Archived | `.cursor/rules/persona.mdc` | — |
+| `soul-md` | Archived | `SOUL.md` | — |
+
+There is **no `hermes` compile target**. Hermes appears only in the research/planning notes and in
+comparative prose ("complement Claude Code / Codex / Hermes"); the SOUL.md identity-slot format that
+Hermes popularized survives here only as the **archived** `soul-md` export. Do not treat Hermes as an
+adoption path — the real targets are `claude-code` and `codex`.
+
+> **Per-turn liveness comes from hooks (Modo 1).** Compiling places a fresh identity; keeping it
+> *alive* each turn is the Claude Code `Stop` hook (`personaxis hooks install --host claude-code`),
+> which runs one governed tick on your model per turn — no host tokens. See
+> [../integrations/claude-code.md](../integrations/claude-code.md) and
+> [deployment.md](./deployment.md).
 
 ## The flow
 

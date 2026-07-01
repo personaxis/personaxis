@@ -21,6 +21,15 @@ There are three artifacts (see [docs/README.md](README.md#the-three-artifact-mod
 `personaxis.md` (the spec — quantitative + persona-prompting), `PERSONA.md` (the compiled,
 LLM-facing prose — system-prompt slot #1), and `state.json` (numeric runtime dials).
 
+> **Two different things — don't conflate them.** When [§3](#3-self-evolution-what-evolves-and-who-decides)
+> says "the whole spec is self-editable", that is about **`personaxis.md` (the source)** — any of its
+> layers can evolve. When this section says the compiled **`PERSONA.md` is "purely qualitative"**, that
+> is about the **generated artifact**: it holds only prose (no numbers), and you do **not** hand-edit it
+> as the way to change the persona. The flow is one-directional: you (or a governed self-edit) change
+> `personaxis.md` → `compile` regenerates `PERSONA.md`. If you *do* hand-edit `PERSONA.md`, `decompile`
+> folds those edits back into `personaxis.md` (which then recompiles). The spec is the source of truth;
+> `PERSONA.md` is a view of it. (`.dist/` and `.live.json` are ephemeral markers, not primary artifacts.)
+
 - **compile** (`personaxis compile [--root]`): `personaxis.md` → `PERSONA.md`. An LLM, via the
   configured provider, turns the spec into a second-person character-card + scene-contract document.
   It is **purely qualitative** — no numeric state is baked into it (that lives in `state.json` +
