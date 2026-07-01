@@ -12,7 +12,7 @@ import { buildCompilePrompt, type CompileTargetInfo } from "../compile-instructi
 import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { runProviderOrExit } from "../provider-run.js";
 import { hashContent, saveManifest } from "../manifest.js";
-import { placeCompiledDocument, PLACEMENT_PLATFORMS, type PlacementPlatform } from "../targets/placement.js";
+import { placeCompiledDocument, isSoulPlatform, PLACEMENT_PLATFORMS, type PlacementPlatform } from "../targets/placement.js";
 import { resolveDeclaredSkills, materializeLocalSkills, writeSkillsManifest, applySkillsToSubagent } from "../targets/skills.js";
 
 function readSibling(baseDir: string, name: string): string | undefined {
@@ -136,7 +136,9 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   // The canonical persona.md is the markdown representation; skills materialize in the
   // claude-code convention by default. An explicit --platform additionally EXPORTS a
   // host placement (.claude/agents/<slug>.md or .codex/agents/<slug>.toml) below.
-  const skillsPlatform = (opts.platform as "claude-code" | "codex" | undefined) ?? "claude-code";
+  // Skills materialize in the claude-code/codex convention; SOUL.md hosts (openclaw/Hermes) reuse
+  // the claude-code skill layout as the default discovery dir.
+  const skillsPlatform: "claude-code" | "codex" = opts.platform === "codex" ? "codex" : "claude-code";
 
   // D.2/D.3/D.3b: resolve `extensions.skills`, materialize local skills to
   // this platform's discovery directory, write skills-manifest.json, and
@@ -175,18 +177,23 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   console.log(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
   console.log(chalk.dim(`  via ${result.source} (${result.model})`));
 
-  // Optional host export: place the compiled sub-persona into the host agent's
-  // subagent convention so Claude Code / Codex can route to it. Only when --platform
-  // is given and we're not overriding the output path.
-  if (isSubagent && opts.platform && !opts.out) {
-    const placement = placeCompiledDocument(finalContent, { ...target, outputPath: `.claude/agents/${slug}.md` }, opts.platform as PlacementPlatform);
+  // Optional host export: place the compiled document into the host's convention so it can adopt the
+  // persona. Given when --platform is set (and we're not overriding the output path). Works for the
+  // root persona too — openclaw/Hermes read SOUL.md at the workspace/profile root, not PERSONA.md.
+  if (opts.platform && !opts.out) {
+    const placement = placeCompiledDocument(finalContent, target, opts.platform as PlacementPlatform);
     const placedPath = resolve(placement.path);
-    mkdirSync(dirname(placedPath), { recursive: true });
-    writeFileSync(placedPath, placement.content.trimEnd() + "\n", "utf-8");
-    console.log(chalk.green("✓"), chalk.dim("host export →"), relative(process.cwd(), placedPath).replace(/\\/g, "/"));
+    // Skip a redundant rewrite when the placement IS the canonical doc (claude-code/codex root).
+    if (placedPath !== resolve(outPath)) {
+      mkdirSync(dirname(placedPath), { recursive: true });
+      writeFileSync(placedPath, placement.content.trimEnd() + "\n", "utf-8");
+      console.log(chalk.green("✓"), chalk.dim("host export →"), relative(process.cwd(), placedPath).replace(/\\/g, "/"));
+    }
   }
 
-  if (!isSubagent) {
+  // Root baseline injection (@PERSONA.md into CLAUDE.md/AGENTS.md) only makes sense for the hosts that
+  // read those files. openclaw/Hermes auto-load SOUL.md, so skip it for them.
+  if (!isSubagent && !isSoulPlatform(opts.platform as PlacementPlatform | undefined)) {
     injectRootBaselines();
   }
 

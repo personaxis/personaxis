@@ -79,7 +79,8 @@ export const templatesCommand = new Command("templates")
 
     console.log("");
     console.log(chalk.dim("Use a template:"), chalk.cyan("personaxis use <template> [--target claude-code|codex]"));
-    console.log(chalk.dim("Archived targets:"), chalk.cyan("cursor, soul-md"));
+    console.log(chalk.dim("Compile to a host:"), chalk.cyan("personaxis compile --platform claude-code|codex|openclaw|hermes"), chalk.dim("(openclaw/Hermes → SOUL.md)"));
+    console.log(chalk.dim("Archived (legacy `use` targets):"), chalk.cyan("cursor"));
     console.log(chalk.dim("Search registry:"), chalk.cyan("personaxis search <query>"), chalk.dim("(coming soon)"));
     console.log("");
   });

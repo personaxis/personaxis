@@ -25,7 +25,7 @@ docs/
     self-evolution.md    how personaxis.md self-edits (whole spec), and how it compiles to PERSONA.md (the "living" loop)
     compile.md           compile / decompile, the artifact model, canonical output paths, purely-qualitative compiled doc
     multi-persona.md     root + sub-personas, @routing, isolation, per-persona colors
-    agent-adoption.md    how the focus hosts adopt a persona — Claude Code + Codex (live), openclaw + Hermes (roadmap)
+    agent-adoption.md    how the four focus hosts adopt a persona — Claude Code, Codex, openclaw, Hermes (all live)
     saas-managed.md      DESIGN (not built here) — the managed SaaS: serverless API + queue + workers + Postgres
     memory.md            the six memory.types (episodic, semantic, procedural, autobiographical, user_preferences, evaluations)
     sessions.md          persistent per-persona conversations, /sessions, /resume, /compact (persisted)

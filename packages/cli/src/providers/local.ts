@@ -1,3 +1,4 @@
+import { resolveModel } from "@personaxis/core";
 import type { Provider, ProviderRunResult } from "./types.js";
 import type { PersonaxisConfig } from "../config.js";
 
@@ -12,13 +13,15 @@ const DEFAULT_MODEL = "llama3.1";
  *   personaxis config set local.endpoint http://localhost:11434/v1
  *   personaxis config set local.model llama3.1
  *
- * Env overrides (so the same vars that drive the REPL appraiser also drive compile):
- *   PERSONAXIS_ENDPOINT, PERSONAXIS_MODEL, PERSONAXIS_API_KEY (sends `Authorization: Bearer`).
+ * Model resolution is the SAME layered config the living loop uses (`resolveModel`:
+ * env > project > global, key via `apiKeyEnv`), so `personaxis config set --global local.*` drives
+ * compile too — not just the REPL. Falls back to the passed project config, then localhost defaults.
  */
 export function createLocalProvider(config: PersonaxisConfig): Provider {
-  const endpoint = process.env.PERSONAXIS_ENDPOINT ?? config.local?.endpoint ?? DEFAULT_ENDPOINT;
-  const model = process.env.PERSONAXIS_MODEL ?? config.local?.model ?? DEFAULT_MODEL;
-  const apiKey = process.env.PERSONAXIS_API_KEY ?? config.local?.apiKey;
+  const resolved = resolveModel({ cwd: process.cwd() });
+  const endpoint = resolved?.endpoint ?? config.local?.endpoint ?? DEFAULT_ENDPOINT;
+  const model = resolved?.model ?? config.local?.model ?? DEFAULT_MODEL;
+  const apiKey = resolved?.apiKey ?? config.local?.apiKey;
 
   return {
     name: "local",

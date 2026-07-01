@@ -11,6 +11,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Runtime/correctness release (no spec field changes; `spec_version` stays `0.10.0`). Closes the
 gap between what the spec declared and what the runtime actually did.
 
+### Added — host targets openclaw + Hermes (2026-07-01)
+- **`compile --platform openclaw` and `--platform hermes`** — both hosts read `SOUL.md` as the first
+  system-prompt section, so compile writes the compiled qualitative identity as `SOUL.md` (openclaw:
+  workspace-root; Hermes: `.hermes/SOUL.md`), stripping the subagent frontmatter. Root and sub-personas
+  supported; SOUL.md hosts skip the `@PERSONA.md` baseline injection. `PLACEMENT_PLATFORMS` is now
+  `claude-code | codex | openclaw | hermes`. The four focus hosts are all live.
+- **Compile now uses the layered config too**: the `local` provider resolves its endpoint/model/key via
+  `resolveModel` (env > project > global, `apiKeyEnv`) — so `config set --global local.*` drives compile,
+  not just the REPL (closes a dev/loop-vs-compile inconsistency).
+
 ### Added — living engine, config & UX (2026-07-01)
 - **Event-driven living engine**: `personaxis observe` runs ONE governed tick on the configured model
   and recompiles `PERSONA.md` on drift (`--stdin` reads a Claude Code Stop-hook payload; `--strict`/

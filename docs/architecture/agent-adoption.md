@@ -1,6 +1,6 @@
 # How big agents adopt a personaxis persona
 
-*How does a coding-agent host (Claude Code / Codex today; openclaw / Hermes on the roadmap) actually "become" a persona for a repo, or pick up
+*How does a coding-agent host (Claude Code, Codex, openclaw, Hermes) actually "become" a persona for a repo, or pick up
 sub-personas for specific tasks — and why is this better than hand-written agent prompts?*
 
 Source: `packages/cli/src/targets/{claude-code.ts, codex.ts, placement.ts}`;
@@ -17,15 +17,17 @@ The product focuses on **four coding-agent hosts**: Claude Code, Codex, **opencl
 |---|---|---|---|
 | `claude-code` | **Live** | `PERSONA.md` + `@PERSONA.md` injected into `CLAUDE.md` | `.claude/agents/<slug>.md` |
 | `codex` | **Live** | `PERSONA.md` + `AGENTS.md` baseline | `.codex/agents/<slug>.toml` |
-| `openclaw` (`soul-md`) | **Planned** — legacy `SOUL.md` compiler exists but predates v0.7 fields; needs a modern placement adapter | `SOUL.md` | — |
-| `hermes` | **Planned** — no target yet; needs a placement adapter for Hermes's identity convention | — | — |
+| `openclaw` | **Live** | `SOUL.md` (workspace root) | `.openclaw/agents/<slug>/SOUL.md` |
+| `hermes` | **Live** | `.hermes/SOUL.md` (profile) | `.hermes/agents/<slug>/SOUL.md` |
 | `cursor` | Archived | `.cursor/rules/persona.mdc` | — |
 
-**Roadmap note (openclaw + Hermes).** Both are intended hosts, not "unsupported". openclaw's `SOUL.md`
-export lives in `packages/cli/src/targets/soul-md.ts` but reads pre-v0.7 field names, so it is archived
-until rewritten as a proper placement adapter (like `claude-code.ts`/`codex.ts`) and added to
-`PLACEMENT_PLATFORMS`. Hermes needs a new adapter for its identity-file convention. Per-turn liveness
-for all hosts is the same mechanism (hooks → `observe`), independent of the placement format.
+**openclaw + Hermes (SOUL.md).** Both read `SOUL.md` as the FIRST section of the agent's system prompt
+(openclaw: workspace-root `SOUL.md`; Hermes/Nous Research: `~/.hermes/SOUL.md` or a per-profile
+`SOUL.md`). `personaxis compile --platform openclaw` (or `hermes`) writes the compiled qualitative
+identity as `SOUL.md` — the subagent frontmatter is stripped (`packages/cli/src/targets/soul-md.ts`).
+These hosts auto-load `SOUL.md`, so they skip the `@PERSONA.md` baseline injection. For Hermes, point
+your profile at the generated `.hermes/SOUL.md` (or copy it to `~/.hermes/SOUL.md`). Per-turn liveness
+for all four hosts is the same mechanism (hooks → `observe`), independent of the placement format.
 
 > **Per-turn liveness comes from hooks (Modo 1).** Compiling places a fresh identity; keeping it
 > *alive* each turn is the Claude Code `Stop` hook (`personaxis hooks install --host claude-code`),
