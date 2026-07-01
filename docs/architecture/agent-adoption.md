@@ -1,27 +1,31 @@
 # How big agents adopt a personaxis persona
 
-*How does Claude Code / Codex actually "become" a persona for a repo, or pick up
+*How does a coding-agent host (Claude Code / Codex today; openclaw / Hermes on the roadmap) actually "become" a persona for a repo, or pick up
 sub-personas for specific tasks — and why is this better than hand-written agent prompts?*
 
 Source: `packages/cli/src/targets/{claude-code.ts, codex.ts, placement.ts}`;
 `packages/cli/src/commands/compile.ts`.
 
-## Supported compile targets
+## Compile targets — the four focus hosts + their status
 
 `personaxis compile --platform <p>` places the compiled document into a host's subagent convention.
-The live targets are exactly those in `PLACEMENT_PLATFORMS` (`packages/cli/src/targets/placement.ts`):
+The product focuses on **four coding-agent hosts**: Claude Code, Codex, **openclaw**, and **Hermes**
+(Nous Research). Two are shipping; two are on the roadmap. This table is the honest status — the
+*live* targets are exactly those in `PLACEMENT_PLATFORMS` (`packages/cli/src/targets/placement.ts`):
 
-| Target | Status | Root output | Sub-persona output |
+| Host / target | Status | Root output | Sub-persona output |
 |---|---|---|---|
 | `claude-code` | **Live** | `PERSONA.md` + `@PERSONA.md` injected into `CLAUDE.md` | `.claude/agents/<slug>.md` |
 | `codex` | **Live** | `PERSONA.md` + `AGENTS.md` baseline | `.codex/agents/<slug>.toml` |
+| `openclaw` (`soul-md`) | **Planned** — legacy `SOUL.md` compiler exists but predates v0.7 fields; needs a modern placement adapter | `SOUL.md` | — |
+| `hermes` | **Planned** — no target yet; needs a placement adapter for Hermes's identity convention | — | — |
 | `cursor` | Archived | `.cursor/rules/persona.mdc` | — |
-| `soul-md` | Archived | `SOUL.md` | — |
 
-There is **no `hermes` compile target**. Hermes appears only in the research/planning notes and in
-comparative prose ("complement Claude Code / Codex / Hermes"); the SOUL.md identity-slot format that
-Hermes popularized survives here only as the **archived** `soul-md` export. Do not treat Hermes as an
-adoption path — the real targets are `claude-code` and `codex`.
+**Roadmap note (openclaw + Hermes).** Both are intended hosts, not "unsupported". openclaw's `SOUL.md`
+export lives in `packages/cli/src/targets/soul-md.ts` but reads pre-v0.7 field names, so it is archived
+until rewritten as a proper placement adapter (like `claude-code.ts`/`codex.ts`) and added to
+`PLACEMENT_PLATFORMS`. Hermes needs a new adapter for its identity-file convention. Per-turn liveness
+for all hosts is the same mechanism (hooks → `observe`), independent of the placement format.
 
 > **Per-turn liveness comes from hooks (Modo 1).** Compiling places a fresh identity; keeping it
 > *alive* each turn is the Claude Code `Stop` hook (`personaxis hooks install --host claude-code`),
