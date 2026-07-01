@@ -67,7 +67,8 @@ spec *imponen* la seguridad. Por eso es viable en modelos chicos y seguro a la v
 ### El Agent Loop (ejecutar tareas, no solo evolucionar)
 
 Junto al Living Loop (que evoluciona la **identidad**) corre el **Agent Loop** (que ejecuta
-**tareas**). En el REPL lo invocas con `/do <tarea>`:
+**tareas**). En el REPL no hay comando aparte: **al hablar en lenguaje natural**, la persona
+conversa Y usa herramientas en un solo lazo gobernado:
 
 ```
 tarea → [ el modelo propone una tool (run_command / read_file / write_file / edit_file / list_dir)
@@ -95,9 +96,9 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
 - **Memoria gobernada:** episódica *append-only* con **procedencia** (user/tool/internal/
   synthesis) y **cadena de hashes** (detecta manipulación). Borrado por petición vía *tombstone*
   (no reescribe la historia; la cesura es auditable). El runtime **respeta `memory.types`** del spec:
-  con `episodic: false` no escribe nada; con `semantic: true` consolida a `memory.md`. Los tipos aún
-  no implementados (procedural/autobiographical/…) los marca el linter como "declarado pero no
-  aplicado" en vez de fingir que funcionan.
+  con `episodic: false` no escribe nada; con `semantic: true` consolida a `memory.md`. Los **seis
+  tipos** están implementados y cada productor honra su flag (episodic, semantic, procedural,
+  autobiographical, user_preferences, evaluations).
 - **Defensas de inyección/envenenamiento:** escáner de inyección por capas (normalización
   Unicode, zero-width, bidi, homóglifos; decodificación base64/hex; reglas ponderadas);
   detección de anomalías con consenso multi-path; *gates de acción sensible* por procedencia.
@@ -111,9 +112,10 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
 **El vivo:**
 - `personaxis` — abre el **REPL** (sesión viva). En un TTY es una **app de pantalla completa**
   (alternate-screen, sin dejar historial de frames): menú `/` en vivo y `shift+tab` para ciclar la
-  postura del sandbox. Dentro: `/do <tarea>` (agente ejecutor), `/state`, `/evolve <texto>`, `/audit`,
-  `/memory`, `/sigil`, `/persona`, `/overseer`, `/goal`, `/loop` (corre ticks gobernados), `/mode`,
-  `/model`, `/help`, `/exit`. (En pipe/CI cae a un lector de línea simple.)
+  postura del sandbox. Comandos: `/persona`, `/state`, `/improve`, `/review`, `/compile`, `/audit`,
+  `/memory`, `/sessions`, `/resume`, `/compact`, `/goal`, `/loop` (corre ticks gobernados), `/mode`,
+  `/model`, `/overseer`, `/help`, `/exit` (el sigil está dentro de `/persona`; no hay `/do` ni
+  `/evolve` — hablar ya usa herramientas y evoluciona cada turno). (En pipe/CI cae a un lector simple.)
 - `personaxis sigil [--persona <path>]` — sigilo ascii único de la persona + panel de envelopes.
 - `personaxis-dash [--persona <path>]` — TUI viva que respira con el estado.
 
@@ -197,9 +199,9 @@ TypeScript en todas partes. Dos canales de distribución:
 
 > **Idea clave:** Personaxis es el *alma + memoria + conciencia* de la persona. Puede operar de dos
 > formas: (a) **como capa** bajo un agente host (Claude Code, Codex) que trae el modelo potente, o
-> (b) **como agente independiente** que ejecuta tareas él mismo vía el Agent Loop (`/do`), gobernado
-> por el sandbox. En ambos casos la identidad es persistente, la evolución acotada y toda acción
-> auditada.
+> (b) **como agente independiente** que ejecuta tareas él mismo vía el Agent Loop (hablando en
+> lenguaje natural), gobernado por el sandbox. En ambos casos la identidad es persistente, la
+> evolución acotada y toda acción auditada.
 
 ### Flujo A — Solo (personaxis sin un agente grande)
 
@@ -215,7 +217,7 @@ reemplazo de Claude Code.
    `sync` (reconciliar entre máquinas).
 
 Lo que **sí** hace solo: define/valida/compila la persona, corre el lazo gobernado (reacciones +
-memoria + evolución acotada), sirve esa identidad, **y ejecuta tareas reales** vía `/do` — el
+memoria + evolución acotada), sirve esa identidad, **y ejecuta tareas reales** al hablar — el
 **Agent Loop** corre comandos y edita archivos, cada acción gateada por el sandbox de la persona
 (`ask`/`deny`), con la salida escaneada y auditada. Necesita un modelo con tool-calling
 (`PERSONAXIS_ENDPOINT`+`MODEL`). En postura `read-only` solo lee; en `workspace-write` actúa dentro

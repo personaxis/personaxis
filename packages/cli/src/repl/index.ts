@@ -617,7 +617,7 @@ function helpText(): string {
     if (c.name === "quit") continue;
     lines.push(`  ${chalk.cyan(`/${c.name}`).padEnd(22)} ${chalk.dim(c.desc)}`);
   }
-  lines.push("", chalk.dim("Type without a leading / to talk. /do <task> runs the governed agent."));
+  lines.push("", chalk.dim("Type without a leading / to talk — natural language both converses AND uses tools (one governed agent loop)."));
   return lines.join("\n");
 }
 

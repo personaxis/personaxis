@@ -11,6 +11,8 @@ import chalk from "chalk";
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { version } from "../generated/assets.js";
+import { REGISTRY_UA_PREFIX } from "../registry-config.js";
 
 const DEFAULT_BASE_URL = "https://personaxis.com";
 
@@ -41,7 +43,7 @@ async function apiCall<T>(
 		method,
 		headers: {
 			Authorization: `Bearer ${key}`,
-			"User-Agent": "personaxis-cli/0.4.0",
+			"User-Agent": `${REGISTRY_UA_PREFIX}${version}`,
 			Accept: "application/json",
 			...(body != null ? { "Content-Type": "application/json" } : {}),
 		},

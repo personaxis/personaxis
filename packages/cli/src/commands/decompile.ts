@@ -103,7 +103,7 @@ export async function runDecompile(opts: RunDecompileOptions): Promise<void> {
   loadPersonaFile(sourcePath);
 
   saveManifest(baseDir, {
-    spec_version: (data as { spec_version?: string }).spec_version ?? "0.7.0",
+    spec_version: (data as { spec_version?: string }).spec_version ?? "0.10.0",
     compiledPath: relative(process.cwd(), compiledPath).replace(/\\/g, "/"),
     personaxisMdHash: hashContent(proposedSpecMarkdown),
     compiledMdHash: hashContent(editedCompiledMd),

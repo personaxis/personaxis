@@ -110,7 +110,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
   const global = readConfig(globalConfigPath());
   const project = readConfig(projectConfigPath(cwd));
   const slug = slugFromPersonaPath(opts.personaPath);
-  const runtime = ((opts.frontmatter?.runtime as ModelSettings | undefined) ?? undefined);
+  const runtime = opts.frontmatter?.runtime as ModelSettings | undefined;
 
   const merged = mergeSettings([
     global.local,

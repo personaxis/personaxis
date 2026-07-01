@@ -41,4 +41,4 @@ export * from "./tools/registry.js";
 export * from "./tool-calling.js";
 export * from "./agent.js";
 
-export const CORE_VERSION = "0.7.0";
+export const CORE_VERSION = "0.11.0";

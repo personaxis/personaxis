@@ -8,6 +8,8 @@ import { runCompile } from "./compile.js";
 import { runDecompile } from "./decompile.js";
 import { hashContent, loadManifest } from "../manifest.js";
 import { buildResourceBundle } from "../resource-bundle.js";
+import { version } from "../generated/assets.js";
+import { REGISTRY_UA_PREFIX } from "../registry-config.js";
 import type { ProviderName } from "../providers/index.js";
 
 const DEFAULT_BASE_URL = "https://personaxis.com";
@@ -107,7 +109,7 @@ export async function runPush(opts: RunPushOptions): Promise<void> {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
       Accept: "application/json",
-      "User-Agent": "personaxis-cli/0.7.0",
+      "User-Agent": `${REGISTRY_UA_PREFIX}${version}`,
     },
     body: JSON.stringify({
       personaxisSpec,

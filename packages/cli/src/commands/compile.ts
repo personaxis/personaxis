@@ -191,7 +191,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   }
 
   saveManifest(baseDir, {
-    spec_version: loaded.data.spec_version ?? "0.7.0",
+    spec_version: loaded.data.spec_version ?? "0.10.0",
     compiledPath: relative(process.cwd(), outPath).replace(/\\/g, "/"),
     personaxisMdHash: hashContent(raw),
     compiledMdHash: hashContent(finalContent),
