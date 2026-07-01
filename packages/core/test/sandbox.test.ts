@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   evaluateCommand,
+  evaluateFileWrite,
   classifyCommand,
   pathEscapesWorkspace,
   wrapCommand,
@@ -90,6 +91,25 @@ describe("posture changes the decision for the SAME command", () => {
     for (const sandbox of ["read-only", "workspace-write", "danger-full-access"] as const) {
       expect(evaluateCommand("cat README.md", policy({ sandbox, approval: "never" })).decision).toBe("allow");
     }
+  });
+
+  it("danger-full-access allows a risky op WITHOUT asking, even under approval=on-request (YOLO)", () => {
+    // The bug the user hit: cycling to danger-full-access still 'asked' for writes. Now it allows.
+    const p = policy({ sandbox: "danger-full-access", approval: "on-request" });
+    expect(evaluateCommand("echo hi > src/out.txt", p).decision).toBe("allow");
+    expect(evaluateCommand("rm -rf build", p).decision).toBe("allow"); // destructive, but YOLO opted-in
+    // …unless the deny-list blocks it (highest precedence, survives danger).
+    expect(evaluateCommand("rm -rf build", policy({ sandbox: "danger-full-access", deny: ["rm\\s+-rf"] })).decision).toBe("deny");
+  });
+
+  it("a FILE WRITE follows the same posture ladder: deny → ask → allow", () => {
+    const target = "src/out.txt";
+    expect(evaluateFileWrite(target, policy({ sandbox: "read-only" })).decision).toBe("deny");
+    expect(evaluateFileWrite(target, policy({ sandbox: "workspace-write", approval: "on-request" })).decision).toBe("ask");
+    // danger-full-access now ALLOWS the write with no prompt (was 'ask' before the fix).
+    expect(evaluateFileWrite(target, policy({ sandbox: "danger-full-access", approval: "on-request" })).decision).toBe("allow");
+    // deny-list still wins even under danger.
+    expect(evaluateFileWrite(".env", policy({ sandbox: "danger-full-access", deny: ["\\.env"] })).decision).toBe("deny");
   });
 });
 

@@ -137,6 +137,13 @@ export function evaluateCommand(cmd: string, policy: Policy = DEFAULT_POLICY): C
     return { decision: "deny", reason: "matches deny-list", class: klass };
   }
 
+  // danger-full-access = explicit YOLO: allow everything the deny-list didn't block, with NO
+  // approval prompt. This is what makes the posture meaningfully different from workspace-write
+  // (which still asks for risky ops) and consistent with wrapCommand's "full access (no wrapping)".
+  if (policy.sandbox === "danger-full-access") {
+    return { decision: "allow", reason: "danger-full-access (no restrictions except deny-list)", class: klass };
+  }
+
   // Sandbox hard limits (independent of approval).
   if (policy.sandbox === "read-only" && (klass.writesFiles || klass.network)) {
     return { decision: "deny", reason: "read-only sandbox forbids writes/network", class: klass };
@@ -193,6 +200,11 @@ export function evaluateFileWrite(
 
   if (matchesAny(policy.deny, targetPath)) {
     return { decision: "deny", reason: "path matches deny-list", class: klass };
+  }
+  // danger-full-access = explicit YOLO: writes are allowed without an approval prompt (only the
+  // deny-list still blocks). Mirrors evaluateCommand so cycling to this posture is meaningful.
+  if (policy.sandbox === "danger-full-access") {
+    return { decision: "allow", reason: "danger-full-access (writes allowed, deny-list still applies)", class: klass };
   }
   if (policy.sandbox === "read-only") {
     return { decision: "deny", reason: "read-only sandbox forbids writes", class: klass };
