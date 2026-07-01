@@ -45,6 +45,7 @@ import {
   findSession,
   fallbackName,
   nameSession,
+  recordCompaction,
   readRecompilePending,
   verifyMemoryChain,
   overseerView,
@@ -146,6 +147,23 @@ interface Ctx {
   meter: ContextMeter;
   /** Update the spinner phase label (Screen mode only). */
   phase?: (label: string) => void;
+  /** A one-shot environment note (e.g. "sandbox posture changed") to prepend to the NEXT
+   * agent turn so the model re-evaluates a request it may have declined under the old posture.
+   * Without this, a weak model just parrots its previous refusal from the conversation history. */
+  pendingEnvNote?: string;
+}
+
+/** Record that the sandbox posture changed, so the next turn nudges the model to re-evaluate.
+ * Exported for tests. */
+export function notePostureChange(ctx: { postureIndex: number; pendingEnvNote?: string }): void {
+  const posture = POSTURES[ctx.postureIndex];
+  const permission =
+    posture === "read-only"
+      ? "You may run read-only commands but NOT write files or access the network."
+      : posture === "workspace-write"
+        ? "You may now read/run commands AND write files within the workspace (network still restricted)."
+        : "You now have full access: read, write, network, and destructive commands are permitted.";
+  ctx.pendingEnvNote = `[environment change] The sandbox posture is now "${posture}". ${permission} Re-evaluate — and if appropriate, retry — any request you previously declined due to a stricter posture.`;
 }
 
 function phaseFor(e: LoopEvent): string {
@@ -471,7 +489,13 @@ const COMMANDS: CommandDef[] = [
       const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
       if (r.compacted) {
         ctx.conversation = r.messages.filter((m) => m.role !== "system");
-        ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept`));
+        // PERSIST the checkpoint so leaving and /resume returns the COMPACTED conversation, not the
+        // raw bloat — the user shouldn't have to /compact again after re-entering the same session.
+        if (r.summary) {
+          ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
+          recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
+        }
+        ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept · persisted (survives /resume)`));
       } else {
         ctx.out(chalk.dim("  nothing to compact yet."));
       }
@@ -513,6 +537,7 @@ const COMMANDS: CommandDef[] = [
     desc: "show/cycle the sandbox posture (shift+tab)",
     run: (_a, ctx) => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
+      notePostureChange(ctx);
       ctx.out(chalk.dim(`  sandbox posture → ${chalk.bold(POSTURES[ctx.postureIndex])}`));
     },
   },
@@ -656,7 +681,13 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     priorMessages: ctx.conversation,
     bus,
   });
-  const result = await agent.run(line);
+  // If the sandbox posture just changed, prepend a one-shot environment note so the model
+  // RE-EVALUATES (and retries) a request it may have declined under the old posture, instead of
+  // parroting its previous refusal from the conversation history. The note is NOT persisted to the
+  // session (recordTurn stores the real user line).
+  const taskLine = ctx.pendingEnvNote ? `${ctx.pendingEnvNote}\n\n${line}` : line;
+  ctx.pendingEnvNote = undefined;
+  const result = await agent.run(taskLine);
   ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
   ctx.out(replyLine(ctx, result.summary || "…"), "persona");
   await recordTurn(ctx, line, result.summary || "…");
@@ -699,14 +730,22 @@ async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   });
   await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch(() => {});
   off();
-  const parts: string[] = [];
-  if (recalls.length) parts.push("recalled " + recalls.join(", "));
-  if (changed.length) parts.push("evolved " + changed.join(", "));
-  if (selfEdits.length) parts.push(selfEdits.join(" · "));
-  if (memWrites) parts.push(`memory +${memWrites} episodic` + (memWriteKinds.length ? ` (${memWriteKinds[memWriteKinds.length - 1]})` : ""));
-  if (memKinds.length) parts.push(memKinds.join(" · "));
-  if (evals.length) parts.push("evaluated " + evals.slice(0, 4).join(" · ") + (evals.length > 4 ? ` +${evals.length - 4} more` : ""));
-  if (parts.length) ctx.out(chalk.dim("  · " + parts.join("  ·  ")));
+  // Per-turn telemetry as a distinct, labeled BLOCK (one line per fact) so it never blends into
+  // the persona's reply above. Rendered dim, with a gutter (┊) and an aligned label; only the
+  // rows that actually happened appear.
+  const rows: Array<[string, string]> = [];
+  if (recalls.length) rows.push(["recalled", recalls.join(", ")]);
+  if (changed.length) rows.push(["evolved", changed.join(", ")]);
+  if (selfEdits.length) rows.push(["self-edit", selfEdits.join(" · ")]);
+  if (memWrites) rows.push(["memory", `+${memWrites} episodic` + (memWriteKinds.length ? ` (${memWriteKinds[memWriteKinds.length - 1]})` : "")]);
+  for (const k of memKinds) rows.push(["memory", k]);
+  if (evals.length) rows.push(["evaluated", evals.slice(0, 4).join(" · ") + (evals.length > 4 ? ` +${evals.length - 4} more` : "")]);
+  if (rows.length) {
+    ctx.out("", "activity"); // blank line separates the telemetry block from the reply
+    for (const [label, value] of rows) {
+      ctx.out(chalk.dim(`  ┊ ${chalk.cyan(label.padEnd(9))} ${value}`), "activity");
+    }
+  }
 
   // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline —
   // a full LLM compile would block every single turn (the "stuck thinking" hang). Just
@@ -1032,17 +1071,21 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     commands,
     onCycleMode: () => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
+      notePostureChange(ctx);
     },
     onExit: () => screen.stop(),
     onSubmit: async (line) => {
       if (line.startsWith("/")) {
-        screen.print(chalk.dim(`  ${line}`));
+        // Separate a command + its output from the previous content so it doesn't blend in.
+        screen.print("");
+        screen.print(chalk.dim(`  ${chalk.cyan(line)}`), "user");
         const done = await runCommand(line, ctx);
         if (done) {
           screen.stop();
           await farewell(ctx.handle.frontmatter);
           process.exit(0);
         }
+        screen.print(""); // trailing gap before the next prompt
         return;
       }
       // Chat/agent turn — route to the ROOT or to sub-personas via @mentions.
