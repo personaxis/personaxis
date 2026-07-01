@@ -17,6 +17,7 @@ export * from "./verification.js";
 export * from "./self-evolution.js";
 export * from "./recompile-marker.js";
 export * from "./registry.js";
+export * from "./model-config.js";
 export * from "./blackboard.js";
 export * from "./live-sync.js";
 export * from "./sync.js";
