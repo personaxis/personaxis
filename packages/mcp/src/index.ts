@@ -41,7 +41,7 @@ const personaArg = {
 };
 
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "personaxis", version: "0.7.0" });
+  const server = new McpServer({ name: "personaxis", version: "0.11.0" });
 
   server.tool(
     "persona_compiled",

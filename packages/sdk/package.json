@@ -1,0 +1,25 @@
+{
+  "name": "@personaxis/sdk",
+  "version": "0.11.0",
+  "description": "Ergonomic SDK for embedding a living, governed persona in a Node/TypeScript backend (Modo 2 self-host). A thin wrapper over @personaxis/core.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@personaxis/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.0"
+  }
+}
