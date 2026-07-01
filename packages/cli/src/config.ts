@@ -51,6 +51,24 @@ export function saveConfig(config: PersonaxisConfig, scope: ConfigScope = "proje
   writeFileSync(p, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 
+/**
+ * The effective config = global defaults overridden by the project, per section. This is what the
+ * provider factory reads, so `config set --global provider/byok/remote/local …` reaches compile —
+ * the same precedence the living loop's resolveModel uses (env > project > global).
+ */
+export function loadMergedConfig(): PersonaxisConfig {
+  const g = loadConfig("global");
+  const p = loadConfig("project");
+  return {
+    ...g,
+    ...p,
+    local: { ...g.local, ...p.local },
+    byok: { ...g.byok, ...p.byok },
+    remote: { ...g.remote, ...p.remote },
+    personas: { ...g.personas, ...p.personas },
+  };
+}
+
 /** Set one model field in the `local` section of the chosen config scope. Used by `/model set`. */
 export function setModelSetting(key: string, value: string, global = false): void {
   const scope: ConfigScope = global ? "global" : "project";

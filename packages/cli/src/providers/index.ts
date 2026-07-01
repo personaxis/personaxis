@@ -1,4 +1,4 @@
-import { loadConfig } from "../config.js";
+import { loadMergedConfig } from "../config.js";
 import type { Provider, ProviderName } from "./types.js";
 import { createLocalProvider } from "./local.js";
 import { createByokProvider } from "./byok.js";
@@ -9,12 +9,12 @@ export * from "./types.js";
 
 /**
  * Resolves the configured provider for compile/decompile/self-improvement.
- * Order: explicit `override`, then `.personaxis/config.json#/provider`,
+ * Order: explicit `override`, then `provider` from the merged config (project over global),
  * then the "agent" default (no network call, works inside any coding agent
  * session without setup).
  */
 export function resolveProvider(override?: ProviderName): Provider {
-  const config = loadConfig();
+  const config = loadMergedConfig();
   const name = override ?? config.provider ?? "agent";
 
   switch (name) {
