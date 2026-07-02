@@ -182,7 +182,7 @@ function readStdin(): Promise<string> {
 }
 
 export const runtimeCommand = new Command("runtime")
-	.description("Open runtime sessions, append traces, evaluate against assertions (REST v1)")
+	.description("[requires a Personaxis backend account] Open hosted runtime sessions, append traces, evaluate (REST v1 → personaxis.com)")
 	.addCommand(startCmd)
 	.addCommand(traceCmd)
 	.addCommand(endCmd)

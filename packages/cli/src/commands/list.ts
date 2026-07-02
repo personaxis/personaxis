@@ -10,7 +10,7 @@ const BUILT_IN_TEMPLATES: Array<{ slug: string; display: string }> = [
 ];
 
 export const listCommand = new Command("list")
-  .description("List personas installed in this project (.personaxis/personas/)")
+  .description("List personas installed in THIS project (.personaxis/personas/). See also: `templates` (built-in), `template` (authoring scaffolds).")
   .action(() => {
     const personasDir = resolve(process.cwd(), ".personaxis", "personas");
 
@@ -67,7 +67,7 @@ export const listCommand = new Command("list")
   });
 
 export const templatesCommand = new Command("templates")
-  .description("List built-in persona templates available for personaxis use")
+  .description("List built-in persona TEMPLATES (for `personaxis use`). See also: `list` (installed personas), `template` (authoring scaffolds).")
   .action(() => {
     console.log("");
     console.log(chalk.bold("Built-in templates"));

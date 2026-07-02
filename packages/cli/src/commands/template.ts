@@ -109,7 +109,7 @@ const getCommand = new Command("get")
   });
 
 export const templateCommand = new Command("template")
-  .description("Manage pedagogical personaxis.md / PERSONA.md templates (for authoring, not runtime)")
+  .description("Authoring SCAFFOLDS: pedagogical personaxis.md/PERSONA.md templates (list/show/get). See also: `templates` (ready personas), `list` (installed).")
   .addCommand(listCommand)
   .addCommand(showCommand)
   .addCommand(getCommand);

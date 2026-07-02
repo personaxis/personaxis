@@ -47,12 +47,16 @@ function compileToTarget(
 }
 
 export const useCommand = new Command("use")
-  .description("Create and optionally compile a persona template in one step (spec v0.7.0)")
+  .description("[DEPRECATED] Scaffold+compile a template in one step (pre-v0.7 compilers). Use `init` + `compile --platform`.")
   .argument("<template>", `Template name. Available: ${Object.keys(TEMPLATES).join(", ")}`)
   .option("-n, --name <name>", "Agent display name (defaults to template default)")
   .option("-t, --target <target>", `Also compile to this target: ${TARGETS.join(" | ")}`)
   .option("-f, --force", "Overwrite existing files")
   .action((template: string, opts: { name?: string; target?: string; force?: boolean }) => {
+    console.error(
+      chalk.yellow("⚠ `personaxis use` is deprecated") +
+        chalk.dim(" — it uses pre-v0.7 compilers. Prefer:\n    personaxis init   (scaffold)  →  personaxis compile <slug> --platform <host>   (compile to the host)\n"),
+    );
     if (!TEMPLATES[template]) {
       console.error(chalk.red("Unknown template:"), template);
       console.error(chalk.dim("Available:"), Object.keys(TEMPLATES).join(", "));

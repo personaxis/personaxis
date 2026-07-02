@@ -76,7 +76,7 @@ export function runMode(target?: string, newMode?: ImprovementMode): ModeResult 
   return { path, previous, current: newMode, changed: true };
 }
 
-export const modeCommand = new Command("improve")
+export const improveCommand = new Command("improve")
   .description("View or set self-improvement posture (improvement_policy.mode)")
   .argument("[mode]", "locked | suggesting | autonomous (omit to view)")
   .option("-p, --persona <path>", "Path to personaxis.md")

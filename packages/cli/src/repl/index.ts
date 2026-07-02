@@ -91,7 +91,7 @@ import {
 import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
 import { writeStarterPersona } from "../starter.js";
 import { isSubagentPath, slugChainFromPath, slugAddressFromPath } from "../load.js";
-import { runMode, isMode, MODES } from "../commands/mode.js";
+import { runMode, isMode, MODES } from "../commands/improve.js";
 import { runCompile } from "../commands/compile.js";
 import { setModelSetting } from "../config.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
