@@ -11,6 +11,12 @@ describe("REPL slash-command registry", () => {
     }
   });
 
+  it("exposes the setup/action commands too (config, hooks, validate, lint) — the CLI depth from inside the app", () => {
+    for (const n of ["config", "model", "hooks", "validate", "lint", "compile"]) {
+      expect(names).toContain(n);
+    }
+  });
+
   it("no longer exposes the pruned redundant commands (/do, /evolve, /sigil)", () => {
     for (const n of ["do", "evolve", "sigil"]) {
       expect(names).not.toContain(n);

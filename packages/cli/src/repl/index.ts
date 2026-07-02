@@ -94,6 +94,10 @@ import { isSubagentPath, slugChainFromPath, slugAddressFromPath } from "../load.
 import { runMode, isMode, MODES } from "../commands/improve.js";
 import { runCompile } from "../commands/compile.js";
 import { setModelSetting } from "../config.js";
+import { installHook, HOSTS } from "../commands/hooks.js";
+import { validatePersona } from "../schema.js";
+import { lint } from "../linter/index.js";
+import { loadPersonaFile } from "../load.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { buildResourceManifest } from "../resource-manifest.js";
@@ -497,18 +501,74 @@ const COMMANDS: CommandDef[] = [
       const parts = arg.trim().split(/\s+/).filter(Boolean);
       if (parts[0] !== "set") {
         ctx.out(chalk.dim(`  model: ${appraiserLabel(ctxModelArg(ctx))}`));
-        ctx.out(chalk.dim(`  set with: /model set endpoint <url> · /model set model <name> · /model set key-env <ENV_VAR> [global]`));
+        ctx.out(chalk.dim(`  set (stored in ~/.personaxis, reused everywhere):`));
+        ctx.out(chalk.dim(`    /model set endpoint <url> · /model set model <name> · /model set key <API_KEY> · /model set key-env <ENV_VAR>`));
+        ctx.out(chalk.dim(`    (append 'project' to write the project config instead of global; per-persona lives in the spec's runtime block)`));
         return;
       }
       const [, key, value, scope] = parts;
-      if (!key || !value) return void ctx.out(chalk.yellow("  usage: /model set <endpoint|model|key-env> <value> [global]"));
-      const global = scope === "global";
+      if (!key || !value) return void ctx.out(chalk.yellow("  usage: /model set <endpoint|model|key|key-env> <value> [project]"));
+      // Config is GLOBAL by default (reused across projects); pass 'project' to scope it locally.
+      const global = scope !== "project";
+      const isSecret = key === "key";
       try {
         setModelSetting(key, value, global);
-        ctx.out(chalk.green(`  ✓ ${key} set`) + chalk.dim(` (${global ? "global ~/.personaxis" : "project .personaxis"}/config.json)`));
+        const shown = isSecret ? value.slice(0, 3) + "…" + value.slice(-2) : value;
+        ctx.out(chalk.green(`  ✓ ${key} = ${shown}`) + chalk.dim(` (${global ? "global ~/.personaxis" : "project .personaxis"}/config.json)`));
+        if (isSecret) ctx.out(chalk.dim("  key stored user-only (0600), reused across all projects — no env var needed."));
         ctx.out(chalk.dim(`  now: ${appraiserLabel(ctxModelArg(ctx))}`));
       } catch (e) {
         ctx.out(chalk.red(`  ${(e as Error).message}`));
+      }
+    },
+  },
+  {
+    name: "config",
+    desc: "show the resolved model config + where it lives (set with /model set)",
+    run: (_a, ctx) => {
+      ctx.out(chalk.bold("  Model config") + chalk.dim("  (env > project > global; per-persona via the spec's runtime block)"));
+      ctx.out(`  ${chalk.cyan("resolved")}  ${appraiserLabel(ctxModelArg(ctx))}`);
+      ctx.out(chalk.dim(`  global   ~/.personaxis/config.json   ·   project   .personaxis/config.json`));
+      ctx.out(chalk.dim(`  set from here: /model set <endpoint|model|key|key-env> <value> [project]`));
+    },
+  },
+  {
+    name: "hooks",
+    desc: "install the end-of-turn learning hook for a host: /hooks <claude-code|codex|openclaw|hermes> [global]",
+    run: (arg, ctx) => {
+      const [host, scope] = arg.trim().split(/\s+/).filter(Boolean);
+      if (!host || !(HOSTS as readonly string[]).includes(host)) {
+        return void ctx.out(chalk.yellow(`  usage: /hooks <${HOSTS.join("|")}> [global]`));
+      }
+      try {
+        const r = installHook(host as (typeof HOSTS)[number], scope === "global");
+        ctx.out((r.already ? chalk.dim("  · already installed at ") : chalk.green("  ✓ installed at ")) + chalk.cyan(r.path));
+        ctx.out(chalk.dim(`  each turn now feeds a governed tick on your model (no host tokens).${r.extra}`));
+      } catch (e) {
+        ctx.out(chalk.red(`  ${(e as Error).message}`));
+      }
+    },
+  },
+  {
+    name: "validate",
+    desc: "validate this persona's spec against the schema + universals",
+    run: (_a, ctx) => {
+      const r = validatePersona(loadPersonaFile(ctx.handle.personaPath).data);
+      const color = r.status === "PASS" ? chalk.green : r.status.startsWith("PASS") ? chalk.yellow : chalk.red;
+      ctx.out(`  ${color(r.status)}` + chalk.dim(` · ${r.errors.length} error(s), ${r.warnings.length} warning(s)`));
+      for (const e of [...r.errors, ...r.warnings].slice(0, 8)) ctx.out(chalk.dim(`    · ${e.field}: ${e.message}`));
+    },
+  },
+  {
+    name: "lint",
+    desc: "lint this persona's spec (tier-aware findings)",
+    run: (_a, ctx) => {
+      const report = lint(readFileSync(ctx.handle.personaPath, "utf-8"));
+      if (report.findings.length === 0) return void ctx.out(chalk.green("  ✓ no lint findings"));
+      ctx.out(chalk.bold(`  ${report.summary.errors} error(s) · ${report.summary.warnings} warning(s) · ${report.summary.infos} info`));
+      for (const f of report.findings.slice(0, 12)) {
+        const c = f.severity === "error" ? chalk.red : f.severity === "warning" ? chalk.yellow : chalk.dim;
+        ctx.out(`  ${c(f.severity)} ${chalk.dim(f.rule)} — ${f.message}`);
       }
     },
   },

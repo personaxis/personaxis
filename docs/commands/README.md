@@ -53,7 +53,11 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | `/improve [mode]` | View/set self-improvement mode `locked\|suggesting\|autonomous` (≠ `/mode`). |
 | `/review [approve\|reject] <id\|all>` | Review the queue of proposed qualitative self-edits. |
 | `/compile` | Recompile `PERSONA.md` from the evolved spec (only when marked stale). |
-| `/model [set …]` | Show the resolved model, or set endpoint/model/key-env (project or `global`). |
+| `/config` | Show the resolved model config + where it lives (set with `/model set`). |
+| `/model [set …]` | Show the resolved model, or set endpoint/model/**key**/key-env (global by default; append `project`). |
+| `/hooks <host> [global]` | Install the end-of-turn learning hook for a host (claude-code/codex/openclaw/hermes) — from inside the app. |
+| `/validate` | Validate the current persona's spec (schema + universals). |
+| `/lint` | Lint the current persona's spec (tier-aware findings). |
 | `/mode` | Cycle the sandbox posture (shift+tab also). |
 | `/memory` | Inspect all six memory kinds + verify the hash chain. |
 | `/audit` | Mutation log + memory-chain integrity + self-edit ledger + evaluations. |
@@ -68,6 +72,12 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 > Chatting plain text both converses AND uses tools (one governed agent loop) — there is no
 > separate `/do`. Evolution runs every turn — there is no separate `/evolve`. The sigil is
 > folded into `/persona`.
+
+> **Two surfaces, same engine.** The REPL exposes a **curated** set of `/` commands for the things you
+> do *inside a session* (configure the model with `/config` + `/model set`, wire a host with `/hooks`,
+> check with `/validate` / `/lint`, evolve with `/improve` / `/review`, …). The **full** set of 30+
+> subcommands (`init`, `migrate`, `push`/`pull`, `orchestrate`, `team`, `serve`, `watch`, …) runs in the
+> **terminal** as `personaxis <cmd>` — see the table above. Both call the same governed engine.
 
 **Multi-persona** (not slash-commands): address sub-personas inline with `@slug …` or
 `@all …`. See [multi-persona](../architecture/multi-persona.md). New feature docs:
