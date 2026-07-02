@@ -32,7 +32,11 @@ docs/
     awareness.md         runtime structural self-knowledge (root vs sub, address, sub-tree, resources)
     sandbox.md           two-axis permission policy, postures, the honest Windows limit
   integrations/        how each host uses personaxis
+    README.md            START HERE — mental model + 3-step quickstart + which host + use cases
     claude-code.md       hooks (per-turn learning) + MCP (on-demand) + native subagent
+    codex.md             AGENTS.md + Stop hook + subagent + MCP
+    openclaw.md          SOUL.md + command:stop hook + MCP
+    hermes.md            ~/.hermes/SOUL.md + on_session_end hook + MCP
     claude-code-mcp.md   (español) MCP walkthrough
     http-agents.md       personaxis serve — HTTP for non-MCP agents
   commands/            one entry per CLI command (validate, compile, observe, watch, hooks, …)
