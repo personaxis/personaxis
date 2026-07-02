@@ -104,7 +104,16 @@ export function observationFromHookPayload(stdinText: string): string | undefine
   const raw = stdinText.trim();
   if (!raw) return undefined;
   try {
-    const payload = JSON.parse(raw) as { transcript_path?: string; prompt?: string; message?: string };
+    const payload = JSON.parse(raw) as {
+      transcript_path?: string;
+      prompt?: string;
+      message?: string;
+      // Codex Stop hook: the final assistant message (+ optional user prompt).
+      last_assistant_message?: string;
+      last_user_message?: string;
+      // openclaw internal hook: a serialized event with a context blob.
+      context?: unknown;
+    };
     if (payload.transcript_path && existsSync(payload.transcript_path)) {
       const lines = readFileSync(payload.transcript_path, "utf-8").split("\n").filter((l) => l.trim());
       const texts: string[] = [];
@@ -121,8 +130,14 @@ export function observationFromHookPayload(stdinText: string): string | undefine
       const joined = texts.slice(-2).join("\n").slice(0, 1200);
       if (joined) return joined;
     }
+    // Codex Stop hook: last user + assistant messages.
+    const codex = [payload.last_user_message, payload.last_assistant_message].filter(Boolean).join("\n").trim();
+    if (codex) return codex.slice(0, 1200);
     if (payload.prompt) return String(payload.prompt).slice(0, 1200);
     if (payload.message) return String(payload.message).slice(0, 1200);
+    // openclaw event: use the context blob if it carries text.
+    const ctx = extractText(payload.context);
+    if (ctx) return ctx.slice(0, 1200);
   } catch {
     /* not JSON — treat as raw text */
   }

@@ -1,112 +1,202 @@
 /**
- * `personaxis hooks` — wire a host so the persona learns from every turn (Fase 3).
+ * `personaxis hooks` — make a host feed the persona from every turn (Fase 3), for ALL four focus
+ * hosts. The living engine can't see inside a host's process; the host must FEED it. Each host fires
+ * an end-of-turn (or end-of-session) hook that pipes the turn to `personaxis observe --stdin`, which
+ * runs one governed tick on YOUR model and recompiles the identity on drift — no host tokens.
  *
- * The living engine can't see inside the host's process; the host must FEED it. Claude Code's `Stop`
- * hook fires at the end of each turn with a JSON payload (incl. the transcript path). We install a
- * hook that pipes that payload to `personaxis observe --stdin`, which runs one governed tick on OUR
- * model and recompiles PERSONA.md on drift — so learning happens without spending the host's tokens.
+ *   claude-code  → .claude/settings.json      Stop hook (project or ~/.claude with --global)
+ *   codex        → .codex/hooks.json          Stop hook (project or ~/.codex with --global)
+ *   hermes       → ~/.hermes/config.yaml       hooks.on_session_end
+ *   openclaw     → ~/.openclaw/hooks/<name>/   HOOK.md + handler.ts (command:stop), then enable it
  *
- * Idempotent: install merges our hook without clobbering existing ones; uninstall removes only ours.
+ * Idempotent: install merges without clobbering existing hooks; uninstall removes only ours.
  */
 
 import { Command } from "commander";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import yaml from "js-yaml";
 import chalk from "chalk";
 
-const HOOK_COMMAND = "personaxis observe --stdin --source user";
-const MARKER = "personaxis observe"; // identifies OUR hook among others
+const OBSERVE_CMD = "personaxis observe --stdin --source user";
+const MARKER = "personaxis observe"; // identifies OUR hook among a host's other hooks
+const HOSTS = ["claude-code", "codex", "openclaw", "hermes"] as const;
+type Host = (typeof HOSTS)[number];
 
-type ClaudeSettings = {
-  hooks?: { Stop?: Array<{ matcher?: string; hooks?: Array<{ type: string; command: string }> }> };
+// ── shared JSON Stop-hook shape (Claude Code + Codex use the identical structure) ────────────
+type JsonHookSettings = {
+  hooks?: { Stop?: Array<{ matcher?: string; hooks?: Array<{ type: string; command: string; timeout?: number }> }> };
   [k: string]: unknown;
 };
 
-function claudeSettingsPath(global: boolean): string {
-  return global ? join(homedir(), ".claude", "settings.json") : join(process.cwd(), ".claude", "settings.json");
-}
-
-function readSettings(path: string): ClaudeSettings {
-  if (!existsSync(path)) return {};
+function readJson<T>(path: string, fallback: T): T {
+  if (!existsSync(path)) return fallback;
   try {
-    return JSON.parse(readFileSync(path, "utf-8")) as ClaudeSettings;
+    return JSON.parse(readFileSync(path, "utf-8")) as T;
   } catch {
-    return {};
+    return fallback;
   }
 }
-
-function writeSettings(path: string, s: ClaudeSettings): void {
+function writeJson(path: string, data: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(s, null, 2) + "\n", "utf-8");
+  writeFileSync(path, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
-/** Does any Stop hook already invoke `personaxis observe`? */
-function hasOurHook(s: ClaudeSettings): boolean {
+function jsonStopHookPath(host: "claude-code" | "codex", global: boolean): string {
+  if (host === "claude-code") return global ? join(homedir(), ".claude", "settings.json") : join(process.cwd(), ".claude", "settings.json");
+  return global ? join(homedir(), ".codex", "hooks.json") : join(process.cwd(), ".codex", "hooks.json");
+}
+function hasJsonStopHook(s: JsonHookSettings): boolean {
   return (s.hooks?.Stop ?? []).some((g) => (g.hooks ?? []).some((h) => h.command?.includes(MARKER)));
 }
-
-function installClaudeCode(global: boolean): { path: string; already: boolean } {
-  const path = claudeSettingsPath(global);
-  const s = readSettings(path);
-  if (hasOurHook(s)) return { path, already: true };
+function installJsonStopHook(path: string): { path: string; already: boolean } {
+  const s = readJson<JsonHookSettings>(path, {});
+  if (hasJsonStopHook(s)) return { path, already: true };
   s.hooks = s.hooks ?? {};
   s.hooks.Stop = s.hooks.Stop ?? [];
-  s.hooks.Stop.push({ hooks: [{ type: "command", command: HOOK_COMMAND }] });
-  writeSettings(path, s);
+  s.hooks.Stop.push({ hooks: [{ type: "command", command: OBSERVE_CMD, timeout: 30 }] });
+  writeJson(path, s);
   return { path, already: false };
 }
-
-function uninstallClaudeCode(global: boolean): { path: string; removed: boolean } {
-  const path = claudeSettingsPath(global);
-  const s = readSettings(path);
+function uninstallJsonStopHook(path: string): { path: string; removed: boolean } {
+  const s = readJson<JsonHookSettings>(path, {});
   if (!s.hooks?.Stop) return { path, removed: false };
-  const before = s.hooks.Stop.length;
+  const before = JSON.stringify(s.hooks.Stop);
   s.hooks.Stop = s.hooks.Stop
     .map((g) => ({ ...g, hooks: (g.hooks ?? []).filter((h) => !h.command?.includes(MARKER)) }))
     .filter((g) => (g.hooks ?? []).length > 0);
-  const removed = s.hooks.Stop.length !== before || before === 0 ? true : false;
-  writeSettings(path, s);
+  writeJson(path, s);
+  return { path, removed: JSON.stringify(s.hooks.Stop) !== before };
+}
+
+// ── Hermes: ~/.hermes/config.yaml → hooks.on_session_end ─────────────────────────────────────
+function hermesConfigPath(): string {
+  return join(homedir(), ".hermes", "config.yaml");
+}
+type HermesConfig = { hooks?: Record<string, Array<{ command: string; timeout?: number }>> } & Record<string, unknown>;
+function installHermes(): { path: string; already: boolean } {
+  const path = hermesConfigPath();
+  const cfg = (existsSync(path) ? (yaml.load(readFileSync(path, "utf-8")) as HermesConfig) : {}) ?? {};
+  cfg.hooks = cfg.hooks ?? {};
+  cfg.hooks.on_session_end = cfg.hooks.on_session_end ?? [];
+  if (cfg.hooks.on_session_end.some((h) => h.command?.includes(MARKER))) return { path, already: true };
+  cfg.hooks.on_session_end.push({ command: OBSERVE_CMD, timeout: 60 });
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, yaml.dump(cfg), "utf-8");
+  return { path, already: false };
+}
+function uninstallHermes(): { path: string; removed: boolean } {
+  const path = hermesConfigPath();
+  if (!existsSync(path)) return { path, removed: false };
+  const cfg = (yaml.load(readFileSync(path, "utf-8")) as HermesConfig) ?? {};
+  const arr = cfg.hooks?.on_session_end;
+  if (!arr) return { path, removed: false };
+  const kept = arr.filter((h) => !h.command?.includes(MARKER));
+  const removed = kept.length !== arr.length;
+  cfg.hooks!.on_session_end = kept;
+  writeFileSync(path, yaml.dump(cfg), "utf-8");
   return { path, removed };
 }
 
+// ── openclaw: ~/.openclaw/hooks/personaxis-observe/{HOOK.md, handler.ts} ──────────────────────
+function openclawHookDir(): string {
+  return join(homedir(), ".openclaw", "hooks", "personaxis-observe");
+}
+const OPENCLAW_HOOK_MD = `---
+name: personaxis-observe
+description: "Feed each turn to personaxis (governed tick on your own model; recompiles SOUL.md on drift)."
+metadata:
+  { "openclaw": { "emoji": "🧠", "events": ["command:stop"], "requires": { "bins": ["personaxis"] } } }
+---
+
+# Personaxis observe
+
+On \`/stop\`, pipes the turn context to \`${OBSERVE_CMD}\` — one governed Living-Loop tick on your
+configured model, recompiling SOUL.md when a governed self-edit drifts the spec. Never blocks the turn.
+`;
+const OPENCLAW_HANDLER_TS = `import { execFile } from "node:child_process";
+
+// Feed each /stop event to personaxis (best-effort; never throws into the host).
+export default async function handler(event: { type?: string; action?: string; context?: unknown }): Promise<void> {
+  if (event?.type !== "command" || event?.action !== "stop") return;
+  await new Promise<void>((resolve) => {
+    const child = execFile("personaxis", ["observe", "--stdin", "--source", "user"], () => resolve());
+    try {
+      child.stdin?.end(JSON.stringify({ context: event.context ?? "" }));
+    } catch {
+      resolve();
+    }
+  });
+}
+`;
+function installOpenclaw(): { path: string; already: boolean } {
+  const dir = openclawHookDir();
+  const already = existsSync(join(dir, "HOOK.md"));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "HOOK.md"), OPENCLAW_HOOK_MD, "utf-8");
+  writeFileSync(join(dir, "handler.ts"), OPENCLAW_HANDLER_TS, "utf-8");
+  return { path: dir, already };
+}
+function uninstallOpenclaw(): { path: string; removed: boolean } {
+  const dir = openclawHookDir();
+  const removed = existsSync(dir);
+  if (removed) rmSync(dir, { recursive: true, force: true });
+  return { path: dir, removed };
+}
+
+// ── command wiring ───────────────────────────────────────────────────────────────────────────
 const installCommand = new Command("install")
-  .description("Install the end-of-turn hook so the persona learns from each turn (runs on our model).")
-  .option("--host <host>", "Host to wire: claude-code", "claude-code")
-  .option("-g, --global", "Install to the user config (~/.claude/settings.json) instead of the project", false)
+  .description(`Install the end-of-turn hook so the persona learns from each turn. Hosts: ${HOSTS.join(" | ")}.`)
+  .option("--host <host>", `Host to wire: ${HOSTS.join(" | ")}`, "claude-code")
+  .option("-g, --global", "Install to the user config instead of the project (claude-code/codex)", false)
   .action((opts: { host: string; global?: boolean }) => {
-    if (opts.host !== "claude-code") {
-      console.error(
-        chalk.yellow("·"),
-        `host "${opts.host}" has no per-turn hook mechanism yet. For Codex/others, use the MCP server ` +
-          `(personaxis-mcp, on-demand) or a serverless cron running \`personaxis observe --once\`.`,
-      );
+    if (!(HOSTS as readonly string[]).includes(opts.host)) {
+      console.error(chalk.red("Error:"), `unknown host "${opts.host}". Use: ${HOSTS.join(" | ")}`);
       process.exit(1);
     }
-    const { path, already } = installClaudeCode(Boolean(opts.global));
-    if (already) {
-      console.log(chalk.dim("· personaxis Stop hook already installed at"), chalk.cyan(path));
+    const host = opts.host as Host;
+    let res: { path: string; already: boolean };
+    let extra = "";
+    if (host === "claude-code" || host === "codex") {
+      res = installJsonStopHook(jsonStopHookPath(host, Boolean(opts.global)));
+    } else if (host === "hermes") {
+      res = installHermes();
+      extra = " · Hermes fires on_session_end (per session; use the MCP server for on-demand tools too)";
     } else {
-      console.log(chalk.green("✓"), "installed Claude Code Stop hook at", chalk.cyan(path));
-      console.log(chalk.dim(`  it runs: ${HOOK_COMMAND}`));
+      res = installOpenclaw();
+      extra = " · enable it with: openclaw hooks enable personaxis-observe";
+    }
+    if (res.already) {
+      console.log(chalk.dim(`· personaxis hook already installed at`), chalk.cyan(res.path));
+    } else {
+      console.log(chalk.green("✓"), `installed ${host} hook at`, chalk.cyan(res.path));
+      console.log(chalk.dim(`  runs: ${OBSERVE_CMD}${extra}`));
       console.log(chalk.dim("  every turn now feeds one governed tick on your configured model (no host tokens)."));
     }
   });
 
 const uninstallCommand = new Command("uninstall")
-  .description("Remove the personaxis end-of-turn hook.")
-  .option("--host <host>", "Host: claude-code", "claude-code")
-  .option("-g, --global", "Remove from the user config instead of the project", false)
+  .description("Remove the personaxis end-of-turn hook for a host.")
+  .option("--host <host>", `Host: ${HOSTS.join(" | ")}`, "claude-code")
+  .option("-g, --global", "Remove from the user config instead of the project (claude-code/codex)", false)
   .action((opts: { host: string; global?: boolean }) => {
-    if (opts.host !== "claude-code") {
-      console.error(chalk.yellow("·"), `unknown host "${opts.host}".`);
+    if (!(HOSTS as readonly string[]).includes(opts.host)) {
+      console.error(chalk.red("Error:"), `unknown host "${opts.host}".`);
       process.exit(1);
     }
-    const { path, removed } = uninstallClaudeCode(Boolean(opts.global));
-    console.log(removed ? chalk.green("✓ removed") : chalk.dim("· nothing to remove"), chalk.cyan(path));
+    const host = opts.host as Host;
+    let res: { path: string; removed: boolean };
+    if (host === "claude-code" || host === "codex") res = uninstallJsonStopHook(jsonStopHookPath(host, Boolean(opts.global)));
+    else if (host === "hermes") res = uninstallHermes();
+    else res = uninstallOpenclaw();
+    console.log(res.removed ? chalk.green("✓ removed") : chalk.dim("· nothing to remove"), chalk.cyan(res.path));
   });
 
 export const hooksCommand = new Command("hooks")
-  .description("Wire a host (Claude Code) so the persona learns from each turn via `personaxis observe`.")
+  .description("Wire a host (Claude Code, Codex, openclaw, Hermes) so the persona learns from each turn via `personaxis observe`.")
   .addCommand(installCommand)
   .addCommand(uninstallCommand);
+
+// Exported for tests.
+export { jsonStopHookPath, installJsonStopHook, hasJsonStopHook, hermesConfigPath, openclawHookDir, OBSERVE_CMD, HOSTS };
