@@ -56,8 +56,9 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | `/config` | Show the resolved model config + where it lives (set with `/model set`). |
 | `/model [set …]` | Show the resolved model, or set endpoint/model/**key**/key-env (global by default; append `project`). |
 | `/hooks <host> [global]` | Install the end-of-turn learning hook for a host (claude-code/codex/openclaw/hermes) — from inside the app. |
-| `/validate` | Validate the current persona's spec (schema + universals). |
-| `/lint` | Lint the current persona's spec (tier-aware findings). |
+| `/validate` · `/lint` | Validate / lint the current persona's spec. |
+| `/init <name>` | Scaffold a **new sub-persona** under this project (the root already exists in-session). |
+| `/serve [port\|stop]` · `/watch [stop]` | Start/stop the HTTP server / freshness daemon **in the background** (they also stop on `/exit`). |
 | `/mode` | Cycle the sandbox posture (shift+tab also). |
 | `/memory` | Inspect all six memory kinds + verify the hash chain. |
 | `/audit` | Mutation log + memory-chain integrity + self-edit ledger + evaluations. |
@@ -73,14 +74,16 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 > separate `/do`. Evolution runs every turn — there is no separate `/evolve`. The sigil is
 > folded into `/persona`.
 
-> **Everything is reachable from inside the app.** Common in-session actions have **native** `/`
-> handlers (`/config`, `/model set`, `/hooks`, `/validate`, `/lint`, `/improve`, `/review`, `/state`,
-> `/audit`, `/memory`, …). **Any other CLI subcommand** also works as `/<name> …` — the REPL passes it
-> through to `personaxis <name>` and echoes the output (e.g. `/spec`, `/export`, `/decompile`, `/diff`,
-> `/orchestrate`, `/team`, `/skills`, `/scan`, `/personas`, `/migrate`, `/push`, `/pull`). The **only**
-> ones you run in a terminal are the long-running/bootstrap ones: `serve` and `watch` (they block —
-> they're daemons) and `init` (it bootstraps a persona before you enter the REPL). `observe` isn't a
-> `/` command because the living loop already runs a governed tick **every turn**. Same engine either way.
+> **Everything is reachable from inside the app** — nothing has to be run in a terminal. Common
+> in-session actions have **native** `/` handlers (`/config`, `/model set`, `/hooks`, `/validate`,
+> `/lint`, `/init`, `/serve`, `/watch`, `/improve`, `/review`, `/state`, `/audit`, `/memory`, …). The
+> daemons (`/serve`, `/watch`) run **in the background** so they don't block the app (stop them with
+> `/serve stop` / `/watch stop`, or `/exit`). **Any other CLI subcommand** also works as `/<name> …` —
+> the REPL passes it through to `personaxis <name>` and echoes the output (`/spec`, `/export`,
+> `/decompile`, `/diff`, `/orchestrate`, `/team`, `/skills`, `/scan`, `/personas`, `/migrate`,
+> `/push`, `/pull`, …). `/init <name>` scaffolds a **sub-persona** (the root already exists in-session).
+> `observe` has no `/` because the living loop already runs a governed tick **every turn**. Same engine
+> either way — the terminal `personaxis <cmd>` and the in-app `/<cmd>` are two doors to one engine.
 
 **Multi-persona** (not slash-commands): address sub-personas inline with `@slug …` or
 `@all …`. See [multi-persona](../architecture/multi-persona.md). New feature docs:

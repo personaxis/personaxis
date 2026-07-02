@@ -11,8 +11,8 @@
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
-import { resolve, join, dirname } from "node:path";
-import { execFileSync } from "node:child_process";
+import { resolve, join, dirname, relative } from "node:path";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import chalk from "chalk";
 import {
   LivingLoop,
@@ -159,6 +159,8 @@ interface Ctx {
    * agent turn so the model re-evaluates a request it may have declined under the old posture.
    * Without this, a weak model just parrots its previous refusal from the conversation history. */
   pendingEnvNote?: string;
+  /** Long-running daemons (serve/watch) launched from `/` in the background, so they can be stopped. */
+  bg?: Record<string, ChildProcess>;
 }
 
 /** Record that the sandbox posture changed, so the next turn nudges the model to re-evaluate.
@@ -574,6 +576,32 @@ const COMMANDS: CommandDef[] = [
     },
   },
   {
+    name: "init",
+    desc: "scaffold a NEW sub-persona under this project: /init <name>",
+    run: (arg, ctx) => {
+      const name = arg.trim();
+      if (!name) return void ctx.out(chalk.yellow("  usage: /init <name>   (creates a sub-persona; the root already exists in this session)"));
+      try {
+        const path = writeStarterPersona(process.cwd(), name, name);
+        const slug = path.split(/[\\/]+/).slice(-2)[0];
+        ctx.out(chalk.green("  ✓ created sub-persona ") + chalk.cyan(`@${slug}`) + chalk.dim(` → ${relative(process.cwd(), path).replace(/\\/g, "/")}`));
+        ctx.out(chalk.dim(`  next: fill it in, then /compile ${slug} (or address it with @${slug} …)`));
+      } catch (e) {
+        ctx.out(chalk.red(`  ${(e as Error).message}`));
+      }
+    },
+  },
+  {
+    name: "serve",
+    desc: "start/stop the HTTP server in the background: /serve [port] · /serve stop",
+    run: (arg, ctx) => startStopDaemon("serve", arg, ctx, (port) => ["serve", "--persona", ctx.handle.personaPath, "--port", port || "7637"], (port) => `http://localhost:${port || "7637"} (curl /agents.md)`),
+  },
+  {
+    name: "watch",
+    desc: "start/stop the freshness daemon in the background: /watch · /watch stop",
+    run: (arg, ctx) => startStopDaemon("watch", arg, ctx, () => ["watch", "--persona", ctx.handle.personaPath], () => "recompiling PERSONA.md on spec edits + drift"),
+  },
+  {
     name: "compact",
     desc: "summarize older turns to free context",
     run: async (_a, ctx) => {
@@ -663,7 +691,7 @@ const COMMANDS: CommandDef[] = [
       }
     },
   },
-  { name: "exit", desc: "leave the session", run: () => true },
+  { name: "exit", desc: "leave the session", run: (_a, ctx) => { stopDaemons(ctx); return true; } },
   { name: "quit", desc: "leave the session", run: () => true },
 ];
 
@@ -682,11 +710,9 @@ function helpText(): string {
   return lines.join("\n");
 }
 
-/** CLI subcommands that must NOT run as an in-session `/command`, with why. */
+/** CLI subcommands handled specially in the REPL (native or background), so the passthrough skips them. */
 const REPL_UNAVAILABLE: Record<string, string> = {
-  serve: "long-running server — run `personaxis serve` in a terminal",
-  watch: "long-running daemon — run `personaxis watch` in a terminal",
-  observe: "the living loop already runs a governed tick every turn — no need to call it here",
+  observe: "the living loop already runs a governed tick every turn — feed a one-off with `personaxis observe --observation \"…\"`",
 };
 
 async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
@@ -703,6 +729,55 @@ async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   }
   runCliPassthrough(name, arg, ctx);
   return false;
+}
+
+/** Kill any background daemons (serve/watch) started from `/` — called on exit. */
+function stopDaemons(ctx: Ctx): void {
+  for (const child of Object.values(ctx.bg ?? {})) {
+    try {
+      child.kill();
+    } catch {
+      /* already gone */
+    }
+  }
+  ctx.bg = {};
+}
+
+/** Start or stop a long-running daemon (serve/watch) in the BACKGROUND, so the app doesn't block. */
+function startStopDaemon(
+  name: string,
+  arg: string,
+  ctx: Ctx,
+  buildArgs: (port: string) => string[],
+  describe: (port: string) => string,
+): void {
+  ctx.bg = ctx.bg ?? {};
+  const rest = arg.trim();
+  if (rest === "stop") {
+    const child = ctx.bg[name];
+    if (!child) return void ctx.out(chalk.dim(`  /${name}: not running.`));
+    try {
+      child.kill();
+    } catch {
+      /* already gone */
+    }
+    delete ctx.bg[name];
+    return void ctx.out(chalk.green(`  ✓ stopped ${name}`));
+  }
+  if (ctx.bg[name] && ctx.bg[name].exitCode === null) {
+    return void ctx.out(chalk.dim(`  /${name} is already running (pid ${ctx.bg[name].pid}) — /${name} stop to stop it.`));
+  }
+  const port = rest; // for serve
+  const child = spawn(process.execPath, [process.argv[1], ...buildArgs(port)], {
+    cwd: process.cwd(),
+    detached: false, // tied to the REPL: stopping the app stops the daemon
+    stdio: "ignore",
+    env: { ...process.env },
+  });
+  child.on("error", (e) => ctx.out(chalk.red(`  /${name} failed to start: ${e.message}`)));
+  ctx.bg[name] = child;
+  ctx.out(chalk.green(`  ✓ ${name} running in the background`) + chalk.dim(` (pid ${child.pid}) — ${describe(port)}`));
+  ctx.out(chalk.dim(`  /${name} stop to stop it (it also stops when you /exit).`));
 }
 
 /** Run `personaxis <name> <args>` as a subprocess (the same build) and echo its output into the REPL. */

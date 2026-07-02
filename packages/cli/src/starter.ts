@@ -19,9 +19,13 @@ export function slugify(name: string): string {
   );
 }
 
-export function writeStarterPersona(baseDir: string, name: string): string {
-  const slug = slugify(name);
-  const dir = join(baseDir, ".personaxis");
+/**
+ * Scaffold a starter persona. Root (default) → `<baseDir>/.personaxis/personaxis.md`. A SUB-persona
+ * (pass `subSlug`) → `<baseDir>/.personaxis/personas/<subSlug>/personaxis.md`.
+ */
+export function writeStarterPersona(baseDir: string, name: string, subSlug?: string): string {
+  const slug = subSlug ? slugify(subSlug) : slugify(name);
+  const dir = subSlug ? join(baseDir, ".personaxis", "personas", slug) : join(baseDir, ".personaxis");
   mkdirSync(dir, { recursive: true });
   const path = join(dir, "personaxis.md");
   const content = templates["starter_persona.md"]
