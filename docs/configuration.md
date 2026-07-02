@@ -1,7 +1,19 @@
 # Configuration — model, endpoint, and API key (dev and prod)
 
-One resolution logic serves both local dev and production, so you never export env vars before every
-launch and the API key never has to live in a file.
+**Configure personaxis once, reuse it in every project.** Your endpoint, model, and API key live in
+personaxis's own **global config** (`~/.personaxis/config.json`) — the same pattern as `~/.aws/credentials`
+or `~/.config/gh/hosts.yml`. Every project you use personaxis in reads it automatically. One resolution
+logic serves both dev and production.
+
+```bash
+personaxis config set --global local.endpoint https://api.your-provider.com/v1
+personaxis config set --global local.model    your-model
+personaxis config set --global local.apiKey   <your-key>     # stored user-only (0600), reused everywhere
+```
+
+The key is masked when printed and the file is written user-only (`0600`). Prefer `--global` (home dir,
+outside any repo). You can also keep the key OUT of the file with `local.apiKeyEnv <ENV_VAR>` (points at
+an env var) — recommended for CI/prod where the secret comes from the deploy's secret manager.
 
 ## Where settings live
 
@@ -11,6 +23,22 @@ launch and the API key never has to live in a file.
 | **project** | `<cwd>/.personaxis/config.json` | this project (gitignored by default) |
 | **per-persona** | `personas.<slug>` in either config file, or `runtime` in the persona's `personaxis.md` | one persona/sub-persona |
 | **env** | `PERSONAXIS_ENDPOINT` / `PERSONAXIS_MODEL` / `PERSONAXIS_API_KEY` | top override (dev & prod) |
+
+## Where files live per OS (cross-platform)
+
+`~` is your home directory on every OS, so the same commands work on Windows, macOS, and Linux:
+
+| What | Windows | macOS / Linux |
+|---|---|---|
+| personaxis config | `C:\Users\<you>\.personaxis\config.json` | `~/.personaxis/config.json` |
+| Claude Code hook | `…\.claude\settings.json` (project) or `C:\Users\<you>\.claude\settings.json` (`--global`) | `~/.claude/settings.json` |
+| Codex hook | `…\.codex\hooks.json` or `C:\Users\<you>\.codex\hooks.json` | `~/.codex/hooks.json` |
+| Hermes hook | `C:\Users\<you>\.hermes\config.yaml` | `~/.hermes/config.yaml` |
+| openclaw hook | `C:\Users\<you>\.openclaw\hooks\personaxis-observe\` | `~/.openclaw/hooks/personaxis-observe/` |
+
+personaxis resolves `~` via the OS home dir, so **you don't configure paths** — the same
+`personaxis hooks install --host <host>` writes to the right place on any OS. (Override the personaxis
+home with `PERSONAXIS_HOME` if you need to.)
 
 ## Precedence
 
