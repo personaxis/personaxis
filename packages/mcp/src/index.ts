@@ -281,7 +281,7 @@ export function buildServer(): McpServer {
 
   server.tool(
     "agent_run",
-    "Run the persona's GOVERNED Agent Loop on a task: it proposes shell/file tool calls, each gated by the persona's sandbox policy (a 'deny' never runs; anything needing approval is denied in this non-interactive context), executes the allowed ones, and returns the step events + final summary. Requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL.",
+    "Run the persona's GOVERNED Agent Loop on a task: it proposes shell/file tool calls, each gated by the persona's sandbox policy (a 'deny' never runs; anything needing approval is denied in this non-interactive context), executes the allowed ones, and returns the step events + final summary. Requires a configured model (config.json local.endpoint/model, or PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL).",
     {
       persona: z.string().describe("Path to the persona (personaxis.md / PERSONA.md)."),
       task: z.string().describe("The task to accomplish."),

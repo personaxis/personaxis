@@ -121,7 +121,8 @@ export async function observe(
 /**
  * Run the governed Agent Loop on a task. Non-interactive: any tool whose verdict
  * is `ask` is denied (the host can pre-authorize via the persona's permissions
- * allow-list). Requires PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL for tool-calling.
+ * allow-list). Requires a configured model (config.json local.endpoint/model, or
+ * PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL) for tool-calling.
  */
 export async function agentRun(persona: string, task: string, maxSteps = 12): Promise<unknown> {
   const handle = loadPersona(persona);

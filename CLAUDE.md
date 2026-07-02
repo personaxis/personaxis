@@ -18,14 +18,18 @@ This repo is migrating from a single CLI package into a **pnpm monorepo** that t
 |---|---|
 | `packages/core` (`@personaxis/core`) | Framework-agnostic engine: persona/state IO, envelope extraction, **clamp+audit state engine**, appraisal signals + JSON schema, **governance gate** (locked/suggesting/autonomous), **append-only hash-chained episodic memory**, the **Living Loop** (`observe→appraise→evolve→recompile→memory`), event bus, deterministic per-persona **sigil**, heuristic + **LLM (constrained-decoding) appraisers**. |
 | `packages/cli` (`@personaxis/persona.md`) | The existing CLI (validate/lint/compile/decompile/state/...) **plus** the interactive **REPL**: `personaxis` with no subcommand enters a living session (NL + `/commands`). The original `src/` moved here unchanged. |
-| `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (`personaxis-mcp`) exposing persona tools (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, …) to any host (Claude Code, Codex, Cursor). |
-| `packages/tui` | (placeholder) future ascii dashboard. |
+| `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (bin `personaxis-mcp`) exposing persona tools (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, …) to any host (Claude Code, Codex, Cursor). |
+| `packages/sdk` (`@personaxis/sdk`) | Ergonomic **embed SDK** — the `Persona` class (`compiledIdentity` / `state` / `observe` / `adjust` / `audit` / `reload`) wrapping `core` so an app backend can host a living persona in-process (Modo 2 self-host). |
+| `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): scenario suites + runner that score a persona's behavior against the spec's guarantees (governance, honesty, envelope clamping). |
+| `packages/tui` (`@personaxis/tui`) | **ASCII dashboard** (bin `personaxis-dash`): live view of state/envelopes/memory/audit. Early but wired (6 tests). |
+
+All six publish at the same lockstep version (currently `0.11.0`); the spec they implement is `spec_version 0.10.0`.
 
 **Build/test/run (from repo root):**
 ```bash
 pnpm install
-pnpm run build            # pnpm -r build (core first, then cli/mcp)
-pnpm run test             # vitest across packages
+pnpm run build            # pnpm -r build (core first, then cli/mcp/sdk/evals/tui)
+pnpm run test             # vitest across all six packages
 node packages/cli/dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md   # golden -> PASS
 node packages/cli/dist/index.js --persona <path>   # enter the living REPL
 ```
