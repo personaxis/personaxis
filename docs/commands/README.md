@@ -25,6 +25,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`state`](./state.md) | init / show / mutate `state.json` (envelope-clamped). |
 | [`migrate <a-to-b>`](./migrate.md) | Version codemods (`0.9-to-0.10` is additive — bumps `spec_version`). |
 | [`sigil`](./sigil.md) | Render a persona's deterministic, state-aware ASCII sigil. |
+| [`dash`](./dash.md) | Live ASCII dashboard (sigil + envelopes + memory chain), refreshed from `state.json` each frame. |
 | [`scan`](./scan.md) | Cross-harness config scanner (red/blue/auditor). |
 | [`push` / `pull`](./push-pull.md) | Publish / fetch a persona version (spec + compiled doc + resources). |
 | [`personas`](./personas.md) | Global persona registry (list/import/export/adopt — reuse across projects). |
@@ -60,6 +61,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | `/init <name>` | Scaffold a **new sub-persona** under this project (the root already exists in-session). |
 | `/serve [port\|stop]` · `/watch [stop]` | Start/stop the HTTP server / freshness daemon **in the background** (they also stop on `/exit`). |
 | `/mode` | Cycle the sandbox posture (shift+tab also). |
+| `/dash` | Inline snapshot of the living dashboard (sigil + envelopes + memory chain); `personaxis dash` in a 2nd terminal for the animated live view. |
 | `/memory` | Inspect all six memory kinds + verify the hash chain. |
 | `/audit` | Mutation log + memory-chain integrity + self-edit ledger + evaluations. |
 | `/sessions` | List saved conversations (`● live` marks the current one). |

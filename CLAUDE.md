@@ -21,7 +21,7 @@ This repo is migrating from a single CLI package into a **pnpm monorepo** that t
 | `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (bin `personaxis-mcp`) exposing persona tools (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, …) to any host (Claude Code, Codex, Cursor). |
 | `packages/sdk` (`@personaxis/sdk`) | Ergonomic **embed SDK** — the `Persona` class (`compiledIdentity` / `state` / `observe` / `adjust` / `audit` / `reload`) wrapping `core` so an app backend can host a living persona in-process (Modo 2 self-host). |
 | `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): scenario suites + runner that score a persona's behavior against the spec's guarantees (governance, honesty, envelope clamping). |
-| `packages/tui` (`@personaxis/tui`) | **ASCII dashboard** (bin `personaxis-dash`): live view of state/envelopes/memory/audit. Early but wired (6 tests). |
+| `packages/tui` (`@personaxis/tui`) | **ASCII dashboard + render lib**. Its `visual`/`screen` modules back the REPL and `sigil`; the live dashboard is surfaced as `personaxis dash` (and `/dash` in the REPL) plus the standalone bin `personaxis-dash`. Reads `state.json` each frame, reflecting evolution in another process. |
 
 All six publish at the same lockstep version (currently `0.11.0`); the spec they implement is `spec_version 0.10.0`.
 

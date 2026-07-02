@@ -90,6 +90,7 @@ import {
   farewell,
 } from "@personaxis/tui/visual";
 import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
+import { renderFrame } from "@personaxis/tui";
 import { writeStarterPersona } from "../starter.js";
 import { isSubagentPath, slugChainFromPath, slugAddressFromPath } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/improve.js";
@@ -330,6 +331,16 @@ const COMMANDS: CommandDef[] = [
       // the living sigil (sober microdetail)
       ctx.out(sigilLines(ctx.theme, readState(ctx.handle.statePath).values).join("\n"));
       ctx.out(chalk.dim(`  seed #${ctx.theme.seed.toString(16)} · voice ${ctx.theme.voice.density}`));
+    },
+  },
+  {
+    name: "dash",
+    desc: "snapshot of the living dashboard (sigil + envelopes + memory chain)",
+    run: (_a, ctx) => {
+      // A single inline frame — the REPL owns the TTY, so we don't take over the screen.
+      // For the animated live view, run `personaxis dash` in a second terminal.
+      for (const line of renderFrame(ctx.handle.personaPath, 0).split("\n")) ctx.out(line);
+      ctx.out(chalk.dim(`  live view: `) + chalk.cyan(`personaxis dash -p ${relative(process.cwd(), ctx.handle.personaPath) || ctx.handle.personaPath}`) + chalk.dim(" (second terminal — animates as this session evolves)"));
     },
   },
   {

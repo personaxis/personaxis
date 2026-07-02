@@ -26,15 +26,15 @@ import {
 } from "@personaxis/core";
 import { sigilLines, auraBar, envelopeBars } from "./visual.js";
 
-interface Opts {
+export interface DashOpts {
   persona: string;
   once: boolean;
   frames: number;
   interval: number;
 }
 
-function parseArgs(argv: string[]): Opts {
-  const o: Opts = { persona: ".personaxis/personaxis.md", once: false, frames: 30, interval: 500 };
+function parseArgs(argv: string[]): DashOpts {
+  const o: DashOpts = { persona: ".personaxis/personaxis.md", once: false, frames: 30, interval: 500 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--persona" || a === "-p") o.persona = argv[++i];
@@ -75,12 +75,17 @@ export function renderFrame(personaPath: string, frame: number): string {
   return lines.join("\n");
 }
 
-async function main(): Promise<void> {
-  const opts = parseArgs(process.argv.slice(2));
+/**
+ * Run the live dashboard for a persona. Shared by the `personaxis-dash` bin and the
+ * `personaxis dash` CLI subcommand, so both entry points behave identically.
+ * Returns when finished (once/non-TTY); in interactive mode it runs until SIGINT.
+ */
+export async function runDashboard(opts: DashOpts): Promise<void> {
   const personaPath = resolve(opts.persona);
   if (!existsSync(personaPath)) {
     console.error(chalk.red("Error:"), `persona not found at ${personaPath}`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   ensureState(loadPersona(personaPath));
 
@@ -98,18 +103,25 @@ async function main(): Promise<void> {
   const enter = "\x1b[?1049h\x1b[?25l";
   const home = "\x1b[H\x1b[J";
   const restore = "\x1b[?25h\x1b[?1049l";
-  let timer: NodeJS.Timeout;
-  const close = () => {
-    clearInterval(timer);
-    process.stdout.write(restore);
-    console.log(chalk.dim("  dashboard closed.\n"));
-    process.exit(0);
-  };
-  process.on("SIGINT", close);
-  process.stdout.write(enter);
-  const tick = () => process.stdout.write(home + renderFrame(personaPath, frame++));
-  tick();
-  timer = setInterval(tick, opts.interval);
+  await new Promise<void>((done) => {
+    let timer: NodeJS.Timeout;
+    const close = () => {
+      clearInterval(timer);
+      process.stdout.write(restore);
+      process.removeListener("SIGINT", close);
+      console.log(chalk.dim("  dashboard closed.\n"));
+      done();
+    };
+    process.on("SIGINT", close);
+    process.stdout.write(enter);
+    const tick = () => process.stdout.write(home + renderFrame(personaPath, frame++));
+    tick();
+    timer = setInterval(tick, opts.interval);
+  });
+}
+
+async function main(): Promise<void> {
+  await runDashboard(parseArgs(process.argv.slice(2)));
 }
 
 const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
