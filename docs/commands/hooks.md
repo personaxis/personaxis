@@ -7,34 +7,39 @@ model and recompiles `PERSONA.md` on drift — learning **without spending the h
 
 ## Usage
 ```bash
-personaxis hooks install --host claude-code           # project (.claude/settings.json)
-personaxis hooks install --host claude-code --global  # user (~/.claude/settings.json)
-personaxis hooks uninstall --host claude-code
+personaxis hooks install --host claude-code   # or: codex | openclaw | hermes
+personaxis hooks install --host codex --global
+personaxis hooks uninstall --host <host>
 ```
 
-## `install`
+## `install` — all four focus hosts
 
-Writes a Claude Code **`Stop`** hook that runs `personaxis observe --stdin --source user` at the end
-of every turn.
+Each host fires an end-of-turn (or end-of-session) hook that runs `personaxis observe --stdin --source
+user`. `observe --stdin` understands each host's payload (Claude Code's `transcript_path`, Codex's
+`last_assistant_message`, openclaw's event `context`).
+
+| Host | What it writes | Event |
+|---|---|---|
+| `claude-code` | `.claude/settings.json` (or `~/.claude` with `--global`) | `Stop` |
+| `codex` | `.codex/hooks.json` (or `~/.codex` with `--global`) | `Stop` |
+| `hermes` | `~/.hermes/config.yaml` → `hooks.on_session_end` | per session |
+| `openclaw` | `~/.openclaw/hooks/personaxis-observe/{HOOK.md,handler.ts}` — then `openclaw hooks enable personaxis-observe` | `command:stop` |
 
 | Flag | Meaning |
 |---|---|
-| `--host <host>` | Host to wire (currently only `claude-code`). |
-| `-g, --global` | Write to `~/.claude/settings.json` instead of the project `.claude/settings.json`. |
+| `--host <host>` | `claude-code \| codex \| openclaw \| hermes`. |
+| `-g, --global` | Write to the user config instead of the project (claude-code/codex; hermes/openclaw are always user-scoped). |
 
-It is **idempotent**: install merges our hook into the existing `Stop` list without clobbering other
-hooks, and does nothing if ours is already present.
+It is **idempotent**: install merges without clobbering other hooks and does nothing if ours is present.
+
+> **Hermes** fires `on_session_end` (once per session, not per turn) — for on-demand, per-tool access
+> also register the MCP server. For **serverless**, skip hooks and run `personaxis observe --once` from
+> a cron.
 
 ## `uninstall`
 
-Removes **only** the personaxis hook (matched by the `personaxis observe` command marker), leaving any
-other `Stop` hooks intact. Same `--host` / `--global` flags.
-
-## Other hosts
-
-There is **no per-turn hook for Codex or other hosts yet**. `install --host <other>` exits with a
-pointer to the two alternatives: the MCP server ([`personaxis serve`](./serve.md), which the agent
-calls on-demand) or a serverless cron running [`personaxis observe --once`](./observe.md).
+Removes **only** the personaxis hook (matched by the `personaxis observe` marker) for the given host,
+leaving any other hooks intact. Same `--host` / `--global` flags.
 
 ## See also
 

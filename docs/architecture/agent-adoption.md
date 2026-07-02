@@ -29,6 +29,16 @@ These hosts auto-load `SOUL.md`, so they skip the `@PERSONA.md` baseline injecti
 your profile at the generated `.hermes/SOUL.md` (or copy it to `~/.hermes/SOUL.md`). Per-turn liveness
 for all four hosts is the same mechanism (hooks → `observe`), independent of the placement format.
 
+**Why `SOUL.md` inlines the identity (vs. `@PERSONA.md` reference).** In Claude Code/Codex the
+*reference* `@PERSONA.md` lives in `CLAUDE.md`/`AGENTS.md` — those hosts resolve file includes, so
+`PERSONA.md` stays the single file and the host points at it. openclaw/Hermes read `SOUL.md` **as** the
+identity slot (the role `PERSONA.md` plays for Claude Code), and they don't document resolving an
+`@`-include *inside* `SOUL.md` — so `SOUL.md` must **contain** the identity, and we inline it. This is
+not a duplicated source of truth: the single source is still `personaxis.md` → compiled to `PERSONA.md`
+**and** `SOUL.md` (two views of one spec); `compile`/`observe` regenerate `SOUL.md` on change. (Both
+hosts also read `AGENTS.md`, so a `@PERSONA.md` reference there works too if you prefer that path —
+but `SOUL.md` is their primary, always-loaded identity file.)
+
 > **Per-turn liveness comes from hooks (Modo 1).** Compiling places a fresh identity; keeping it
 > *alive* each turn is the Claude Code `Stop` hook (`personaxis hooks install --host claude-code`),
 > which runs one governed tick on your model per turn — no host tokens. See

@@ -27,9 +27,10 @@ the coding agent adopts a living persona. It learns from *you ↔ the coding age
 
 How the persona learns each turn (it can't see inside the host's process):
 
-1. **Host hook (primary).** `personaxis hooks install --host claude-code` adds a `Stop` hook that,
-   at the end of every turn, pipes the turn to `personaxis observe --stdin`. That runs **one governed
-   tick on your model** and recompiles `PERSONA.md` on drift — **without spending the host's tokens**.
+1. **Host hook (primary).** `personaxis hooks install --host <claude-code|codex|openclaw|hermes>` wires
+   that host's end-of-turn hook (Claude Code / Codex `Stop`, Hermes `on_session_end`, openclaw
+   `command:stop`) to pipe the turn to `personaxis observe --stdin`. That runs **one governed tick on
+   your model** and recompiles the identity (`PERSONA.md`/`SOUL.md`) on drift — **no host tokens spent**.
 2. **MCP on-demand.** The `personaxis-mcp` server exposes tools (`persona_observe`, `persona_state`,
    `persona_propose_edit`, …) the agent calls **only when it decides to** — not every message.
 3. **`personaxis watch` (optional).** A local daemon that recompiles when you hand-edit the spec and
