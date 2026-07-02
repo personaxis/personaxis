@@ -12,6 +12,7 @@ import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
+import { execFileSync } from "node:child_process";
 import chalk from "chalk";
 import {
   LivingLoop,
@@ -681,15 +682,46 @@ function helpText(): string {
   return lines.join("\n");
 }
 
+/** CLI subcommands that must NOT run as an in-session `/command`, with why. */
+const REPL_UNAVAILABLE: Record<string, string> = {
+  serve: "long-running server — run `personaxis serve` in a terminal",
+  watch: "long-running daemon — run `personaxis watch` in a terminal",
+  observe: "the living loop already runs a governed tick every turn — no need to call it here",
+};
+
 async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   const name = line.slice(1).split(/\s+/)[0];
   const arg = line.slice(1 + name.length).trim();
   const cmd = COMMANDS.find((c) => c.name === name);
-  if (!cmd) {
-    ctx.out(chalk.yellow(`  unknown command /${name} — try /help`));
+  if (cmd) return (await cmd.run(arg, ctx)) === true;
+
+  // Not a native `/command` — fall through to the CLI so EVERY subcommand is reachable from the app
+  // (export, decompile, diff, spec, orchestrate, team, skills, scan, personas, migrate, push/pull, …).
+  if (REPL_UNAVAILABLE[name]) {
+    ctx.out(chalk.dim(`  /${name}: ${REPL_UNAVAILABLE[name]}.`));
     return false;
   }
-  return (await cmd.run(arg, ctx)) === true;
+  runCliPassthrough(name, arg, ctx);
+  return false;
+}
+
+/** Run `personaxis <name> <args>` as a subprocess (the same build) and echo its output into the REPL. */
+function runCliPassthrough(name: string, arg: string, ctx: Ctx): void {
+  const args = arg.split(/\s+/).filter(Boolean);
+  try {
+    const out = execFileSync(process.execPath, [process.argv[1], name, ...args], {
+      cwd: process.cwd(), // where the user launched the app (the project root)
+      encoding: "utf-8",
+      env: { ...process.env, FORCE_COLOR: "1" },
+      timeout: 60_000,
+    });
+    for (const l of out.replace(/\n$/, "").split("\n")) ctx.out("  " + l);
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string; status?: number };
+    const text = ((err.stdout ?? "") + (err.stderr ?? "")).trim();
+    if (text) for (const l of text.split("\n")) ctx.out("  " + l);
+    else ctx.out(chalk.yellow(`  /${name} failed (exit ${err.status ?? "?"}) — is it a valid command? try /help or \`personaxis --help\``));
+  }
 }
 
 /**

@@ -73,11 +73,14 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 > separate `/do`. Evolution runs every turn — there is no separate `/evolve`. The sigil is
 > folded into `/persona`.
 
-> **Two surfaces, same engine.** The REPL exposes a **curated** set of `/` commands for the things you
-> do *inside a session* (configure the model with `/config` + `/model set`, wire a host with `/hooks`,
-> check with `/validate` / `/lint`, evolve with `/improve` / `/review`, …). The **full** set of 30+
-> subcommands (`init`, `migrate`, `push`/`pull`, `orchestrate`, `team`, `serve`, `watch`, …) runs in the
-> **terminal** as `personaxis <cmd>` — see the table above. Both call the same governed engine.
+> **Everything is reachable from inside the app.** Common in-session actions have **native** `/`
+> handlers (`/config`, `/model set`, `/hooks`, `/validate`, `/lint`, `/improve`, `/review`, `/state`,
+> `/audit`, `/memory`, …). **Any other CLI subcommand** also works as `/<name> …` — the REPL passes it
+> through to `personaxis <name>` and echoes the output (e.g. `/spec`, `/export`, `/decompile`, `/diff`,
+> `/orchestrate`, `/team`, `/skills`, `/scan`, `/personas`, `/migrate`, `/push`, `/pull`). The **only**
+> ones you run in a terminal are the long-running/bootstrap ones: `serve` and `watch` (they block —
+> they're daemons) and `init` (it bootstraps a persona before you enter the REPL). `observe` isn't a
+> `/` command because the living loop already runs a governed tick **every turn**. Same engine either way.
 
 **Multi-persona** (not slash-commands): address sub-personas inline with `@slug …` or
 `@all …`. See [multi-persona](../architecture/multi-persona.md). New feature docs:
