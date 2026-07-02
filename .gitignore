@@ -14,3 +14,10 @@ packages/cli/src/generated/
 .personaxis/*
 !.personaxis/personaxis.md
 .recompile-pending.json
+
+# Detailed SaaS build plan — intentionally NOT committed (fed to the SaaS repo session)
+SAAS_BUILD_PLAN.md
+# Stray sandbox-test artifacts
+/SOUL.md
+/.hermes/
+/time.md
