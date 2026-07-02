@@ -22,9 +22,14 @@ Tester identity body.
 let dir: string;
 let persona: string;
 let client: Client;
+let savedHome: string | undefined;
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "pxs-mcp-"));
+  // Isolate from any real ~/.personaxis/config.json — otherwise a machine-local model config makes
+  // persona_observe take the LLM path (and fail without a key) instead of the offline heuristic.
+  savedHome = process.env.PERSONAXIS_HOME;
+  process.env.PERSONAXIS_HOME = join(dir, "home");
   persona = join(dir, "personaxis.md");
   writeFileSync(persona, FIX);
   const [ct, st] = InMemoryTransport.createLinkedPair();
@@ -35,6 +40,8 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await client.close();
+  if (savedHome === undefined) delete process.env.PERSONAXIS_HOME;
+  else process.env.PERSONAXIS_HOME = savedHome;
   rmSync(dir, { recursive: true, force: true });
 });
 

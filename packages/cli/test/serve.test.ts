@@ -9,6 +9,8 @@ import { buildHttpServer } from "../src/commands/serve.js";
 let dir: string;
 let server: Server;
 let base: string;
+let savedHome: string | undefined;
+let savedEnv: Record<string, string | undefined>;
 
 const PERSONA = `---
 metadata: { name: srv, version: 1.0.0 }
@@ -23,6 +25,14 @@ served body
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "pxs-serve-"));
+  // Isolate from any real ~/.personaxis/config.json + PERSONAXIS_* env so "no model configured"
+  // tests are deterministic regardless of the developer's machine config.
+  savedHome = process.env.PERSONAXIS_HOME;
+  savedEnv = { e: process.env.PERSONAXIS_ENDPOINT, m: process.env.PERSONAXIS_MODEL, k: process.env.PERSONAXIS_API_KEY };
+  process.env.PERSONAXIS_HOME = join(dir, "home");
+  delete process.env.PERSONAXIS_ENDPOINT;
+  delete process.env.PERSONAXIS_MODEL;
+  delete process.env.PERSONAXIS_API_KEY;
   const p = join(dir, "personaxis.md");
   writeFileSync(p, PERSONA);
   server = buildHttpServer(p);
@@ -31,6 +41,11 @@ beforeEach(async () => {
 });
 afterEach(() => {
   server.close();
+  if (savedHome === undefined) delete process.env.PERSONAXIS_HOME;
+  else process.env.PERSONAXIS_HOME = savedHome;
+  if (savedEnv.e !== undefined) process.env.PERSONAXIS_ENDPOINT = savedEnv.e;
+  if (savedEnv.m !== undefined) process.env.PERSONAXIS_MODEL = savedEnv.m;
+  if (savedEnv.k !== undefined) process.env.PERSONAXIS_API_KEY = savedEnv.k;
   rmSync(dir, { recursive: true, force: true });
 });
 
