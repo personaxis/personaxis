@@ -18,7 +18,8 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`decompile`](./decompile.md) | Reverse: edited compiled doc → proposed `personaxis.md` (re-validates before writing). |
 | [`observe`](./observe.md) | Feed one observation → one governed tick on your model + drift recompile (`--stdin` for host hooks). |
 | [`watch`](./watch.md) | Optional local daemon: recompile on hand-edits + a drift heartbeat (`--once` for cron/CI). |
-| [`hooks`](./hooks.md) | Install/remove the Claude Code end-of-turn hook that feeds `observe` (per-turn learning). |
+| [`hooks`](./hooks.md) | Install/remove a host's end-of-turn hook (claude-code/codex/openclaw/hermes) that feeds `observe`. |
+| [`onboard`](../integrations/README.md) | One command to wire a host: config check → compile → hook. |
 | [`config`](../configuration.md) | Set the model/endpoint/key (global or project, per-persona). |
 | [`improve [mode]`](./improve.md) | View/set self-improvement posture (`locked` / `suggesting` / `autonomous`). |
 | [`state`](./state.md) | init / show / mutate `state.json` (envelope-clamped). |

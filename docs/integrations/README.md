@@ -20,7 +20,29 @@ Two things, always:
 You do **not** need MCP for this. MCP is optional (for on-demand tools). The core loop is: *host hook
 → `personaxis observe` on your model → identity file refreshed → host reads it.*
 
-## Quickstart (works now, ~3 steps)
+## Install personaxis (production)
+
+personaxis is an npm package with a `personaxis` binary — install it once, globally:
+
+```bash
+npm install -g @personaxis/persona.md      # provides the `personaxis` command on your PATH
+```
+
+Everything below uses the `personaxis` command (no repo checkout, no hardcoded paths). The host hooks
+run `personaxis observe` — the binary on your PATH, so it works on any machine that installed the package.
+
+## One-command onboarding (recommended)
+
+After the model config step below, this wires the whole thing (compile + `@`-reference/`SOUL.md` + hook):
+
+```bash
+personaxis onboard --host claude-code      # or: codex | openclaw | hermes   (add --global to wire it for ALL projects)
+```
+
+It checks your model, compiles the identity, installs the end-of-turn hook, and prints the one manual
+step (put your API key in the env var). Re-runnable and idempotent. Prefer this over the manual steps.
+
+## Manual quickstart (what onboarding does, step by step)
 
 ### 1. Point personaxis at your model — once, globally
 
@@ -54,11 +76,18 @@ personaxis compile --root --platform hermes      # → .hermes/SOUL.md
 ### 3. Install the per-turn hook (learning on your model)
 
 ```bash
-personaxis hooks install --host claude-code   # or: codex | openclaw | hermes
+personaxis hooks install --host claude-code            # THIS project (.claude/settings.json)
+personaxis hooks install --host claude-code --global   # ALL projects (~/.claude/settings.json)
 ```
 
 Now every turn feeds one governed tick to your model and refreshes the identity on drift — no host
-tokens. That's it.
+tokens. The hook command is just `personaxis observe --stdin` (the binary on your PATH — no machine paths).
+
+> **Many projects?** Use **`--global`**: one hook in `~/.claude/settings.json` covers every project.
+> The hook's `observe` resolves the **current** project's `.personaxis/personaxis.md`; a project without
+> a persona is a **silent no-op** (it never breaks the host). So a global hook + a per-project persona
+> = each project's persona evolves only while you work in it. Without `--global`, the hook is
+> per-project (`.claude/settings.json`), which you commit or gitignore as you prefer.
 
 ### Verify it works
 
