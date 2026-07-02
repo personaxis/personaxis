@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "fs";
 import { dirname, resolve } from "path";
 import { globalConfigPath as coreGlobalConfigPath, projectConfigPath as coreProjectConfigPath } from "@personaxis/core";
 import type { ProviderName } from "./providers/types.js";
@@ -48,7 +48,14 @@ export function loadConfig(scope: ConfigScope = "project"): PersonaxisConfig {
 export function saveConfig(config: PersonaxisConfig, scope: ConfigScope = "project"): void {
   const p = configPath(scope);
   mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  // The config may hold an inline API key (like ~/.aws/credentials, ~/.config/gh/hosts.yml, …), so
+  // write it user-only-readable (0o600). No-op on Windows, protective on Unix.
+  writeFileSync(p, JSON.stringify(config, null, 2) + "\n", { encoding: "utf-8", mode: 0o600 });
+  try {
+    chmodSync(p, 0o600); // enforce perms on an already-existing file too
+  } catch {
+    /* Windows / unsupported FS — home dir is already user-scoped */
+  }
 }
 
 /**

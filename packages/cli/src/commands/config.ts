@@ -85,8 +85,13 @@ const setCommand = new Command("set")
       process.exit(1);
     }
     saveConfig(config, scope);
-    console.log(chalk.green("✓"), `${key} = ${value}`, chalk.dim(`(${configPath(scope)})`));
-    if (/apiKey$/.test(key)) console.log(chalk.yellow("  ! an inline key was written — ensure this config.json is gitignored. Prefer *.apiKeyEnv."));
+    const isSecret = /apiKey$/.test(key) && !/apiKeyEnv$/.test(key);
+    const shown = isSecret ? value.slice(0, 3) + "…" + value.slice(-2) : value; // never echo a full key
+    console.log(chalk.green("✓"), `${key} = ${shown}`, chalk.dim(`(${configPath(scope)})`));
+    if (isSecret) {
+      if (scope === "global") console.log(chalk.dim("  stored in your home config (user-only, 0600) — reused across all projects, like ~/.aws/credentials."));
+      else console.log(chalk.yellow("  ! inline key in the PROJECT config — ensure .personaxis/ is gitignored, or set it --global (recommended)."));
+    }
   });
 
 const getCommand = new Command("get")
@@ -99,15 +104,25 @@ const getCommand = new Command("get")
     console.log(value === undefined ? chalk.dim("(unset)") : value);
   });
 
+/** Redact inline apiKey values so `config show` never prints a full secret. */
+function redact(cfg: PersonaxisConfig): PersonaxisConfig {
+  const mask = (k?: string): string | undefined => (k ? k.slice(0, 3) + "…" + k.slice(-2) : k);
+  const out = JSON.parse(JSON.stringify(cfg)) as PersonaxisConfig;
+  if (out.local?.apiKey) out.local.apiKey = mask(out.local.apiKey);
+  for (const p of Object.values(out.personas ?? {})) if (p.apiKey) p.apiKey = mask(p.apiKey);
+  return out;
+}
+
 const showCommand = new Command("show")
-  .description("Print the project + global config and where each file lives")
+  .description("Print the project + global config (keys masked) and where each file lives")
   .action(() => {
     console.log(chalk.bold("project"), chalk.dim(configPath("project")));
-    console.log(JSON.stringify(loadConfig("project"), null, 2));
+    console.log(JSON.stringify(redact(loadConfig("project")), null, 2));
     console.log(chalk.bold("\nglobal"), chalk.dim(configPath("global")));
-    console.log(JSON.stringify(loadConfig("global"), null, 2));
+    console.log(JSON.stringify(redact(loadConfig("global")), null, 2));
     console.log(chalk.dim(`\nPrecedence: env > project > global. The API key resolves from the env var named by`));
-    console.log(chalk.dim(`*.apiKeyEnv, else PERSONAXIS_API_KEY, else an inline *.apiKey (dev only — gitignore it).`));
+    console.log(chalk.dim(`*.apiKeyEnv, else PERSONAXIS_API_KEY, else an inline *.apiKey. Storing the key in the`));
+    console.log(chalk.dim(`GLOBAL config (~/.personaxis, user-only 0600) is fine and reused across all projects.`));
   });
 
 export const configCommand = new Command("config")
