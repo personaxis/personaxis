@@ -21,8 +21,8 @@ import chalk from "chalk";
 
 const OBSERVE_CMD = "personaxis observe --stdin --source user";
 const MARKER = "personaxis observe"; // identifies OUR hook among a host's other hooks
-const HOSTS = ["claude-code", "codex", "openclaw", "hermes"] as const;
-type Host = (typeof HOSTS)[number];
+export const HOSTS = ["claude-code", "codex", "openclaw", "hermes"] as const;
+export type Host = (typeof HOSTS)[number];
 
 // ── shared JSON Stop-hook shape (Claude Code + Codex use the identical structure) ────────────
 type JsonHookSettings = {
@@ -145,6 +145,17 @@ function uninstallOpenclaw(): { path: string; removed: boolean } {
   return { path: dir, removed };
 }
 
+/** Install the end-of-turn hook for a host. Reusable by `hooks install` and `onboard`. */
+export function installHook(host: Host, global: boolean): { path: string; already: boolean; extra: string } {
+  if (host === "claude-code" || host === "codex") {
+    return { ...installJsonStopHook(jsonStopHookPath(host, global)), extra: "" };
+  }
+  if (host === "hermes") {
+    return { ...installHermes(), extra: " · Hermes fires on_session_end (per session; use the MCP server for on-demand tools too)" };
+  }
+  return { ...installOpenclaw(), extra: " · enable it with: openclaw hooks enable personaxis-observe" };
+}
+
 // ── command wiring ───────────────────────────────────────────────────────────────────────────
 const installCommand = new Command("install")
   .description(`Install the end-of-turn hook so the persona learns from each turn. Hosts: ${HOSTS.join(" | ")}.`)
@@ -155,23 +166,12 @@ const installCommand = new Command("install")
       console.error(chalk.red("Error:"), `unknown host "${opts.host}". Use: ${HOSTS.join(" | ")}`);
       process.exit(1);
     }
-    const host = opts.host as Host;
-    let res: { path: string; already: boolean };
-    let extra = "";
-    if (host === "claude-code" || host === "codex") {
-      res = installJsonStopHook(jsonStopHookPath(host, Boolean(opts.global)));
-    } else if (host === "hermes") {
-      res = installHermes();
-      extra = " · Hermes fires on_session_end (per session; use the MCP server for on-demand tools too)";
-    } else {
-      res = installOpenclaw();
-      extra = " · enable it with: openclaw hooks enable personaxis-observe";
-    }
+    const res = installHook(opts.host as Host, Boolean(opts.global));
     if (res.already) {
       console.log(chalk.dim(`· personaxis hook already installed at`), chalk.cyan(res.path));
     } else {
-      console.log(chalk.green("✓"), `installed ${host} hook at`, chalk.cyan(res.path));
-      console.log(chalk.dim(`  runs: ${OBSERVE_CMD}${extra}`));
+      console.log(chalk.green("✓"), `installed ${opts.host} hook at`, chalk.cyan(res.path));
+      console.log(chalk.dim(`  runs: ${OBSERVE_CMD}${res.extra}`));
       console.log(chalk.dim("  every turn now feeds one governed tick on your configured model (no host tokens)."));
     }
   });
@@ -199,4 +199,4 @@ export const hooksCommand = new Command("hooks")
   .addCommand(uninstallCommand);
 
 // Exported for tests.
-export { jsonStopHookPath, installJsonStopHook, hasJsonStopHook, hermesConfigPath, openclawHookDir, OBSERVE_CMD, HOSTS };
+export { jsonStopHookPath, installJsonStopHook, hasJsonStopHook, hermesConfigPath, openclawHookDir, OBSERVE_CMD };

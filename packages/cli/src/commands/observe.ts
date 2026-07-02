@@ -163,7 +163,9 @@ export const observeCommand = new Command("observe")
   .action(async (opts: { observation?: string; stdin?: boolean; persona?: string; source: string; json?: boolean; strict?: boolean }) => {
     const personaPath = resolveObservePersona(opts.persona);
     if (!personaPath) {
-      console.error(chalk.red("Error:"), "no persona found — pass --persona or run inside a project with .personaxis/personaxis.md");
+      // A GLOBAL hook fires in every project; one without a persona is a silent no-op (not an error),
+      // so the hook never spams the host. Manual runs (no --stdin) still get the hint.
+      if (!opts.stdin && !opts.json) console.error(chalk.dim("· observe: no persona here (run inside a project with .personaxis/personaxis.md, or pass --persona)"));
       process.exit(opts.strict ? 1 : 0);
     }
     const observation = opts.stdin ? observationFromHookPayload(await readStdin()) ?? opts.observation : opts.observation;
