@@ -140,8 +140,12 @@ const RULES_JSON = [
   { rule: "layer-summary",                severity: "info",    checks: "Summary of defined layers — always emitted" },
 ];
 
+const CANONICAL_NOTE =
+  "> NOTE: this is an embedded summary (v0.6-era layers). The NORMATIVE, current spec (v0.10) lives at\n" +
+  "> https://raw.githubusercontent.com/personaxis/persona.md/main/docs/SPEC.md — prefer it for authoring.\n\n";
+
 export const specCommand = new Command("spec")
-  .description("Output the PERSONA.md specification (v0.6.0) — useful for injecting into agent prompts")
+  .description("Print an embedded spec SUMMARY + lint rules (normative spec: persona.md/docs/SPEC.md)")
   .option("--rules", "Append the lint rules table")
   .option("--rules-only", "Output only the lint rules")
   .option("--format <format>", "Output format: text (default) or json", "text")
@@ -162,7 +166,7 @@ export const specCommand = new Command("spec")
       return;
     }
 
-    process.stdout.write(SPEC_TEXT + "\n");
+    process.stdout.write(CANONICAL_NOTE + SPEC_TEXT + "\n");
     if (opts.rules) {
       process.stdout.write(RULES_TEXT + "\n");
     }

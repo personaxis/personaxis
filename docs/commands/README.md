@@ -27,10 +27,20 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`sigil`](./sigil.md) | Render a persona's deterministic, state-aware ASCII sigil. |
 | [`scan`](./scan.md) | Cross-harness config scanner (red/blue/auditor). |
 | [`push` / `pull`](./push-pull.md) | Publish / fetch a persona version (spec + compiled doc + resources). |
-| [`personas`](./personas.md) | Global persona registry (reuse across projects). |
+| [`personas`](./personas.md) | Global persona registry (list/import/export/adopt — reuse across projects). |
 | [`overseer`](./overseer.md) | Optional local registry of personas/projects (powers `orchestrate`). |
-| [`serve`](./serve.md) | Runtime / MCP serving. |
-| [`trace`](./trace.md) | Inspect JSONL/OTLP traces. |
+| [`orchestrate <task>`](./orchestrate.md) | Route a task to the best-matched registered persona (capability-ranked). |
+| [`team`](./team.md) | Operational multi-agent teams (roles + shared goal) — distinct from overseer collections. |
+| [`sync`](./sync.md) | Reconcile a persona's state across machines (merge, no clobber). |
+| [`serve`](./serve.md) | Expose the living persona over HTTP + `agents.md` (non-MCP interop). |
+| [`skills`](./skills.md) | List / pull `extensions.skills` (e.g. `github:org/repo`) with a security review. |
+| [`spec`](./spec.md) | Print the personaxis.md spec (v0.10) + lint rules — inject into agent prompts. |
+| [`export`](./export.md) | Export the compiled doc to clean JSON / YAML / Markdown (no pedagogical comments). |
+| [`diff <a> <b>`](./diff.md) | Field-by-field diff of two `PERSONA.md`; flags breaking changes (CI gate). |
+| `list` · `templates` · `template` | Installed personas · built-in templates · authoring scaffolds (`--help` each; see the cross-refs in their descriptions). |
+| [`runtime`](./runtime.md) | **Requires a Personaxis backend account** — hosted sessions/traces/evaluate. |
+| [`use`](./use.md) | **[deprecated]** scaffold+compile in one step (pre-v0.7). Use `init` + `compile --platform`. |
+| [`trace`](./trace.md) | Inspect JSONL/OTLP traces (causal timeline). |
 | [_(no subcommand)_](./repl.md) | Enter the living **REPL**. |
 
 ## REPL slash-commands
