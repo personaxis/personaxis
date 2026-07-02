@@ -1,9 +1,10 @@
 # `personaxis spec`
 
-Print an **embedded spec summary + lint rules** — handy to inject into an agent's context.
+Print the **current personaxis.md specification** (v0.10) plus the lint rules — handy to inject into an
+agent's context so it authors valid personas.
 
 ```bash
-personaxis spec                 # the embedded summary
+personaxis spec                 # the full v0.10 spec
 personaxis spec --rules         # + the lint-rules table
 personaxis spec --rules-only    # only the rules
 personaxis spec --format json
@@ -15,7 +16,7 @@ personaxis spec --format json
 | `--rules-only` | Output only the rules. |
 | `--format <text\|json>` | Output format. |
 
-> ⚠️ The embedded text is a **summary (v0.6-era layers)**, not the normative spec. The current,
-> authoritative spec (v0.10) lives at
-> [`persona.md/docs/SPEC.md`](https://raw.githubusercontent.com/personaxis/persona.md/main/docs/SPEC.md)
-> — prefer it for authoring. (`spec` prints a pointer to it.)
+The spec text is the **byte-identical embedded copy of the normative spec**
+([`persona.md/docs/SPEC.md`](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)),
+inlined at build time by `scripts/embed-assets.mjs` — so it is always the current spec and never goes
+stale. (Any `v0.6`/`v0.7` mentions inside are the spec's own version-history sections.)

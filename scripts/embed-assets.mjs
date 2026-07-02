@@ -56,6 +56,11 @@ for (const f of templateFiles) {
 lines.push("};");
 lines.push("");
 
+// The normative spec doc (byte-identical to persona.md/docs/SPEC.md), so `personaxis spec` prints the
+// CURRENT spec and can never go stale — it's regenerated from the single source on every build.
+lines.push(`export const specDoc: string = ${JSON.stringify(read("SPEC.md"))};`);
+lines.push("");
+
 const outDir = resolve(cli, "src", "generated");
 mkdirSync(outDir, { recursive: true });
 writeFileSync(resolve(outDir, "assets.ts"), lines.join("\n"), "utf-8");

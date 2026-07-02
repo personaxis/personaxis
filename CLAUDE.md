@@ -83,6 +83,10 @@ cp templates/personaxis_template.md ../persona.md/.personaxis/personaxis_templat
 cp templates/PERSONA_template.md ../persona.md/PERSONA_template.md
 cp templates/policy_template.yaml ../persona.md/.personaxis/policy_template.yaml
 diff -q schema ../persona.md/schema   # must show no differences
+
+# The normative spec doc is AUTHORED in persona.md and MIRRORED into the CLI (embedded by
+# scripts/embed-assets.mjs so `personaxis spec` prints the current spec). Direction is the reverse:
+cp ../persona.md/docs/SPEC.md packages/cli/SPEC.md   # after editing persona.md/docs/SPEC.md
 ```
 
 ## Validator semantics
