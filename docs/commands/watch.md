@@ -34,8 +34,21 @@ Two loops run until you stop it:
 exits — the shape you want from a Vercel Cron / CI step where no long-lived process exists. On a
 machine that *can* hold a process (VM, container), run the full daemon instead.
 
+## watch vs observe vs serve (they are NOT the same)
+
+| Command | Role | Runs |
+|---|---|---|
+| [`observe`](./observe.md) | **learns** from ONE observation (one governed tick) | once, then exits |
+| `watch` | keeps `PERSONA.md` **fresh** by watching the spec file + a drift heartbeat (does NOT learn from conversations) | long-running daemon |
+| [`serve`](./serve.md) | **exposes** the persona over HTTP for external callers | long-running server |
+
+## In the app
+
+Inside the REPL, `/watch` runs the daemon **in the background** (it doesn't block the session);
+`/watch stop` (or `/exit`) stops it.
+
 ## See also
 
-- [observe.md](./observe.md) — the per-turn tick (`--once` there runs one governed cycle).
+- [observe.md](./observe.md) — the per-turn learning tick.
 - [hooks.md](./hooks.md) — wire per-turn learning into a host.
 - [../architecture/deployment.md](../architecture/deployment.md) — daemon vs serverless shapes.

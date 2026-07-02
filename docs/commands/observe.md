@@ -44,8 +44,22 @@ By design this is **best-effort**: a tick failure, an empty payload, or a missin
 that exits `0` — it never fails the surrounding turn. Pass `--strict` to make failures exit non-zero
 (for CI, where you *want* the signal). Stdin reads time out after 1.5s so a hook can never hang.
 
+## observe vs watch vs serve (they are NOT the same)
+
+| Command | Role | Runs |
+|---|---|---|
+| `observe` | **learns** from ONE observation (one governed tick), recompiles on drift | once, then exits |
+| [`watch`](./watch.md) | keeps `PERSONA.md` **fresh** by watching the spec file + a drift heartbeat | long-running daemon |
+| [`serve`](./serve.md) | **exposes** the persona over HTTP for external callers | long-running server |
+
+## In the app
+
+The living loop already runs a governed tick **every turn** in the REPL, so there is no `/observe`.
+To feed a one-off observation manually, run `personaxis observe --observation "…"` (also works via the
+REPL passthrough).
+
 ## See also
 
-- [hooks.md](./hooks.md) — install the Claude Code Stop hook that calls this every turn.
+- [hooks.md](./hooks.md) — install the host Stop hook that calls this every turn (all four hosts).
 - [watch.md](./watch.md) — the daemon for idle / manual-edit recompiles.
 - [../architecture/deployment.md](../architecture/deployment.md) — where per-turn learning fits.
