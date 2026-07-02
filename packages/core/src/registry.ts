@@ -18,7 +18,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { homedir, hostname, platform, userInfo } from "node:os";
 import { join } from "node:path";
 
@@ -101,7 +101,13 @@ export function loadRegistry(): Registry {
 
 export function saveRegistry(reg: Registry): void {
   mkdirSync(personaxisHome(), { recursive: true });
-  writeFileSync(registryFile(), JSON.stringify(reg, null, 2) + "\n", "utf-8");
+  // Atomic write: a concurrent reader (another `personaxis` process on the same registry) must never
+  // observe a half-written file — otherwise loadRegistry's parse falls back to empty() and silently
+  // drops data. Write to a unique temp file, then rename (atomic on the same filesystem).
+  const target = registryFile();
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, JSON.stringify(reg, null, 2) + "\n", "utf-8");
+  renameSync(tmp, target);
 }
 
 export function globalPersonaDir(slug: string): string {
