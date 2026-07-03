@@ -9,128 +9,35 @@
  *                   runtime tool `adjust_persona_state(field, delta, reason)`.
  *   state show    — Pretty-print the current state.
  *
- * The mutation logic here is the same the runtime applies in production:
- * envelope lookup, clamping, mutation_log append, governance check stub.
- * Designed to be portable between SDK (this CLI) and the managed runtime.
+ * All engine logic lives in @personaxis/core — this file owns ONLY the CLI
+ * surface. That means `state mutate` goes through the SAME governance gate,
+ * clamp, audit trail, atomic write, and lock as the Living Loop, MCP, HTTP
+ * and SDK: unknown fields are rejected, traits backing hard-enforced virtues
+ * are immutable for every actor, non-human actors are subject to the
+ * improvement mode + max_step_delta drift bound, and a governance refusal is
+ * itself recorded in mutation_log (governance_blocked: true).
  */
 
 import { Command } from "commander";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { existsSync, unlinkSync } from "fs";
 import { resolve, dirname, join } from "path";
 import chalk from "chalk";
-import { loadPersonaFile } from "../load.js";
-import { machineId } from "@personaxis/core";
+import {
+  loadPersona,
+  ensureState,
+  readState,
+  writeState,
+  withStateLock,
+  extractEnvelopes,
+  applyMutation,
+  governMutations,
+  readMode,
+  readMaxStepDelta,
+  machineId,
+  type MutationLogEntry,
+} from "@personaxis/core";
 
-// ─── Types ─────────────────────────────────────────────────────────────────
-
-interface StateFile {
-  schema_version: "0.8.0" | "0.7.0" | "0.6.0";
-  persona_id: string;
-  persona_version: string;
-  session_id?: string;
-  values: Record<string, number>;
-  active_context?: {
-    task_mode: string | null;
-    audience: string | null;
-    additional_context_flags?: string[];
-  };
-  memory_anchors_active?: string[];
-  mutation_log: MutationLogEntry[];
-  last_compiled_at?: string | null;
-  last_compiled_hash?: string | null;
-}
-
-interface MutationLogEntry {
-  ts: string;
-  field: string;
-  from: number;
-  to: number;
-  delta_requested: number;
-  clamped: boolean;
-  reason: string;
-  actor:
-    | "actor-llm"
-    | "runtime-decay"
-    | "runtime-context"
-    | "human-operator"
-    | "judge-correction";
-  tool_call_id?: string;
-  governance_blocked?: boolean;
-  origin_node?: string;
-  session_id?: string;
-}
-
-interface EnvelopeLookup {
-  envelopes: Record<string, { mean: number; min: number; max: number }>;
-  hardEnforcedVirtues: string[];
-}
-
-// ─── Envelope discovery from PERSONA.md ────────────────────────────────────
-
-/**
- * Walk the PERSONA.md frontmatter to extract envelopes for every mutable
- * field (traits, affect, mood). Returns dot-notation keys identical to the
- * keys used in state.json.values.
- */
-function extractEnvelopes(personaPath: string): EnvelopeLookup {
-  const loaded = loadPersonaFile(personaPath);
-  const data = (loaded.data ?? {}) as Record<string, unknown>;
-  const envelopes: EnvelopeLookup["envelopes"] = {};
-  const hardEnforcedVirtues: string[] = [];
-
-  const personality = data.personality as
-    | { traits?: Record<string, { mean?: number; range?: [number, number] }> }
-    | undefined;
-  if (personality?.traits) {
-    for (const [name, t] of Object.entries(personality.traits)) {
-      if (typeof t.mean === "number" && Array.isArray(t.range) && t.range.length === 2) {
-        envelopes[`traits.${name}`] = { mean: t.mean, min: t.range[0], max: t.range[1] };
-      }
-    }
-  }
-
-  const affect = data.affect as
-    | {
-        baseline?: {
-          core_affect?: Record<string, { mean?: number; range?: [number, number] }>;
-          mood?: Record<string, { mean?: number; range?: [number, number] } | string>;
-        };
-      }
-    | undefined;
-  if (affect?.baseline?.core_affect) {
-    for (const [dim, env] of Object.entries(affect.baseline.core_affect)) {
-      if (typeof env.mean === "number" && Array.isArray(env.range) && env.range.length === 2) {
-        envelopes[`affect.${dim}`] = { mean: env.mean, min: env.range[0], max: env.range[1] };
-      }
-    }
-  }
-  if (affect?.baseline?.mood) {
-    for (const [dim, env] of Object.entries(affect.baseline.mood)) {
-      if (
-        typeof env === "object" &&
-        env !== null &&
-        typeof (env as { mean?: number }).mean === "number" &&
-        Array.isArray((env as { range?: [number, number] }).range)
-      ) {
-        const e = env as { mean: number; range: [number, number] };
-        envelopes[`mood.${dim}`] = { mean: e.mean, min: e.range[0], max: e.range[1] };
-      }
-    }
-  }
-
-  const character = data.character as
-    | { virtues?: Record<string, { enforcement?: string }> }
-    | undefined;
-  if (character?.virtues) {
-    for (const [name, v] of Object.entries(character.virtues)) {
-      if (v.enforcement === "hard") hardEnforcedVirtues.push(name);
-    }
-  }
-
-  return { envelopes, hardEnforcedVirtues };
-}
-
-// ─── Path resolution helpers ───────────────────────────────────────────────
+// ─── Path resolution ───────────────────────────────────────────────────────
 
 function resolvePersonaAndState(personaPathArg?: string): {
   personaPath: string;
@@ -144,19 +51,6 @@ function resolvePersonaAndState(personaPathArg?: string): {
   return { personaPath, statePath };
 }
 
-function readState(statePath: string): StateFile {
-  if (!existsSync(statePath)) {
-    throw new Error(
-      `state.json not found at ${statePath}. Run 'personaxis state init' to create it.`,
-    );
-  }
-  return JSON.parse(readFileSync(statePath, "utf-8")) as StateFile;
-}
-
-function writeState(statePath: string, state: StateFile): void {
-  writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
-}
-
 // ─── state init ────────────────────────────────────────────────────────────
 
 const initSubcommand = new Command("init")
@@ -166,40 +60,21 @@ const initSubcommand = new Command("init")
   .action((options: { file?: string; force?: boolean }) => {
     try {
       const { personaPath, statePath } = resolvePersonaAndState(options.file);
-      if (existsSync(statePath) && !options.force) {
-        console.error(
-          chalk.red("Error:"),
-          `state.json already exists at ${statePath}. Use --force to overwrite.`,
-        );
-        process.exit(1);
+      if (existsSync(statePath)) {
+        if (!options.force) {
+          console.error(
+            chalk.red("Error:"),
+            `state.json already exists at ${statePath}. Use --force to overwrite.`,
+          );
+          process.exit(1);
+        }
+        unlinkSync(statePath);
       }
-
-      const loaded = loadPersonaFile(personaPath);
-      const data = (loaded.data ?? {}) as Record<string, unknown>;
-      const metadata = (data.metadata ?? {}) as { name?: string; version?: string };
-
-      const { envelopes } = extractEnvelopes(personaPath);
-      const values: Record<string, number> = {};
-      for (const [key, env] of Object.entries(envelopes)) {
-        values[key] = env.mean;
-      }
-
-      const state: StateFile = {
-        schema_version: "0.8.0",
-        persona_id: metadata.name ?? "unknown",
-        persona_version: metadata.version ?? "0.0.0",
-        values,
-        active_context: { task_mode: null, audience: null, additional_context_flags: [] },
-        memory_anchors_active: [],
-        mutation_log: [],
-        last_compiled_at: null,
-        last_compiled_hash: null,
-      };
-
-      writeState(statePath, state);
+      const handle = loadPersona(personaPath);
+      const state = ensureState(handle);
       console.log(
         chalk.green("✓"),
-        `state.json initialized with ${Object.keys(values).length} values at ${statePath}`,
+        `state.json initialized with ${Object.keys(state.values).length} values at ${statePath}`,
       );
     } catch (err) {
       console.error(chalk.red("Error:"), (err as Error).message);
@@ -211,8 +86,8 @@ const initSubcommand = new Command("init")
 
 const mutateSubcommand = new Command("mutate")
   .description(
-    "Adjust a current value in state.json by a delta, clamped to the envelope " +
-      "declared in PERSONA.md. Mirrors the runtime tool adjust_persona_state.",
+    "Adjust a current value in state.json by a delta — governed, clamped to the " +
+      "envelope declared in PERSONA.md, and audited. Mirrors adjust_persona_state.",
   )
   .requiredOption("--field <path>", "Dot-notation field path (e.g., 'mood.tone')")
   .requiredOption("--delta <number>", "Delta to apply (positive or negative)")
@@ -235,15 +110,15 @@ const mutateSubcommand = new Command("mutate")
     }) => {
       try {
         const { personaPath, statePath } = resolvePersonaAndState(options.file);
-        const state = readState(statePath);
-        const { envelopes } = extractEnvelopes(personaPath);
-        const envelope = envelopes[options.field];
+        const handle = loadPersona(personaPath);
+        const fm = handle.frontmatter as Record<string, unknown>;
+        const env = extractEnvelopes(fm);
 
-        if (!envelope) {
+        if (!(options.field in env.envelopes)) {
           console.error(
             chalk.red("Error:"),
             `No envelope declared for '${options.field}' in PERSONA.md. ` +
-              `Mutable fields: ${Object.keys(envelopes).join(", ")}`,
+              `Mutable fields: ${Object.keys(env.envelopes).join(", ")}`,
           );
           process.exit(2);
         }
@@ -254,42 +129,53 @@ const mutateSubcommand = new Command("mutate")
           process.exit(2);
         }
 
-        const current = state.values[options.field] ?? envelope.mean;
-        const requested = current + delta;
-        const next = Math.max(envelope.min, Math.min(envelope.max, requested));
-        const clamped = next !== requested;
+        const actor = (options.actor as MutationLogEntry["actor"]) ?? "human-operator";
+        const decision = governMutations(
+          [{ field: options.field, delta, reason: options.reason }],
+          env,
+          {
+            mode: readMode(fm),
+            maxStepDelta: readMaxStepDelta(fm),
+            humanDirected: actor === "human-operator",
+          },
+        );
 
-        // Governance stub: detect attempts to push fields tied to hard-enforced
-        // virtues out of their declared envelope. The real check lives in the
-        // managed runtime; here we just block out-of-envelope writes (which
-        // clamping already prevents).
-        const governanceBlocked = false;
+        const admitted = decision.admitted[0];
+        const rejected = decision.rejected[0];
 
-        const entry: MutationLogEntry = {
-          ts: new Date().toISOString(),
-          field: options.field,
-          from: current,
-          to: next,
-          delta_requested: delta,
-          clamped,
-          reason: options.reason,
-          actor:
-            (options.actor as MutationLogEntry["actor"]) ?? "human-operator",
-          tool_call_id: options.toolCallId,
-          governance_blocked: governanceBlocked,
-          origin_node: machineId(),
-        };
+        const result = withStateLock(statePath, () => {
+          const state = readState(statePath);
+          const r = applyMutation(state, env.envelopes, {
+            field: options.field,
+            delta: admitted ? admitted.delta : delta,
+            reason: admitted ? admitted.reason : options.reason,
+            actor,
+            toolCallId: options.toolCallId,
+            governanceBlocked: !admitted,
+            originNode: machineId(),
+          });
+          writeState(statePath, state);
+          return r;
+        });
 
-        state.values[options.field] = next;
-        state.mutation_log = state.mutation_log ?? [];
-        state.mutation_log.push(entry);
-
-        writeState(statePath, state);
+        if (rejected) {
+          // The refusal is itself in the audit trail (governance_blocked: true).
+          console.error(
+            chalk.red("✗ governance:"),
+            `mutation of ${chalk.bold(options.field)} rejected — ${rejected.reason}. ` +
+              `The blocked attempt was recorded in mutation_log.`,
+          );
+          process.exit(2);
+        }
 
         console.log(
           chalk.green("✓"),
-          `${chalk.bold(options.field)}: ${current} → ${next} ` +
-            (clamped ? chalk.yellow(`(clamped to [${envelope.min}, ${envelope.max}])`) : ""),
+          `${chalk.bold(options.field)}: ${result.from} → ${result.to} ` +
+            (result.clamped
+              ? chalk.yellow(
+                  `(clamped to [${env.envelopes[options.field].min}, ${env.envelopes[options.field].max}])`,
+                )
+              : ""),
         );
       } catch (err) {
         console.error(chalk.red("Error:"), (err as Error).message);

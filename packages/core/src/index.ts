@@ -6,6 +6,7 @@
  */
 
 export * from "./persona.js";
+export * from "./lock.js";
 export * from "./envelopes.js";
 export * from "./state-engine.js";
 export * from "./appraisal.js";
@@ -41,4 +42,4 @@ export * from "./tools/registry.js";
 export * from "./tool-calling.js";
 export * from "./agent.js";
 
-export const CORE_VERSION = "0.11.0";
+export { CORE_VERSION } from "./generated/version.js";

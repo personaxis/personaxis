@@ -9,10 +9,18 @@
  * in the CLI's load.ts. The engine just reads/writes at given paths.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import matter from "gray-matter";
 import { extractEnvelopes } from "./envelopes.js";
+import { withStateLock } from "./lock.js";
+
+/**
+ * Current state.json schema version (schema/state.schema.json's newest accepted
+ * value — 0.9.0 added the optional agent_session block; 0.10 changed no state
+ * fields). Single source for every seeder; keep in sync with the schema enum.
+ */
+export const STATE_SCHEMA_VERSION = "0.9.0";
 
 export interface PersonaFrontmatter {
   [key: string]: unknown;
@@ -102,8 +110,16 @@ export function readState(statePath: string): StateFile {
   return JSON.parse(readFileSync(statePath, "utf-8")) as StateFile;
 }
 
+/**
+ * Atomic write: temp file + rename in the same directory, so concurrent readers
+ * (dash polling, another CLI) always see a complete JSON document — never a torn
+ * partial write. Serialization of read→modify→write sequences is the caller's job
+ * via withStateLock (see lock.ts).
+ */
 export function writeState(statePath: string, state: StateFile): void {
-  writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
+  const tmp = `${statePath}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n", "utf-8");
+  renameSync(tmp, statePath);
 }
 
 export function stateExists(statePath: string): boolean {
@@ -123,21 +139,26 @@ export function displayName(fm: PersonaFrontmatter): string {
  */
 export function ensureState(handle: PersonaHandle): StateFile {
   if (existsSync(handle.statePath)) return readState(handle.statePath);
-  const env = extractEnvelopes(handle.frontmatter);
-  const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
-  const values: Record<string, number> = {};
-  for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
-  const state: StateFile = {
-    schema_version: "0.8.0",
-    persona_id: meta.name ?? "persona",
-    persona_version: meta.version ?? "0.0.0",
-    values,
-    active_context: { task_mode: null, audience: null, additional_context_flags: [] },
-    memory_anchors_active: [],
-    mutation_log: [],
-    last_compiled_at: null,
-    last_compiled_hash: null,
-  };
-  writeState(handle.statePath, state);
-  return state;
+  // Seeding races with other processes seeding the same persona — take the lock and
+  // re-check so exactly one seeder wins.
+  return withStateLock(handle.statePath, () => {
+    if (existsSync(handle.statePath)) return readState(handle.statePath);
+    const env = extractEnvelopes(handle.frontmatter);
+    const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
+    const values: Record<string, number> = {};
+    for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
+    const state: StateFile = {
+      schema_version: STATE_SCHEMA_VERSION,
+      persona_id: meta.name ?? "persona",
+      persona_version: meta.version ?? "0.0.0",
+      values,
+      active_context: { task_mode: null, audience: null, additional_context_flags: [] },
+      memory_anchors_active: [],
+      mutation_log: [],
+      last_compiled_at: null,
+      last_compiled_hash: null,
+    };
+    writeState(handle.statePath, state);
+    return state;
+  });
 }

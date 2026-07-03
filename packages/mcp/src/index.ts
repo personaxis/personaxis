@@ -20,6 +20,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { z } from "zod";
 import type { ProvenanceSource } from "@personaxis/core";
 import * as svc from "./service.js";
@@ -40,8 +41,28 @@ const personaArg = {
     .describe("Path to the persona's personaxis.md (or compiled PERSONA.md). Its state.json is read/written alongside it."),
 };
 
-export function buildServer(): McpServer {
-  const server = new McpServer({ name: "personaxis", version: "0.11.0" });
+export interface ServerOptions {
+  /**
+   * ADR-011 proposer≠approver: the MCP client may PROPOSE spec self-edits, but
+   * approving them is a human decision. `persona_decide_edit` is disabled unless
+   * the human launching the server passes --allow-decide.
+   */
+  allowDecide?: boolean;
+}
+
+/** Version single-source: the package's own manifest (never a hand-kept literal). */
+const PKG_VERSION: string = (() => {
+  try {
+    // dist/index.js → ../package.json
+    const require = createRequire(import.meta.url);
+    return (require("../package.json") as { version: string }).version;
+  } catch {
+    return "0.0.0";
+  }
+})();
+
+export function buildServer(opts: ServerOptions = {}): McpServer {
+  const server = new McpServer({ name: "personaxis", version: PKG_VERSION });
 
   server.tool(
     "persona_compiled",
@@ -210,6 +231,15 @@ export function buildServer(): McpServer {
     },
     async ({ persona, id, decision }) => {
       try {
+        if (!opts.allowDecide) {
+          return fail(
+            new Error(
+              "persona_decide_edit is disabled: approving self-edits is a human decision " +
+                "(proposer≠approver). Start personaxis-mcp with --allow-decide to enable it, " +
+                "or review proposals from the REPL with /review.",
+            ),
+          );
+        }
         return ok(svc.decideEdit(persona, id, decision));
       } catch (e) {
         return fail(e);
@@ -300,7 +330,16 @@ export function buildServer(): McpServer {
 }
 
 async function main(): Promise<void> {
-  const server = buildServer();
+  // ADR-011: the human launching the server owns the blast radius. Every persona
+  // path a client supplies is confined to --root (default: the cwd the server was
+  // started in), and self-edit approval requires the explicit --allow-decide flag.
+  const args = process.argv.slice(2);
+  const rootIdx = args.indexOf("--root");
+  const root = rootIdx !== -1 && args[rootIdx + 1] ? args[rootIdx + 1] : process.cwd();
+  const allowDecide = args.includes("--allow-decide");
+  svc.setRoot(root);
+
+  const server = buildServer({ allowDecide });
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

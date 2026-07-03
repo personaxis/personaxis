@@ -33,6 +33,7 @@ import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers,
 import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
 import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
+import { withStateLock } from "./lock.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, AppraisalSignal, ProvenanceSource } from "./appraisal.js";
 
@@ -112,7 +113,6 @@ export class LivingLoop {
         activeOverlay(this.handle.personaPath),
       );
       const env = extractEnvelopes(fm);
-      const state: StateFile = readState(this.handle.statePath);
 
       // 2. appraise (model proposes structured signals only). A failing/unreachable
       // appraiser (network, auth, unsupported response_format) must NOT end the
@@ -149,19 +149,28 @@ export class LivingLoop {
       // remembered, tagged, for audit) — defense in depth over the governance gate.
       const admitted = injectionBlocked ? [] : decision.admitted;
       let mutationsApplied = 0;
-      for (const m of admitted) {
-        const result = applyMutation(state, env.envelopes, {
-          field: m.field,
-          delta: m.delta,
-          reason: m.reason,
-          actor: input.actor ?? "actor-llm",
-          originNode: machineId(),
-          sessionId: this.sessionId,
+      if (admitted.length > 0) {
+        // Serialize the read→apply→write against concurrent writers (serve, MCP,
+        // another tick): re-read fresh state under the lock — the proposed deltas
+        // are relative, so applying them to fresh values is correct — and never
+        // hold the lock across a model call (the appraisal already happened).
+        withStateLock(this.handle.statePath, () => {
+          const fresh: StateFile = readState(this.handle.statePath);
+          for (const m of admitted) {
+            const result = applyMutation(fresh, env.envelopes, {
+              field: m.field,
+              delta: m.delta,
+              reason: m.reason,
+              actor: input.actor ?? "actor-llm",
+              originNode: machineId(),
+              sessionId: this.sessionId,
+            });
+            bus.emit({ type: "mutate", result });
+            if (result.to !== result.from) mutationsApplied++;
+          }
+          writeState(this.handle.statePath, fresh);
         });
-        bus.emit({ type: "mutate", result });
-        if (result.to !== result.from) mutationsApplied++;
       }
-      if (admitted.length > 0) writeState(this.handle.statePath, state);
 
       // 3b. evolve QUALITATIVE — the appraiser may propose prose self-edits to
       // persona_prompting. Governed by improvement_policy.mode via governQualitative:

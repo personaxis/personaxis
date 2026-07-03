@@ -36,6 +36,7 @@ import {
   applyMutation,
   writeState,
   readState,
+  withStateLock,
   readMemory,
   verifyMemoryChain,
   detectMemoryAnomalies,
@@ -121,14 +122,17 @@ async function route(
         return json(res, 400, { error: `unknown envelope field '${field}'`, fields: Object.keys(env.envelopes) });
       }
       if (!Number.isFinite(delta)) return json(res, 400, { error: "delta must be a finite number" });
-      const st = readState(handle.statePath);
-      const result = applyMutation(st, env.envelopes, {
-        field,
-        delta,
-        reason: String(body.reason ?? "http adjust"),
-        actor: "actor-llm",
+      const result = withStateLock(handle.statePath, () => {
+        const st = readState(handle.statePath);
+        const r = applyMutation(st, env.envelopes, {
+          field,
+          delta,
+          reason: String(body.reason ?? "http adjust"),
+          actor: "actor-llm",
+        });
+        writeState(handle.statePath, st);
+        return r;
       });
-      writeState(handle.statePath, st);
       return json(res, 200, result);
     }
     if (req.method === "POST" && url === "/persona/agent") {

@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/persona.md",
   "version": "0.11.0",
-  "description": "The living, governed AI persona toolchain (personaxis.md spec v0.8.0). Run `personaxis` for an interactive REPL where your persona talks, evolves (clamped + audited), and remembers; plus validate, lint, compile/decompile, state, push/pull, skills, overseer, team, orchestrate, sigil, sync, serve, and migrate (incl. 0.7-to-0.8). Three-artifact model: personaxis.md (10-layer spec), PERSONA.md (compiled), state.json (runtime).",
+  "description": "The living, governed AI persona toolchain (personaxis.md spec v0.10.0). Run `personaxis` for an interactive REPL where your persona talks, evolves (clamped + audited), and remembers; plus validate, lint, compile/decompile, state, push/pull, skills, overseer, team, orchestrate, sigil, sync, serve, and migrate (up to 0.9-to-0.10). Three-artifact model: personaxis.md (10-layer spec), PERSONA.md (compiled), state.json (runtime).",
   "keywords": [
     "ai",
     "agents",

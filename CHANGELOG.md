@@ -6,6 +6,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — F1 hardening (per `ARCHITECTURE_REVIEW.md` §9, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+
+### Fixed — governance & integrity
+- **`state mutate` now goes through the real governance gate** (F-02): the duplicated mutation
+  engine in `commands/state.ts` (with its permanent `governanceBlocked = false` stub) was deleted;
+  the command uses core's `extractEnvelopes`/`governMutations`/`applyMutation`. Core's
+  `GovernanceConfig` gains `humanDirected`: deliberate `--actor human-operator` mutations bypass
+  the mode lock and drift bound (the gate's documented intent), while non-human actors are subject
+  to `improvement_policy.mode` and `max_step_delta`; traits backing hard-enforced virtues are
+  immutable for every actor; a governance refusal is itself recorded in `mutation_log`
+  (`governance_blocked: true`) and exits 2 naming the exact rule.
+- **Same-machine concurrency control** (F-03): `writeState` is atomic (temp+rename) and every
+  read→modify→write site takes a per-persona lock (`core/src/lock.ts`: mkdir lock dir, PID +
+  stale-steal, loud 5s timeout) — Living Loop apply, agent persist, HTTP `/persona/adjust`, MCP
+  `adjust_persona_state`, SDK `adjust`, and `ensureState` seeding. The lock is never held across
+  a model call.
+- **MCP server hardening** (F-07, ADR-011): every persona/skill path is confined to `--root`
+  (default: the server's cwd) — escaping paths are rejected; `persona_decide_edit` is disabled
+  unless the human launching the server passes `--allow-decide` (proposer≠approver).
+- **Hermes hooks installer rewritten** (F-23): the previous installer wrote a
+  `hooks.on_session_end` stanza into `~/.hermes/config.yaml` — a shape Hermes never reads. It now
+  installs Hermes' real mechanism: `~/.hermes/hooks/personaxis-observe/{HOOK.yaml, handler.py}`
+  subscribed to **`agent:end` (per turn)**; install/uninstall also clean the legacy stanza.
+  `docs/integrations/hermes.md` corrected (including that `agent:end` IS a per-turn event).
+
+### Fixed — release & versions
+- **`release.yml`**: hand-ordered publish loop (which omitted `@personaxis/sdk` and swallowed
+  failures with `|| echo`) replaced by topological `pnpm -r publish`; npm provenance enabled.
+- **Version single-sourcing** (F-26): `CORE_VERSION` is generated from `core/package.json` at
+  build (`core/scripts/gen-version.mjs`); `ensureState` seeds `STATE_SCHEMA_VERSION` (`0.9.0`,
+  the state schema's current value) instead of a stale literal; the MCP server reports its own
+  package version; the cli package description said "spec v0.8.0" — now v0.10.0.
+
+### Security
+- **pnpm supply-chain hardening** (F1.9): `minimumReleaseAge: 2880` (48h) and an explicitly empty
+  `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml`.
+
+### Docs
+- CLAUDE.md corrections: evals categories are **governance/security/spec-fidelity** (no "honesty"
+  category exists), migrate codemods listed through `0.9-to-0.10`, MCP row reflects the 16 tools +
+  `--root`/`--allow-decide`; evals package description no longer claims an "optional live" mode.
+- Added `ARCHITECTURE_REVIEW.md` (the master architecture audit + v1.0 design reference) and
+  `IMPLEMENTATION_CHECKLIST.md` (persistent execution state).
+
+---
+
 ## [0.11.0] - 2026-06-29
 
 Runtime/correctness release (no spec field changes; `spec_version` stays `0.10.0`). Closes the

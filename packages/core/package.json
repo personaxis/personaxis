@@ -13,9 +13,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
-    "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "build": "node ./scripts/gen-version.mjs && tsc",
+    "lint": "node ./scripts/gen-version.mjs && tsc --noEmit",
+    "test": "node ./scripts/gen-version.mjs && vitest run"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",

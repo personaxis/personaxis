@@ -21,6 +21,14 @@ export interface GovernanceConfig {
   mode: ImprovementMode;
   /** Max absolute delta admitted per step (drift guard). Default 0.15. */
   maxStepDelta: number;
+  /**
+   * True when the mutation is a deliberate human action (`state mutate
+   * --actor human-operator`), not autonomous evolution. Human-directed mutations
+   * bypass the mode lock and the drift bound — that is this gate's documented
+   * intent ("in locked mode, only human-directed mutations pass"). Envelope
+   * membership and hard-virtue immutability still apply to EVERY actor.
+   */
+  humanDirected?: boolean;
 }
 
 export const DEFAULT_GOVERNANCE: GovernanceConfig = {
@@ -71,10 +79,17 @@ function judge(
     return { field: p.field, admitted: false, delta: 0, reason: `not a mutable envelope field` };
   }
 
-  // A trait backing a hard-enforced virtue is immutable at runtime.
+  // A trait backing a hard-enforced virtue is immutable at runtime — for every
+  // actor, human included (change the spec, not the state, to move it).
   const traitName = p.field.startsWith("traits.") ? p.field.slice("traits.".length) : null;
   if (traitName && env.hardEnforcedVirtues.includes(traitName)) {
     return { field: p.field, admitted: false, delta: 0, reason: `field backs a hard-enforced virtue` };
+  }
+
+  // Deliberate human mutations are not autonomous evolution: no mode lock, no
+  // drift bound (the envelope clamp downstream still applies).
+  if (cfg.humanDirected) {
+    return { field: p.field, admitted: true, delta: p.delta, reason: p.reason };
   }
 
   // In locked mode, the actor LLM cannot self-evolve; only human-directed

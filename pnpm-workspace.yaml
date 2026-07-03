@@ -1,2 +1,13 @@
 packages:
   - "packages/*"
+
+# ── Supply-chain hardening ────────────────────────────────────────────────────
+# A new dependency version must be at least 48h old before pnpm will install it
+# (mitigates worm-style compromised releases; same posture OpenClaw/Hermes adopted
+# after the 2026 npm/PyPI incidents). Requires pnpm >= 10.16.
+minimumReleaseAge: 2880
+
+# No dependency in this workspace needs a postinstall build script. Keep the
+# allowlist explicitly empty so any future native/postinstall dep is a conscious,
+# reviewed decision (pnpm blocks non-allowlisted build scripts).
+onlyBuiltDependencies: []

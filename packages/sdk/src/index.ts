@@ -23,6 +23,7 @@ import {
   ensureState,
   readState,
   writeState,
+  withStateLock,
   extractEnvelopes,
   applyMutation,
   readMemory,
@@ -98,10 +99,13 @@ export class Persona {
   /** Apply a single clamped, audited mutation to an envelope field (the spec's adjust_persona_state). */
   adjust(field: string, delta: number, reason: string): ReturnType<typeof applyMutation> {
     const env = extractEnvelopes(this.handle.frontmatter);
-    const st = readState(this.handle.statePath);
-    const result = applyMutation(st, env.envelopes, { field, delta, reason, actor: "actor-llm" });
-    writeState(this.handle.statePath, st);
-    return result;
+    // Locked read→apply→write: an embedding app may run ticks/adjusts concurrently (F1.4).
+    return withStateLock(this.handle.statePath, () => {
+      const st = readState(this.handle.statePath);
+      const result = applyMutation(st, env.envelopes, { field, delta, reason, actor: "actor-llm" });
+      writeState(this.handle.statePath, st);
+      return result;
+    });
   }
 
   /** Integrity view: mutation count, memory size, hash-chain validity, detected anomalies. */

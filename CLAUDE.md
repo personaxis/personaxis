@@ -18,9 +18,9 @@ This repo is migrating from a single CLI package into a **pnpm monorepo** that t
 |---|---|
 | `packages/core` (`@personaxis/core`) | Framework-agnostic engine: persona/state IO, envelope extraction, **clamp+audit state engine**, appraisal signals + JSON schema, **governance gate** (locked/suggesting/autonomous), **append-only hash-chained episodic memory**, the **Living Loop** (`observe→appraise→evolve→recompile→memory`), event bus, deterministic per-persona **sigil**, heuristic + **LLM (constrained-decoding) appraisers**. |
 | `packages/cli` (`@personaxis/persona.md`) | The existing CLI (validate/lint/compile/decompile/state/...) **plus** the interactive **REPL**: `personaxis` with no subcommand enters a living session (NL + `/commands`). The original `src/` moved here unchanged. |
-| `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (bin `personaxis-mcp`) exposing persona tools (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, …) to any host (Claude Code, Codex, Cursor). |
+| `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (bin `personaxis-mcp`) exposing **16 persona tools** (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, `persona_propose_edit`, `agent_run`, `skill_review`, `scan_text`, …) to any host (Claude Code, Codex, Cursor). Persona paths are confined to `--root` (default cwd); `persona_decide_edit` requires the explicit `--allow-decide` flag (proposer≠approver). |
 | `packages/sdk` (`@personaxis/sdk`) | Ergonomic **embed SDK** — the `Persona` class (`compiledIdentity` / `state` / `observe` / `adjust` / `audit` / `reload`) wrapping `core` so an app backend can host a living persona in-process (Modo 2 self-host). |
-| `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): scenario suites + runner that score a persona's behavior against the spec's guarantees (governance, honesty, envelope clamping). |
+| `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): deterministic scenario suite + runner (no API key) proving the spec's guarantees against the real engine — categories **governance / security / spec-fidelity** (clamp holds, gate blocks, memory tamper-evident, injection can't steer evolution, budgets stop, verification catches). |
 | `packages/tui` (`@personaxis/tui`) | **ASCII dashboard + render lib**. Its `visual`/`screen` modules back the REPL and `sigil`; the live dashboard is surfaced as `personaxis dash` (and `/dash` in the REPL) plus the standalone bin `personaxis-dash`. Reads `state.json` each frame, reflecting evolution in another process. |
 
 All six publish at the same lockstep version (currently `0.11.0`); the spec they implement is `spec_version 0.10.0`.
@@ -68,7 +68,7 @@ node packages/cli/dist/index.js --persona <path>   # enter the living REPL
 | `src/commands/decompile.ts` | `PERSONA.md` / `<slug>.md` -> proposed `personaxis.md` (LLM + validate) |
 | `src/commands/push.ts` / `src/commands/pull.ts` | Publish/fetch a persona version (spec + compiled doc + resource bundle) |
 | `src/commands/state.ts` | state.json init/mutate/show (envelope-clamped mutations + mutation_log) |
-| `src/commands/migrate.ts` | `0.5-to-0.6` and `0.6-to-0.7` codemods with written reports |
+| `src/commands/migrate.ts` | Codemods `0.5-to-0.6`, `0.6-to-0.7` (written reports) + additive bumps `0.7-to-0.8`, `0.8-to-0.9`, `0.9-to-0.10` |
 | `src/targets/claude-code.ts` | Placement adapter: Claude Code subagent + CLAUDE.md baseline |
 | `src/targets/codex.ts` | Placement adapter: Codex custom agent + AGENTS.md baseline |
 | `src/targets/placement.ts` | Converts the canonical compiled document into a platform's subagent convention |

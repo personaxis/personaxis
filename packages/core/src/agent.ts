@@ -46,6 +46,7 @@ import {
 } from "./memory.js";
 import { appendProcedural, readProcedural, readPreferences, readAutobiographical } from "./memory-kinds.js";
 import { loadPersona, readState, writeState } from "./persona.js";
+import { withStateLock } from "./lock.js";
 import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow } from "./context.js";
 
 export type ApprovalDecision = "approve" | "deny" | "always";
@@ -228,17 +229,20 @@ export class PersonaAgent {
           tags: [`steps:${step}`],
         });
       }
-      // Structured resumption pointer in state.json (not prose).
-      const st = readState(handle.statePath);
-      st.agent_session = {
-        active_task: outcome === "success" ? null : task,
-        started_at: st.agent_session?.started_at ?? new Date().toISOString(),
-        step_count: step,
-        token_count: tokens,
-        cost_usd: Number(costUsd.toFixed(4)),
-        stop_reason: stopReason,
-      };
-      writeState(handle.statePath, st);
+      // Structured resumption pointer in state.json (not prose). Locked: a
+      // concurrent tick/adjust must not lose this read→modify→write (F1.4).
+      withStateLock(handle.statePath, () => {
+        const st = readState(handle.statePath);
+        st.agent_session = {
+          active_task: outcome === "success" ? null : task,
+          started_at: st.agent_session?.started_at ?? new Date().toISOString(),
+          step_count: step,
+          token_count: tokens,
+          cost_usd: Number(costUsd.toFixed(4)),
+          stop_reason: stopReason,
+        };
+        writeState(handle.statePath, st);
+      });
     } catch {
       /* best-effort: persistence must never crash a run */
     }

@@ -18,6 +18,8 @@ import {
   readObservability,
   loadPersona,
   writeState,
+  readState,
+  withStateLock,
   ensureState,
   extractEnvelopes,
   applyMutation,
@@ -45,12 +47,41 @@ import {
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
+import { resolve as presolve, relative, isAbsolute } from "node:path";
+
+// ── Path confinement (ADR-011: --root) ──────────────────────────────────────
+// When a root is set (the stdio server ALWAYS sets one — the --root flag or its
+// cwd default), every persona/skill path the MCP client supplies must resolve
+// inside it: an MCP client must not be able to read or mutate arbitrary
+// filesystem personas. Library/test embedders that call service functions
+// directly without setRoot() keep plain path resolution.
+let confineRoot: string | null = null;
+
+export function setRoot(dir: string): void {
+  confineRoot = presolve(dir);
+}
+
+export function confine(p: string): string {
+  const abs = presolve(confineRoot ?? process.cwd(), p);
+  if (confineRoot) {
+    const rel = relative(confineRoot, abs);
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+      throw new Error(
+        `persona path escapes the server root (${confineRoot}): '${p}'. ` +
+          `Start personaxis-mcp with --root <dir> to serve personas outside the current directory.`,
+      );
+    }
+  }
+  return abs;
+}
 
 export function compiledDocument(persona: string): string {
+  persona = confine(persona);
   return loadPersona(persona).body;
 }
 
 export function stateSummary(persona: string): unknown {
+  persona = confine(persona);
   const h = loadPersona(persona);
   const st = ensureState(h);
   return {
@@ -63,6 +94,7 @@ export function stateSummary(persona: string): unknown {
 }
 
 export function envelopes(persona: string): unknown {
+  persona = confine(persona);
   const h = loadPersona(persona);
   const { envelopes, hardEnforcedVirtues } = extractEnvelopes(h.frontmatter);
   return { mutable_fields: envelopes, hard_enforced_virtues: hardEnforcedVirtues };
@@ -74,16 +106,22 @@ export function adjustState(
   delta: number,
   reason: string,
 ): unknown {
+  persona = confine(persona);
   const h = loadPersona(persona);
   const env = extractEnvelopes(h.frontmatter);
-  const state = ensureState(h);
-  const result = applyMutation(state, env.envelopes, {
-    field,
-    delta,
-    reason,
-    actor: "actor-llm",
+  ensureState(h);
+  // Locked read→apply→write: a concurrent tick/serve must not lose this mutation (F1.4).
+  const result = withStateLock(h.statePath, () => {
+    const state = readState(h.statePath);
+    const r = applyMutation(state, env.envelopes, {
+      field,
+      delta,
+      reason,
+      actor: "actor-llm",
+    });
+    writeState(h.statePath, state);
+    return r;
   });
-  writeState(h.statePath, state);
   return {
     field,
     from: result.from,
@@ -99,6 +137,7 @@ export async function observe(
   observation: string,
   source: ProvenanceSource,
 ): Promise<unknown> {
+  persona = confine(persona);
   const events: LoopEvent[] = [];
   const handle = loadPersona(persona);
   ensureState(handle); // seed state.json if missing
@@ -125,6 +164,7 @@ export async function observe(
  * PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL) for tool-calling.
  */
 export async function agentRun(persona: string, task: string, maxSteps = 12): Promise<unknown> {
+  persona = confine(persona);
   const handle = loadPersona(persona);
   const fm = handle.frontmatter as Record<string, unknown>;
   const llm = resolveModel({ personaPath: persona, frontmatter: fm });
@@ -156,6 +196,7 @@ export async function agentRun(persona: string, task: string, maxSteps = 12): Pr
 }
 
 export function audit(persona: string): unknown {
+  persona = confine(persona);
   const h = loadPersona(persona);
   const st = ensureState(h);
   const chain = verifyMemoryChain(persona);
@@ -171,6 +212,7 @@ export function audit(persona: string): unknown {
 
 /** Honor deletion_policy.user_request_supported: tombstone a memory entry. */
 export function forget(persona: string, targetHash: string, reason: string): unknown {
+  persona = confine(persona);
   const entry = tombstoneMemory(persona, targetHash, reason);
   return { tombstoned: targetHash, by: entry.hash, live_entries: readLiveMemory(persona).length };
 }
@@ -181,6 +223,7 @@ export function proposeEdit(
   toValue: unknown,
   rationale: string,
 ): unknown {
+  persona = confine(persona);
   const h = loadPersona(persona);
   const mode = readMode(h.frontmatter as Record<string, unknown>);
   const result = proposeSelfEdit(persona, { targetPath, toValue, rationale, sources: ["user"] }, mode);
@@ -189,10 +232,12 @@ export function proposeEdit(
 }
 
 export function listProposals(persona: string): unknown {
+  persona = confine(persona);
   return { proposals: proposals(persona), active_overlay: activeOverlay(persona) };
 }
 
 export function decideEdit(persona: string, id: string, decision: "approve" | "reject"): unknown {
+  persona = confine(persona);
   if (decision === "approve") {
     const applied = applySelfEdit(persona, id, "mcp-host") as Record<string, unknown>;
     return { ...applied, recompile_pending: readRecompilePending(persona).pending };
@@ -206,12 +251,14 @@ export function decideEdit(persona: string, id: string, decision: "approve" | "r
  * compile). MCP can't run an LLM, so the host calls `personaxis compile` when this is true.
  */
 export function recompileStatus(persona: string): unknown {
+  persona = confine(persona);
   const s = readRecompilePending(persona);
   return { recompile_pending: s.pending, reason: s.reason ?? null, since: s.ts ?? null };
 }
 
 /** Security-review a skill before use (supply-chain defense). */
 export function skillReview(skillPath: string): unknown {
+  skillPath = confine(skillPath);
   return reviewSkill(skillPath);
 }
 
@@ -236,7 +283,7 @@ export function evaluateCmd(
   persona?: string,
 ): unknown {
   const policy = persona
-    ? policyFromFrontmatter(loadPersona(persona).frontmatter, process.cwd())
+    ? policyFromFrontmatter(loadPersona(confine(persona)).frontmatter, process.cwd())
     : { ...DEFAULT_POLICY, sandbox, approval, workspaceRoot: process.cwd() };
   return evaluateCommand(command, policy);
 }

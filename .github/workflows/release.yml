@@ -27,15 +27,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - run: pnpm run test
-      # Publish in dependency order (core first). pnpm rewrites workspace:* to the
-      # concrete version on publish. --no-git-checks since CI is detached at the tag.
+      # Recursive publish resolves the workspace graph topologically (core → tui → cli, and
+      # includes sdk — the old hand-ordered loop omitted it and swallowed failures). pnpm
+      # rewrites workspace:* to the concrete version on publish. --no-git-checks since CI is
+      # detached at the tag. A failed publish fails the job — no silent skips.
       - name: Publish packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          for pkg in core cli mcp tui evals; do
-            (cd packages/$pkg && pnpm publish --access public --no-git-checks) || echo "::warning::publish skipped/failed for $pkg"
-          done
+          # npm provenance attestation (id-token: write is granted above); ignored by
+          # registries/tooling that don't support it.
+          NPM_CONFIG_PROVENANCE: "true"
+        run: pnpm -r publish --access public --no-git-checks
 
   binaries:
     runs-on: ${{ matrix.os }}

@@ -15,18 +15,27 @@ Point your Hermes profile at the generated `.hermes/SOUL.md`, or copy it to `~/.
 the compiled qualitative identity (same spec as `PERSONA.md`, one source → two views). Hermes also
 auto-discovers `AGENTS.md`/`CLAUDE.md`, so a `@PERSONA.md` reference there works too.
 
-## 2. Learning — the on_session_end hook (on your model)
+## 2. Learning — the `agent:end` hook (per turn, on your model)
 
 ```bash
-personaxis hooks install --host hermes            # → ~/.hermes/config.yaml (hooks.on_session_end)
+personaxis hooks install --host hermes   # → ~/.hermes/hooks/personaxis-observe/{HOOK.yaml, handler.py}
 ```
 
-Hermes fires `on_session_end`, so this runs `personaxis observe --stdin` **once per session** (not per
-turn — Hermes doesn't expose a per-turn event carrying the conversation). It runs a governed tick on
-**your** model and recompiles `SOUL.md` on drift. Remove it with `hooks uninstall --host hermes`.
+Hermes discovers hooks from `~/.hermes/hooks/<name>/` — a `HOOK.yaml` (metadata + an `events` list)
+plus a Python `handler.py` exposing `async def handle(event_type, context)` (see Hermes'
+`gateway/hooks.py`). The installer subscribes to **`agent:end`, which fires per turn** and carries
+platform/user/session ids plus the message and response — so every turn feeds one governed tick on
+**your** model via `personaxis observe --stdin`, recompiling `SOUL.md` on drift. Hermes catches
+handler errors and our handler is additionally fire-and-forget with a 60s timeout, so a slow tick
+never blocks the Hermes pipeline. Hermes reloads `SOUL.md` fresh each message, so a recompile takes
+effect immediately — no restart. Remove with `hooks uninstall --host hermes`.
 
-> For *per-turn* / on-demand learning on Hermes, use the **MCP server** (Hermes supports MCP servers
-> per profile): the agent calls `persona_observe`/`persona_state`/… when it chooses to.
+Other events you can add to the `HOOK.yaml` `events:` list if you want coarser signals:
+`session:start`, `session:end` (fires on `/new` or `/reset`), `session:reset`, `agent:start`,
+`agent:step`, `gateway:startup`, `command:*`.
+
+> Note: older versions of this installer wrote a `hooks.on_session_end` stanza into
+> `~/.hermes/config.yaml`. Hermes never read that shape; `hooks install`/`uninstall` now clean it up.
 
 ## 3. On-demand tools — MCP (recommended for Hermes)
 

@@ -6,7 +6,11 @@
  *
  *   claude-code  → .claude/settings.json      Stop hook (project or ~/.claude with --global)
  *   codex        → .codex/hooks.json          Stop hook (project or ~/.codex with --global)
- *   hermes       → ~/.hermes/config.yaml       hooks.on_session_end
+ *   hermes       → ~/.hermes/hooks/<name>/    HOOK.yaml (events: [agent:end]) + handler.py — Hermes'
+ *                  real hook mechanism (gateway/hooks.py); agent:end fires PER TURN with the
+ *                  message/response context. (Older installs wrote a hooks.on_session_end stanza
+ *                  into ~/.hermes/config.yaml — that shape never existed in Hermes; install/uninstall
+ *                  clean it up.)
  *   openclaw     → ~/.openclaw/hooks/<name>/   HOOK.md + handler.ts (command:stop), then enable it
  *
  * Idempotent: install merges without clobbering existing hooks; uninstall removes only ours.
@@ -70,33 +74,81 @@ function uninstallJsonStopHook(path: string): { path: string; removed: boolean }
   return { path, removed: JSON.stringify(s.hooks.Stop) !== before };
 }
 
-// ── Hermes: ~/.hermes/config.yaml → hooks.on_session_end ─────────────────────────────────────
+// ── Hermes: ~/.hermes/hooks/personaxis-observe/{HOOK.yaml, handler.py} ────────────────────────
+// Hermes' real hook mechanism (hermes-agent gateway/hooks.py): hooks are discovered from
+// ~/.hermes/hooks/<name>/ with a HOOK.yaml (metadata + `events` list) and a Python
+// `handler.py` exposing `async def handle(event_type, context)`. Events include
+// gateway:startup, session:start/end/reset, agent:start/step/end, command:*.
+// `agent:end` fires PER TURN and carries platform/user_id/session_id + the message and
+// response — the right feed for per-turn learning (session:end only fires on /new / /reset).
+// Handler errors are caught by Hermes and never block its pipeline; our handler is
+// additionally fire-and-forget with a timeout.
 function hermesConfigPath(): string {
   return join(homedir(), ".hermes", "config.yaml");
 }
-type HermesConfig = { hooks?: Record<string, Array<{ command: string; timeout?: number }>> } & Record<string, unknown>;
-function installHermes(): { path: string; already: boolean } {
+function hermesHookDir(): string {
+  return join(homedir(), ".hermes", "hooks", "personaxis-observe");
+}
+const HERMES_HOOK_YAML = `name: personaxis-observe
+description: "Feed each turn to personaxis (governed tick on your own model; recompiles SOUL.md on drift)."
+events:
+  - agent:end
+`;
+const HERMES_HANDLER_PY = `# personaxis-observe — Hermes hook handler (installed by \`personaxis hooks install --host hermes\`).
+# Pipes each turn (agent:end) to \`${OBSERVE_CMD}\`: one governed Living-Loop tick on YOUR
+# configured model — no Hermes tokens spent. Fire-and-forget: never blocks or raises into Hermes.
+import asyncio
+import json
+
+
+async def handle(event_type, context):
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "personaxis", "observe", "--stdin", "--source", "user",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        payload = json.dumps({"event": event_type, "context": context}, default=str).encode()
+        await asyncio.wait_for(proc.communicate(payload), timeout=60)
+    except Exception:
+        pass  # best-effort: the persona tick must never break the Hermes pipeline
+`;
+type HermesLegacyConfig = { hooks?: Record<string, Array<{ command?: string; timeout?: number }>> } & Record<string, unknown>;
+/** Remove the stanza an older (incorrect) installer wrote into ~/.hermes/config.yaml. */
+function cleanLegacyHermesConfig(): boolean {
   const path = hermesConfigPath();
-  const cfg = (existsSync(path) ? (yaml.load(readFileSync(path, "utf-8")) as HermesConfig) : {}) ?? {};
-  cfg.hooks = cfg.hooks ?? {};
-  cfg.hooks.on_session_end = cfg.hooks.on_session_end ?? [];
-  if (cfg.hooks.on_session_end.some((h) => h.command?.includes(MARKER))) return { path, already: true };
-  cfg.hooks.on_session_end.push({ command: OBSERVE_CMD, timeout: 60 });
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, yaml.dump(cfg), "utf-8");
-  return { path, already: false };
+  if (!existsSync(path)) return false;
+  try {
+    const cfg = (yaml.load(readFileSync(path, "utf-8")) as HermesLegacyConfig) ?? {};
+    const arr = cfg.hooks?.on_session_end;
+    if (!arr) return false;
+    const kept = arr.filter((h) => !h.command?.includes(MARKER));
+    if (kept.length === arr.length) return false;
+    if (kept.length === 0) delete cfg.hooks!.on_session_end;
+    else cfg.hooks!.on_session_end = kept;
+    if (cfg.hooks && Object.keys(cfg.hooks).length === 0) delete cfg.hooks;
+    writeFileSync(path, yaml.dump(cfg), "utf-8");
+    return true;
+  } catch {
+    return false; // never let legacy cleanup break the install
+  }
+}
+function installHermes(): { path: string; already: boolean } {
+  const dir = hermesHookDir();
+  const already = existsSync(join(dir, "HOOK.yaml"));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "HOOK.yaml"), HERMES_HOOK_YAML, "utf-8");
+  writeFileSync(join(dir, "handler.py"), HERMES_HANDLER_PY, "utf-8");
+  cleanLegacyHermesConfig();
+  return { path: dir, already };
 }
 function uninstallHermes(): { path: string; removed: boolean } {
-  const path = hermesConfigPath();
-  if (!existsSync(path)) return { path, removed: false };
-  const cfg = (yaml.load(readFileSync(path, "utf-8")) as HermesConfig) ?? {};
-  const arr = cfg.hooks?.on_session_end;
-  if (!arr) return { path, removed: false };
-  const kept = arr.filter((h) => !h.command?.includes(MARKER));
-  const removed = kept.length !== arr.length;
-  cfg.hooks!.on_session_end = kept;
-  writeFileSync(path, yaml.dump(cfg), "utf-8");
-  return { path, removed };
+  const dir = hermesHookDir();
+  const hadDir = existsSync(dir);
+  if (hadDir) rmSync(dir, { recursive: true, force: true });
+  const hadLegacy = cleanLegacyHermesConfig();
+  return { path: dir, removed: hadDir || hadLegacy };
 }
 
 // ── openclaw: ~/.openclaw/hooks/personaxis-observe/{HOOK.md, handler.ts} ──────────────────────
@@ -151,7 +203,7 @@ export function installHook(host: Host, global: boolean): { path: string; alread
     return { ...installJsonStopHook(jsonStopHookPath(host, global)), extra: "" };
   }
   if (host === "hermes") {
-    return { ...installHermes(), extra: " · Hermes fires on_session_end (per session; use the MCP server for on-demand tools too)" };
+    return { ...installHermes(), extra: " · fires on agent:end (per turn) via ~/.hermes/hooks/personaxis-observe" };
   }
   return { ...installOpenclaw(), extra: " · enable it with: openclaw hooks enable personaxis-observe" };
 }
@@ -199,4 +251,4 @@ export const hooksCommand = new Command("hooks")
   .addCommand(uninstallCommand);
 
 // Exported for tests.
-export { jsonStopHookPath, installJsonStopHook, hasJsonStopHook, hermesConfigPath, openclawHookDir, OBSERVE_CMD };
+export { jsonStopHookPath, installJsonStopHook, hasJsonStopHook, hermesConfigPath, hermesHookDir, openclawHookDir, OBSERVE_CMD };
