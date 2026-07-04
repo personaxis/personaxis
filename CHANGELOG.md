@@ -23,6 +23,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   zustand vanilla store with frame-batched tokens. `personaxis dash` interactive path now renders
   through Ink.
 
+### Fixed — FR.V verification findings
+- **`personaxis-dash` bin moved to a dedicated entry** (`dist/bin.js`): the main-module guard in
+  the tui barrel (`import.meta.url === argv[1]`) fires spuriously for every module inside a
+  bun-compiled binary (shared virtual root), launching the dashboard on EVERY CLI invocation.
+  Rule adopted: bins get dedicated entry files, never barrel guards.
+- **bun-compile verified on 3 targets**: Windows x64 built and executed (`--version`, golden CMO
+  `validate` exit 0, `dash --once`); linux-x64 + darwin-arm64 cross-compiled. Packaging note:
+  ink's optional `react-devtools-core` must be bundled (root devDependency) — `--external`
+  fails eagerly inside the binary.
+
 ### Added — engine extensibility & safety (FR.4–FR.10)
 - **Hooks v2 (shell-out)**: `.personaxis/hooks.json` runs user executables on 6 events
   (PreToolUse/PostToolUse/UserPromptSubmit/Stop/SessionStart/SessionEnd) — JSON payload on stdin;

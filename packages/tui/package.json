@@ -12,7 +12,7 @@
     "./ink": "./dist/ink.js"
   },
   "bin": {
-    "personaxis-dash": "dist/index.js"
+    "personaxis-dash": "dist/bin.js"
   },
   "files": [
     "dist"

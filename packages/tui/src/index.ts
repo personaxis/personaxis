@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * @personaxis/tui — the living dashboard (`personaxis-dash`).
  *
@@ -12,7 +11,6 @@
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import chalk from "chalk";
 import {
   loadPersona,
@@ -112,14 +110,13 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
   console.log(chalk.dim("  dashboard closed.\n"));
 }
 
-async function main(): Promise<void> {
+/**
+ * `personaxis-dash` standalone entry — used by bin.ts ONLY. The old
+ * `import.meta.url === argv[1]` main-module guard lived here and evaluated
+ * TRUE for every module inside a bun-compiled binary (all modules share the
+ * virtual root), spuriously launching the dashboard on EVERY CLI invocation.
+ * Bun-compile rule: a bin gets a dedicated entry file, never a barrel guard.
+ */
+export async function dashMain(): Promise<void> {
   await runDashboard(parseArgs(process.argv.slice(2)));
-}
-
-const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
-if (import.meta.url === entry) {
-  main().catch((err) => {
-    console.error("personaxis-dash fatal:", err);
-    process.exit(1);
-  });
 }
