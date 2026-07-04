@@ -28,12 +28,48 @@ import {
 export interface ToolSpec {
   name: string;
   description: string;
-  /** JSON Schema for the tool's arguments object. */
+  /** JSON Schema for the tool's arguments object — the SINGLE schema source
+   * (native function-calling, constrained-JSON fallback, and validateToolArgs
+   * all read it; FR.7 decision: no parallel Zod declaration). */
   parameters: Record<string, unknown>;
+  /** FR.7: true when the tool cannot change any state — read-only tools may run
+   * in PARALLEL; writers run serially (Claude Code's scheduling rule). */
+  isReadOnly: boolean;
+  /** FR.7: true when concurrent invocations of THIS tool cannot interfere. */
+  isConcurrencySafe: boolean;
   /** Decide allow | ask | deny for these args under the policy. Pure. */
   gate(args: Record<string, unknown>, policy: Policy): CommandVerdict;
   /** Perform the action; returns a text observation for the model. */
   execute(args: Record<string, unknown>, policy: Policy): Promise<string>;
+}
+
+/**
+ * FR.7: validate args against the tool's declared JSON Schema (required keys +
+ * primitive types — the registry's schemas are flat by design). Returns the
+ * problems found; empty = valid. Runs BEFORE the gate, so a malformed call is
+ * an input error, never a policy question.
+ */
+export function validateToolArgs(spec: ToolSpec, args: Record<string, unknown>): string[] {
+  const problems: string[] = [];
+  const schema = spec.parameters as {
+    required?: string[];
+    properties?: Record<string, { type?: string }>;
+    additionalProperties?: boolean;
+  };
+  for (const k of schema.required ?? []) {
+    if (!(k in args)) problems.push(`missing required arg '${k}'`);
+  }
+  for (const [k, v] of Object.entries(args)) {
+    const prop = schema.properties?.[k];
+    if (!prop) {
+      if (schema.additionalProperties === false) problems.push(`unknown arg '${k}'`);
+      continue;
+    }
+    if (prop.type && typeof v !== prop.type) {
+      problems.push(`arg '${k}' must be ${prop.type}, got ${typeof v}`);
+    }
+  }
+  return problems;
 }
 
 const READ_CLASS: CommandClass = { writesFiles: false, network: false, destructive: false, escapesWorkspace: false };
@@ -54,6 +90,8 @@ const str = (a: Record<string, unknown>, k: string): string => (typeof a[k] === 
 export const TOOLS: ToolSpec[] = [
   {
     name: "run_command",
+    isReadOnly: false,
+    isConcurrencySafe: false,
     description:
       "Run a shell command in the workspace and return its stdout/stderr. Use the command appropriate to the host OS (provided in context).",
     parameters: {
@@ -74,6 +112,8 @@ export const TOOLS: ToolSpec[] = [
   },
   {
     name: "read_file",
+    isReadOnly: true,
+    isConcurrencySafe: true,
     description: "Read a UTF-8 text file relative to the workspace root.",
     parameters: {
       type: "object",
@@ -89,6 +129,8 @@ export const TOOLS: ToolSpec[] = [
   },
   {
     name: "list_dir",
+    isReadOnly: true,
+    isConcurrencySafe: true,
     description: "List the entries of a directory relative to the workspace root.",
     parameters: {
       type: "object",
@@ -104,6 +146,8 @@ export const TOOLS: ToolSpec[] = [
   },
   {
     name: "write_file",
+    isReadOnly: false,
+    isConcurrencySafe: false,
     description: "Create or overwrite a text file (relative to the workspace root) with the given content.",
     parameters: {
       type: "object",
@@ -119,6 +163,8 @@ export const TOOLS: ToolSpec[] = [
   },
   {
     name: "edit_file",
+    isReadOnly: false,
+    isConcurrencySafe: false,
     description: "Replace the first occurrence of `find` with `replace` in an existing file.",
     parameters: {
       type: "object",
@@ -134,6 +180,8 @@ export const TOOLS: ToolSpec[] = [
   },
   {
     name: "finish",
+    isReadOnly: true,
+    isConcurrencySafe: true,
     description: "Call this when the task is complete. Provide a short summary of what was done.",
     parameters: {
       type: "object",

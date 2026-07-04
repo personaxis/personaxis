@@ -9,6 +9,7 @@
  * *proposes* a tool call; the agent loop gates + executes.
  */
 
+import { repairToolArgs } from "./tool-repair.js";
 import type { ToolSpec } from "./tools/registry.js";
 
 export interface ChatMessage {
@@ -83,7 +84,10 @@ function parseArgs(raw: string): Record<string, unknown> {
     const v = JSON.parse(raw || "{}");
     return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
   } catch {
-    return {};
+    // FR.10 (OpenClaw port): salvage almost-JSON before giving up — a repaired
+    // call saves a full model round-trip on weaker tool-callers.
+    const r = repairToolArgs(raw);
+    return r.ok && r.value ? r.value : {};
   }
 }
 
@@ -204,7 +208,12 @@ async function reactFallback(
         parsed = JSON.parse(content);
       } catch {
         const m = content.match(/\{[\s\S]*\}/);
-        parsed = m ? JSON.parse(m[0]) : {};
+        try {
+          parsed = m ? JSON.parse(m[0]) : {};
+        } catch {
+          const r = repairToolArgs(m ? m[0] : content); // FR.10 repair pass
+          parsed = r.ok && r.value ? (r.value as typeof parsed) : {};
+        }
       }
       if (!parsed.tool) {
         return { text: parsed.thought ?? content.slice(0, 200), toolCalls: [], usedFallback: true, usage };

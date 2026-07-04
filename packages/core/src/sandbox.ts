@@ -31,6 +31,17 @@ export interface Policy {
   /** Regexes that force-deny a matching command (highest precedence). */
   deny: string[];
   workspaceRoot: string;
+  /**
+   * FR.8: additional roots writable under `workspace-write` (the workspaceRoot
+   * is always one). Lets a host grant, e.g., a build output dir outside the repo
+   * without escalating to danger-full-access.
+   */
+  writableRoots?: string[];
+  /**
+   * FR.8: per-category approval overrides — finer than the single global
+   * `approval` knob (e.g. network commands always ask while plain writes flow).
+   */
+  approvals?: Partial<Record<"network" | "destructive" | "write", ApprovalMode>>;
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -40,6 +51,48 @@ export const DEFAULT_POLICY: Policy = {
   deny: [],
   workspaceRoot: process.cwd(),
 };
+
+/**
+ * FR.8 (Codex protocol.rs anti-escalation): subpaths that stay PROTECTED even
+ * inside a writable root. `.git/hooks` = arbitrary-code-execution escalation
+ * (a write there runs on the user's next git command); `.personaxis` = the
+ * persona's identity artifacts — raw file writes would bypass the governance
+ * ledger (self-edits are the sanctioned path). A deny here is NOT overridable
+ * by the allow-list (deny precedence).
+ */
+export const PROTECTED_SUBPATHS = [".git/hooks", ".personaxis"] as const;
+
+/** Named permission profiles (FR.8) — one word instead of four knobs. */
+export const PERMISSION_PROFILES = {
+  strict: { sandbox: "read-only", approval: "untrusted" },
+  standard: { sandbox: "workspace-write", approval: "on-request" },
+  trusted: { sandbox: "workspace-write", approval: "on-failure" },
+  yolo: { sandbox: "danger-full-access", approval: "never" },
+} as const satisfies Record<string, Pick<Policy, "sandbox" | "approval">>;
+
+export type PermissionProfile = keyof typeof PERMISSION_PROFILES;
+
+/** Build a Policy from a named profile (+ optional overrides). */
+export function policyFromProfile(
+  profile: PermissionProfile,
+  overrides: Partial<Policy> = {},
+): Policy {
+  return { ...DEFAULT_POLICY, ...PERMISSION_PROFILES[profile], ...overrides };
+}
+
+/** True when `p` lands inside a protected subpath of any writable root. */
+export function isProtectedPath(p: string, policy: Policy): boolean {
+  const roots = [policy.workspaceRoot, ...(policy.writableRoots ?? [])];
+  const abs = isAbsolute(p) ? normalize(p) : normalize(`${policy.workspaceRoot}/${p}`);
+  for (const root of roots) {
+    for (const sub of PROTECTED_SUBPATHS) {
+      const guard = normalize(`${root}/${sub}`);
+      const rel = relative(guard, abs);
+      if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * v0.8: build a Policy from a persona's declared `permissions` block, so a persona
@@ -161,9 +214,13 @@ export function evaluateCommand(cmd: string, policy: Policy = DEFAULT_POLICY): C
     return { decision: "allow", reason: "matches allow-list", class: klass };
   }
 
-  // Approval mode governs the residual risk.
+  // Approval mode governs the residual risk. FR.8: a per-category override
+  // (approvals.network/destructive/write) takes precedence over the global
+  // knob for commands of that class — most-specific-first, strictest-wins
+  // when a command falls in several categories.
   const risky = klass.writesFiles || klass.network || klass.destructive || klass.escapesWorkspace;
-  switch (policy.approval) {
+  const effective = effectiveApproval(policy, klass);
+  switch (effective) {
     case "never":
       return { decision: "allow", reason: "approval=never", class: klass };
     case "on-failure":
@@ -180,6 +237,23 @@ export function evaluateCommand(cmd: string, policy: Policy = DEFAULT_POLICY): C
   }
 }
 
+/** Strictness order for approval modes (stricter = later). */
+const APPROVAL_STRICTNESS: ApprovalMode[] = ["never", "on-failure", "on-request", "untrusted"];
+
+/** FR.8: resolve the approval mode for a classified command (strictest category wins). */
+function effectiveApproval(policy: Policy, klass: CommandClass): ApprovalMode {
+  const candidates: ApprovalMode[] = [policy.approval];
+  const a = policy.approvals;
+  if (a) {
+    if (klass.network && a.network) candidates.push(a.network);
+    if (klass.destructive && a.destructive) candidates.push(a.destructive);
+    if (klass.writesFiles && a.write) candidates.push(a.write);
+  }
+  return candidates.reduce((strictest, m) =>
+    APPROVAL_STRICTNESS.indexOf(m) > APPROVAL_STRICTNESS.indexOf(strictest) ? m : strictest,
+  );
+}
+
 /**
  * Decide allow | ask | deny for a FILE WRITE/EDIT under a policy. Mirrors
  * evaluateCommand's precedence but for a path target (the agent's write_file /
@@ -191,13 +265,23 @@ export function evaluateFileWrite(
   policy: Policy = DEFAULT_POLICY,
   opts: { destructive?: boolean } = {},
 ): CommandVerdict {
+  // FR.8: writable under workspace-write ⇔ inside ANY writable root.
+  const roots = [policy.workspaceRoot, ...(policy.writableRoots ?? [])];
   const klass: CommandClass = {
     writesFiles: true,
     network: false,
     destructive: Boolean(opts.destructive),
-    escapesWorkspace: pathEscapesWorkspace(targetPath, policy.workspaceRoot),
+    escapesWorkspace: roots.every((r) => pathEscapesWorkspace(targetPath, r)),
   };
 
+  // Anti-escalation guard FIRST — not even the allow-list overrides it.
+  if (isProtectedPath(targetPath, policy)) {
+    return {
+      decision: "deny",
+      reason: "protected subpath (.git/hooks = code-execution escalation; .personaxis = governed identity artifacts — use the sanctioned edit tools)",
+      class: klass,
+    };
+  }
   if (matchesAny(policy.deny, targetPath)) {
     return { decision: "deny", reason: "path matches deny-list", class: klass };
   }

@@ -29,6 +29,7 @@ import {
   detectMemoryAnomalies,
   readMode,
   displayName,
+  ApprovalBroker,
   type PersonaHandle,
   type LoopEvent,
 } from "@personaxis/core";
@@ -48,6 +49,8 @@ export class EngineHost {
   private readonly server: ProtocolServer;
   private handle: PersonaHandle;
   private interrupted = false;
+  /** FR.10: approvals outlive a render cycle and can be answered by ANY front. */
+  readonly approvals = new ApprovalBroker();
 
   constructor(private readonly personaPath: string) {
     this.handle = loadPersona(personaPath);
@@ -74,6 +77,31 @@ export class EngineHost {
 
   private broadcast(event: EventMsg): void {
     this.server.broadcast(event);
+  }
+
+  /**
+   * FR.10: open an approval — broadcast `approval.requested` to every front and
+   * await whichever answers (or the fail-closed timeout). The agent loop (F3)
+   * passes this as its onApproval, replacing the non-interactive auto-deny.
+   */
+  requestApproval(
+    tool: string,
+    args: Record<string, unknown>,
+    reason: string,
+    timeoutMs = 120_000,
+  ): Promise<"allow" | "deny"> {
+    const { decision } = this.approvals.request(tool, args, reason, {
+      timeoutMs,
+      onRequest: (r) =>
+        this.broadcast({
+          event: "approval.requested",
+          requestId: r.requestId,
+          tool: r.tool,
+          args: r.args,
+          reason: r.reason,
+        }),
+    });
+    return decision;
   }
 
   private snapshot(): void {
@@ -139,10 +167,12 @@ export class EngineHost {
       case "interrupt":
         this.interrupted = true;
         return { ok: true };
-      case "approval":
-        // The approval FSM (FR.10) resolves pending requests; no engine op yet
-        // emits approval.requested from this host — the agent loop lands in F3.
-        return { ok: false, error: `no pending approval with id '${op.requestId}'` };
+      case "approval": {
+        const decided = this.approvals.decide(op.requestId, op.decision);
+        return decided
+          ? { ok: true }
+          : { ok: false, error: `no pending approval with id '${op.requestId}'` };
+      }
       case "shutdown":
         setImmediate(() => void this.close());
         return { ok: true };
