@@ -20,6 +20,9 @@ importers:
       '@personaxis/core':
         specifier: workspace:*
         version: link:../core
+      '@personaxis/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@personaxis/spec':
         specifier: workspace:*
         version: link:../spec
@@ -119,6 +122,22 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.19.19)
+
+  packages/protocol:
+    dependencies:
+      '@personaxis/core':
+        specifier: workspace:*
+        version: link:../core
+      vscode-jsonrpc:
+        specifier: ^8.2.1
+        version: 8.2.1
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
         version: 3.2.6(@types/node@22.19.19)
 
   packages/sdk:
@@ -1326,6 +1345,10 @@ packages:
       jsdom:
         optional: true
 
+  vscode-jsonrpc@8.2.1:
+    resolution: {integrity: sha512-kdjOSJ2lLIn7r1rtrMbbNCHjyMPfRnowdKjBQ+mGq6NAW5QY2bEZC/khaC5OR8svbbjvLEaIXkOq45e2X9BIbQ==}
+    engines: {node: '>=14.0.0'}
+
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
     engines: {node: '>= 8'}
@@ -2393,6 +2416,8 @@ snapshots:
       - terser
       - tsx
       - yaml
+
+  vscode-jsonrpc@8.2.1: {}
 
   which@2.0.2:
     dependencies:

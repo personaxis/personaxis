@@ -1,0 +1,25 @@
+{
+  "name": "@personaxis/protocol",
+  "version": "0.11.0",
+  "description": "The UI↔engine seam for Personaxis: typed operations (SQ) and events (EQ) as discriminated unions, carried over JSON-RPC 2.0 on node:net (Unix domain sockets + Windows named pipes, one API). The engine never renders; a front-end never mutates state directly — everything crosses this boundary.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@personaxis/core": "workspace:*",
+    "vscode-jsonrpc": "^8.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
