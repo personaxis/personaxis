@@ -13,6 +13,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { ChatMessage } from "./tool-calling.js";
 
@@ -39,6 +40,10 @@ export interface SessionTurn {
   ts: string;
   /** Who produced an assistant/note turn (address; "(root)" for the root). */
   from?: string;
+  /** FR.6 threading (Claude Code's transcript shape): this turn's stable id. */
+  uuid?: string;
+  /** FR.6: the uuid this turn replies to — makes branches/regenerations explicit. */
+  parent_uuid?: string;
 }
 
 export interface SessionSummary {
@@ -74,22 +79,34 @@ export function ensureSession(personaPath: string, header: Omit<SessionHeader, "
   writeFileSync(p, JSON.stringify({ type: "header", ...header }) + "\n", "utf-8");
 }
 
-/** Append one turn. Requires the session to already exist (call ensureSession first). */
+/** Append one turn. Requires the session to already exist (call ensureSession first).
+ * Returns the turn's uuid (generated when not supplied) for parent_uuid threading. */
 export function appendTurn(
   personaPath: string,
   id: string,
-  turn: { role: SessionTurn["role"]; content: string; from?: string; ts?: string },
-): void {
+  turn: {
+    role: SessionTurn["role"];
+    content: string;
+    from?: string;
+    ts?: string;
+    uuid?: string;
+    parentUuid?: string;
+  },
+): string | undefined {
   const p = sessionFile(personaPath, id);
-  if (!existsSync(p)) return;
+  if (!existsSync(p)) return undefined;
+  const uuid = turn.uuid ?? randomUUID();
   const entry: SessionTurn = {
     type: "turn",
     ts: turn.ts ?? new Date().toISOString(),
     role: turn.role,
     content: turn.content,
+    uuid,
+    ...(turn.parentUuid ? { parent_uuid: turn.parentUuid } : {}),
     ...(turn.from ? { from: turn.from } : {}),
   };
   appendFileSync(p, JSON.stringify(entry) + "\n", "utf-8");
+  return uuid;
 }
 
 function parseRows(p: string): Array<SessionHeader | SessionTurn> {

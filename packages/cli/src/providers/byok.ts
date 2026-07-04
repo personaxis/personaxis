@@ -1,15 +1,17 @@
 import type { Provider, ProviderRunResult } from "./types.js";
 import type { PersonaxisConfig } from "../config.js";
+import { resolveCredential } from "../credentials.js";
 
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1";
 
 async function runAnthropic(prompt: string, model: string): Promise<ProviderRunResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = resolveCredential("ANTHROPIC_API_KEY");
   if (!apiKey) {
     throw new Error(
       `BYOK provider is configured for Anthropic but ANTHROPIC_API_KEY is not set.\n` +
-        `Export it in your shell - personaxis never stores API keys in .personaxis/config.json.`,
+        `Export it in your shell or store it with \`personaxis credential set ANTHROPIC_API_KEY\` - ` +
+        `personaxis never stores API keys in .personaxis/config.json.`,
     );
   }
 
@@ -39,11 +41,12 @@ async function runAnthropic(prompt: string, model: string): Promise<ProviderRunR
 }
 
 async function runOpenAI(prompt: string, model: string): Promise<ProviderRunResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = resolveCredential("OPENAI_API_KEY");
   if (!apiKey) {
     throw new Error(
       `BYOK provider is configured for OpenAI but OPENAI_API_KEY is not set.\n` +
-        `Export it in your shell - personaxis never stores API keys in .personaxis/config.json.`,
+        `Export it in your shell or store it with \`personaxis credential set OPENAI_API_KEY\` - ` +
+        `personaxis never stores API keys in .personaxis/config.json.`,
     );
   }
 

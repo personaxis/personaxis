@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { program } from "commander";
 import { version } from "./generated/assets.js";
+import { checkForUpdate } from "./update-check.js";
 import { initCommand } from "./commands/init.js";
 import { validateCommand } from "./commands/validate.js";
 import { compileCommand } from "./commands/compile.js";
@@ -17,6 +18,7 @@ import { stateCommand } from "./commands/state.js";
 import { improveCommand } from "./commands/improve.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { configCommand } from "./commands/config.js";
+import { credentialCommand } from "./commands/credential.js";
 import { decompileCommand } from "./commands/decompile.js";
 import { pushCommand } from "./commands/push.js";
 import { skillsCommand } from "./commands/skills.js";
@@ -67,6 +69,7 @@ program.addCommand(stateCommand);
 program.addCommand(improveCommand);
 program.addCommand(migrateCommand);
 program.addCommand(configCommand);
+program.addCommand(credentialCommand);
 program.addCommand(decompileCommand);
 program.addCommand(pushCommand);
 program.addCommand(skillsCommand);
@@ -84,5 +87,12 @@ program.addCommand(onboardCommand);
 program.addCommand(personasCommand);
 program.addCommand(traceCommand);
 program.addCommand(scanCommand);
+
+// FR.9 — fire-and-forget update hint (daily cache; PERSONAXIS_NO_UPDATE_CHECK=1 disables).
+void checkForUpdate("@personaxis/persona.md", version).then((latest) => {
+  if (latest) {
+    process.stderr.write(`\n  update available: ${version} → ${latest} · npm i -g @personaxis/persona.md\n`);
+  }
+});
 
 program.parse();

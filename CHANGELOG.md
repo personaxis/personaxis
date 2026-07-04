@@ -6,6 +6,52 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — Fase R replatform (per `ARCHITECTURE_REVIEW.md` §15 + `docs/architecture/TECH_STACK.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+
+### Added — platform (FR.1–FR.3)
+- **`docs/architecture/TECH_STACK.md`**: the definitive stack decision record (12 sections,
+  evidence from the Claude Code / Codex / OpenClaw+Hermes source studies).
+- **`@personaxis/protocol`** — eighth package: `Op`/`EventMsg` discriminated unions over
+  JSON-RPC 2.0 (vscode-jsonrpc + node:net; UDS / Windows named pipes, deterministic per-persona
+  pipe path), `ProtocolServer` with a hello handshake as registration barrier, subscribe-before-
+  connect `ProtocolClient`; the CLI's `EngineHost` binds the core engine 1:1 onto the seam so
+  TUI/headless/MCP/serve share one boundary.
+- **TUI on Ink 7**: `@personaxis/tui` gains a `./ink` export — `<Sigil/>`, `<AuraBar/>`,
+  `<EnvelopeBars/>` (visual.ts preserved verbatim as pure-string components), `<Transcript/>`
+  (`<Static>` scrollback + bounded live region), newline-gated commit queue with fence atomicity
+  and table holdback (Codex streaming pattern), marked-terminal markdown + lazy shiki + jsdiff,
+  zustand vanilla store with frame-batched tokens. `personaxis dash` interactive path now renders
+  through Ink.
+
+### Added — engine extensibility & safety (FR.4–FR.10)
+- **Hooks v2 (shell-out)**: `.personaxis/hooks.json` runs user executables on 6 events
+  (PreToolUse/PostToolUse/UserPromptSubmit/Stop/SessionStart/SessionEnd) — JSON payload on stdin;
+  exit 0 = ok, exit 2 = block, other = warn; optional `{"decision":"block"}` on stdout; blocking
+  events are timeout-bounded and fail OPEN to warn; the rest are fire-and-forget. PreToolUse veto
+  gates the agent loop before the sandbox gate.
+- **Config layers**: explicit numeric precedence (managed 0 → global 10 → project 20 → persona 25
+  → frontmatter 28 → env 30) with attributable winners, plus `resolvePolicyTier()` where the
+  STRICTEST layer wins regardless of rank (generalized min-wins governance).
+- **Sessions**: background `SessionWriter` (ordered queue drain, `flush()`/`shutdown()` acks),
+  automatic `parent_uuid` threading, derived rebuildable `sessions/index.json` (JSONL stays the
+  source of truth; no SQLite by decision — bun-compile forbids native addons).
+- **Tools registry v2**: `isReadOnly`/`isConcurrencySafe` flags + `validateToolArgs()`
+  (JSON-Schema — an explicit no-new-dep decision instead of Zod).
+- **Permissions v2**: `writableRoots`, protected subpaths (`.git/hooks`, `.personaxis`) that an
+  allow-list can never override, per-category approvals (network/destructive/write,
+  strictest-wins), named profiles `strict|standard|trusted|yolo`.
+- **`ApprovalBroker`** (request→deliver→await→gate; expiry fails CLOSED to deny) wired to the
+  protocol `approval` op, and **tool-call repair** (OpenClaw port: fences, prose, single quotes,
+  unquoted keys, trailing commas, truncation) on both tool-call parse paths.
+- **Credentials**: `personaxis credential set|get` — env-first resolution with OS secure storage
+  via shell-out only (macOS Keychain `security`, Linux `secret-tool`; value read from stdin,
+  never argv; keytar forbidden). Windows stays env-only until a DPAPI helper ships with the
+  signed binary (documented assumption). BYOK keys resolve through it.
+- **Update hint**: zero-dependency daily npm dist-tags check (cached, never blocks or throws;
+  `PERSONAXIS_NO_UPDATE_CHECK=1` and CI disable it) — an explicit deviation from update-notifier
+  for supply-chain surface reasons. Binary self-updater + Windows code-signing land with the
+  bun-compile release infrastructure.
+
 ## [Unreleased] — F2 SPEC v1.0 support (per `ARCHITECTURE_REVIEW.md` §11, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
 ### Added — spec v1.0 (breaking spec release; the CLI reads BOTH)
