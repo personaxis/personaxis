@@ -1,14 +1,15 @@
 {
   "name": "@personaxis/tui",
   "version": "0.11.0",
-  "description": "Personaxis live ASCII dashboard — a breathing, per-persona view of a living persona.",
+  "description": "Personaxis TUI — Ink 7 components (living dashboard, streaming transcript with commit queue, brand sigil/aura) + the pre-Ink REPL line editor (until F3.6).",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js",
     "./visual": "./dist/visual.js",
-    "./screen": "./dist/screen.js"
+    "./screen": "./dist/screen.js",
+    "./ink": "./dist/ink.js"
   },
   "bin": {
     "personaxis-dash": "dist/index.js"
@@ -23,11 +24,22 @@
   },
   "dependencies": {
     "@personaxis/core": "workspace:*",
-    "chalk": "^5.4.1"
+    "chalk": "^5.4.1",
+    "@personaxis/protocol": "workspace:*",
+    "ink": "^7.1.0",
+    "react": "^19.0.0",
+    "marked": "^15.0.0",
+    "marked-terminal": "^7.3.0",
+    "ink-text-input": "^6.0.0",
+    "zustand": "^5.0.0",
+    "diff": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "@types/react": "^19.0.0",
+    "@types/diff": "^7.0.0",
+    "ink-testing-library": "^4.0.0"
   }
 }

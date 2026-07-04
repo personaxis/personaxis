@@ -89,8 +89,6 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
   }
   ensureState(loadPersona(personaPath));
 
-  let frame = 0;
-
   // Non-interactive (pipe/CI/--once): print static frames, no screen takeover.
   if (opts.once || !process.stdout.isTTY) {
     const n = opts.once ? opts.frames : 1;
@@ -98,26 +96,20 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
     return;
   }
 
-  // Interactive: take over the ALTERNATE screen buffer so nothing pollutes
-  // scrollback, and run until the user quits (no arbitrary frame cap).
-  const enter = "\x1b[?1049h\x1b[?25l";
-  const home = "\x1b[H\x1b[J";
-  const restore = "\x1b[?25h\x1b[?1049l";
-  await new Promise<void>((done) => {
-    let timer: NodeJS.Timeout;
-    const close = () => {
-      clearInterval(timer);
-      process.stdout.write(restore);
-      process.removeListener("SIGINT", close);
-      console.log(chalk.dim("  dashboard closed.\n"));
-      done();
-    };
-    process.on("SIGINT", close);
-    process.stdout.write(enter);
-    const tick = () => process.stdout.write(home + renderFrame(personaPath, frame++));
-    tick();
-    timer = setInterval(tick, opts.interval);
-  });
+  // Interactive: Ink 7 render (FR.3). Ink owns the diffing/redraw; the
+  // Dashboard component re-reads state.json each frame — same live contract
+  // as the pre-Ink loop, same visuals (components wrap visual.ts verbatim).
+  const [{ render }, React, { Dashboard }] = await Promise.all([
+    import("ink"),
+    import("react"),
+    import("./components.js"),
+  ]);
+  const app = render(
+    React.createElement(Dashboard, { personaPath, intervalMs: opts.interval }),
+    { exitOnCtrlC: true },
+  );
+  await app.waitUntilExit();
+  console.log(chalk.dim("  dashboard closed.\n"));
 }
 
 async function main(): Promise<void> {
