@@ -8,7 +8,7 @@ import addFormats from "ajv-formats";
 import { prepareMemoryEntry } from "@personaxis/core";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const memorySchema = JSON.parse(readFileSync(join(here, "..", "schema", "memory.schema.json"), "utf-8"));
+const memorySchema = JSON.parse(readFileSync(join(here, "..", "..", "spec", "schema", "memory.schema.json"), "utf-8"));
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);

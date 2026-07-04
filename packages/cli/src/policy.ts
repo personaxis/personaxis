@@ -10,7 +10,7 @@ import { resolve, dirname } from "path";
 import yaml from "js-yaml";
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
-import { policySchema } from "./generated/assets.js";
+import { policySchema } from "@personaxis/spec";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);

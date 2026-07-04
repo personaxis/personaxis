@@ -431,16 +431,23 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         : `Persona defines ${layerCount}/${totalRequired} required layers (kind=${kind ?? "?"}). Missing: ${layersToCheck.filter((l) => !asObj(data[l])).join(", ")}.`,
   });
 
-  // v0.10: persona-prompting source material (MAY) — honest, tier-aware checks.
-  const pp = asObj(data.persona_prompting);
+  // Persona-prompting source material (MAY) — honest, tier-aware checks.
+  // v1.0: lives inside layer 10 `persona`; ≤0.10: the top-level persona_prompting block.
+  const personaLayer = asObj(data.persona);
+  const v1pp =
+    personaLayer && (personaLayer.address ?? personaLayer.voice_exemplars ?? personaLayer.scene_contracts)
+      ? personaLayer
+      : undefined;
+  const ppBase = v1pp ? "persona" : "persona_prompting";
+  const pp = asObj(data.persona_prompting) ?? v1pp;
   if (pp) {
     const addr = asObj(pp.address);
     if (addr && (typeof addr.you_are !== "string" || !addr.you_are.trim())) {
       findings.push({
         rule: "persona-prompting-address",
         severity: "warning",
-        path: "persona_prompting.address.you_are",
-        message: "persona_prompting.address is set but 'you_are' is empty — role adoption is the strongest device; provide a one-line 'You are <name>…'.",
+        path: `${ppBase}.address.you_are`,
+        message: "the persona-prompting address is set but 'you_are' is empty — role adoption is the strongest device; provide a one-line 'You are <name>…'.",
       });
     }
     const exemplars = Array.isArray(pp.voice_exemplars) ? pp.voice_exemplars.length : 0;
@@ -448,7 +455,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
       findings.push({
         rule: "persona-prompting-voice",
         severity: "info",
-        path: "persona_prompting.voice_exemplars",
+        path: `${ppBase}.voice_exemplars`,
         message: "Only one voice exemplar — 2-4 few-shot samples anchor the register more reliably.",
       });
     }
@@ -456,7 +463,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
       findings.push({
         rule: "persona-prompting-guardrails",
         severity: "info",
-        path: "persona_prompting.break_character_guardrails",
+        path: `${ppBase}.break_character_guardrails`,
         message: "Break-character guardrails present — note they NEVER override the safety universals (the compiler enforces this ordering).",
       });
     }
@@ -464,8 +471,8 @@ export function runRules(data: Record<string, unknown>): RuleResult {
     findings.push({
       rule: "persona-prompting-absent",
       severity: "info",
-      path: "persona_prompting",
-      message: "No persona_prompting block — the compiled PERSONA.md will be derived from the quantitative layers. Adding voice_exemplars/scene_contracts/anchors yields a richer, more in-character document (see docs/PERSONA_PROMPTING.md).",
+      path: "persona",
+      message: "No persona-prompting source material (v1.0: persona.address/voice_exemplars/scene_contracts; ≤0.10: the persona_prompting block) — the compiled PERSONA.md will be derived from the quantitative layers. Adding voice_exemplars/scene_contracts/anchors yields a richer, more in-character document (see docs/PERSONA_PROMPTING.md).",
     });
   }
 

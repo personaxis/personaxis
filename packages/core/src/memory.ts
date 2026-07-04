@@ -56,9 +56,19 @@ export interface MemoryEntry {
   content: string;
   source: ProvenanceSource;
   tags: string[];
+  /**
+   * v1.0: sha256 of `content`. The chain hash commits to THIS, not to the
+   * content bytes — so `content` can be REDACTED (real erasure, D6/GDPR) while
+   * the chain stays verifiable. Absent on legacy (≤0.10) entries, whose chain
+   * hash commits to the content directly (redaction there breaks the chain;
+   * re-anchor with migrateMemoryChain first).
+   */
+  content_hash?: string;
+  /** v1.0: true when `content` was erased by redactMemory (content_hash retained). */
+  redacted?: boolean;
   /** Hash of the previous entry (lineage chain); "" for the first. */
   prev_hash: string;
-  /** sha256 over {ts, content, source, tags, prev_hash}. */
+  /** v1.0: sha256 over {ts, content_hash, source, tags, prev_hash}. Legacy: over {ts, content, …}. */
   hash: string;
 }
 
@@ -72,10 +82,22 @@ function memoryPath(personaPath: string): string {
   return join(dirname(personaPath), "memory", "episodic.jsonl");
 }
 
-function hashEntry(e: Omit<MemoryEntry, "hash">): string {
-  const h = createHash("sha256");
-  h.update(JSON.stringify({ ts: e.ts, content: e.content, source: e.source, tags: e.tags, prev_hash: e.prev_hash }));
-  return h.digest("hex");
+function sha256(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+/** LEGACY (≤0.10) chain hash: commits to the content bytes directly. */
+function hashEntryLegacy(e: Pick<MemoryEntry, "ts" | "content" | "source" | "tags" | "prev_hash">): string {
+  return sha256(
+    JSON.stringify({ ts: e.ts, content: e.content, source: e.source, tags: e.tags, prev_hash: e.prev_hash }),
+  );
+}
+
+/** v1.0 chain hash: commits to content_hash, enabling erasure without a chain break. */
+function hashEntryV1(e: Pick<MemoryEntry, "ts" | "content_hash" | "source" | "tags" | "prev_hash">): string {
+  return sha256(
+    JSON.stringify({ ts: e.ts, content_hash: e.content_hash, source: e.source, tags: e.tags, prev_hash: e.prev_hash }),
+  );
 }
 
 export function readMemory(personaPath: string): MemoryEntry[] {
@@ -92,7 +114,8 @@ function lastHash(personaPath: string): string {
   return entries.length > 0 ? entries[entries.length - 1].hash : "";
 }
 
-/** Build (but do not write) the next entry — the dry-run half of write-path audit. */
+/** Build (but do not write) the next entry — the dry-run half of write-path audit.
+ * New entries are always v1.0 format (content_hash-anchored: erasure-capable). */
 export function prepareMemoryEntry(
   personaPath: string,
   req: MemoryWriteRequest,
@@ -102,9 +125,10 @@ export function prepareMemoryEntry(
     content: req.content,
     source: req.source,
     tags: req.tags ?? [],
+    content_hash: sha256(req.content),
     prev_hash: lastHash(personaPath),
   };
-  return { ...base, hash: hashEntry(base) };
+  return { ...base, hash: hashEntryV1(base) };
 }
 
 /** Commit a prepared entry to the append-only log. */
@@ -188,16 +212,95 @@ export function readSemanticMemory(personaPath: string): string {
   return existsSync(p) ? readFileSync(p, "utf-8") : "";
 }
 
-/** Verify the hash chain is intact (tamper / poisoning detection). */
+/**
+ * Verify the hash chain is intact (tamper / poisoning detection). Each entry is
+ * verified per its own format: v1.0 entries (content_hash present) recompute the
+ * chain hash over content_hash AND — unless redacted — check the content still
+ * matches its content_hash; legacy entries recompute over the content directly.
+ */
 export function verifyMemoryChain(personaPath: string): { ok: boolean; brokenAt?: number } {
   const entries = readMemory(personaPath);
   let prev = "";
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
     if (e.prev_hash !== prev) return { ok: false, brokenAt: i };
-    const recomputed = hashEntry({ ts: e.ts, content: e.content, source: e.source, tags: e.tags, prev_hash: e.prev_hash });
-    if (recomputed !== e.hash) return { ok: false, brokenAt: i };
+    if (typeof e.content_hash === "string") {
+      if (hashEntryV1(e) !== e.hash) return { ok: false, brokenAt: i };
+      if (!e.redacted && sha256(e.content) !== e.content_hash) return { ok: false, brokenAt: i };
+    } else {
+      if (hashEntryLegacy(e) !== e.hash) return { ok: false, brokenAt: i };
+    }
     prev = e.hash;
   }
   return { ok: true };
+}
+
+const REDACTION_MARKER = "[redacted]";
+
+/**
+ * REAL erasure (v1.0, D6): remove the content bytes of a prior entry while the
+ * chain stays verifiable — the chain hash commits to content_hash, which is
+ * retained. This is the ONLY sanctioned rewrite of a prior line, it is
+ * irreversible, and it is itself audited (a `redaction` record is appended).
+ * Complements tombstoneMemory (which hides but retains bytes): tombstone for
+ * retrieval removal, redact for right-to-erasure.
+ */
+export function redactMemory(
+  personaPath: string,
+  targetHash: string,
+  reason: string,
+): { redacted: MemoryEntry; audit: MemoryEntry } {
+  const p = memoryPath(personaPath);
+  const entries = readMemory(personaPath);
+  const idx = entries.findIndex((e) => e.hash === targetHash);
+  if (idx === -1) throw new Error(`no memory entry with hash ${targetHash}`);
+  const target = entries[idx];
+  if (typeof target.content_hash !== "string") {
+    throw new Error(
+      `entry ${targetHash.slice(0, 8)} is legacy format (chain hash commits to its content); ` +
+        `run migrateMemoryChain() to re-anchor the log before redacting`,
+    );
+  }
+  entries[idx] = { ...target, content: REDACTION_MARKER, redacted: true };
+  writeFileSync(p, entries.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf-8");
+  const audit = tombstoneMemory(personaPath, targetHash, `redacted: ${reason}`);
+  return { redacted: entries[idx], audit };
+}
+
+/**
+ * Re-anchor a legacy (≤0.10) episodic log to the v1.0 content_hash format so its
+ * entries become redactable. Rewrites every line: adds content_hash, recomputes
+ * each chain hash, re-links prev_hash, and remaps tombstone `target:` tags to
+ * the new hashes. One-time, deliberate migration — the old hashes are replaced.
+ */
+export function migrateMemoryChain(personaPath: string): { migrated: number; remapped: Record<string, string> } {
+  const p = memoryPath(personaPath);
+  const entries = readMemory(personaPath);
+  if (entries.length === 0) return { migrated: 0, remapped: {} };
+  const remapped: Record<string, string> = {};
+  let prev = "";
+  const next: MemoryEntry[] = [];
+  for (const e of entries) {
+    const base: Omit<MemoryEntry, "hash"> = {
+      ts: e.ts,
+      content: e.content,
+      source: e.source,
+      // Remap tombstone target tags to the already-migrated hash of their target.
+      tags: e.tags.map((t) =>
+        t.startsWith("target:") && remapped[t.slice("target:".length)]
+          ? `target:${remapped[t.slice("target:".length)]}`
+          : t,
+      ),
+      content_hash: e.content_hash ?? sha256(e.content),
+      redacted: e.redacted,
+      prev_hash: prev,
+    };
+    if (base.redacted === undefined) delete (base as Record<string, unknown>).redacted;
+    const migrated: MemoryEntry = { ...base, hash: hashEntryV1(base) };
+    remapped[e.hash] = migrated.hash;
+    prev = migrated.hash;
+    next.push(migrated);
+  }
+  writeFileSync(p, next.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf-8");
+  return { migrated: next.length, remapped };
 }

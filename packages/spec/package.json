@@ -1,0 +1,26 @@
+{
+  "name": "@personaxis/spec",
+  "version": "0.11.0",
+  "description": "The personaxis.md spec as a package: canonical JSON Schemas (v1.0 + frozen 0.10 legacy), the five-state validator with version dispatch, and the twelve universal invariants. Single source consumed by the CLI, MCP server, SDK, and SaaS — replaces the manual byte-identical schema mirror.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "scripts": {
+    "build": "node ./scripts/gen-schemas.mjs && tsc",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

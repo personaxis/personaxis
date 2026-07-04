@@ -82,7 +82,7 @@ export class LivingLoop {
 
   private resolveGovernance(): GovernanceConfig {
     const fm = this.handle.frontmatter as Record<string, unknown>;
-    const mode = readMode(fm);
+    const mode = readMode(fm, this.handle.personaPath);
     const maxStepDelta = readMaxStepDelta(fm);
     return { ...DEFAULT_GOVERNANCE, mode, maxStepDelta, ...this.opts.governance };
   }
@@ -125,7 +125,7 @@ export class LivingLoop {
           source: input.source,
           personaBody: this.handle.body,
           mutableFields: Object.keys(env.envelopes),
-          editableSections: editableLayers(fm, readMode(fm)),
+          editableSections: editableLayers(fm, readMode(fm, this.handle.personaPath)),
         });
       } catch (err) {
         bus.emit({ type: "error", message: `appraiser unavailable: ${(err as Error).message}` });

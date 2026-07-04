@@ -1057,7 +1057,7 @@ function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number):
     responder: pickResponder(modelArg),
     theme: personaTheme(handle.frontmatter),
     name: displayName(handle.frontmatter),
-    mode: readMode(handle.frontmatter as Record<string, unknown>),
+    mode: readMode(handle.frontmatter as Record<string, unknown>, handle.personaPath),
     out: (t) => stdout.write(t + "\n"),
     postureIndex,
     approve: async () => "deny",

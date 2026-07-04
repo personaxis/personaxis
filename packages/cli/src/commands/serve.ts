@@ -37,6 +37,7 @@ import {
   writeState,
   readState,
   withStateLock,
+  resolveField,
   readMemory,
   verifyMemoryChain,
   detectMemoryAnomalies,
@@ -116,7 +117,7 @@ async function route(
       const { body, parseError } = await readJson(req);
       if (parseError) return json(res, 400, { error: "invalid JSON body" });
       const env = extractEnvelopes(handle.frontmatter);
-      const field = String(body.field ?? "");
+      const field = resolveField(String(body.field ?? ""), env.envelopes);
       const delta = Number(body.delta);
       if (!(field in env.envelopes)) {
         return json(res, 400, { error: `unknown envelope field '${field}'`, fields: Object.keys(env.envelopes) });

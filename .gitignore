@@ -6,6 +6,7 @@ dist-bin/
 # generated (codegen at build time from schema/ + templates/ + package.json)
 packages/cli/src/generated/
 packages/core/src/generated/
+packages/spec/src/generated/
 
 # Test artifacts from local CLI runs
 .claude/

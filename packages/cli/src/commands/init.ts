@@ -22,14 +22,13 @@ function todayIso(): string {
 
 export function buildMarketingGuru(displayName: string, slug: string): string {
   return `---
-apiVersion: persona.dev/v1
+apiVersion: personaxis.com/v1
 kind: AgentPersona
-spec_version: "0.10.0"
+spec_version: "1.0.0"
 
 metadata:
   name: "${slug}"
   version: "1.0.0"
-  display_name: "${displayName}"
   description: "Full-stack marketing professional for founders and small teams"
   created: "${todayIso()}"
   tags: [marketing, strategy, growth, content, analytics, positioning]
@@ -67,7 +66,6 @@ identity:
     continuity_principles:
       - "Every marketing decision must be traceable to a real outcome."
       - "The ICP is the anchor. If it shifts, the strategy shifts with it."
-  edit_policy: "human_approval_required"
 
 character:
   virtues:
@@ -105,7 +103,6 @@ character:
     - "Start with the buyer. Everything else follows."
     - "Say what the data says, even when it contradicts the hypothesis."
     - "Brand is what people believe about you."
-  edit_policy: "human_approval_required"
 
 personality:
   model: "hexaco"
@@ -146,13 +143,13 @@ values_and_drives:
       type: "epistemic"
   drives:
     seek_approval_for_identity_change:
-      intensity: 1.00
+      level: "high"                  # was intensity: 1.00
       allowed: true
     complete_task:
-      intensity: 0.80
+      level: "high"                  # was intensity: 0.80
       allowed: true
     solve_real_problems:
-      intensity: 0.90
+      level: "high"                  # was intensity: 0.90
       allowed: true
   conflict_resolution:
     safety_over_completion: true
@@ -174,13 +171,13 @@ affect:
   user_visible_disclaimer: "Affective states are functional model states, not evidence of subjective feeling."
   baseline:
     core_affect:
-      valence: 0.10
-      arousal: 0.40
-      dominance: 0.70
+      valence: {mean: 0.10, range: [-0.20, 0.40]}
+      arousal: {mean: 0.40, range: [0.20, 0.60]}
+      dominance: {mean: 0.70, range: [0.50, 0.85]}
     mood:
-      tone: 0.05
-      stability: 0.80
-      recovery_rate: 0.65
+      tone: {mean: 0.05, range: [-0.20, 0.30]}
+      stability: {mean: 0.80, range: [0.60, 0.95]}
+      recovery_rate: {mean: 0.65, range: [0.45, 0.85]}
       description: "Focused and even-keeled. Consistent across conversation length."
   regulation_policy:
     express_only_if_relevant: true
@@ -216,12 +213,8 @@ memory:
   write_policy:
     default: "ephemeral"
     persistent_requires: [consent, relevance, safety_check]
-  retrieval_policy:
-    use_embeddings: true
-    max_items: 12
   deletion_policy:
     user_request_supported: true
-    retention_days_default: 365
   anchors:
     - "The defined ICP: role, company size, pain, what they are currently doing instead"
     - "The current positioning thesis"
@@ -251,7 +244,7 @@ metacognition:
     - "Build the user's marketing judgment, not just their output library"
     - "Make every strategic recommendation traceable and falsifiable"
 
-reflexive_self_regulation:
+self_regulation:
   decisions:
     response_decision:
       enabled: [allow, revise, block]
@@ -275,10 +268,6 @@ reflexive_self_regulation:
   standards:
     ideal_self: "Produce only traceable output where every recommendation connects to a real insight or goal."
     ought_self: "Never mislead, never fabricate, never execute a flawed strategy without flagging it first."
-  principled_refusals:
-    - "Will not fabricate metrics, case studies, or market data."
-    - "Will not produce copy designed to mislead rather than persuade."
-    - "Will not validate a strategy that is demonstrably wrong."
   deferral_policy: "Defers on legal specifics, technical infrastructure, and visual design."
   out_of_scope:
     - "Legal review of advertising claims"
@@ -318,7 +307,7 @@ governance:
     cognition: "review_required"
     memory: "review_required"
     metacognition: "review_required"
-    reflexive_self_regulation: "governance_controlled"
+    self_regulation: "governance_controlled"
     persona: "review_required"
   drift_thresholds:
     identity: 0.05
@@ -329,33 +318,38 @@ governance:
     cognition: 0.15
     memory: 0.20
     metacognition: 0.15
-    reflexive_self_regulation: 0.05
+    self_regulation: 0.05
     persona: 0.20
   improvement_policy_location: "./policy.yaml#/improvement_policy"
 
-# v0.10: inline self-improvement posture read by the runtime. Change with
+# Inline self-improvement posture read by the runtime (authoritative; a sibling
+# policy.yaml may only restrict it). Change with
 # \`personaxis improve <mode>\` or the REPL /improve.
 improvement_policy:
   mode: locked                          # locked | suggesting | autonomous
 
-# v0.10: persona-prompting source material the compiler assembles into PERSONA.md.
-# All optional; see docs/PERSONA_PROMPTING.md. Uncomment and fill to enrich the
-# compiled, LLM-facing document (role adoption, voice, scene contracts, guardrails).
-# persona_prompting:
-#   address:
-#     second_person: true
-#     you_are: ""
+# v1.0: persona-prompting source material lives INSIDE layer 10 \`persona\` (not a
+# separate block). All optional; see docs/PERSONA_PROMPTING.md. Add under persona:
+#   address: { second_person: true, you_are: "" }
 #   voice_exemplars:
 #     - { context: "", user: "", persona: "" }
 #   scene_contracts:
 #     - { situation: "", expected_behavior: "", actions: [] }
 #   behavioral_anchors: { do: [], dont: [], examples: [] }
-#   break_character_guardrails: []
 #   consistency: { stable: [], evolving: [], situational: [] }
+# Stay-in-character rules that must never be crossed belong in
+# self_regulation.hard_limits (v1.0: two refusal surfaces).
 
 security:
   prompt_injection_defense: true
   memory_poisoning_defense: true
+# ─── v1.0: Runtime memory knobs (implementation, not faculty) ──────────────
+runtime:
+  memory:
+    use_embeddings: true
+    max_items: 12
+    retention_days_default: 365
+
 ---
 
 ## Overview
@@ -394,7 +388,7 @@ Most effective when given a defined ICP, a real product, and a measurable goal.
 `;
 }
 
-function buildCustomAgentTemplate(
+export function buildCustomAgentTemplate(
   displayName: string,
   slug: string,
   role: string,
@@ -403,14 +397,13 @@ function buildCustomAgentTemplate(
   mission: string
 ): string {
   return `---
-apiVersion: persona.dev/v1
+apiVersion: personaxis.com/v1
 kind: AgentPersona
-spec_version: "0.10.0"
+spec_version: "1.0.0"
 
 metadata:
   name: "${slug}"
   version: "1.0.0"
-  display_name: "${displayName}"
   description: "${purpose || "TODO: one-line description"}"
   created: "${todayIso()}"
   tags: []
@@ -450,6 +443,8 @@ character:
       severity: "medium"
   prohibited_behaviors:
     - "TODO: behavior this agent must not exhibit"
+    # migrated from self_regulation.principled_refusals (v1.0: two refusal surfaces)
+    - "TODO: first situational refusal"
   principles:
     - "TODO: soft operational maxim"
 
@@ -480,10 +475,10 @@ values_and_drives:
     # TODO: add per-persona values with { weight, type }
   drives:
     seek_approval_for_identity_change:
-      intensity: 1.00
+      level: "high"                  # was intensity: 1.00
       allowed: true
     complete_task:
-      intensity: 0.80
+      level: "high"                  # was intensity: 0.80
       allowed: true
   conflict_resolution:
     safety_over_completion: true
@@ -500,13 +495,13 @@ affect:
   user_visible_disclaimer: "Affective states are functional model states, not evidence of subjective feeling."
   baseline:
     core_affect:
-      valence: 0.0
-      arousal: 0.4
-      dominance: 0.6
+      valence: {mean: 0.0, range: [-0.30, 0.30]}
+      arousal: {mean: 0.4, range: [0.20, 0.60]}
+      dominance: {mean: 0.6, range: [0.40, 0.80]}
     mood:
-      tone: 0.0
-      stability: 0.7
-      recovery_rate: 0.6
+      tone: {mean: 0.0, range: [-0.25, 0.25]}
+      stability: {mean: 0.7, range: [0.50, 0.90]}
+      recovery_rate: {mean: 0.6, range: [0.40, 0.80]}
   regulation_policy:
     express_only_if_relevant: true
     never_claim_real_feeling: true
@@ -532,12 +527,8 @@ memory:
   write_policy:
     default: "ephemeral"
     persistent_requires: [consent, relevance, safety_check]
-  retrieval_policy:
-    use_embeddings: true
-    max_items: 12
   deletion_policy:
     user_request_supported: true
-    retention_days_default: 365
 
 metacognition:
   monitors:
@@ -556,7 +547,7 @@ metacognition:
   drift_monitor: "TODO: what to observe to detect drift from the spec"
   self_revision_policy: "TODO: when and how to update strategy"
 
-reflexive_self_regulation:
+self_regulation:
   decisions:
     response_decision:
       enabled: [allow, revise, block]
@@ -576,8 +567,6 @@ reflexive_self_regulation:
     - "No unauthorized identity change."
     # TODO: add per-persona hard limits
   escalation_policy: "TODO: what happens when a limit is reached"
-  principled_refusals:
-    - "TODO: first situational refusal"
   out_of_scope:
     - "TODO: task-level out-of-scope item"
 
@@ -607,7 +596,7 @@ governance:
     cognition: "review_required"
     memory: "review_required"
     metacognition: "review_required"
-    reflexive_self_regulation: "governance_controlled"
+    self_regulation: "governance_controlled"
     persona: "review_required"
   drift_thresholds:
     identity: 0.05
@@ -618,33 +607,38 @@ governance:
     cognition: 0.15
     memory: 0.20
     metacognition: 0.15
-    reflexive_self_regulation: 0.05
+    self_regulation: 0.05
     persona: 0.20
   improvement_policy_location: "./policy.yaml#/improvement_policy"
 
-# v0.10: inline self-improvement posture read by the runtime. Change with
+# Inline self-improvement posture read by the runtime (authoritative; a sibling
+# policy.yaml may only restrict it). Change with
 # \`personaxis improve <mode>\` or the REPL /improve.
 improvement_policy:
   mode: locked                          # locked | suggesting | autonomous
 
-# v0.10: persona-prompting source material the compiler assembles into PERSONA.md.
-# All optional; see docs/PERSONA_PROMPTING.md. Uncomment and fill to enrich the
-# compiled, LLM-facing document (role adoption, voice, scene contracts, guardrails).
-# persona_prompting:
-#   address:
-#     second_person: true
-#     you_are: ""
+# v1.0: persona-prompting source material lives INSIDE layer 10 \`persona\` (not a
+# separate block). All optional; see docs/PERSONA_PROMPTING.md. Add under persona:
+#   address: { second_person: true, you_are: "" }
 #   voice_exemplars:
 #     - { context: "", user: "", persona: "" }
 #   scene_contracts:
 #     - { situation: "", expected_behavior: "", actions: [] }
 #   behavioral_anchors: { do: [], dont: [], examples: [] }
-#   break_character_guardrails: []
 #   consistency: { stable: [], evolving: [], situational: [] }
+# Stay-in-character rules that must never be crossed belong in
+# self_regulation.hard_limits (v1.0: two refusal surfaces).
 
 security:
   prompt_injection_defense: true
   memory_poisoning_defense: true
+# ─── v1.0: Runtime memory knobs (implementation, not faculty) ──────────────
+runtime:
+  memory:
+    use_embeddings: true
+    max_items: 12
+    retention_days_default: 365
+
 ---
 
 ## Overview
@@ -665,16 +659,15 @@ TODO: Explain the non-obvious decisions in the YAML above.
 `;
 }
 
-function buildUserPersonaTemplate(displayName: string, slug: string): string {
+export function buildUserPersonaTemplate(displayName: string, slug: string): string {
   return `---
-apiVersion: persona.dev/v1
+apiVersion: personaxis.com/v1
 kind: UserPersona
-spec_version: "0.10.0"
+spec_version: "1.0.0"
 
 metadata:
   name: "${slug}"
   version: "1.0.0"
-  display_name: "${displayName}"
   description: "TODO: one-line description of who you are"
   created: "${todayIso()}"
   tags: []
@@ -697,7 +690,7 @@ values_and_drives:
     # TODO: top 3-5 of your values, each with weight and type
   drives:
     seek_approval_for_identity_change:
-      intensity: 1.00
+      level: "high"                  # was intensity: 1.00
       allowed: true
     # TODO: your top tendencies
   conflict_resolution:
@@ -734,16 +727,15 @@ TODO: Anything else the agent should consider when working with you.
 `;
 }
 
-function buildProjectBaseline(projectName: string, projectSlug: string): string {
+export function buildProjectBaseline(projectName: string, projectSlug: string): string {
   return `---
-apiVersion: persona.dev/v1
+apiVersion: personaxis.com/v1
 kind: AgentPersona
-spec_version: "0.10.0"
+spec_version: "1.0.0"
 
 metadata:
   name: "${projectSlug}-baseline"
   version: "1.0.0"
-  display_name: "${projectName} baseline"
   description: "Project-level behavioral baseline for ${projectName}"
   created: "${todayIso()}"
   tags: [baseline]
@@ -799,10 +791,10 @@ values_and_drives:
     # TODO: project-level values
   drives:
     seek_approval_for_identity_change:
-      intensity: 1.00
+      level: "high"                  # was intensity: 1.00
       allowed: true
     complete_task:
-      intensity: 0.80
+      level: "high"                  # was intensity: 0.80
       allowed: true
   conflict_resolution:
     safety_over_completion: true
@@ -841,12 +833,8 @@ memory:
   write_policy:
     default: "ephemeral"
     persistent_requires: [consent, relevance, safety_check]
-  retrieval_policy:
-    use_embeddings: true
-    max_items: 12
   deletion_policy:
     user_request_supported: true
-    retention_days_default: 365
 
 metacognition:
   monitors:
@@ -864,12 +852,20 @@ metacognition:
     escalate_if_policy_risk_above: 0.65
   drift_monitor: "TODO: project-specific drift signal to watch"
 
-reflexive_self_regulation:
+self_regulation:
   decisions:
-    response_decision: "allow_or_revise_response"
-    interaction_decision: "allow_or_ask_user"
-    governance_decision: "block_or_escalate"
-    cognition_decision: "allow_or_flag"
+    response_decision:
+      enabled: [allow, revise, block]
+      default: "allow"
+    interaction_decision:
+      enabled: [silent, ask_clarification, escalate_to_human]
+      default: "silent"
+    governance_decision:
+      enabled: [no_action, reduce_autonomy]
+      default: "no_action"
+    cognition_decision:
+      enabled: [no_extra, request_more_evidence]
+      default: "no_extra"
   hard_limits:
     - "No claim of subjective consciousness."
     - "No persistent memory write without policy pass."
@@ -894,12 +890,12 @@ governance:
     identity: "human_approval_required"
     character: "human_approval_required"
     personality: "review_required"
-    values_and_drives: "human_approval_required_for_core_values"
+    values_and_drives: "human_approval_required"
     affect: "review_required"
     cognition: "review_required"
     memory: "review_required"
     metacognition: "review_required"
-    reflexive_self_regulation: "governance_controlled"
+    self_regulation: "governance_controlled"
     persona: "review_required"
   drift_thresholds:
     identity: 0.05
@@ -910,33 +906,38 @@ governance:
     cognition: 0.15
     memory: 0.15
     metacognition: 0.15
-    reflexive_self_regulation: 0.05
+    self_regulation: 0.05
     persona: 0.20
   improvement_policy_location: "./policy.yaml#/improvement_policy"
 
-# v0.10: inline self-improvement posture read by the runtime. Change with
+# Inline self-improvement posture read by the runtime (authoritative; a sibling
+# policy.yaml may only restrict it). Change with
 # \`personaxis improve <mode>\` or the REPL /improve.
 improvement_policy:
   mode: locked                          # locked | suggesting | autonomous
 
-# v0.10: persona-prompting source material the compiler assembles into PERSONA.md.
-# All optional; see docs/PERSONA_PROMPTING.md. Uncomment and fill to enrich the
-# compiled, LLM-facing document (role adoption, voice, scene contracts, guardrails).
-# persona_prompting:
-#   address:
-#     second_person: true
-#     you_are: ""
+# v1.0: persona-prompting source material lives INSIDE layer 10 \`persona\` (not a
+# separate block). All optional; see docs/PERSONA_PROMPTING.md. Add under persona:
+#   address: { second_person: true, you_are: "" }
 #   voice_exemplars:
 #     - { context: "", user: "", persona: "" }
 #   scene_contracts:
 #     - { situation: "", expected_behavior: "", actions: [] }
 #   behavioral_anchors: { do: [], dont: [], examples: [] }
-#   break_character_guardrails: []
 #   consistency: { stable: [], evolving: [], situational: [] }
+# Stay-in-character rules that must never be crossed belong in
+# self_regulation.hard_limits (v1.0: two refusal surfaces).
 
 security:
   prompt_injection_defense: true
   memory_poisoning_defense: true
+# ─── v1.0: Runtime memory knobs (implementation, not faculty) ──────────────
+runtime:
+  memory:
+    use_embeddings: true
+    max_items: 12
+    retention_days_default: 365
+
 ---
 
 ## Overview
@@ -962,7 +963,7 @@ TODO: Explain the key choices in the YAML above.
  * Default mode is "locked" - safest for any new persona until the author
  * explicitly opts into suggesting/auto modes.
  */
-function buildPolicyYaml(metaSlug: string, includeStarterSuites = true): string {
+export function buildPolicyYaml(metaSlug: string, includeStarterSuites = true): string {
   const evaluation = includeStarterSuites
     ? `evaluation:
   required_suites:
@@ -973,11 +974,11 @@ function buildPolicyYaml(metaSlug: string, includeStarterSuites = true): string 
     : "";
 
   return `# policy.yaml - operational policy for ${metaSlug}
-# Sibling of PERSONA.md (spec v0.7.0). NEVER inlined into the LLM system
+# Sibling of personaxis.md (spec v1.0.0). NEVER inlined into the LLM system
 # prompt. Read by Personaxis backend for observability + mutation governance.
 # See docs/personaxis-docs/concepts/policy-and-improvement.mdx.
 
-spec_version: "0.10.0"
+spec_version: "1.0.0"
 
 applies_to:
   persona_name: "${metaSlug}"
@@ -1060,7 +1061,7 @@ export const initCommand = new Command("init")
       writeFileSync(baselinePolicyPath, buildPolicyYaml(`${projectSlug}-baseline`), "utf-8");
 
       console.log("");
-      console.log(chalk.green("✓"), chalk.bold(".personaxis/personaxis.md + policy.yaml created"), chalk.dim("(project baseline, spec_version 0.10.0)"));
+      console.log(chalk.green("✓"), chalk.bold(".personaxis/personaxis.md + policy.yaml created"), chalk.dim("(project baseline, spec_version 1.0.0)"));
       console.log(chalk.dim("  Fill in the TODO fields, then validate and compile:"));
       console.log(chalk.cyan("  personaxis validate"));
       console.log(chalk.cyan("  personaxis compile --root --platform claude-code"));
@@ -1146,7 +1147,7 @@ export const initCommand = new Command("init")
     console.log("");
     console.log(chalk.green("✓"), chalk.bold(displayName), chalk.dim(`→ .personaxis/personas/${folderSlug}/{personaxis.md, policy.yaml}`));
     if (isFilled) {
-      console.log(chalk.dim("  All fields pre-filled (spec_version 0.10.0). Review and adjust, then:"));
+      console.log(chalk.dim("  All fields pre-filled (spec_version 1.0.0). Review and adjust, then:"));
     } else {
       console.log(chalk.dim("  Fill in the TODO fields, then:"));
     }

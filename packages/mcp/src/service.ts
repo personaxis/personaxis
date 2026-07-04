@@ -20,6 +20,7 @@ import {
   writeState,
   readState,
   withStateLock,
+  resolveField as resolveFieldCore,
   ensureState,
   extractEnvelopes,
   applyMutation,
@@ -111,10 +112,11 @@ export function adjustState(
   const env = extractEnvelopes(h.frontmatter);
   ensureState(h);
   // Locked read→apply→write: a concurrent tick/serve must not lose this mutation (F1.4).
+  const resolved = resolveFieldCore(field, env.envelopes);
   const result = withStateLock(h.statePath, () => {
     const state = readState(h.statePath);
     const r = applyMutation(state, env.envelopes, {
-      field,
+      field: resolved,
       delta,
       reason,
       actor: "actor-llm",
@@ -225,7 +227,7 @@ export function proposeEdit(
 ): unknown {
   persona = confine(persona);
   const h = loadPersona(persona);
-  const mode = readMode(h.frontmatter as Record<string, unknown>);
+  const mode = readMode(h.frontmatter as Record<string, unknown>, persona);
   const result = proposeSelfEdit(persona, { targetPath, toValue, rationale, sources: ["user"] }, mode);
   // Surface staleness so the HOST (which holds the LLM) knows to recompile PERSONA.md.
   return { ...result, recompile_pending: readRecompilePending(persona).pending };

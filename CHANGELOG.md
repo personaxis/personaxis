@@ -6,6 +6,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — F2 SPEC v1.0 support (per `ARCHITECTURE_REVIEW.md` §11, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+
+### Added — spec v1.0 (breaking spec release; the CLI reads BOTH)
+- **Dual-schema validator with version dispatch**: v1.0 documents (`spec_version: "1.0.0"`)
+  validate against the rewritten `schema/persona.schema.json`; 0.3.0–0.10.0 documents keep
+  validating against the frozen `schema/legacy/persona-0.10.schema.json` (read-compat window).
+  Universals run unconditionally with the version-correct paths (`self_regulation` vs
+  `reflexive_self_regulation`; `apiVersion` `personaxis.com/v1` vs `persona.dev/v1`). New v1
+  coherence check: a hard-enforced virtue whose `refs:` point at a trait envelope that permits
+  contradiction is FAIL_POLICY.
+- **`migrate 0.10-to-1.0`** — the first STRUCTURAL codemod (comment-preserving, dry-run default,
+  written report): renames `reflexive_self_regulation` → `self_regulation` (layer 9 +
+  `per_layer_edit_policy` + `drift_thresholds`); merges `persona_prompting` into layer 10
+  `persona` and its `break_character_guardrails` into `self_regulation.hard_limits`; merges
+  `principled_refusals` into `character.prohibited_behaviors` (two refusal surfaces); moves
+  `memory.retrieval_policy` knobs + `deletion_policy.retention_days_default` to the new
+  `runtime.memory` block; converts bare drive `intensity` to the nearest static `level`
+  (a drive is mutable only by declaring a `{mean, range}` envelope); drops
+  `metadata.display_name`; bumps `apiVersion`/`spec_version` (policy.yaml too); renames sibling
+  `state.json` value keys to full dot-paths.
+- **`resolveField` (core)**: every mutation entry point (`state mutate`, HTTP `/persona/adjust`,
+  MCP `adjust_persona_state`, SDK `adjust`) accepts BOTH the short (`mood.tone`) and full
+  (`affect.baseline.mood.tone`) field form and resolves onto the persona's canonical envelope
+  key — v1 personas use full dot-paths natively; 0.x personas keep short keys.
+- v1 envelope extraction: full dot-path keys, envelope-declaring drives join the mutable surface,
+  and `protectedFields` covers hard virtues' names AND their `refs`.
+- **`@personaxis/spec`** — new seventh package: the canonical JSON Schemas (v1.0 + frozen
+  `legacy/persona-0.10` for the 1.x read-compat window), the five-state validator with version
+  dispatch, and the 12 universals, embedded at build (bun-compile safe). The CLI's `schema.ts`
+  is now a shim; `packages/cli/schema/` moved to `packages/spec/schema/` (single monorepo copy;
+  CI byte-identity gate re-pointed).
+- **Memory erasure (D6)**: new entries are `content_hash`-anchored; `redactMemory()` performs
+  REAL erasure (bytes gone, chain still verifies, audited via tombstone record);
+  `migrateMemoryChain()` re-anchors legacy logs (remapping tombstone targets); chain verification
+  is dual-format. `STATE_SCHEMA_VERSION` → 1.0.0.
+- **`improvement_policy` min-wins precedence (SPEC.md §7.2)**: `readMode(frontmatter, personaPath?)`
+  composes the authoritative inline mode with a sibling policy.yaml that can only RESTRICT it
+  (legacy `auto` normalizes to `autonomous`); wired at the Living Loop, MCP, REPL, `state mutate`
+  and `improve` call sites.
+- **`personaxis init` scaffolds are v1.0** (all four builders migrated via the codemod itself;
+  scattered pre-0.6 `edit_policy` and bare affect scalars fixed) and a new test proves every
+  scaffold validates as 1.0.0 — which surfaced and fixed a latent defect: the UserPersona scaffold
+  had NEVER validated (the schema now requires the full anatomy only for `kind: AgentPersona`,
+  the D9 explicit subset).
+- Codemod hardening: strips stray layer-level `edit_policy`, wraps bare core_affect/mood scalars
+  into degenerate envelopes (with a widen-me follow-up). `validate` banner prefers
+  `identity.display_name`.
+
 ## [Unreleased] — F1 hardening (per `ARCHITECTURE_REVIEW.md` §9, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
 ### Fixed — governance & integrity

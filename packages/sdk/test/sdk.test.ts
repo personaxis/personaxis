@@ -6,8 +6,13 @@ import { Persona } from "../src/index.js";
 
 let dir: string;
 let personaPath: string;
+let savedHome: string | undefined;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-sdk-"));
+  // Hermetic: a developer's ~/.personaxis/config.json must not resolve a model
+  // (the offline tests exercise the heuristic appraiser, not an LLM endpoint).
+  savedHome = process.env.PERSONAXIS_HOME;
+  process.env.PERSONAXIS_HOME = join(dir, "home");
   mkdirSync(join(dir, ".personaxis"), { recursive: true });
   personaPath = join(dir, ".personaxis", "personaxis.md");
   writeFileSync(
@@ -26,7 +31,11 @@ You are Sdk, a support persona.
 `,
   );
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => {
+  if (savedHome === undefined) delete process.env.PERSONAXIS_HOME;
+  else process.env.PERSONAXIS_HOME = savedHome;
+  rmSync(dir, { recursive: true, force: true });
+});
 
 describe("@personaxis/sdk — Persona embed API", () => {
   it("exposes the compiled identity (falls back to the spec body)", () => {

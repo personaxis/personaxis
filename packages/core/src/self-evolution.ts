@@ -24,10 +24,17 @@ import { createHash } from "node:crypto";
 import type { ProvenanceSource } from "./appraisal.js";
 import type { ImprovementMode } from "./governance.js";
 import { sensitiveActionGate } from "./provenance.js";
+import { isV1Frontmatter } from "./envelopes.js";
 import { markRecompilePending } from "./recompile-marker.js";
 
+// The spec's PROTECTED MINIMUM (SPEC.md — declarative self-edit scope): these
+// dot-path prefixes can never be opened by any improvement mode or author
+// allowlist. Includes BOTH layer-9 names (v1.0 renamed reflexive_self_regulation
+// → self_regulation; either may appear during the 1.x read-compat window).
 const PROTECTED_PREFIXES = [
   "apiVersion",
+  "spec_version",
+  "kind",
   "identity",
   "character",
   "values_and_drives.values.safety",
@@ -35,12 +42,14 @@ const PROTECTED_PREFIXES = [
   "affect.representation",
   "affect.regulation_policy",
   "reflexive_self_regulation.hard_limits",
+  "self_regulation.hard_limits",
   "persona.constraints",
   "memory.deletion_policy",
   // A persona must not loosen its own safety rails via self-edit (G3):
   "governance.max_step_delta",
   "governance.per_layer_edit_policy",
   "permissions",
+  "integrity",
 ];
 
 export interface SelfEditRequest {
@@ -155,8 +164,17 @@ export const DEFAULT_VERIFIERS: SelfEditVerifier[] = [
   qualitativeSafetyVerifier,
 ];
 
-/** Paths whose VALUE is qualitative prose the persona may evolve under governance. */
-const QUALITATIVE_PREFIXES = ["persona_prompting"];
+/** Paths whose VALUE is qualitative prose the persona may evolve under governance.
+ * v1.0: the prompting material lives inside layer 10 `persona`; ≤0.10: the
+ * top-level persona_prompting block. */
+const QUALITATIVE_PREFIXES = [
+  "persona_prompting",
+  "persona.address",
+  "persona.voice_exemplars",
+  "persona.scene_contracts",
+  "persona.behavioral_anchors",
+  "persona.consistency",
+];
 
 /** True if a self-edit targets the persona's qualitative (prose) material. */
 export function isQualitative(targetPath: string): boolean {
@@ -216,10 +234,17 @@ export function editGate(
 
 /** The set of top-level layers a persona MAY self-edit (declared policy minus the safety floor). */
 export function editableLayers(frontmatter: Record<string, unknown>, mode: ImprovementMode): string[] {
-  const layers = [
+  // Version dispatch (v1.0 merged persona_prompting into `persona`): a legacy
+  // (≤0.10) document may self-edit persona_prompting even before the block
+  // exists (that is how qualitative material is first added); a v1.0 document
+  // uses `persona` for that material and gains the runtime/interop blocks.
+  const common = [
     "personality", "values_and_drives", "affect", "cognition", "memory", "metacognition",
-    "persona", "persona_prompting", "extensions", "agent_budget", "verification", "observability",
+    "persona", "extensions", "agent_budget", "verification", "observability",
   ];
+  const layers = isV1Frontmatter(frontmatter)
+    ? [...common, "runtime", "interop"]
+    : [...common, "persona_prompting"];
   return layers.filter((l) => editGate(l, frontmatter, mode) !== "block");
 }
 

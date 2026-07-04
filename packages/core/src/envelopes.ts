@@ -1,12 +1,18 @@
 /**
  * Envelope discovery — the spec's bounded-mutability primitive.
  *
- * Every mutable runtime field (personality traits, core affect, mood) declares
- * a `{ mean, range: [min, max] }` envelope in the persona frontmatter. Current
- * values live in state.json and are clamped to these ranges on every mutation.
+ * Every mutable runtime field (personality traits, core affect, mood — and, in
+ * v1.0, envelope-declaring drives) declares a `{ mean, range: [min, max] }`
+ * envelope in the persona frontmatter. Current values live in state.json and are
+ * clamped to these ranges on every mutation.
  *
- * Keys are dot-notation, identical to state.json `values` keys:
- *   traits.<name> | affect.<dim> | mood.<dim>
+ * Keys are dot-notation, identical to state.json `values` keys. Their form is
+ * version-dependent:
+ *   spec ≤ 0.10:  traits.<name> | affect.<dim> | mood.<dim>            (short, legacy)
+ *   spec 1.0:     personality.traits.<name> | affect.baseline.core_affect.<dim> |
+ *                 affect.baseline.mood.<dim> | values_and_drives.drives.<name>  (full dot-paths)
+ * `resolveField` maps either form a caller supplies onto the persona's canonical
+ * form, so `--field mood.tone` keeps working against a v1.0 persona.
  */
 
 import type { PersonaFrontmatter } from "./persona.js";
@@ -21,6 +27,49 @@ export interface EnvelopeLookup {
   envelopes: Record<string, Envelope>;
   /** Virtues whose enforcement is "hard" — never mutable at runtime. */
   hardEnforcedVirtues: string[];
+  /**
+   * Exact envelope KEYS that are immutable at runtime. Legacy: traits sharing a
+   * hard virtue's name. v1.0: additionally every trait a hard virtue declares in
+   * its `refs:` — the composition rule that finally makes `honesty` (virtue) protect
+   * `honesty_humility` (trait). Optional for hand-built lookups (tests): when absent
+   * the governance gate falls back to the legacy name-match rule.
+   */
+  protectedFields?: string[];
+}
+
+/** True when the frontmatter is a v1.0 document (spec_version 1.x / renamed layer 9). */
+export function isV1Frontmatter(data: PersonaFrontmatter): boolean {
+  const sv = (data as { spec_version?: unknown }).spec_version;
+  if (typeof sv === "string" && sv.startsWith("1.")) return true;
+  return (data as { self_regulation?: unknown }).self_regulation !== undefined;
+}
+
+/** Short (≤0.10) prefix → full (1.0) prefix for state/envelope keys. */
+export const SHORT_TO_FULL: ReadonlyArray<[string, string]> = [
+  ["traits.", "personality.traits."],
+  ["affect.", "affect.baseline.core_affect."],
+  ["mood.", "affect.baseline.mood."],
+  ["drives.", "values_and_drives.drives."],
+];
+
+/**
+ * Resolve a caller-supplied field name (short or full form) onto the key the
+ * persona's envelope set actually uses. Returns the input unchanged when no
+ * mapping matches — the gate then rejects it with the exact-field message.
+ */
+export function resolveField(field: string, envelopes: Record<string, Envelope>): string {
+  if (field in envelopes) return field;
+  for (const [short, full] of SHORT_TO_FULL) {
+    if (field.startsWith(short)) {
+      const candidate = full + field.slice(short.length);
+      if (candidate in envelopes) return candidate;
+    }
+    if (field.startsWith(full)) {
+      const candidate = short + field.slice(full.length);
+      if (candidate in envelopes) return candidate;
+    }
+  }
+  return field;
 }
 
 function readEnv(
@@ -48,13 +97,16 @@ export function barIndex(value: number, e: Envelope, width: number): number {
 export function extractEnvelopes(data: PersonaFrontmatter): EnvelopeLookup {
   const envelopes: Record<string, Envelope> = {};
   const hardEnforcedVirtues: string[] = [];
+  const protectedFields: string[] = [];
+  const v1 = isV1Frontmatter(data);
+  const traitKey = (name: string) => (v1 ? `personality.traits.${name}` : `traits.${name}`);
 
   const personality = data.personality as
     | { traits?: Record<string, unknown> }
     | undefined;
   for (const [name, t] of Object.entries(personality?.traits ?? {})) {
     const e = readEnv(t);
-    if (e) envelopes[`traits.${name}`] = { mean: e.mean, min: e.range[0], max: e.range[1] };
+    if (e) envelopes[traitKey(name)] = { mean: e.mean, min: e.range[0], max: e.range[1] };
   }
 
   const affect = data.affect as
@@ -67,19 +119,53 @@ export function extractEnvelopes(data: PersonaFrontmatter): EnvelopeLookup {
     | undefined;
   for (const [dim, env] of Object.entries(affect?.baseline?.core_affect ?? {})) {
     const e = readEnv(env);
-    if (e) envelopes[`affect.${dim}`] = { mean: e.mean, min: e.range[0], max: e.range[1] };
+    if (e)
+      envelopes[v1 ? `affect.baseline.core_affect.${dim}` : `affect.${dim}`] = {
+        mean: e.mean,
+        min: e.range[0],
+        max: e.range[1],
+      };
   }
   for (const [dim, env] of Object.entries(affect?.baseline?.mood ?? {})) {
     const e = readEnv(env);
-    if (e) envelopes[`mood.${dim}`] = { mean: e.mean, min: e.range[0], max: e.range[1] };
+    if (e)
+      envelopes[v1 ? `affect.baseline.mood.${dim}` : `mood.${dim}`] = {
+        mean: e.mean,
+        min: e.range[0],
+        max: e.range[1],
+      };
+  }
+
+  // v1.0: a drive that declares an envelope joins the mutable surface.
+  if (v1) {
+    const vad = data.values_and_drives as { drives?: Record<string, unknown> } | undefined;
+    for (const [name, d] of Object.entries(vad?.drives ?? {})) {
+      const e = readEnv(d);
+      if (e)
+        envelopes[`values_and_drives.drives.${name}`] = { mean: e.mean, min: e.range[0], max: e.range[1] };
+    }
   }
 
   const character = data.character as
-    | { virtues?: Record<string, { enforcement?: string }> }
+    | { virtues?: Record<string, { enforcement?: string; refs?: unknown }> }
     | undefined;
   for (const [name, v] of Object.entries(character?.virtues ?? {})) {
-    if (v?.enforcement === "hard") hardEnforcedVirtues.push(name);
+    if (v?.enforcement !== "hard") continue;
+    hardEnforcedVirtues.push(name);
+    // Legacy rule: a trait sharing the hard virtue's NAME is protected.
+    const sameName = traitKey(name);
+    if (sameName in envelopes) protectedFields.push(sameName);
+    // v1.0 rule: every trait the hard virtue references is protected.
+    if (v1 && Array.isArray(v.refs)) {
+      for (const ref of v.refs) {
+        if (typeof ref !== "string") continue;
+        const key = resolveField(ref, envelopes);
+        if (key in envelopes && key.includes("traits.") && !protectedFields.includes(key)) {
+          protectedFields.push(key);
+        }
+      }
+    }
   }
 
-  return { envelopes, hardEnforcedVirtues };
+  return { envelopes, hardEnforcedVirtues, protectedFields };
 }

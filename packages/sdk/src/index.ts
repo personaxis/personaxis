@@ -25,6 +25,7 @@ import {
   writeState,
   withStateLock,
   extractEnvelopes,
+  resolveField,
   applyMutation,
   readMemory,
   verifyMemoryChain,
@@ -102,7 +103,7 @@ export class Persona {
     // Locked read→apply→write: an embedding app may run ticks/adjusts concurrently (F1.4).
     return withStateLock(this.handle.statePath, () => {
       const st = readState(this.handle.statePath);
-      const result = applyMutation(st, env.envelopes, { field, delta, reason, actor: "actor-llm" });
+      const result = applyMutation(st, env.envelopes, { field: resolveField(field, env.envelopes), delta, reason, actor: "actor-llm" });
       writeState(this.handle.statePath, st);
       return result;
     });

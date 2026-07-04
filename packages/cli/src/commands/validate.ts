@@ -77,7 +77,9 @@ function validateFile(filePath?: string): ValidationResult {
   }
 
   const result = validatePersona(loaded.data);
-  const name = loaded.data.metadata?.display_name ?? loaded.data.metadata?.name ?? "persona";
+  // v1.0: identity owns display_name (metadata.display_name existed ≤0.10 only).
+  const identity = (loaded.data as { identity?: { display_name?: string } }).identity;
+  const name = identity?.display_name ?? loaded.data.metadata?.display_name ?? loaded.data.metadata?.name ?? "persona";
   printResult(loaded.path, String(name), result);
 
   // Spec v0.5.0+ ships with a sibling policy.yaml. Validate it too if

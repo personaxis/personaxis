@@ -20,11 +20,7 @@ const cli = resolve(here, "..", "packages", "cli");
 const read = (p) => readFileSync(resolve(cli, p), "utf-8");
 const pkg = JSON.parse(read("package.json"));
 
-const schemas = {
-  personaSchema: "schema/persona.schema.json",
-  policySchema: "schema/policy.schema.json",
-  stateSchema: "schema/state.schema.json",
-};
+// Schemas moved to @personaxis/spec (F2.9) — embedded there by its own gen script.
 const templateFiles = [
   "personaxis_template.md",
   "PERSONA_template.md",
@@ -41,13 +37,6 @@ const lines = [
   "",
 ];
 
-for (const [name, file] of Object.entries(schemas)) {
-  // Validate it parses, then embed the raw text and parse at load (cheap + typed-as-unknown).
-  const text = read(file);
-  JSON.parse(text);
-  lines.push(`export const ${name}: Record<string, unknown> = JSON.parse(${JSON.stringify(text)});`);
-}
-lines.push("");
 
 lines.push("export const templates: Record<string, string> = {");
 for (const f of templateFiles) {

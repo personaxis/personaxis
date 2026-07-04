@@ -20,7 +20,7 @@ import { withStateLock } from "./lock.js";
  * value — 0.9.0 added the optional agent_session block; 0.10 changed no state
  * fields). Single source for every seeder; keep in sync with the schema enum.
  */
-export const STATE_SCHEMA_VERSION = "0.9.0";
+export const STATE_SCHEMA_VERSION = "1.0.0";
 
 export interface PersonaFrontmatter {
   [key: string]: unknown;

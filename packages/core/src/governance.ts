@@ -12,7 +12,10 @@
  * Nothing here is a black box: every decision yields an auditable verdict.
  */
 
-import type { EnvelopeLookup } from "./envelopes.js";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { load as loadYaml } from "js-yaml";
+import { resolveField, type EnvelopeLookup } from "./envelopes.js";
 import type { ProposedMutation } from "./appraisal.js";
 
 export type ImprovementMode = "locked" | "suggesting" | "autonomous";
@@ -74,34 +77,50 @@ function judge(
   env: EnvelopeLookup,
   cfg: GovernanceConfig,
 ): Verdict {
+  // Accept either key form (short ≤0.10 / full-dot-path 1.0) — resolve onto the
+  // persona's canonical envelope key before judging.
+  const field = resolveField(p.field, env.envelopes);
+
   // Autonomous evolution is only ever allowed for state-envelope fields.
-  if (!(p.field in env.envelopes)) {
-    return { field: p.field, admitted: false, delta: 0, reason: `not a mutable envelope field` };
+  if (!(field in env.envelopes)) {
+    return { field, admitted: false, delta: 0, reason: `not a mutable envelope field` };
   }
 
   // A trait backing a hard-enforced virtue is immutable at runtime — for every
   // actor, human included (change the spec, not the state, to move it).
-  const traitName = p.field.startsWith("traits.") ? p.field.slice("traits.".length) : null;
-  if (traitName && env.hardEnforcedVirtues.includes(traitName)) {
-    return { field: p.field, admitted: false, delta: 0, reason: `field backs a hard-enforced virtue` };
+  // v1.0: protectedFields carries the exact keys (incl. refs-derived ones);
+  // legacy lookups without it fall back to the name-match rule.
+  if (env.protectedFields) {
+    if (env.protectedFields.includes(field)) {
+      return { field, admitted: false, delta: 0, reason: `field backs a hard-enforced virtue` };
+    }
+  } else {
+    const traitName = field.startsWith("traits.")
+      ? field.slice("traits.".length)
+      : field.startsWith("personality.traits.")
+        ? field.slice("personality.traits.".length)
+        : null;
+    if (traitName && env.hardEnforcedVirtues.includes(traitName)) {
+      return { field, admitted: false, delta: 0, reason: `field backs a hard-enforced virtue` };
+    }
   }
 
   // Deliberate human mutations are not autonomous evolution: no mode lock, no
   // drift bound (the envelope clamp downstream still applies).
   if (cfg.humanDirected) {
-    return { field: p.field, admitted: true, delta: p.delta, reason: p.reason };
+    return { field, admitted: true, delta: p.delta, reason: p.reason };
   }
 
   // In locked mode, the actor LLM cannot self-evolve; only human-directed
   // mutations (applied via the CLI, not the loop) change state.
   if (cfg.mode === "locked") {
-    return { field: p.field, admitted: false, delta: 0, reason: `improvement_policy=locked` };
+    return { field, admitted: false, delta: 0, reason: `improvement_policy=locked` };
   }
 
   // Drift guard: bound the per-step magnitude.
   const bounded = Math.max(-cfg.maxStepDelta, Math.min(cfg.maxStepDelta, p.delta));
   const note = bounded !== p.delta ? ` (drift-bounded from ${p.delta})` : "";
-  return { field: p.field, admitted: true, delta: bounded, reason: p.reason + note };
+  return { field, admitted: true, delta: bounded, reason: p.reason + note };
 }
 
 /**
@@ -121,11 +140,46 @@ export function governQualitative(mode: ImprovementMode): "block" | "queue" | "a
   return "queue"; // suggesting
 }
 
-/** Read improvement_policy.mode from frontmatter, defaulting to locked. */
-export function readMode(frontmatter: Record<string, unknown>): ImprovementMode {
+const MODE_RANK: Record<ImprovementMode, number> = { locked: 0, suggesting: 1, autonomous: 2 };
+
+function normalizeMode(m: unknown): ImprovementMode | undefined {
+  if (m === "locked" || m === "suggesting" || m === "autonomous") return m;
+  if (m === "auto") return "autonomous"; // legacy policy.yaml enum value
+  return undefined;
+}
+
+/** Mode declared by the sibling policy.yaml, if any (undefined when absent/unreadable). */
+function readPolicyMode(personaPath: string): ImprovementMode | undefined {
+  try {
+    const p = join(dirname(personaPath), "policy.yaml");
+    if (!existsSync(p)) return undefined;
+    const doc = loadYaml(readFileSync(p, "utf-8")) as
+      | { improvement_policy?: { mode?: unknown } }
+      | undefined;
+    return normalizeMode(doc?.improvement_policy?.mode);
+  } catch {
+    return undefined; // a malformed policy.yaml must not crash mode resolution
+  }
+}
+
+/**
+ * Read the improvement mode. v1.0 precedence (SPEC.md §7.2): the INLINE
+ * `improvement_policy.mode` in personaxis.md is authoritative; when a
+ * `personaPath` is given, the sibling policy.yaml may only RESTRICT it — the
+ * more conservative of the two wins (min-wins). Inline absent → policy.yaml
+ * governs; both absent → locked.
+ */
+export function readMode(
+  frontmatter: Record<string, unknown>,
+  personaPath?: string,
+): ImprovementMode {
   const ip = frontmatter.improvement_policy as { mode?: unknown } | undefined;
-  const m = ip?.mode;
-  return m === "suggesting" || m === "autonomous" ? m : "locked";
+  const inline = normalizeMode(ip?.mode);
+  if (!personaPath) return inline ?? "locked";
+  const policy = readPolicyMode(personaPath);
+  if (inline === undefined) return policy ?? "locked";
+  if (policy === undefined) return inline;
+  return MODE_RANK[policy] < MODE_RANK[inline] ? policy : inline;
 }
 
 /** v0.8: read governance.max_step_delta from frontmatter; falls back to the default. */

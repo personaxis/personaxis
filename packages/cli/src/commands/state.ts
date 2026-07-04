@@ -29,6 +29,7 @@ import {
   writeState,
   withStateLock,
   extractEnvelopes,
+  resolveField,
   applyMutation,
   governMutations,
   readMode,
@@ -113,8 +114,10 @@ const mutateSubcommand = new Command("mutate")
         const handle = loadPersona(personaPath);
         const fm = handle.frontmatter as Record<string, unknown>;
         const env = extractEnvelopes(fm);
+        // Accept short (mood.tone) or full (affect.baseline.mood.tone) field form.
+        const field = resolveField(options.field, env.envelopes);
 
-        if (!(options.field in env.envelopes)) {
+        if (!(field in env.envelopes)) {
           console.error(
             chalk.red("Error:"),
             `No envelope declared for '${options.field}' in PERSONA.md. ` +
@@ -131,10 +134,10 @@ const mutateSubcommand = new Command("mutate")
 
         const actor = (options.actor as MutationLogEntry["actor"]) ?? "human-operator";
         const decision = governMutations(
-          [{ field: options.field, delta, reason: options.reason }],
+          [{ field, delta, reason: options.reason }],
           env,
           {
-            mode: readMode(fm),
+            mode: readMode(fm, personaPath),
             maxStepDelta: readMaxStepDelta(fm),
             humanDirected: actor === "human-operator",
           },
@@ -146,7 +149,7 @@ const mutateSubcommand = new Command("mutate")
         const result = withStateLock(statePath, () => {
           const state = readState(statePath);
           const r = applyMutation(state, env.envelopes, {
-            field: options.field,
+            field,
             delta: admitted ? admitted.delta : delta,
             reason: admitted ? admitted.reason : options.reason,
             actor,
@@ -162,7 +165,7 @@ const mutateSubcommand = new Command("mutate")
           // The refusal is itself in the audit trail (governance_blocked: true).
           console.error(
             chalk.red("✗ governance:"),
-            `mutation of ${chalk.bold(options.field)} rejected — ${rejected.reason}. ` +
+            `mutation of ${chalk.bold(field)} rejected — ${rejected.reason}. ` +
               `The blocked attempt was recorded in mutation_log.`,
           );
           process.exit(2);
@@ -170,10 +173,10 @@ const mutateSubcommand = new Command("mutate")
 
         console.log(
           chalk.green("✓"),
-          `${chalk.bold(options.field)}: ${result.from} → ${result.to} ` +
+          `${chalk.bold(field)}: ${result.from} → ${result.to} ` +
             (result.clamped
               ? chalk.yellow(
-                  `(clamped to [${env.envelopes[options.field].min}, ${env.envelopes[options.field].max}])`,
+                  `(clamped to [${env.envelopes[field].min}, ${env.envelopes[field].max}])`,
                 )
               : ""),
         );

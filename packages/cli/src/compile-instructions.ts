@@ -83,7 +83,8 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
       `contracts), How you think, What is fixed / what can change, Hard limits (never overridden), ` +
       `Staying in character, Memory & resources, Self-improvement.`,
     ``,
-    `When the spec has a "persona_prompting" block, use its fields directly: address.you_are for the ` +
+    `When the spec has persona-prompting source fields (v1.0: inside the "persona" layer; legacy `
+      + `0.10 documents: a top-level "persona_prompting" block), use them directly: address.you_are for the ` +
       `opener, voice_exemplars for "How you speak", scene_contracts for "In specific situations", ` +
       `behavioral_anchors for Always/Never, break_character_guardrails for "Staying in character", ` +
       `and consistency for "What is fixed / what can change". When a field is absent, DERIVE that ` +
@@ -144,9 +145,11 @@ export function buildDecompilePrompt(input: DecompilePromptInput): string {
       `the corresponding behavior.`,
     `- If the edit introduces a constraint, virtue, value, or limit that has no corresponding field, add ` +
       `it to the most specific existing layer rather than inventing a new top-level block.`,
-    `- Map persona-prompting edits to the "persona_prompting" block: changes to "How you speak" voice ` +
+    `- Map persona-prompting edits to their source fields (v1.0: inside the "persona" layer; legacy: `
+      + `the "persona_prompting" block): changes to "How you speak" voice ` +
       `samples -> voice_exemplars; "In specific situations" -> scene_contracts; Always/Never -> ` +
-      `behavioral_anchors; "Staying in character" -> break_character_guardrails; fixed/evolving/` +
+      `behavioral_anchors; "Staying in character" -> self_regulation.hard_limits (v1.0) or `
+      + `break_character_guardrails (legacy); fixed/evolving/` +
       `situational -> consistency. Never weaken a safety universal or a hard limit via these edits.`,
     `- Output ONLY the full updated personaxis.md (YAML frontmatter + Markdown body), starting with "---".`,
     section("Current personaxis.md (quantitative spec, before edit)", input.currentPersonaxisMd),

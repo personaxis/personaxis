@@ -526,6 +526,411 @@ const nineToTen = new Command("0.9-to-0.10")
     }
   });
 
+// ─── 0.10-to-1.0 subcommand (STRUCTURAL — comment-preserving codemod) ───────
+//
+// v1.0 is the first breaking release. The codemod rewrites the frontmatter
+// TEXTUALLY (never parse→re-serialize, so every author comment survives):
+//
+//   1. apiVersion persona.dev/v1 → personaxis.com/v1; spec_version → "1.0.0"
+//      (policy.yaml spec_version bumped too)
+//   2. metadata.display_name dropped (identity.display_name is the owner)
+//   3. reflexive_self_regulation → self_regulation (top-level key AND the
+//      per_layer_edit_policy / drift_thresholds entries)
+//   4. self_regulation.principled_refusals items → character.prohibited_behaviors
+//      (v1.0 has TWO refusal surfaces, not five)
+//   5. persona_prompting merged into layer 10 `persona` (address, voice_exemplars,
+//      scene_contracts, behavioral_anchors, consistency); its
+//      break_character_guardrails items → self_regulation.hard_limits
+//   6. memory.retrieval_policy knobs + deletion_policy.retention_days_default
+//      → new OPTIONAL `runtime.memory` block (faculty vs implementation split)
+//   7. drives: bare `intensity: X` (mutable with nothing to clamp against)
+//      → static `level:` (≥0.75 high, ≥0.4 moderate, else low); a drive that
+//      already declares {mean, range} joins the clamped mutable surface as-is
+//   8. sibling state.json `values` keys renamed short → full dot-paths
+//      (traits.x → personality.traits.x, mood.x → affect.baseline.mood.x, …)
+
+import { SHORT_TO_FULL } from "@personaxis/core";
+
+/** [start, end) line range of a top-level YAML key inside the frontmatter. */
+function topRange(lines: string[], key: string): { start: number; end: number } | null {
+  const start = lines.findIndex((l) => l.startsWith(key + ":"));
+  if (start === -1) return null;
+  let end = start + 1;
+  while (end < lines.length && !/^\S/.test(lines[end])) end++;
+  return { start, end };
+}
+
+/** [start, end) of an indented sub-block (`indent`-prefixed key) inside [from, to). */
+function subRange(
+  lines: string[],
+  from: number,
+  to: number,
+  key: string,
+  indent: string,
+): { start: number; end: number } | null {
+  let start = -1;
+  for (let i = from; i < to; i++) {
+    if (lines[i].startsWith(indent + key + ":")) {
+      start = i;
+      break;
+    }
+  }
+  if (start === -1) return null;
+  let end = start + 1;
+  // The sub-block extends while lines are blank or MORE indented than the key.
+  while (end < to) {
+    const l = lines[end];
+    if (l.trim() !== "" && !l.startsWith(indent + " ") && !l.startsWith(indent + "\t")) break;
+    end++;
+  }
+  return { start, end };
+}
+
+/** The contiguous run of column-0 `#` banner lines directly above `start`. */
+function bannerAbove(lines: string[], start: number): number {
+  let s = start;
+  while (s > 0 && /^#/.test(lines[s - 1])) s--;
+  return s;
+}
+
+/** Collect the `- "…"` item lines of a YAML list sub-block (verbatim, re-indentable). */
+function listItems(lines: string[], r: { start: number; end: number }): string[] {
+  return lines.slice(r.start + 1, r.end).filter((l) => l.trim() !== "");
+}
+
+function driveLevel(intensity: number): "low" | "moderate" | "high" {
+  return intensity >= 0.75 ? "high" : intensity >= 0.4 ? "moderate" : "low";
+}
+
+function migrateStateValues(statePath: string, report: MigrationReport, apply: boolean): void {
+  if (!existsSync(statePath)) return;
+  try {
+    const state = JSON.parse(readFileSync(statePath, "utf-8")) as {
+      values?: Record<string, number>;
+    };
+    if (!state.values) return;
+    const next: Record<string, number> = {};
+    let renamed = 0;
+    for (const [k, v] of Object.entries(state.values)) {
+      const hit = SHORT_TO_FULL.find(([short]) => k.startsWith(short));
+      if (hit && !k.startsWith(hit[1])) {
+        next[hit[1] + k.slice(hit[0].length)] = v;
+        renamed++;
+      } else {
+        next[k] = v;
+      }
+    }
+    if (renamed > 0) {
+      state.values = next;
+      if (apply) writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
+      report.changes.push(
+        `${apply ? "Renamed" : "(dry-run) would rename"} ${renamed} state.json value key(s) to full dot-paths (e.g. \`mood.tone\` → \`affect.baseline.mood.tone\`)`,
+      );
+    }
+  } catch (e) {
+    report.warnings.push(`state.json at ${statePath} could not be migrated: ${(e as Error).message}`);
+  }
+}
+
+function migrateTenToOne(text: string, report: MigrationReport): string {
+  const fm = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!fm) {
+    report.warnings.push("No YAML frontmatter found; nothing to migrate.");
+    return text;
+  }
+  let lines = fm[1].split("\n");
+
+  // 1. apiVersion + spec_version
+  lines = lines.map((l) =>
+    l.replace(/^apiVersion:\s*["']?persona\.dev\/v1["']?/, "apiVersion: personaxis.com/v1"),
+  );
+  report.changes.push("`apiVersion`: persona.dev/v1 → `personaxis.com/v1`");
+  lines = lines.map((l) => l.replace(/^spec_version:\s*["']?0\.10\.0["']?/, 'spec_version: "1.0.0"'));
+  report.changes.push('`spec_version`: 0.10.0 → `"1.0.0"`');
+
+  // 2. metadata.display_name (identity keeps its own)
+  const meta = topRange(lines, "metadata");
+  if (meta) {
+    const dn = subRange(lines, meta.start + 1, meta.end, "display_name", "  ");
+    if (dn) {
+      lines.splice(dn.start, dn.end - dn.start);
+      report.changes.push("Dropped `metadata.display_name` (single owner: `identity.display_name`)");
+    }
+  }
+
+  // 3. Layer-9 rename (top-level + governance sub-keys)
+  lines = lines.map((l) => l.replace(/^reflexive_self_regulation:/, "self_regulation:"));
+  lines = lines.map((l) =>
+    l.replace(/^(\s+)reflexive_self_regulation:/, "$1self_regulation:"),
+  );
+  report.changes.push(
+    "Renamed `reflexive_self_regulation` → `self_regulation` (layer 9 + per_layer_edit_policy + drift_thresholds)",
+  );
+
+  // 4. principled_refusals → character.prohibited_behaviors
+  const selfReg = topRange(lines, "self_regulation");
+  if (selfReg) {
+    const pr = subRange(lines, selfReg.start + 1, selfReg.end, "principled_refusals", "  ");
+    if (pr) {
+      const items = listItems(lines, pr);
+      lines.splice(pr.start, pr.end - pr.start);
+      const character = topRange(lines, "character");
+      const target = character
+        ? subRange(lines, character.start + 1, character.end, "prohibited_behaviors", "  ")
+        : null;
+      if (target) {
+        lines.splice(
+          target.end,
+          0,
+          "    # migrated from self_regulation.principled_refusals (v1.0: two refusal surfaces)",
+          ...items,
+        );
+        report.changes.push(
+          `Merged ${items.length} \`principled_refusals\` item(s) into \`character.prohibited_behaviors\``,
+        );
+      } else {
+        report.manualFollowups.push(
+          "`principled_refusals` was removed but `character.prohibited_behaviors` was not found — re-add the items there manually.",
+        );
+      }
+    }
+  }
+
+  // 5. persona_prompting → persona (+ guardrails → hard_limits)
+  const pp = topRange(lines, "persona_prompting");
+  if (pp) {
+    const guard = subRange(lines, pp.start + 1, pp.end, "break_character_guardrails", "  ");
+    let guardItems: string[] = [];
+    if (guard) {
+      guardItems = listItems(lines, guard).map((l) => l.slice(2)); // 4-space list → 2-space sub-list… re-indent below
+      lines.splice(guard.start, guard.end - guard.start);
+    }
+    const ppAfter = topRange(lines, "persona_prompting")!; // range shifted by the splice
+    const children = lines.slice(ppAfter.start + 1, ppAfter.end).filter((l, i, arr) => {
+      // drop trailing blank lines of the block
+      if (l.trim() === "") return arr.slice(i + 1).some((x) => x.trim() !== "");
+      return true;
+    });
+    const bannerStart = bannerAbove(lines, ppAfter.start);
+    lines.splice(bannerStart, ppAfter.end - bannerStart);
+    const persona = topRange(lines, "persona");
+    if (persona) {
+      lines.splice(
+        persona.end,
+        0,
+        "  # v1.0: persona-prompting material lives in layer 10 (migrated from persona_prompting)",
+        ...children,
+      );
+      report.changes.push(
+        "Merged `persona_prompting` (address, voice_exemplars, scene_contracts, behavioral_anchors, consistency) into layer 10 `persona`",
+      );
+    } else {
+      report.manualFollowups.push(
+        "`persona_prompting` was removed but layer 10 `persona` was not found — re-add its material there manually.",
+      );
+    }
+    if (guardItems.length > 0) {
+      const sr = topRange(lines, "self_regulation");
+      const hl = sr ? subRange(lines, sr.start + 1, sr.end, "hard_limits", "  ") : null;
+      if (hl) {
+        lines.splice(
+          hl.end,
+          0,
+          "    # migrated from persona_prompting.break_character_guardrails (v1.0)",
+          ...guardItems.map((l) => "  " + l),
+        );
+        report.changes.push(
+          `Merged ${guardItems.length} \`break_character_guardrails\` item(s) into \`self_regulation.hard_limits\``,
+        );
+      } else {
+        report.manualFollowups.push(
+          "`break_character_guardrails` items could not be appended to `self_regulation.hard_limits` — add them manually.",
+        );
+      }
+    }
+  }
+
+  // 6. memory knobs → runtime.memory
+  const runtimeKnobs: string[] = [];
+  const memory = topRange(lines, "memory");
+  if (memory) {
+    const rp = subRange(lines, memory.start + 1, memory.end, "retrieval_policy", "  ");
+    if (rp) {
+      for (const l of lines.slice(rp.start + 1, rp.end)) {
+        const m = l.match(/^\s+(use_embeddings|use_reranker|max_items):\s*(.+?)\s*(#.*)?$/);
+        if (m) runtimeKnobs.push(`    ${m[1]}: ${m[2]}`);
+      }
+      lines.splice(rp.start, rp.end - rp.start);
+      report.changes.push("Moved `memory.retrieval_policy` knobs → `runtime.memory` (faculty vs implementation split)");
+    }
+    const mem2 = topRange(lines, "memory")!;
+    const dp = subRange(lines, mem2.start + 1, mem2.end, "deletion_policy", "  ");
+    if (dp) {
+      for (let i = dp.start + 1; i < dp.end; i++) {
+        const m = lines[i].match(/^\s+retention_days_default:\s*(\d+)/);
+        if (m) {
+          runtimeKnobs.push(`    retention_days_default: ${m[1]}`);
+          lines.splice(i, 1);
+          report.changes.push("Moved `memory.deletion_policy.retention_days_default` → `runtime.memory`");
+          break;
+        }
+      }
+    }
+  }
+  if (runtimeKnobs.length > 0) {
+    const anchor = topRange(lines, "runtime_artifacts");
+    const at = anchor ? bannerAbove(lines, anchor.start) : lines.length;
+    lines.splice(
+      at,
+      0,
+      "# ─── v1.0: Runtime memory knobs (implementation, not faculty) ──────────────",
+      "runtime:",
+      "  memory:",
+      ...runtimeKnobs,
+      "",
+    );
+  }
+
+  // 7. drives: intensity → level (static) unless the drive declares an envelope
+  const vad = topRange(lines, "values_and_drives");
+  if (vad) {
+    const drives = subRange(lines, vad.start + 1, vad.end, "drives", "  ");
+    if (drives) {
+      let converted = 0;
+      const block = lines.slice(drives.start, drives.end).join("\n");
+      const hasEnvelope = /^\s+mean:/m.test(block);
+      for (let i = drives.start + 1; i < drives.end; i++) {
+        const m = lines[i].match(/^(\s+)intensity:\s*([\d.]+)\s*(#.*)?$/);
+        if (m) {
+          const lvl = driveLevel(Number(m[2]));
+          lines[i] = `${m[1]}level: "${lvl}"${" ".repeat(Math.max(1, 22 - lvl.length))}# was intensity: ${m[2]}`;
+          converted++;
+        }
+      }
+      if (converted > 0) {
+        report.changes.push(
+          `Converted ${converted} drive \`intensity\` value(s) → static \`level\` (a drive is mutable ONLY by declaring a {mean, range} envelope)`,
+        );
+      }
+      if (hasEnvelope) {
+        report.changes.push("Drives declaring {mean, range} envelopes kept as-is (they join the clamped mutable surface)");
+      }
+    }
+  }
+
+  // 8. Pre-0.6 residue some 0.10 documents still carry (the 0.10 schema tolerated
+  //    it; v1.0 rejects it): scattered layer-level edit_policy, and bare
+  //    core_affect/mood scalars instead of {mean, range} envelopes.
+  const stray = lines.filter((l) => /^  edit_policy:/.test(l)).length;
+  if (stray > 0) {
+    lines = lines.filter((l) => !/^  edit_policy:/.test(l));
+    report.changes.push(
+      `Removed ${stray} scattered layer-level \`edit_policy\` field(s) (single owner since v0.6: \`governance.per_layer_edit_policy\`)`,
+    );
+  }
+  let wrapped = 0;
+  lines = lines.map((l) => {
+    const m = l.match(/^(\s{6})(valence|arousal|dominance|tone|stability|recovery_rate):\s*(-?[\d.]+)\s*$/);
+    if (!m) return l;
+    wrapped++;
+    return `${m[1]}${m[2]}: {mean: ${m[3]}, range: [${m[3]}, ${m[3]}]}`;
+  });
+  if (wrapped > 0) {
+    report.changes.push(
+      `Wrapped ${wrapped} bare core_affect/mood scalar(s) into degenerate {mean, range} envelopes (v1.0 requires envelopes)`,
+    );
+    report.manualFollowups.push(
+      "Bare affect scalars were wrapped as {mean: v, range: [v, v]} — a degenerate envelope declares the field IMMUTABLE. Widen the ranges you want the runtime to be able to move.",
+    );
+  }
+
+  // 9. Follow-ups the codemod cannot decide for the author
+  report.manualFollowups.push(
+    "OPTIONAL: add `refs:` to hard-enforced virtues pointing at their backing trait/value dot-paths (e.g. honesty → [personality.traits.honesty_humility]); the validator then enforces coherence.",
+    "OPTIONAL: upgrade metacognition monitors from booleans to `{enabled, feeds}` to wire monitor → decision explicitly.",
+    "OPTIONAL: declare behavior `bands` boundaries on traits for deterministic compile semantics (drift = band crossing).",
+  );
+
+  return text.replace(fm[1], lines.join("\n"));
+}
+
+const tenToOneZero = new Command("0.10-to-1.0")
+  .description(
+    "STRUCTURAL migration to spec v1.0 (comment-preserving): renames self_regulation, merges persona_prompting into persona, 2 refusal surfaces, memory faculty/knobs split, drives level|envelope, apiVersion personaxis.com/v1, state.json full dot-paths.",
+  )
+  .argument("[file]", "personaxis.md path (default: .personaxis/personaxis.md)", ".personaxis/personaxis.md")
+  .option("--apply", "Write changes (default: dry-run; prints report only)")
+  .action((file: string, options: { apply?: boolean }) => {
+    try {
+      const apply = options.apply ?? false;
+      const path = resolve(file);
+      if (!existsSync(path)) {
+        console.error(chalk.red("Error:"), `persona not found at ${path}`);
+        process.exit(1);
+      }
+      const before = readFileSync(path, "utf-8");
+      if (!/spec_version:\s*["']?0\.10\.0["']?/.test(before)) {
+        console.log(
+          chalk.yellow("Nothing to do:"),
+          "spec_version is not 0.10.0. Run the earlier codemods first (…, 0.8-to-0.9, 0.9-to-0.10).",
+        );
+        return;
+      }
+
+      const report: MigrationReport = {
+        source: path,
+        ts: new Date().toISOString(),
+        changes: [],
+        warnings: [],
+        manualFollowups: [],
+      };
+
+      const after = migrateTenToOne(before, report);
+      if (apply && after !== before) writeFileSync(path, after, "utf-8");
+
+      // Sibling artifacts: state.json keys, policy.yaml spec_version
+      migrateStateValues(join(dirname(path), "state.json"), report, apply);
+      const policyPath = join(dirname(path), "policy.yaml");
+      if (existsSync(policyPath)) {
+        const p = readFileSync(policyPath, "utf-8");
+        if (/spec_version:\s*["']?0\.10\.0["']?/.test(p)) {
+          if (apply) writeFileSync(policyPath, p.replace(/spec_version:\s*["']?0\.10\.0["']?/, 'spec_version: "1.0.0"'), "utf-8");
+          report.changes.push("policy.yaml `spec_version` → `\"1.0.0\"`");
+        }
+      }
+
+      // Written report (same convention as 0.5-to-0.6)
+      const migrationsDir = join(dirname(path), ".personaxis", "migrations");
+      const stamp = report.ts.replace(/[:.]/g, "-");
+      const reportPath = join(migrationsDir, `0.10-to-1.0-${stamp}.md`);
+      if (apply) {
+        mkdirSync(migrationsDir, { recursive: true });
+        writeFileSync(reportPath, formatReport(report).replace("0.5 → 0.6", "0.10 → 1.0") + "\n");
+      }
+
+      console.log("");
+      console.log(
+        apply
+          ? chalk.green.bold("0.10.0 → 1.0.0 applied (structural).")
+          : chalk.yellow.bold("DRY RUN — no files written. Add --apply to write changes."),
+      );
+      console.log("");
+      console.log(formatReport(report).replace("0.5 → 0.6", "0.10 → 1.0"));
+      if (apply) {
+        console.log("");
+        console.log(chalk.dim(`Report saved: ${basename(reportPath)} (under .personaxis/migrations/)`));
+        console.log("");
+        console.log(chalk.bold("Next steps:"));
+        console.log(`  1. ${chalk.cyan("personaxis validate")} ${path}`);
+        console.log(`  2. ${chalk.cyan("personaxis compile")}  # regenerate the compiled PERSONA.md from the v1.0 spec`);
+        console.log(`  3. Review manual follow-ups in the report above`);
+      }
+    } catch (err) {
+      console.error(chalk.red("Error:"), (err as Error).message);
+      process.exit(1);
+    }
+  });
+
 // ─── Parent migrate command ────────────────────────────────────────────────
 
 export const migrateCommand = new Command("migrate")
@@ -534,4 +939,5 @@ export const migrateCommand = new Command("migrate")
   .addCommand(sixToSeven)
   .addCommand(sevenToEight)
   .addCommand(eightToNine)
-  .addCommand(nineToTen);
+  .addCommand(nineToTen)
+  .addCommand(tenToOneZero);

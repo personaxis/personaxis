@@ -16,6 +16,7 @@ This repo is migrating from a single CLI package into a **pnpm monorepo** that t
 
 | Package | Role |
 |---|---|
+| `packages/spec` (`@personaxis/spec`) | **The spec as a package**: canonical JSON Schemas (v1.0 + frozen `legacy/persona-0.10` for the 1.x read-compat window), the five-state validator with version dispatch, and the 12 universal invariants. Single source consumed by cli/mcp/sdk/SaaS — replaces the manual byte-identical schema mirror inside the monorepo (the persona.md repo mirror remains, now pointed at `packages/spec/schema/`). |
 | `packages/core` (`@personaxis/core`) | Framework-agnostic engine: persona/state IO, envelope extraction, **clamp+audit state engine**, appraisal signals + JSON schema, **governance gate** (locked/suggesting/autonomous), **append-only hash-chained episodic memory**, the **Living Loop** (`observe→appraise→evolve→recompile→memory`), event bus, deterministic per-persona **sigil**, heuristic + **LLM (constrained-decoding) appraisers**. |
 | `packages/cli` (`@personaxis/persona.md`) | The existing CLI (validate/lint/compile/decompile/state/...) **plus** the interactive **REPL**: `personaxis` with no subcommand enters a living session (NL + `/commands`). The original `src/` moved here unchanged. |
 | `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (bin `personaxis-mcp`) exposing **16 persona tools** (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, `persona_propose_edit`, `agent_run`, `skill_review`, `scan_text`, …) to any host (Claude Code, Codex, Cursor). Persona paths are confined to `--root` (default cwd); `persona_decide_edit` requires the explicit `--allow-decide` flag (proposer≠approver). |
@@ -23,18 +24,18 @@ This repo is migrating from a single CLI package into a **pnpm monorepo** that t
 | `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): deterministic scenario suite + runner (no API key) proving the spec's guarantees against the real engine — categories **governance / security / spec-fidelity** (clamp holds, gate blocks, memory tamper-evident, injection can't steer evolution, budgets stop, verification catches). |
 | `packages/tui` (`@personaxis/tui`) | **ASCII dashboard + render lib**. Its `visual`/`screen` modules back the REPL and `sigil`; the live dashboard is surfaced as `personaxis dash` (and `/dash` in the REPL) plus the standalone bin `personaxis-dash`. Reads `state.json` each frame, reflecting evolution in another process. |
 
-All six publish at the same lockstep version (currently `0.11.0`); the spec they implement is `spec_version 0.10.0`.
+All seven publish at the same lockstep version (currently `0.11.0`); the spec they implement is `spec_version 1.0.0` (0.3.0–0.10.0 read-compat via the frozen legacy schema).
 
 **Build/test/run (from repo root):**
 ```bash
 pnpm install
 pnpm run build            # pnpm -r build (core first, then cli/mcp/sdk/evals/tui)
-pnpm run test             # vitest across all six packages
+pnpm run test             # vitest across all seven packages
 node packages/cli/dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md   # golden -> PASS
 node packages/cli/dist/index.js --persona <path>   # enter the living REPL
 ```
 
-**Path note:** `schema/` and `templates/` now live under `packages/cli/`. The byte-identity sync rule below still holds, but the sibling-repo relative path is now `../../../persona.md` from `packages/cli/`. The five-state validator, 12 universals, and envelope clamping are unchanged and still the source of truth.
+**Path note:** `schema/` lives under `packages/spec/` (single monorepo copy, embedded at build); `templates/` lives under `packages/cli/`. The byte-identity sync rule below still holds against the sibling `persona.md` repo. The five-state validator, 12 universals, and envelope clamping are unchanged and still the source of truth.
 
 ## Three-artifact model (v0.7)
 
@@ -80,13 +81,15 @@ Schemas and templates MUST be byte-identical between this repo and `persona.md/`
 
 ```powershell
 # After editing any schema or template in this repo
-cp schema/persona.schema.json ../persona.md/schema/persona.schema.json
-cp schema/policy.schema.json ../persona.md/schema/policy.schema.json
-cp schema/state.schema.json ../persona.md/schema/state.schema.json
-cp templates/personaxis_template.md ../persona.md/.personaxis/personaxis_template.md
-cp templates/PERSONA_template.md ../persona.md/PERSONA_template.md
-cp templates/policy_template.yaml ../persona.md/.personaxis/policy_template.yaml
-diff -q schema ../persona.md/schema   # must show no differences
+cp packages/spec/schema/persona.schema.json ../persona.md/schema/persona.schema.json
+cp packages/spec/schema/policy.schema.json ../persona.md/schema/policy.schema.json
+cp packages/spec/schema/state.schema.json ../persona.md/schema/state.schema.json
+cp packages/spec/schema/memory.schema.json ../persona.md/schema/memory.schema.json
+cp packages/spec/schema/legacy/persona-0.10.schema.json ../persona.md/schema/legacy/persona-0.10.schema.json
+cp packages/cli/templates/personaxis_template.md ../persona.md/.personaxis/personaxis_template.md
+cp packages/cli/templates/PERSONA_template.md ../persona.md/PERSONA_template.md
+cp packages/cli/templates/policy_template.yaml ../persona.md/.personaxis/policy_template.yaml
+diff -qr packages/spec/schema ../persona.md/schema   # must show no differences
 
 # The normative spec doc is AUTHORED in persona.md and MIRRORED into the CLI (embedded by
 # scripts/embed-assets.mjs so `personaxis spec` prints the current spec). Direction is the reverse:

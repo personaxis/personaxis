@@ -60,7 +60,7 @@ export interface ModeResult {
 export function runMode(target?: string, newMode?: ImprovementMode): ModeResult {
   const path = resolvePersonaSourcePath(target);
   const raw = readFileSync(path, "utf-8");
-  const previous = readMode(matter(raw).data as Record<string, unknown>);
+  const previous = readMode(matter(raw).data as Record<string, unknown>, path);
   if (!newMode || newMode === previous) {
     return { path, previous, current: previous, changed: false };
   }
