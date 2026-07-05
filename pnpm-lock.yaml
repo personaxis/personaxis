@@ -26,6 +26,9 @@ importers:
       '@personaxis/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@personaxis/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       '@personaxis/spec':
         specifier: workspace:*
         version: link:../spec
@@ -113,6 +116,9 @@ importers:
       '@personaxis/core':
         specifier: workspace:*
         version: link:../core
+      '@personaxis/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       zod:
         specifier: ^4.4.3
         version: 4.4.3

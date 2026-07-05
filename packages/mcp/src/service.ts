@@ -1,53 +1,22 @@
 /**
- * Persona service — the engine operations the MCP tools wrap.
+ * Persona service — the MCP boundary over the @personaxis/sdk façade (F3.5).
  *
- * Each function takes an explicit persona path so a host can drive multiple
- * personas. All mutation goes through the same clamp + audit engine the CLI and
- * runtime use; nothing here bypasses the governance gate or the universal
- * invariants.
+ * The engine operations (observe, adjust, audit, agent, forget, self-edits,
+ * scans) live ONCE, in the SDK. This module is the MCP-specific wrapper: it
+ * (1) CONFINES every persona/skill path to the server root (ADR-011), and
+ * (2) adapts the SDK's typed results into the MCP tools' snake_case wire shapes.
+ * It no longer re-implements the clamp/audit/loop/agent logic — that duplication
+ * (the old service.ts ≈ sdk/index.ts) is gone.
  */
 
 import {
-  LivingLoop,
-  HeuristicAppraiser,
-  LlmAppraiser,
-  resolveModel,
-  PersonaAgent,
-  EventBus,
-  Tracer,
-  readObservability,
-  loadPersona,
-  writeState,
-  readState,
-  withStateLock,
-  resolveField as resolveFieldCore,
-  ensureState,
-  extractEnvelopes,
-  applyMutation,
-  readMemory,
-  readLiveMemory,
-  tombstoneMemory,
-  verifyMemoryChain,
-  detectMemoryAnomalies,
-  readMode,
-  proposeSelfEdit,
-  applySelfEdit,
-  rejectSelfEdit,
-  proposals,
-  activeOverlay,
-  readRecompilePending,
-  reviewSkill,
-  scanForInjection,
-  scanAgentConfig,
-  detectKind,
-  evaluateCommand,
-  policyFromFrontmatter,
-  readAgentBudget,
-  readVerification,
-  DEFAULT_POLICY,
-  type LoopEvent,
-  type ProvenanceSource,
-} from "@personaxis/core";
+  Persona,
+  scanText as sdkScanText,
+  scanConfig as sdkScanConfig,
+  skillReview as sdkSkillReview,
+  evaluateCmd as sdkEvaluateCmd,
+} from "@personaxis/sdk";
+import { loadPersona, ensureState, extractEnvelopes, type ProvenanceSource } from "@personaxis/core";
 import { resolve as presolve, relative, isAbsolute } from "node:path";
 
 // ── Path confinement (ADR-011: --root) ──────────────────────────────────────
@@ -76,14 +45,18 @@ export function confine(p: string): string {
   return abs;
 }
 
-export function compiledDocument(persona: string): string {
-  persona = confine(persona);
-  return loadPersona(persona).body;
+/** Confine a path and bind an SDK Persona to it. */
+function persona(p: string): Persona {
+  return new Persona(confine(p));
 }
 
-export function stateSummary(persona: string): unknown {
-  persona = confine(persona);
-  const h = loadPersona(persona);
+export function compiledDocument(p: string): string {
+  return persona(p).compiledBody();
+}
+
+export function stateSummary(p: string): unknown {
+  const abs = confine(p);
+  const h = loadPersona(abs);
   const st = ensureState(h);
   return {
     persona_id: st.persona_id,
@@ -94,36 +67,14 @@ export function stateSummary(persona: string): unknown {
   };
 }
 
-export function envelopes(persona: string): unknown {
-  persona = confine(persona);
-  const h = loadPersona(persona);
-  const { envelopes, hardEnforcedVirtues } = extractEnvelopes(h.frontmatter);
+export function envelopes(p: string): unknown {
+  const abs = confine(p);
+  const { envelopes, hardEnforcedVirtues } = extractEnvelopes(loadPersona(abs).frontmatter);
   return { mutable_fields: envelopes, hard_enforced_virtues: hardEnforcedVirtues };
 }
 
-export function adjustState(
-  persona: string,
-  field: string,
-  delta: number,
-  reason: string,
-): unknown {
-  persona = confine(persona);
-  const h = loadPersona(persona);
-  const env = extractEnvelopes(h.frontmatter);
-  ensureState(h);
-  // Locked read→apply→write: a concurrent tick/serve must not lose this mutation (F1.4).
-  const resolved = resolveFieldCore(field, env.envelopes);
-  const result = withStateLock(h.statePath, () => {
-    const state = readState(h.statePath);
-    const r = applyMutation(state, env.envelopes, {
-      field: resolved,
-      delta,
-      reason,
-      actor: "actor-llm",
-    });
-    writeState(h.statePath, state);
-    return r;
-  });
+export function adjustState(p: string, field: string, delta: number, reason: string): unknown {
+  const result = persona(p).adjust(field, delta, reason);
   return {
     field,
     from: result.from,
@@ -134,143 +85,75 @@ export function adjustState(
   };
 }
 
-export async function observe(
-  persona: string,
-  observation: string,
-  source: ProvenanceSource,
-): Promise<unknown> {
-  persona = confine(persona);
-  const events: LoopEvent[] = [];
-  const handle = loadPersona(persona);
-  ensureState(handle); // seed state.json if missing
-  // Use the persona's resolved model (config/env) for a real appraisal; fall back to heuristic.
-  const m = resolveModel({ personaPath: persona, frontmatter: handle.frontmatter as Record<string, unknown> });
-  const loop = new LivingLoop(persona, { appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser() });
-  loop.bus.on((e) => events.push(e));
-  // Best-effort: a tick failure must not crash the MCP server (mirror the REPL).
-  try {
-    const report = await loop.tick({ observation, source });
-    return { report, events };
-  } catch (e) {
-    return {
-      report: { mutationsApplied: 0, memoriesWritten: 0, abstained: true },
-      events: [...events, { type: "error", message: (e as Error).message }],
-    };
-  }
+export async function observe(p: string, observation: string, source: ProvenanceSource): Promise<unknown> {
+  const { report, events } = await persona(p).observe(observation, source);
+  return { report, events };
 }
 
 /**
  * Run the governed Agent Loop on a task. Non-interactive: any tool whose verdict
  * is `ask` is denied (the host can pre-authorize via the persona's permissions
- * allow-list). Requires a configured model (config.json local.endpoint/model, or
- * PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL) for tool-calling.
+ * allow-list). Requires a configured model for tool-calling.
  */
-export async function agentRun(persona: string, task: string, maxSteps = 12): Promise<unknown> {
-  persona = confine(persona);
-  const handle = loadPersona(persona);
-  const fm = handle.frontmatter as Record<string, unknown>;
-  const llm = resolveModel({ personaPath: persona, frontmatter: fm });
-  if (!llm) {
-    return { error: "agent requires a configured model (config.json local.endpoint/model or PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL)" };
-  }
-  ensureState(handle);
-  const events: LoopEvent[] = [];
-  const bus = new EventBus();
-  bus.on((e) => events.push(e));
-  const agent = new PersonaAgent({
-    llm,
-    policy: policyFromFrontmatter(fm, process.cwd()),
-    personaBody: handle.body,
-    onApproval: async () => "deny", // non-interactive host: deny anything needing approval
-    maxSteps,
-    budget: readAgentBudget(fm),
-    verification: readVerification(fm),
-    judge: llm,
-    personaPath: persona,
-    bus,
-  });
-  const obs = readObservability(fm);
-  const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
-  const result = await agent.run(task);
-  const trace = tracer ? tracer.write(persona).paths : [];
-  tracer?.stop();
-  return { result, events, trace };
+export async function agentRun(p: string, task: string, maxSteps = 12): Promise<unknown> {
+  return persona(p).agentRun(task, { maxSteps });
 }
 
-export function audit(persona: string): unknown {
-  persona = confine(persona);
-  const h = loadPersona(persona);
-  const st = ensureState(h);
-  const chain = verifyMemoryChain(persona);
-  const mem = readMemory(persona);
+export function audit(p: string): unknown {
+  const a = persona(p).audit();
   return {
-    mutation_log: st.mutation_log.slice(-10),
-    memory_entries: mem.length,
-    memory_chain_intact: chain.ok,
-    memory_chain_broken_at: chain.brokenAt ?? null,
-    anomalies: detectMemoryAnomalies(mem),
+    memory_entries: a.memoryEntries,
+    memory_chain_intact: a.memoryChainIntact,
+    memory_chain_broken_at: a.memoryChainBrokenAt,
+    anomalies: a.anomalies,
+    mutation_count: a.mutationCount,
   };
 }
 
 /** Honor deletion_policy.user_request_supported: tombstone a memory entry. */
-export function forget(persona: string, targetHash: string, reason: string): unknown {
-  persona = confine(persona);
-  const entry = tombstoneMemory(persona, targetHash, reason);
-  return { tombstoned: targetHash, by: entry.hash, live_entries: readLiveMemory(persona).length };
+export function forget(p: string, targetHash: string, reason: string): unknown {
+  const r = persona(p).forget(targetHash, reason);
+  return { tombstoned: r.tombstoned, by: r.by, live_entries: r.liveEntries };
 }
 
-export function proposeEdit(
-  persona: string,
-  targetPath: string,
-  toValue: unknown,
-  rationale: string,
-): unknown {
-  persona = confine(persona);
-  const h = loadPersona(persona);
-  const mode = readMode(h.frontmatter as Record<string, unknown>, persona);
-  const result = proposeSelfEdit(persona, { targetPath, toValue, rationale, sources: ["user"] }, mode);
-  // Surface staleness so the HOST (which holds the LLM) knows to recompile PERSONA.md.
-  return { ...result, recompile_pending: readRecompilePending(persona).pending };
+export function proposeEdit(p: string, targetPath: string, toValue: unknown, rationale: string): unknown {
+  const r = persona(p).proposeEdit(targetPath, toValue, rationale);
+  const { recompilePending, ...rest } = r as { recompilePending?: boolean };
+  return { ...rest, recompile_pending: recompilePending };
 }
 
-export function listProposals(persona: string): unknown {
-  persona = confine(persona);
-  return { proposals: proposals(persona), active_overlay: activeOverlay(persona) };
+export function listProposals(p: string): unknown {
+  const { proposals, activeOverlay } = persona(p).listProposals();
+  return { proposals, active_overlay: activeOverlay };
 }
 
-export function decideEdit(persona: string, id: string, decision: "approve" | "reject"): unknown {
-  persona = confine(persona);
-  if (decision === "approve") {
-    const applied = applySelfEdit(persona, id, "mcp-host") as Record<string, unknown>;
-    return { ...applied, recompile_pending: readRecompilePending(persona).pending };
-  }
-  rejectSelfEdit(persona, id, "mcp-host");
-  return { id, status: "rejected" };
+export function decideEdit(p: string, id: string, decision: "approve" | "reject"): unknown {
+  const r = persona(p).decideEdit(id, decision, "mcp-host");
+  const { recompilePending, ...rest } = r as { recompilePending?: boolean };
+  return recompilePending === undefined ? rest : { ...rest, recompile_pending: recompilePending };
 }
 
 /**
  * Whether the persona's compiled PERSONA.md is stale (a self-edit was applied since the last
  * compile). MCP can't run an LLM, so the host calls `personaxis compile` when this is true.
  */
-export function recompileStatus(persona: string): unknown {
-  persona = confine(persona);
-  const s = readRecompilePending(persona);
-  return { recompile_pending: s.pending, reason: s.reason ?? null, since: s.ts ?? null };
+export function recompileStatus(p: string): unknown {
+  const s = persona(p).recompileStatus();
+  return { recompile_pending: s.recompilePending, reason: s.reason, since: s.since };
 }
 
 /** Security-review a skill before use (supply-chain defense). */
 export function skillReview(skillPath: string): unknown {
-  skillPath = confine(skillPath);
-  return reviewSkill(skillPath);
+  return sdkSkillReview(confine(skillPath));
 }
 
 /** Scan untrusted text for prompt-injection before it reaches the persona. */
 export function scanText(text: string): unknown {
-  return scanForInjection(text);
+  return sdkScanText(text);
 }
 
 export function scanConfig(content: string, filename?: string): unknown {
-  return scanAgentConfig(content, filename ? detectKind(filename) : undefined);
+  return sdkScanConfig(content, filename);
 }
 
 /**
@@ -282,10 +165,7 @@ export function evaluateCmd(
   command: string,
   sandbox: "read-only" | "workspace-write" | "danger-full-access",
   approval: "untrusted" | "on-failure" | "on-request" | "never",
-  persona?: string,
+  p?: string,
 ): unknown {
-  const policy = persona
-    ? policyFromFrontmatter(loadPersona(confine(persona)).frontmatter, process.cwd())
-    : { ...DEFAULT_POLICY, sandbox, approval, workspaceRoot: process.cwd() };
-  return evaluateCommand(command, policy);
+  return sdkEvaluateCmd(command, sandbox, approval, p ? confine(p) : undefined);
 }

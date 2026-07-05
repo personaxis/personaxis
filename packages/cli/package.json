@@ -50,7 +50,8 @@
     "inquirer": "^12.5.2",
     "js-yaml": "^4.1.0",
     "@personaxis/spec": "workspace:*",
-    "@personaxis/protocol": "workspace:*"
+    "@personaxis/protocol": "workspace:*",
+    "@personaxis/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

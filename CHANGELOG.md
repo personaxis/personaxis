@@ -33,6 +33,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
   never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
 
+### Changed — the SDK is the single engine façade; MCP + serve consume it (F3.5)
+- **`@personaxis/sdk` reaches full parity**: the `Persona` class gained `envelopes`, `agentRun`,
+  `forget`, `proposeEdit`/`listProposals`/`decideEdit` (with an explicit proposer≠approver `approver`),
+  `recompileStatus`, and `compiledBody`, plus module-level `scanText`/`scanConfig`/`skillReview`/
+  `evaluateCmd` — the full surface an embedder (or the SaaS) needs.
+- **MCP + serve now delegate to the SDK** instead of re-implementing the clamp/audit/loop/agent
+  logic. The MCP `service.ts` keeps its `--root` path confinement and snake_case wire shapes but
+  routes every operation through a bound `Persona`; `serve`'s HTTP handlers do the same. The
+  duplicated engine wrappers across sdk/mcp/serve are gone. (The REPL is rerouted in F3.6.)
+
 ### Added — `state rebuild`: state.json as a checkpoint of the log (F3.4)
 - **`personaxis state rebuild`**: `state.values` is a derived checkpoint of the append-only
   `mutation_log`. `rebuild` replays the log (each entry stores its authoritative post-governance

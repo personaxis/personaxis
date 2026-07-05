@@ -19,32 +19,14 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import chalk from "chalk";
 import {
-  LivingLoop,
-  HeuristicAppraiser,
-  LlmAppraiser,
-  resolveModel,
-  PersonaAgent,
-  EventBus,
-  Tracer,
-  policyFromFrontmatter,
-  readAgentBudget,
-  readVerification,
-  readObservability,
   loadPersona,
   ensureState,
   extractEnvelopes,
-  applyMutation,
-  writeState,
-  readState,
-  withStateLock,
   resolveField,
-  readMemory,
-  verifyMemoryChain,
-  detectMemoryAnomalies,
   displayName,
-  type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
+import { Persona } from "@personaxis/sdk";
 
 const AGENTS_MD = (name: string) => `# ${name} — personaxis agent tools
 
@@ -84,19 +66,20 @@ async function route(
       res.end(AGENTS_MD(name));
       return;
     }
-    const handle = loadPersona(personaPath);
+    // Engine ops delegate to the single SDK façade (F3.5); serve owns only HTTP
+    // shaping + validation + injection-scanned observations (unchanged behavior).
+    const persona = new Persona(personaPath);
     if (req.method === "GET" && url === "/persona/state") {
-      const st = readState(handle.statePath);
-      return json(res, 200, { values: st.values, recent_mutations: st.mutation_log.slice(-5) });
+      const st = persona.state();
+      return json(res, 200, { values: st.values, recent_mutations: st.recentMutations });
     }
     if (req.method === "GET" && url === "/persona/audit") {
-      const st = readState(handle.statePath);
-      const mem = readMemory(handle.personaPath);
+      const a = persona.audit();
       return json(res, 200, {
-        mutation_log: st.mutation_log.slice(-10),
-        memory_entries: mem.length,
-        memory_chain_intact: verifyMemoryChain(handle.personaPath).ok,
-        anomalies: detectMemoryAnomalies(mem),
+        mutation_count: a.mutationCount,
+        memory_entries: a.memoryEntries,
+        memory_chain_intact: a.memoryChainIntact,
+        anomalies: a.anomalies,
       });
     }
     if (req.method === "POST" && url === "/persona/observe") {
@@ -104,36 +87,21 @@ async function route(
       if (parseError) return json(res, 400, { error: "invalid JSON body" });
       const observation = String(body.observation ?? "");
       if (!observation.trim()) return json(res, 400, { error: "observation (non-empty string) is required" });
-      const events: LoopEvent[] = [];
-      // Use the persona's resolved model (config/env) for a real appraisal; fall back to the
-      // deterministic heuristic appraiser when no model is configured.
-      const m = resolveModel({ personaPath, frontmatter: handle.frontmatter as Record<string, unknown> });
-      const loop = new LivingLoop(personaPath, { appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser() });
-      loop.bus.on((e) => events.push(e));
-      const report = await loop.tick({ observation, source: (body.source as ProvenanceSource) ?? "user" });
+      const { report, events } = await persona.observe(observation, (body.source as ProvenanceSource) ?? "user");
       return json(res, 200, { report, events });
     }
     if (req.method === "POST" && url === "/persona/adjust") {
       const { body, parseError } = await readJson(req);
       if (parseError) return json(res, 400, { error: "invalid JSON body" });
-      const env = extractEnvelopes(handle.frontmatter);
+      // HTTP validation stays in serve; the mutation itself (clamp+audit+lock) is the SDK's.
+      const env = extractEnvelopes(loadPersona(personaPath).frontmatter);
       const field = resolveField(String(body.field ?? ""), env.envelopes);
       const delta = Number(body.delta);
       if (!(field in env.envelopes)) {
         return json(res, 400, { error: `unknown envelope field '${field}'`, fields: Object.keys(env.envelopes) });
       }
       if (!Number.isFinite(delta)) return json(res, 400, { error: "delta must be a finite number" });
-      const result = withStateLock(handle.statePath, () => {
-        const st = readState(handle.statePath);
-        const r = applyMutation(st, env.envelopes, {
-          field,
-          delta,
-          reason: String(body.reason ?? "http adjust"),
-          actor: "actor-llm",
-        });
-        writeState(handle.statePath, st);
-        return r;
-      });
+      const result = persona.adjust(field, delta, String(body.reason ?? "http adjust"));
       return json(res, 200, result);
     }
     if (req.method === "POST" && url === "/persona/agent") {
@@ -141,29 +109,9 @@ async function route(
       if (parseError) return json(res, 400, { error: "invalid JSON body" });
       const task = String(body.task ?? "");
       if (!task.trim()) return json(res, 400, { error: "task (non-empty string) is required" });
-      const fm = handle.frontmatter as Record<string, unknown>;
-      const llm = resolveModel({ personaPath: handle.personaPath, frontmatter: fm });
-      if (!llm) return json(res, 400, { error: "agent requires a configured model (config.json local.endpoint/model or PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL)" });
-      const events: LoopEvent[] = [];
-      const bus = new EventBus();
-      bus.on((e) => events.push(e));
-      const agent = new PersonaAgent({
-        llm,
-        policy: policyFromFrontmatter(fm, process.cwd()),
-        personaBody: handle.body,
-        onApproval: async () => "deny", // non-interactive HTTP: deny anything needing approval
-        budget: readAgentBudget(fm),
-        verification: readVerification(fm),
-        judge: llm,
-        personaPath: handle.personaPath,
-        bus,
-      });
-      const obs = readObservability(fm);
-      const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
-      const result = await agent.run(task);
-      const trace = tracer ? tracer.write(handle.personaPath).paths : [];
-      tracer?.stop();
-      return json(res, 200, { result, events, trace });
+      const result = await persona.agentRun(task);
+      if ("error" in result) return json(res, 400, result);
+      return json(res, 200, result);
     }
     json(res, 404, { error: "not found" });
   } catch (e) {
