@@ -6,3 +6,5 @@
  */
 export * from "./assemble.js";
 export * from "./faithfulness.js";
+export * from "./targets.js";
+export * from "./dist.js";

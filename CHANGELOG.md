@@ -23,6 +23,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The Living Loop's `recompile` hook can now perform a cheap, provider-free inline recompile via the
   same assembler; the `observe`/daemon path gets it for free through the stage-1 fallback.
 
+### Changed — host placement is a core plugin registry; `.dist/` slices (F3.2)
+- **Placement moved to `@personaxis/core`** as a plugin registry (`registerTarget`/`getTarget`/
+  `placeForTarget`) with the four built-in hosts (claude-code, codex, openclaw, hermes) — so a
+  backend (the SaaS) can place documents server-side, not only the CLI. The CLI's `placement.ts` /
+  `soul-md.ts` are now thin shims; behavior and the `--platform` flag are unchanged. SOUL.md hosts
+  (openclaw/Hermes) re-read the file fresh every message, so a recompile hot-reloads with no restart.
+- **`.dist/` consumer slices**: a root compile now also emits `.personaxis/.dist/PERSONA.hot.md`
+  (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
+  never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
+
 ## [Unreleased] — Fase R replatform (per `ARCHITECTURE_REVIEW.md` §15 + `docs/architecture/TECH_STACK.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
 ### Added — platform (FR.1–FR.3)

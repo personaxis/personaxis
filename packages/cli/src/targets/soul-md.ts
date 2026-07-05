@@ -1,19 +1,9 @@
-import matter from "gray-matter";
-
 /**
  * SOUL.md placement — the identity file read by **openclaw** (workspace-root `SOUL.md`) and
  * **Hermes** (Nous Research; `~/.hermes/SOUL.md` or a per-profile `SOUL.md`). Both inject SOUL.md as
- * the FIRST section of the agent's system prompt at the start of every session.
+ * the FIRST section of the agent's system prompt and RE-READ it fresh each message (hot reload).
  *
- * The modern approach (unlike the pre-v0.7 field-mapping compiler this replaces) reuses the canonical
- * compiled document produced by `runCompile` — it is already a second-person qualitative identity doc,
- * exactly what SOUL.md wants (identity, voice, values, boundaries, examples). We only strip the
- * subagent YAML frontmatter (`name`/`description`) that openclaw/Hermes don't use.
+ * F3.2 moved the pure logic to `@personaxis/core` (`compile/targets.ts`) so the SaaS can place
+ * server-side too; this module re-exports it for existing CLI callers/tests.
  */
-export function toSoulMd(compiledText: string): string {
-  const { content } = matter(compiledText);
-  const body = content.trim();
-  // openclaw/Hermes inject the file verbatim as identity; a leading "# SOUL" is idiomatic but not
-  // required. Keep the compiled identity as-is if it already opens with a heading, else add one.
-  return body.startsWith("#") ? body : `# SOUL\n\n${body}`;
-}
+export { toSoulMd } from "@personaxis/core";

@@ -72,7 +72,7 @@ node packages/cli/dist/index.js --persona <path>   # enter the living REPL
 | `src/commands/migrate.ts` | Codemods `0.5-to-0.6`, `0.6-to-0.7` (written reports) + additive bumps `0.7-to-0.8`, `0.8-to-0.9`, `0.9-to-0.10` |
 | `src/targets/claude-code.ts` | Placement adapter: Claude Code subagent + CLAUDE.md baseline |
 | `src/targets/codex.ts` | Placement adapter: Codex custom agent + AGENTS.md baseline |
-| `src/targets/placement.ts` | Converts the canonical compiled document into a platform's subagent convention |
+| `src/targets/placement.ts` | Thin shim over `@personaxis/core`'s target plugin registry (F3.2: pure placement logic + SOUL.md + `.dist/` slices live in `packages/core/src/compile/`) |
 | `src/targets/skills.ts` | Resolve `extensions.skills` entries, materialize local skills to platform discovery dirs, write `skills-manifest.json` |
 
 ## Schema and template sync rule

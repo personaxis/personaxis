@@ -14,6 +14,9 @@ import {
   assemblePersonaDoc,
   checkFaithfulness,
   summarizeFaithfulness,
+  distSlices,
+  DIST_HOT_FILE,
+  DIST_COLD_FILE,
   type AssembleInput,
 } from "@personaxis/core";
 import { buildPolishPrompt, type CompileTargetInfo } from "../compile-instructions.js";
@@ -271,6 +274,19 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 
   console.log(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
   console.log(chalk.dim(`  via ${result.via} (${result.model})`));
+
+  // F3.2 — emit the derived `.dist/` consumer slices beside the spec: a HOT slice
+  // (opener + voice + anchors + hard limits, for the always-load hot path) and the
+  // COLD full document. Deterministic + ephemeral (rebuilt every compile). Skipped
+  // for --out / --stdout (custom sinks) and for subagents (root-identity optimization).
+  if (!opts.out && !isSubagent) {
+    const { hot, cold } = distSlices(finalContent);
+    const distDir = join(baseDir, ".dist");
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(join(distDir, DIST_HOT_FILE), hot, "utf-8");
+    writeFileSync(join(distDir, DIST_COLD_FILE), cold, "utf-8");
+    console.log(chalk.dim(`  .dist/ slices: ${DIST_HOT_FILE} (${hot.length}B hot) · ${DIST_COLD_FILE} (${cold.length}B cold)`));
+  }
 
   // Optional host export: place the compiled document into the host's convention so it can adopt the
   // persona. Given when --platform is set (and we're not overriding the output path). Works for the
