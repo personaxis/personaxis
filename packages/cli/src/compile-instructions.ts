@@ -125,6 +125,52 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
     .join("\n");
 }
 
+export interface PolishPromptInput {
+  /** The deterministic stage-1 artifact — the GROUND TRUTH to rephrase. */
+  assembled: string;
+  /** The quantitative spec, for register/voice reference only (not new facts). */
+  personaxisMd: string;
+  target: CompileTargetInfo;
+}
+
+/**
+ * F3.1 stage 2 — the LLM POLISH prompt. Unlike the from-scratch compile prompt,
+ * polish receives the already-assembled canonical document and is constrained to
+ * REPHRASE it for fluency and register: it may reorder within a section, merge
+ * choppy bullets into prose, and tune voice — but it may NOT add, drop, or
+ * change any claim (virtue, rule, limit, anchor, consistency dimension). The
+ * deterministic faithfulness check (core `checkFaithfulness`) rejects a polish
+ * that violates this, and the caller falls back to the assembled document.
+ */
+export function buildPolishPrompt(input: PolishPromptInput): string {
+  return [
+    `You are the personaxis compiler's POLISH stage for ${input.target.label}.`,
+    ``,
+    `You are given an already-correct, deterministically-assembled persona document. Your ONLY job ` +
+      `is to make it read fluently and in a consistent SECOND-PERSON voice ("You are…", "You always…") ` +
+      `— a persona-prompting artifact a language model adopts.`,
+    ``,
+    `HARD CONSTRAINTS (a downstream deterministic check enforces these and will REJECT your output):`,
+    `- Do NOT add any fact, rule, virtue, limit, behavioral anchor, or consistency dimension that is ` +
+      `not already in the assembled document. Inventing content is the primary failure mode.`,
+    `- Do NOT drop or weaken any hard limit, "Always/Never" anchor, or stay-in-character rule. Every ` +
+      `bullet under "Hard limits", "Staying in character", "What you always / never do", and "What is ` +
+      `fixed, what can change" must survive (you may rephrase it, not remove it).`,
+    `- Keep the same "## " section headings and their order.`,
+    `- Never include runtime numbers, trait/affect tables, or a live-state block.`,
+    `- Reproduce the "Memory & resources" bullets verbatim.`,
+    ``,
+    `You MAY: smooth choppy bullets into readable prose, fix grammar, unify the second-person voice, ` +
+      `and tighten wording. When in doubt, change less.`,
+    ``,
+    `Output ONLY the polished document. Do not wrap it in a code block.`,
+    section("Assembled document (GROUND TRUTH — rephrase, do not alter meaning)", input.assembled),
+    section("personaxis.md (register/voice reference only — introduces NO new facts)", input.personaxisMd),
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 /**
  * Builds the prompt for the reverse direction: a hand-edited compiled
  * document -> a proposed `personaxis.md`, preserving fields that the edit did

@@ -77,16 +77,37 @@ export function liveSync(handle: PersonaHandle, compiledPath: string | undefined
   return writeLiveMarker(handle.personaPath, state);
 }
 
+export interface RecompileHookOptions {
+  /** Path to the compiled doc to keep in sync (marker + live-block self-heal). */
+  compiledPath?: string;
+  /**
+   * F3.1 — optional DETERMINISTIC inline recompile. When provided, on drift the
+   * hook also rewrites `compiledPath` with this freshly-assembled document (the
+   * stage-1 assembler, no provider — cheap, no tokens). This is what makes the
+   * loop's `recompile` a real recompile rather than a marker: the compiled doc
+   * reflects the evolved spec immediately. A later `personaxis compile` re-polishes.
+   * Returns undefined to skip the rewrite for a given tick.
+   */
+  assemble?: (handle: PersonaHandle) => string | undefined;
+}
+
 /**
  * Build a `recompile` hook for the LivingLoop: on numeric drift it writes the `.live.json`
- * notify marker (and strips any residual live block from the compiled doc). The qualitative
- * recompile of PERSONA.md remains a separate, provider-backed step.
+ * notify marker (and strips any residual live block from the compiled doc). When an
+ * `assemble` function is supplied (F3.1) it ALSO rewrites the compiled doc deterministically
+ * — a cheap, provider-free inline recompile. The qualitative LLM POLISH remains a separate,
+ * provider-backed step (`personaxis compile`).
  */
 export function makeRecompileHook(
-  compiledPath?: string,
+  opts?: string | RecompileHookOptions,
 ): (handle: PersonaHandle) => Promise<void> {
+  const options: RecompileHookOptions = typeof opts === "string" ? { compiledPath: opts } : opts ?? {};
   return async (handle: PersonaHandle) => {
     const state = readState(handle.statePath);
-    liveSync(handle, compiledPath, state);
+    liveSync(handle, options.compiledPath, state);
+    if (options.assemble && options.compiledPath && existsSync(options.compiledPath)) {
+      const doc = options.assemble(handle);
+      if (doc && doc.trim()) writeFileSync(options.compiledPath, doc.trimEnd() + "\n", "utf-8");
+    }
   };
 }

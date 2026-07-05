@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — Fase 3 living engine (per `ARCHITECTURE_REVIEW.md` §11–§13, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+
+### Changed — compile is now a deterministic two-stage pipeline (F3.1)
+- **Stage 1 — deterministic assembler** (`@personaxis/core` `assemblePersonaDoc`): `personaxis compile`
+  now ALWAYS first assembles the canonical, second-person persona-prompting document from the spec
+  with NO model — verbatim voice exemplars, hard limits, and resource manifest, and never any numeric
+  runtime state. The same spec produces byte-identical output, so the compiled-doc hash is finally a
+  meaningful provenance signal.
+- **Stage 2 — optional LLM polish, faithfulness-gated**: when a model provider is configured, an LLM
+  rephrases the assembled document (new rephrase-not-add polish prompt). A deterministic faithfulness
+  check (`checkFaithfulness`) diffs the polish against the assembled ground truth over four protected
+  claim classes and REJECTS a polish that drops a hard limit or invents a claim — the historical CMO
+  regression (invented `consistency` items) now fails closed. On rejection, no provider, or `--no-polish`,
+  compile writes the deterministic document. Compile no longer requires a model to produce a correct doc.
+- The Living Loop's `recompile` hook can now perform a cheap, provider-free inline recompile via the
+  same assembler; the `observe`/daemon path gets it for free through the stage-1 fallback.
+
 ## [Unreleased] — Fase R replatform (per `ARCHITECTURE_REVIEW.md` §15 + `docs/architecture/TECH_STACK.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
 ### Added — platform (FR.1–FR.3)

@@ -7,8 +7,17 @@ import { validatePersona } from "../schema.js";
 import { injectBaselineIntoClaude } from "../targets/claude-code.js";
 import { injectBaselineIntoAgents } from "../targets/codex.js";
 import { buildResourceManifest } from "../resource-manifest.js";
-import { activeOverlay, readRecompilePending, clearRecompilePending } from "@personaxis/core";
-import { buildCompilePrompt, type CompileTargetInfo } from "../compile-instructions.js";
+import {
+  activeOverlay,
+  readRecompilePending,
+  clearRecompilePending,
+  assemblePersonaDoc,
+  checkFaithfulness,
+  summarizeFaithfulness,
+  type AssembleInput,
+} from "@personaxis/core";
+import { buildPolishPrompt, type CompileTargetInfo } from "../compile-instructions.js";
+import { ProviderRequiresAgentError, type ProviderRunResult } from "../providers/types.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { runProviderOrExit } from "../provider-run.js";
 import { hashContent, saveManifest } from "../manifest.js";
@@ -18,6 +27,28 @@ import { resolveDeclaredSkills, materializeLocalSkills, writeSkillsManifest, app
 function readSibling(baseDir: string, name: string): string | undefined {
   const p = join(baseDir, name);
   return existsSync(p) ? readFileSync(p, "utf-8") : undefined;
+}
+
+/** The name the compiled document addresses: short_name (chat handle) → display_name → metadata.name. */
+function personaName(data: Record<string, unknown>): string {
+  const identity = (data.identity ?? {}) as { short_name?: string; display_name?: string; canonical_id?: string };
+  const meta = (data.metadata ?? {}) as { name?: string };
+  return identity.short_name ?? identity.display_name ?? meta.name ?? identity.canonical_id ?? "persona";
+}
+
+/**
+ * Subagent placement (.claude/agents/<slug>.md, …) expects a `name`/`description`
+ * frontmatter the host uses to decide when to invoke the subagent. The deterministic
+ * assembler emits the body only, so we prepend it here from the spec.
+ */
+function subagentFrontmatter(slug: string, data: Record<string, unknown>): string {
+  const meta = (data.metadata ?? {}) as { description?: string };
+  const identity = (data.identity ?? {}) as { system_identity?: { purpose?: string } };
+  const description =
+    (meta.description ?? identity.system_identity?.purpose ?? `The ${slug} persona.`)
+      .replace(/\s+/g, " ")
+      .trim();
+  return `---\nname: ${slug}\ndescription: ${JSON.stringify(description)}\n---\n\n`;
 }
 
 function injectRootBaselines(): void {
@@ -57,6 +88,55 @@ export interface RunCompileOptions {
   platform?: PlacementPlatform;
   /** Skip (no-op) unless the persona's compiled doc is marked stale by a self-edit. */
   ifPending?: boolean;
+  /** F3.1: skip the LLM polish stage — write the deterministic assembled document. */
+  noPolish?: boolean;
+}
+
+/**
+ * F3.1 stage 2 — run the LLM polish over the assembled document and gate it
+ * with the deterministic faithfulness check. Returns the document to write and
+ * how it was produced. On any failure (no real provider, provider error, or a
+ * faithfulness violation) it falls back to the assembled document — compile
+ * ALWAYS produces a correct doc, provider or not.
+ */
+async function polishOrFallback(
+  assembled: string,
+  personaxisMd: string,
+  target: CompileTargetInfo,
+  opts: RunCompileOptions,
+): Promise<{ content: string; polished: boolean; via: string; source: ProviderRunResult["source"] | "manual"; model: string }> {
+  const provider = resolveProvider(opts.provider);
+  // Smart-default `agent` handoff with no explicit choice and no --from-file:
+  // there is no model to polish with, so write the deterministic doc directly.
+  const agentByDefault = provider.source === "cli-agent" && !opts.provider && !opts.fromFile;
+  if (opts.noPolish || agentByDefault) {
+    return { content: assembled, polished: false, via: "deterministic assembler", source: provider.source, model: "none" };
+  }
+
+  const prompt = buildPolishPrompt({ assembled, personaxisMd, target });
+  let result;
+  try {
+    result = await runProviderOrExit(provider, prompt, opts.fromFile);
+  } catch (err) {
+    if (err instanceof ProviderRequiresAgentError) throw err; // handled by runProviderOrExit (exits)
+    console.log(chalk.yellow("!"), `polish skipped (${(err as Error).message}); wrote the deterministic document.`);
+    return { content: assembled, polished: false, via: "deterministic assembler", source: provider.source, model: "none" };
+  }
+
+  let polished = result.text.trim();
+  const fence = polished.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
+  if (fence) polished = fence[1].trim();
+
+  const report = checkFaithfulness(assembled, polished);
+  if (!report.ok) {
+    console.log(chalk.yellow("!"), summarizeFaithfulness(report));
+    for (const f of report.findings.slice(0, 6)) {
+      console.log(chalk.dim(`    ${f.kind === "dropped" ? "dropped" : "invented"} [${f.section}] ${f.text.slice(0, 80)}`));
+    }
+    console.log(chalk.dim("  → kept the deterministic assembled document (polish rejected)."));
+    return { content: assembled, polished: false, via: "deterministic assembler (polish rejected)", source: result.source, model: result.model };
+  }
+  return { content: polished, polished: true, via: `${result.source} polish`, source: result.source, model: result.model };
 }
 
 /**
@@ -116,23 +196,38 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 
   // Fold APPLIED governed self-edits so a recompile reflects what the persona evolved into.
   const appliedOverlay = activeOverlay(sourcePath);
-  const prompt = buildCompilePrompt({ personaxisMd: raw, policyYaml, stateJson, resourceManifest, target, appliedOverlay });
 
-  const provider = resolveProvider(opts.provider);
-  const result = await runProviderOrExit(provider, prompt, opts.fromFile);
-  let compiledText = result.text.trim();
-  // Some providers wrap the whole document in a ```fence``` despite instructions — strip it.
-  const fence = compiledText.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
-  if (fence) compiledText = fence[1].trim();
+  // F3.1 — STAGE 1: the deterministic assembler always runs. It is the canonical,
+  // hashable artifact and the ground truth the optional polish is checked against.
+  const assembleInput: AssembleInput = {
+    persona: loaded.data as Record<string, unknown>,
+    resourceManifest,
+    target: {
+      name: personaName(loaded.data),
+      isSubagent,
+      slug,
+      resourceBase: isSubagent ? "./" : "./.personaxis/",
+    },
+    appliedOverlay: Object.keys(appliedOverlay).length ? appliedOverlay : undefined,
+  };
+  const assembled = assemblePersonaDoc(assembleInput);
+
+  // F3.1 — STAGE 2: optional LLM polish, gated by the faithfulness check.
+  const stage2 = await polishOrFallback(assembled, raw, target, opts);
+  const result = { source: stage2.source, via: stage2.via, model: stage2.model };
+  const compiledText = stage2.content;
 
   const outPath = resolve(opts.out ?? canonicalOutPath);
 
+  // Subagent placement needs a name/description frontmatter; prepend it (the assembler emits body only).
+  const withFrontmatter = isSubagent && slug ? subagentFrontmatter(slug, loaded.data as Record<string, unknown>) + compiledText : compiledText;
+
   if (opts.stdout) {
-    process.stdout.write(compiledText + "\n");
+    process.stdout.write(withFrontmatter + "\n");
     return;
   }
 
-  let finalContent = compiledText;
+  let finalContent = withFrontmatter;
   // The canonical persona.md is the markdown representation; skills materialize in the
   // claude-code convention by default. An explicit --platform additionally EXPORTS a
   // host placement (.claude/agents/<slug>.md or .codex/agents/<slug>.toml) below.
@@ -175,7 +270,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   clearRecompilePending(sourcePath); // the compiled doc now reflects the spec
 
   console.log(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
-  console.log(chalk.dim(`  via ${result.source} (${result.model})`));
+  console.log(chalk.dim(`  via ${result.via} (${result.model})`));
 
   // Optional host export: place the compiled document into the host's convention so it can adopt the
   // persona. Given when --platform is set (and we're not overriding the output path). Works for the
@@ -219,7 +314,8 @@ export const compileCommand = new Command("compile")
   .option("--stdout", "Print to stdout instead of writing a file")
   .option("--platform <platform>", `Also EXPORT a host placement for a sub-persona (.claude/agents or .codex): ${PLACEMENT_PLATFORMS.join(" | ")}`)
   .option("--if-pending", "No-op unless a self-edit marked the compiled doc stale (.recompile-pending.json)")
-  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string; ifPending?: boolean }) => {
+  .option("--no-polish", "Write the deterministic assembled document; skip the LLM polish stage")
+  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string; ifPending?: boolean; polish?: boolean }) => {
     if (opts.platform && !(PLACEMENT_PLATFORMS as readonly string[]).includes(opts.platform)) {
       console.error(chalk.red("Unknown platform:"), opts.platform);
       console.error(chalk.dim("Valid platforms:"), PLACEMENT_PLATFORMS.join(", "));
@@ -235,5 +331,6 @@ export const compileCommand = new Command("compile")
       stdout: opts.stdout,
       platform: opts.platform as PlacementPlatform | undefined,
       ifPending: opts.ifPending,
+      noPolish: opts.polish === false, // commander: --no-polish sets polish=false
     });
   });
