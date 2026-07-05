@@ -33,6 +33,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
   never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
 
+### Added — `state rebuild`: state.json as a checkpoint of the log (F3.4)
+- **`personaxis state rebuild`**: `state.values` is a derived checkpoint of the append-only
+  `mutation_log`. `rebuild` replays the log (each entry stores its authoritative post-governance
+  result) to detect DRIFT — a stored value the log does not justify (a torn write or a hand-edit) —
+  and `--write` repairs state.json from the log, under the state lock. Safe by design: the log is
+  authoritative only over the fields it mutated, so an untouched value is never reset.
+
 ### Added — storage ports, the persistence seam (F3.3)
 - **Hexagonal storage ports** (`@personaxis/core` `ports/`): `LockProvider`, `StateStore`,
   `MemoryStore`, `LedgerStore` (the append-only hash-chained episodic ledger), and `ModelClient`,

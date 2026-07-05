@@ -29,6 +29,7 @@ import {
   writeState,
   withStateLock,
   extractEnvelopes,
+  rebuildState,
   resolveField,
   applyMutation,
   governMutations,
@@ -230,10 +231,58 @@ const showSubcommand = new Command("show")
     }
   });
 
+// ─── state rebuild ───────────────────────────────────────────────────────────
+
+const rebuildSubcommand = new Command("rebuild")
+  .description("Rebuild state.values from the mutation_log (the source of truth) + envelope means. Detects drift; --write repairs.")
+  .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
+  .option("--write", "Write the rebuilt values back to state.json (default: dry-run, report only)")
+  .option("--json", "Output the rebuild result as JSON")
+  .action((options: { file?: string; write?: boolean; json?: boolean }) => {
+    try {
+      const { personaPath, statePath } = resolvePersonaAndState(options.file);
+      const handle = loadPersona(personaPath);
+      const envelopes = extractEnvelopes(handle.frontmatter).envelopes;
+
+      // Take the lock so a concurrent writer can't race the read→rebuild→write.
+      const result = withStateLock(statePath, () => {
+        const state = readState(statePath);
+        const { state: rebuilt, drift } = rebuildState(state, envelopes);
+        if (options.write && drift.length > 0) writeState(statePath, rebuilt);
+        return { drift, wrote: Boolean(options.write) && drift.length > 0, values: rebuilt.values, entries: state.mutation_log.length };
+      });
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      console.log(chalk.dim(`Replayed ${result.entries} mutation(s) over ${Object.keys(envelopes).length} envelope(s).`));
+      if (result.drift.length === 0) {
+        console.log(chalk.green("✓"), "state.values matches the mutation_log — no drift.");
+        return;
+      }
+      console.log(chalk.yellow(`! ${result.drift.length} field(s) drifted from the log:`));
+      for (const d of result.drift) {
+        const rebuilt = Number.isNaN(d.rebuilt) ? chalk.red("(not in log/envelopes)") : d.rebuilt;
+        console.log(`  ${chalk.cyan(d.field)}: stored ${d.stored ?? "(unset)"} → rebuilt ${rebuilt}`);
+      }
+      if (result.wrote) {
+        console.log(chalk.green("✓"), "state.json repaired from the mutation_log.");
+      } else {
+        console.log(chalk.dim("  dry-run — re-run with --write to repair state.json from the log."));
+      }
+    } catch (err) {
+      console.error(chalk.red("Error:"), (err as Error).message);
+      process.exit(1);
+    }
+  });
+
 // ─── Parent state command ──────────────────────────────────────────────────
 
 export const stateCommand = new Command("state")
   .description("Manage state.json runtime state (v0.6+).")
   .addCommand(initSubcommand)
   .addCommand(mutateSubcommand)
-  .addCommand(showSubcommand);
+  .addCommand(showSubcommand)
+  .addCommand(rebuildSubcommand);
