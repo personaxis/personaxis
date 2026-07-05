@@ -33,6 +33,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
   never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
 
+### Added — storage ports, the persistence seam (F3.3)
+- **Hexagonal storage ports** (`@personaxis/core` `ports/`): `LockProvider`, `StateStore`,
+  `MemoryStore`, `LedgerStore` (the append-only hash-chained episodic ledger), and `ModelClient`,
+  bundled as `Storage` with a `defaultFsStorage()` reference adapter. The `LivingLoop` accepts an
+  optional `storage` (fs by default) and routes its state read→apply→write and its memory/ledger
+  operations through it — so the SaaS can host the SAME engine over Postgres/S3 by swapping the
+  bundle. No behavior change locally; the fs adapter wraps the existing atomic writes + per-persona
+  lock.
+
 ## [Unreleased] — Fase R replatform (per `ARCHITECTURE_REVIEW.md` §15 + `docs/architecture/TECH_STACK.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
 ### Added — platform (FR.1–FR.3)

@@ -33,6 +33,7 @@ export * from "./injection.js";
 export * from "./config-scan.js";
 export * from "./config-layers.js";
 export * from "./compile/index.js";
+export * from "./ports/index.js";
 export * from "./sandbox.js";
 export * from "./hooks.js";
 export * from "./approval.js";

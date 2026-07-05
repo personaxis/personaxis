@@ -19,12 +19,8 @@ import {
 } from "./governance.js";
 import { applyMutation } from "./state-engine.js";
 import {
-  commitMemoryEntry,
   prepareMemoryEntry,
-  verifyMemoryChain,
-  readMemory,
   readMemoryTypes,
-  consolidateSemantic,
 } from "./memory.js";
 import { recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
 import { detectMemoryAnomalies } from "./provenance.js";
@@ -32,8 +28,8 @@ import { scanForInjection } from "./injection.js";
 import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers, SelfEditError } from "./self-evolution.js";
 import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
-import { loadPersona, readState, writeState, type PersonaHandle, type StateFile } from "./persona.js";
-import { withStateLock } from "./lock.js";
+import { loadPersona, type PersonaHandle, type StateFile } from "./persona.js";
+import { defaultFsStorage, type Storage } from "./ports/index.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, AppraisalSignal, ProvenanceSource } from "./appraisal.js";
 
@@ -43,6 +39,9 @@ export interface LivingLoopOptions {
   governance?: Partial<GovernanceConfig>;
   /** Optional recompile hook (LLM-backed, lives in the CLI). Called on drift. */
   recompile?: (handle: PersonaHandle) => Promise<void>;
+  /** F3.3 — storage adapters (state/lock/ledger/memory). Defaults to the fs bundle;
+   *  the SaaS injects Postgres/S3 adapters over the SAME engine. */
+  storage?: Storage;
 }
 
 export interface TickInput {
@@ -63,12 +62,15 @@ export class LivingLoop {
   private handle: PersonaHandle;
   /** v0.8: stamped on every mutation for cross-OS reconciliation + traceability. */
   readonly sessionId = randomUUID();
+  /** F3.3 — persistence seam; fs adapters by default. */
+  private readonly storage: Storage;
 
   constructor(
     personaPath: string,
     private readonly opts: LivingLoopOptions,
   ) {
     this.handle = loadPersona(personaPath);
+    this.storage = opts.storage ?? defaultFsStorage();
   }
 
   /** Reload the persona document (e.g. after a recompile). */
@@ -154,8 +156,8 @@ export class LivingLoop {
         // another tick): re-read fresh state under the lock — the proposed deltas
         // are relative, so applying them to fresh values is correct — and never
         // hold the lock across a model call (the appraisal already happened).
-        withStateLock(this.handle.statePath, () => {
-          const fresh: StateFile = readState(this.handle.statePath);
+        this.storage.lock.withLock(this.handle.statePath, () => {
+          const fresh: StateFile = this.storage.state.read(this.handle.statePath);
           for (const m of admitted) {
             const result = applyMutation(fresh, env.envelopes, {
               field: m.field,
@@ -168,7 +170,7 @@ export class LivingLoop {
             bus.emit({ type: "mutate", result });
             if (result.to !== result.from) mutationsApplied++;
           }
-          writeState(this.handle.statePath, fresh);
+          this.storage.state.write(this.handle.statePath, fresh);
         });
       }
 
@@ -228,12 +230,12 @@ export class LivingLoop {
             source: mem.source,
             tags: injectionBlocked ? [...(mem.tags ?? []), "injection-flagged"] : mem.tags,
           });
-          const chain = verifyMemoryChain(this.handle.personaPath);
+          const chain = this.storage.ledger.verify(this.handle.personaPath);
           if (!chain.ok) {
             bus.emit({ type: "error", message: `memory chain broken at #${chain.brokenAt}; refusing write` });
             continue;
           }
-          commitMemoryEntry(this.handle.personaPath, entry);
+          this.storage.ledger.append(this.handle.personaPath, entry);
           bus.emit({ type: "memory", entry });
           written.push(entry);
           memoriesWritten++;
@@ -244,12 +246,12 @@ export class LivingLoop {
 
       // Consensus / anomaly pass — surface poisoning signals (A-MemGuard-style).
       if (memoriesWritten > 0) {
-        for (const a of detectMemoryAnomalies(readMemory(this.handle.personaPath))) {
+        for (const a of detectMemoryAnomalies(this.storage.ledger.read(this.handle.personaPath))) {
           bus.emit({ type: "anomaly", kind: a.kind, detail: a.detail });
         }
         // Episodic → semantic consolidation when the persona declares it.
         if (memTypes.semantic) {
-          const c = consolidateSemantic(this.handle.personaPath);
+          const c = this.storage.memory.consolidate(this.handle.personaPath);
           bus.emit({ type: "recompile", reason: `semantic consolidation (${c.count} entries → memory.md)` });
         }
       }
