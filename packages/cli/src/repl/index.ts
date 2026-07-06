@@ -12,7 +12,6 @@ import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { resolve, join, dirname, relative } from "node:path";
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import chalk from "chalk";
 import {
   LivingLoop,
@@ -52,47 +51,26 @@ import {
   overseerView,
   personaTheme,
   policyFromFrontmatter,
-  resolveEffectivePersona,
   readAgentBudget,
   readVerification,
   readObservability,
   Tracer,
   ContextMeter,
-  cachedContextWindow,
-  resolveContextWindow,
   compactMessages,
-  type ChatMessage,
-  HeuristicAppraiser,
-  LlmAppraiser,
-  LlmResponder,
-  ReflectiveResponder,
   makeRecompileHook,
-  resolveModel,
-  describeModel,
-  type Appraiser,
-  type Responder,
-  type Policy,
-  type SandboxMode,
-  type PersonaHandle,
-  type PersonaTheme,
-  type LoopEvent,
-  type ToolCall,
-  type CommandVerdict,
-  type ApprovalDecision,
 } from "@personaxis/core";
 import {
   animateLogo,
   awaken,
   sigilLines,
   envelopeBars,
-  eventLine,
   voiceWrap,
   farewell,
 } from "@personaxis/tui/visual";
-import { Screen, type SlashItem, type LineRole } from "@personaxis/tui/screen";
+import { Screen, type SlashItem } from "@personaxis/tui/screen";
 import { renderFrame } from "@personaxis/tui";
 import { writeStarterPersona } from "../starter.js";
-import { isSubagentPath, slugChainFromPath, slugAddressFromPath } from "../load.js";
+import { isSubagentPath, slugAddressFromPath } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/improve.js";
 import { runCompile } from "../commands/compile.js";
 import { setModelSetting } from "../config.js";
@@ -103,206 +81,32 @@ import { loadPersonaFile } from "../load.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { buildResourceManifest } from "../resource-manifest.js";
+import type { Ctx, ReplOptions, CommandDef } from "./types.js";
+import {
+  CANDIDATES,
+  POSTURES,
+  resolvePersonaPath,
+  notePostureChange,
+  llmConfig,
+  ctxModelArg,
+  pickAppraiser,
+  pickResponder,
+  appraiserLabel,
+  crossPersonaDenies,
+  buildPolicy,
+  readGoalText,
+  makeMeter,
+} from "./config.js";
+import { phaseFor, renderEvent, shortName, personaGlyph, replyLine, fmtK, firstRunModelHint } from "./render.js";
+import { stopDaemons, startStopDaemon, runCliPassthrough } from "./daemons.js";
 
-interface ReplOptions {
-  persona?: string;
-}
+// Re-exported for the REPL's public surface (tests + the CLI entry import these).
+export { notePostureChange } from "./config.js";
 
-const CANDIDATES = [".personaxis/personaxis.md", ".personaxis/PERSONA.md", "personaxis.md", "PERSONA.md"];
-const POSTURES: SandboxMode[] = ["read-only", "workspace-write", "danger-full-access"];
-
-function resolvePersonaPath(opt?: string): string | null {
-  if (opt) {
-    if (existsSync(resolve(opt))) return resolve(opt);
-    // Not a path → treat as a global/overlay persona slug (G5 reuse).
-    if (!opt.includes("/") && !opt.includes("\\")) {
-      const eff = resolveEffectivePersona(process.cwd(), opt);
-      if (eff.scope !== "none" && existsSync(eff.path)) return eff.path;
-    }
-    return null;
-  }
-  for (const c of CANDIDATES) {
-    const p = resolve(c);
-    if (existsSync(p)) return p;
-  }
-  return null;
-}
-
-// ── Session context shared by both UIs ──────────────────────────────────────
-interface Ctx {
-  handle: PersonaHandle;
-  loop: LivingLoop;
-  responder: Responder;
-  theme: PersonaTheme;
-  name: string;
-  mode: string;
-  out: (text: string, role?: LineRole) => void;
-  postureIndex: number;
-  approve: (call: ToolCall, v: CommandVerdict) => Promise<ApprovalDecision>;
-  /** The LLM-facing system prompt = the COMPILED PERSONA.md (slot #1), not the
-   * quantitative personaxis.md body. Resources/memory are injected by the agent. */
-  personaDoc: string;
-  /** Fixed reply color for a sub-persona (ansi256). Undefined => root (default fg). */
-  replyColor?: number;
-  /** Persistent conversation (no system message) for chat continuity. */
-  conversation: ChatMessage[];
-  /** Id of the on-disk session backing this conversation. */
-  sessionId: string;
-  /** Whether the session file (header) has been written yet (lazy on first turn). */
-  sessionStarted: boolean;
-  /** Whether the session has been auto-named yet. */
-  sessionNamed: boolean;
-  /** Session-level context-window meter (persists across turns). */
-  meter: ContextMeter;
-  /** Update the spinner phase label (Screen mode only). */
-  phase?: (label: string) => void;
-  /** A one-shot environment note (e.g. "sandbox posture changed") to prepend to the NEXT
-   * agent turn so the model re-evaluates a request it may have declined under the old posture.
-   * Without this, a weak model just parrots its previous refusal from the conversation history. */
-  pendingEnvNote?: string;
-  /** Long-running daemons (serve/watch) launched from `/` in the background, so they can be stopped. */
-  bg?: Record<string, ChildProcess>;
-}
-
-/** Record that the sandbox posture changed, so the next turn nudges the model to re-evaluate.
- * Exported for tests. */
-export function notePostureChange(ctx: { postureIndex: number; pendingEnvNote?: string }): void {
-  const posture = POSTURES[ctx.postureIndex];
-  const permission =
-    posture === "read-only"
-      ? "You may run read-only commands but NOT write files or access the network."
-      : posture === "workspace-write"
-        ? "You may now read/run commands AND write files within the workspace (network still restricted)."
-        : "You now have full access: read, write, network, and destructive commands are permitted.";
-  ctx.pendingEnvNote = `[environment change] The sandbox posture is now "${posture}". ${permission} Re-evaluate — and if appropriate, retry — any request you previously declined due to a stricter posture.`;
-}
-
-function phaseFor(e: LoopEvent): string {
-  switch (e.type) {
-    case "agent-step": return "thinking";
-    case "tool-propose": return `running ${e.tool}`;
-    case "tool-result": return "reading result";
-    case "verify-start":
-    case "verify-result": return "verifying";
-    case "appraise": return "appraising";
-    case "context-compacted": return "compacting context";
-    default: return "working";
-  }
-}
-
-/**
- * The resolved model for the (optionally persona-scoped) session. Delegates to core's layered
- * resolveModel: env > frontmatter.runtime > per-persona config > project config > global config.
- * So `personaxis config set --global local.endpoint …` once means no env exports per launch, and a
- * persona can carry its own model. Env vars still work (highest precedence) for backward-compat.
- */
-function llmConfig(ctx?: { personaPath?: string; frontmatter?: Record<string, unknown> }): { endpoint: string; model: string; apiKey?: string } | undefined {
-  return resolveModel({ personaPath: ctx?.personaPath, frontmatter: ctx?.frontmatter, cwd: process.cwd() });
-}
-
-/** Convenience: build the llmConfig arg from a Ctx (its persona path + frontmatter). */
-function ctxModelArg(ctx: Ctx): { personaPath: string; frontmatter: Record<string, unknown> } {
-  return { personaPath: ctx.handle.personaPath, frontmatter: ctx.handle.frontmatter as Record<string, unknown> };
-}
-
-function pickAppraiser(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): Appraiser {
-  const llm = llmConfig(arg);
-  return llm ? new LlmAppraiser(llm) : new HeuristicAppraiser();
-}
-function pickResponder(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): Responder {
-  const llm = llmConfig(arg);
-  return llm ? new LlmResponder(llm) : new ReflectiveResponder();
-}
-function appraiserLabel(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): string {
-  return describeModel({ personaPath: arg?.personaPath, frontmatter: arg?.frontmatter, cwd: process.cwd() });
-}
-
-/**
- * Cross-persona isolation (read-only across the roster): a persona may READ any other
- * persona's files but never WRITE them. We add deny-list regexes that match writes into
- * the `.personaxis/personas/` tree outside the persona's OWN subtree:
- *   - root persona  -> deny ALL writes under .personaxis/personas/ (it owns none of them)
- *   - sub "<slug>"  -> deny writes under .personaxis/personas/ EXCEPT .../<slug>/
- * Reads are unaffected. Deny has highest precedence in the policy engine, so this holds
- * regardless of the sandbox posture.
- */
-function crossPersonaDenies(personaPath: string): string[] {
-  const tree = "\\.personaxis[\\\\/]+personas[\\\\/]+";
-  const chain = slugChainFromPath(personaPath);
-  if (chain.length === 0) return [tree]; // root: writes none of the personas tree
-  // A nested persona may write ONLY its own subtree:
-  //   .personaxis/personas/<c1>/personas/<c2>/…/personas/<cn>/…
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const own = chain.map(esc).join("[\\\\/]+personas[\\\\/]+") + "[\\\\/]";
-  return [`${tree}(?!${own})`];
-}
-
-function buildPolicy(ctx: Ctx): Policy {
-  const base = policyFromFrontmatter(ctx.handle.frontmatter as Record<string, unknown>, process.cwd());
-  return {
-    ...base,
-    sandbox: POSTURES[ctx.postureIndex],
-    deny: [...base.deny, ...crossPersonaDenies(ctx.handle.personaPath)],
-  };
-}
-
-function readGoalText(handle: PersonaHandle): string | undefined {
-  const goalPath = join(dirname(handle.personaPath), "goal.json");
-  if (!existsSync(goalPath)) return undefined;
-  try {
-    return (JSON.parse(readFileSync(goalPath, "utf-8")) as { text?: string }).text;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Render any loop OR agent event into a single display line (or null to skip). */
-function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
-  switch (e.type) {
-    // Internal agent reasoning is NOT shown — the reply is printed once by the
-    // caller. Only real ACTIONS (tool calls) and errors surface as activity.
-    case "abstain":
-    case "agent-step":
-    case "agent-think":
-    case "agent-finish":
-      return null;
-    case "tool-propose":
-      return chalk.cyan(`  → ${e.tool} ${chalk.dim(JSON.stringify(e.args).slice(0, 80))}`);
-    case "tool-verdict": {
-      const c = e.decision === "deny" ? chalk.red : e.decision === "ask" ? chalk.yellow : chalk.green;
-      return `    ${c(e.decision)} ${chalk.dim(e.reason)}`;
-    }
-    case "tool-result":
-      return chalk.dim(`    ${e.ok ? "✓" : "✗"} ${e.output.split("\n")[0].slice(0, 90)}`);
-    case "agent-error":
-      return chalk.red(`  └─ agent error: ${e.message}`);
-    case "agent-stop-condition":
-      return chalk.yellow(`  ■ stop: ${e.reason} (step ${e.step})`);
-    case "verify-start":
-      return chalk.dim(`  verify · ${e.gates} gate${e.gates === 1 ? "" : "s"}…`);
-    case "verify-result":
-      return `  verify   ${e.pass ? chalk.green("pass") : chalk.red("fail")} ${chalk.dim(`${e.verifier}: ${e.reason}`)}`;
-    case "verify-complete":
-      return e.passed ? chalk.green(`  verify · ok (${e.passes}/${e.quorum})`) : chalk.red(`  verify · FAILED (${e.passes}/${e.quorum})`);
-    case "agent-budget":
-    case "context-meter":
-    case "memory-recall":
-    case "evaluation":
-      return null; // surfaced in the concise per-turn summary (not inline noise) / status bar
-    case "context-compacted":
-      return chalk.dim(`  · context compacted (${e.removed} msgs freed)`);
-    default:
-      return eventLine(theme, e);
-  }
-}
+// Session context, config/model helpers, and event rendering moved to
+// ./types, ./config, ./render (F3.6 split).
 
 // ── Commands (single source for /help and the live `/` menu) ─────────────────
-interface CommandDef {
-  name: string;
-  desc: string;
-  run(arg: string, ctx: Ctx): Promise<boolean | void> | boolean | void;
-}
-
 const COMMANDS: CommandDef[] = [
   { name: "help", desc: "show commands", run: (_a, ctx) => void ctx.out(helpText()) },
   {
@@ -742,108 +546,6 @@ async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   return false;
 }
 
-/** Kill any background daemons (serve/watch) started from `/` — called on exit. */
-function stopDaemons(ctx: Ctx): void {
-  for (const child of Object.values(ctx.bg ?? {})) {
-    try {
-      child.kill();
-    } catch {
-      /* already gone */
-    }
-  }
-  ctx.bg = {};
-}
-
-/** Start or stop a long-running daemon (serve/watch) in the BACKGROUND, so the app doesn't block. */
-function startStopDaemon(
-  name: string,
-  arg: string,
-  ctx: Ctx,
-  buildArgs: (port: string) => string[],
-  describe: (port: string) => string,
-): void {
-  ctx.bg = ctx.bg ?? {};
-  const rest = arg.trim();
-  if (rest === "stop") {
-    const child = ctx.bg[name];
-    if (!child) return void ctx.out(chalk.dim(`  /${name}: not running.`));
-    try {
-      child.kill();
-    } catch {
-      /* already gone */
-    }
-    delete ctx.bg[name];
-    return void ctx.out(chalk.green(`  ✓ stopped ${name}`));
-  }
-  if (ctx.bg[name] && ctx.bg[name].exitCode === null) {
-    return void ctx.out(chalk.dim(`  /${name} is already running (pid ${ctx.bg[name].pid}) — /${name} stop to stop it.`));
-  }
-  const port = rest; // for serve
-  const child = spawn(process.execPath, [process.argv[1], ...buildArgs(port)], {
-    cwd: process.cwd(),
-    detached: false, // tied to the REPL: stopping the app stops the daemon
-    stdio: "ignore",
-    env: { ...process.env },
-  });
-  child.on("error", (e) => ctx.out(chalk.red(`  /${name} failed to start: ${e.message}`)));
-  ctx.bg[name] = child;
-  ctx.out(chalk.green(`  ✓ ${name} running in the background`) + chalk.dim(` (pid ${child.pid}) — ${describe(port)}`));
-  ctx.out(chalk.dim(`  /${name} stop to stop it (it also stops when you /exit).`));
-}
-
-/** Run `personaxis <name> <args>` as a subprocess (the same build) and echo its output into the REPL. */
-function runCliPassthrough(name: string, arg: string, ctx: Ctx): void {
-  const args = arg.split(/\s+/).filter(Boolean);
-  try {
-    const out = execFileSync(process.execPath, [process.argv[1], name, ...args], {
-      cwd: process.cwd(), // where the user launched the app (the project root)
-      encoding: "utf-8",
-      env: { ...process.env, FORCE_COLOR: "1" },
-      timeout: 60_000,
-    });
-    for (const l of out.replace(/\n$/, "").split("\n")) ctx.out("  " + l);
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string; status?: number };
-    const text = ((err.stdout ?? "") + (err.stderr ?? "")).trim();
-    if (text) for (const l of text.split("\n")) ctx.out("  " + l);
-    else ctx.out(chalk.yellow(`  /${name} failed (exit ${err.status ?? "?"}) — is it a valid command? try /help or \`personaxis --help\``));
-  }
-}
-
-/**
- * The name shown in chat. Per the spec model this is the persona's chosen
- * identity.display_name (v0.10 short_name overrides it as an explicit chat handle);
- * it NEVER falls back to metadata.name. Falls back to canonical_id only if both are
- * absent, and truncates an over-long handle rather than dropping to the package id.
- */
-function shortName(ctx: Ctx): string {
-  const id = ctx.handle.frontmatter.identity as { short_name?: string; display_name?: string; canonical_id?: string } | undefined;
-  const pick = id?.short_name?.trim() || id?.display_name?.trim() || id?.canonical_id?.trim() || "persona";
-  return pick.length <= 32 ? pick : pick.slice(0, 31) + "…";
-}
-
-/** A small, stable per-persona sigil glyph (a mid-density char from its themed set). */
-function personaGlyph(ctx: Ctx): string {
-  const g = ctx.theme.glyphs;
-  return g[Math.min(4, g.length - 1)] ?? "◇";
-}
-
-/**
- * Format a persona's reply line. The ROOT persona speaks in the terminal's default
- * foreground (white on dark, black on light) so it reads as "the" voice; a sub-persona
- * (ctx.replyColor set) gets its own FIXED, auto-assigned color so you can tell who spoke.
- * A small per-persona sigil glyph prefixes the name (a sober, identifying microdetail).
- */
-function replyLine(ctx: Ctx, text: string): string {
-  const glyph = personaGlyph(ctx);
-  const name = shortName(ctx);
-  if (ctx.replyColor !== undefined) {
-    const c = chalk.ansi256(ctx.replyColor);
-    return `${c.dim(glyph)} ${c.bold.underline(name)} ${c.dim("›")}  ${c(text)}`;
-  }
-  return `${chalk.dim(glyph)} ${chalk.bold.underline(name)} ${chalk.dim("›")}  ${text}`;
-}
-
 /**
  * A turn: the persona CONVERSES and (when needed) USES TOOLS — one governed agent
  * loop, with persistent conversation + the session context meter. This unifies chat
@@ -1023,13 +725,6 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 }
 
 /** A fresh context-window meter for the session (background-resolves the real window). */
-function makeMeter(): ContextMeter {
-  const llm0 = llmConfig();
-  const meter = new ContextMeter(llm0 ? cachedContextWindow(llm0.model) : 0);
-  if (llm0) void resolveContextWindow(llm0).then((w) => (meter.limit = w)).catch(() => {});
-  return meter;
-}
-
 /**
  * Build a REPL context for ANY persona (root or a sub-persona), sharing the session
  * meter. The compiled system prompt is resolved per the artifact model: a sub-persona's
@@ -1137,10 +832,6 @@ async function runLineMode(ctx: Ctx): Promise<void> {
   await farewell(ctx.handle.frontmatter);
 }
 
-
-function fmtK(n: number): string {
-  return n >= 1000 ? (n / 1000).toFixed(1) + "K" : String(n);
-}
 
 /**
  * Parse leading @mentions for multi-persona routing, by hierarchical address:
@@ -1331,11 +1022,3 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
 }
 
 /** Guide a first-time user to configure a model instead of silently falling back to heuristic mode. */
-function firstRunModelHint(out: (s: string) => void): void {
-  out(chalk.yellow("  No model configured — running in offline heuristic mode (no real reasoning)."));
-  out(chalk.dim("  Configure ONCE (global, all projects):"));
-  out(chalk.dim("    personaxis config set --global local.endpoint <openai-compatible-url>"));
-  out(chalk.dim("    personaxis config set --global local.model <model-name>"));
-  out(chalk.dim("    personaxis config set --global local.apiKeyEnv <ENV_VAR_WITH_YOUR_KEY>"));
-  out(chalk.dim("  …or in-session: /model set endpoint <url> · /model set model <name> · /model set key-env <ENV> global"));
-}
