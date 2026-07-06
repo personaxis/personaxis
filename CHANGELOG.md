@@ -33,6 +33,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
   never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
 
+### Changed — evals are now a conformance suite (C0/C1/C2) (F3.9)
+- The eval harness classifies every scenario by spec **conformance class** — C0 Identity (the persona
+  is valid, its universals hold), C1 Governed State (clamp/gate/drift bound), C2 Living Runtime
+  (memory tamper-evidence, injection can't steer, budgets stop, verification catches) — and reports a
+  per-class rollup where a class is MET only when every scenario in it passes. Two C0 scenarios were
+  added against the real golden persona (the honesty universal is present + hard, and relaxing it is
+  rejected by the validator). `personaxis-evals` now prints `C0 x/x · C1 x/x · C2 x/x`.
+
 ### Changed — the appraiser proposes against a grounded evolution view (F3.8)
 - The Living-Loop appraiser used to propose evolution blind — it saw the mutable field *names* but
   not their current values, envelopes, or the improvement mode. It now receives an **evolution view**:

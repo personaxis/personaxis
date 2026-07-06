@@ -97,6 +97,9 @@ importers:
       '@personaxis/core':
         specifier: workspace:*
         version: link:../core
+      '@personaxis/spec':
+        specifier: workspace:*
+        version: link:../spec
     devDependencies:
       '@types/node':
         specifier: ^22.10.0

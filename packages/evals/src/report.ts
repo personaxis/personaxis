@@ -10,6 +10,10 @@ export function toMarkdown(report: EvalReport): string {
   lines.push("");
   lines.push(`**${report.passed}/${report.total} scenarios passed** · acceptance ${(report.passRate * 100).toFixed(0)}%`);
   lines.push("");
+  lines.push("| Conformance class | Passed | Met |");
+  lines.push("|---|---|---|");
+  for (const [cls, c] of Object.entries(report.byClass)) lines.push(`| ${cls} | ${c.passed}/${c.total} | ${c.met ? "✓" : "✗"} |`);
+  lines.push("");
   lines.push("| Category | Passed |");
   lines.push("|---|---|");
   for (const [cat, c] of Object.entries(report.byCategory)) lines.push(`| ${cat} | ${c.passed}/${c.total} |`);
@@ -33,10 +37,14 @@ const C = {
 export function toConsole(report: EvalReport): string {
   const lines: string[] = [];
   lines.push("");
-  lines.push(C.bold(`  Personaxis governance evals — ${report.passed}/${report.total} passed (${(report.passRate * 100).toFixed(0)}%)`));
+  lines.push(C.bold(`  Personaxis conformance evals — ${report.passed}/${report.total} passed (${(report.passRate * 100).toFixed(0)}%)`));
+  const classLine = (["C0", "C1", "C2"] as const)
+    .map((cls) => `${report.byClass[cls].met ? C.green(cls) : C.red(cls)} ${report.byClass[cls].passed}/${report.byClass[cls].total}`)
+    .join("  ·  ");
+  lines.push(`  conformance: ${classLine}`);
   lines.push("");
   for (const r of report.results) {
-    lines.push(`  ${r.passed ? C.green("✓") : C.red("✗")} ${r.id.padEnd(36)} ${C.dim(r.category)}`);
+    lines.push(`  ${r.passed ? C.green("✓") : C.red("✗")} ${r.id.padEnd(36)} ${C.dim(`${r.conformanceClass} · ${r.category}`)}`);
     for (const c of r.checks) {
       if (!c.pass) lines.push(`      ${C.red("✗")} ${c.name}: ${C.dim(c.detail)}`);
     }

@@ -18,7 +18,8 @@
     "eval": "node dist/index.js"
   },
   "dependencies": {
-    "@personaxis/core": "workspace:*"
+    "@personaxis/core": "workspace:*",
+    "@personaxis/spec": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
