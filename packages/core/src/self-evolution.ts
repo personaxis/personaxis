@@ -291,6 +291,16 @@ export function readLedger(personaPath: string): LedgerEvent[] {
     .map((l) => JSON.parse(l) as LedgerEvent);
 }
 
+/**
+ * Record a ledger event directly (F3.7). Used by the authoritative human
+ * `personaxis edit <dot-path>` command to audit a surgical spec edit in the same
+ * append-only ledger the actor's self-edits use — so `/audit` shows human and
+ * actor changes on one timeline.
+ */
+export function recordLedgerEvent(personaPath: string, e: LedgerEvent): void {
+  append(personaPath, e);
+}
+
 export function isProtected(targetPath: string): boolean {
   return PROTECTED_PREFIXES.some((p) => targetPath === p || targetPath.startsWith(p + "."));
 }

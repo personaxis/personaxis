@@ -33,6 +33,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
   never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
 
+### Added — `personaxis edit <dot-path>`: surgical governed spec edits (F3.7)
+- **`personaxis edit <dot-path> <value>`** edits ONE value in the persona spec without rewriting the
+  file: it changes the leaf line textually so every author comment survives, coerces the value to the
+  current type, runs the governance gate (protected/governance-controlled paths require `--force`),
+  and RE-VALIDATES the whole persona — an edit that would break a universal (e.g. relaxing honesty
+  enforcement) is refused. Every accepted edit is audited in the self-edit ledger as a
+  `human-operator` change and marks the compiled PERSONA.md stale. `--dry-run` previews.
+
 ### Changed — the living REPL split into modules (F3.6)
 - **`repl/index.ts` 1341 → 168 lines**: the god-file became the entry point only (startRepl +
   the TTY/line UI loops), with the rest factored into seven cohesive modules along a clean acyclic
