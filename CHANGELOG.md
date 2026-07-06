@@ -33,6 +33,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
   never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
 
+### Changed — the appraiser proposes against a grounded evolution view (F3.8)
+- The Living-Loop appraiser used to propose evolution blind — it saw the mutable field *names* but
+  not their current values, envelopes, or the improvement mode. It now receives an **evolution view**:
+  each mutable field with its current value, `[min,max]` envelope, band, and remaining headroom, plus
+  the mode and the sections open to qualitative self-edits. The model proposes deltas against reality
+  ("mood.tone is near the top of its range — nudge down"); the runtime still clamps, governs, and audits.
+
 ### Added — `personaxis edit <dot-path>`: surgical governed spec edits (F3.7)
 - **`personaxis edit <dot-path> <value>`** edits ONE value in the persona spec without rewriting the
   file: it changes the leaf line textually so every author comment survives, coerces the value to the

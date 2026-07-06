@@ -12,6 +12,7 @@ export * from "./state-engine.js";
 export * from "./state-rebuild.js";
 export * from "./spec-edit.js";
 export * from "./appraisal.js";
+export * from "./evolution-view.js";
 export * from "./heuristic-appraiser.js";
 export * from "./llm-appraiser.js";
 export * from "./responder.js";

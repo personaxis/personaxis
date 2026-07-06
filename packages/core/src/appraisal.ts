@@ -8,6 +8,8 @@
  * signals; the code + the spec impose safety.
  */
 
+import type { EvolutionView } from "./evolution-view.js";
+
 export type ProvenanceSource = "user" | "tool" | "internal" | "synthesis";
 
 export interface ProposedMutation {
@@ -188,6 +190,9 @@ export interface AppraiseInput {
   mutableFields: string[];
   /** Top-level spec sections the persona MAY propose qualitative self-edits to (editGate != block). */
   editableSections?: string[];
+  /** F3.8: grounded projection of the editable surface (current values + envelopes + mode).
+   * When present, an appraiser SHOULD prefer it over the bare `mutableFields` names. */
+  evolutionView?: EvolutionView;
 }
 
 /** Defensive parser: coerce arbitrary JSON into a valid AppraisalSignal. */

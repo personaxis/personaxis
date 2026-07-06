@@ -19,6 +19,7 @@ import {
   type AppraisalSignal,
   type Appraiser,
 } from "./appraisal.js";
+import { renderEvolutionView } from "./evolution-view.js";
 
 export interface LlmAppraiserConfig {
   /** OpenAI-compatible base URL, e.g. http://localhost:11434/v1 (Ollama). */
@@ -61,15 +62,23 @@ export class LlmAppraiser implements Appraiser {
 
   async appraise(input: AppraiseInput): Promise<AppraisalSignal> {
     const fetchImpl = this.cfg.fetchImpl ?? fetch;
+    // F3.8: prefer the grounded evolution view (current values + envelopes + mode)
+    // over the bare field names, so the model proposes deltas against reality.
+    const evolutionBlock = input.evolutionView
+      ? renderEvolutionView(input.evolutionView)
+      : [
+          `# Mutable envelope fields you may nudge`,
+          input.mutableFields.join(", ") || "(none)",
+          ``,
+          `# Editable spec sections you may propose self-edits to`,
+          (input.editableSections ?? []).join(", ") || "(none — do not propose selfEdits)",
+        ].join("\n");
+
     const userMsg = [
       `# Persona identity (slot #1)`,
       input.personaBody.slice(0, 4000),
       ``,
-      `# Mutable envelope fields you may nudge`,
-      input.mutableFields.join(", ") || "(none)",
-      ``,
-      `# Editable spec sections you may propose self-edits to`,
-      (input.editableSections ?? []).join(", ") || "(none — do not propose selfEdits)",
+      evolutionBlock,
       ``,
       `# Observation [source: ${input.source}]`,
       input.observation,

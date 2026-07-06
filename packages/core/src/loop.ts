@@ -26,6 +26,7 @@ import { recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kind
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
 import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers, SelfEditError } from "./self-evolution.js";
+import { buildEvolutionView } from "./evolution-view.js";
 import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
 import { loadPersona, type PersonaHandle, type StateFile } from "./persona.js";
@@ -120,6 +121,15 @@ export class LivingLoop {
       // appraiser (network, auth, unsupported response_format) must NOT end the
       // session: degrade to "no evolution this turn" — the persona still replied
       // and the spec invariants are untouched.
+      // F3.8: build the grounded evolution view (current values + envelopes + mode)
+      // so the appraiser proposes against reality, not blind against field names.
+      const mode = readMode(fm, this.handle.personaPath);
+      const editableSections = editableLayers(fm, mode);
+      const currentValues = this.storage.state.exists(this.handle.statePath)
+        ? this.storage.state.read(this.handle.statePath).values
+        : {};
+      const evolutionView = buildEvolutionView({ values: currentValues, envelopes: env.envelopes, editableSections, mode });
+
       let signal: AppraisalSignal;
       try {
         signal = await this.opts.appraiser.appraise({
@@ -127,7 +137,8 @@ export class LivingLoop {
           source: input.source,
           personaBody: this.handle.body,
           mutableFields: Object.keys(env.envelopes),
-          editableSections: editableLayers(fm, readMode(fm, this.handle.personaPath)),
+          editableSections,
+          evolutionView,
         });
       } catch (err) {
         bus.emit({ type: "error", message: `appraiser unavailable: ${(err as Error).message}` });
