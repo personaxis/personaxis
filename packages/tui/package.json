@@ -41,5 +41,13 @@
     "@types/react": "^19.0.0",
     "@types/diff": "^7.0.0",
     "ink-testing-library": "^4.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/personaxis/cli.git",
+    "directory": "packages/tui"
   }
 }

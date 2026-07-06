@@ -21,5 +21,13 @@
   "devDependencies": {
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/personaxis/cli.git",
+    "directory": "packages/protocol"
   }
 }
