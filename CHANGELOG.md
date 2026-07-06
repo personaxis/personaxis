@@ -33,6 +33,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (the always-load essentials — opener, voice, always/never anchors, and the hard limits, which are
   never dropped) and `PERSONA.cold.md` (the full document). Deterministic, ephemeral, gitignored.
 
+### Changed — the living REPL split into modules (F3.6)
+- **`repl/index.ts` 1341 → 168 lines**: the god-file became the entry point only (startRepl +
+  the TTY/line UI loops), with the rest factored into seven cohesive modules along a clean acyclic
+  dependency graph — `types` (the shared `Ctx` contract), `config` (persona-path + layered model
+  resolution + policy), `render` (event → display line), `daemons` (serve/watch background +
+  CLI passthrough), `session` (context lifecycle), `turn` (the unified chat+tools turn + multi-persona
+  routing), and `commands` (the slash-command registry). Behavior is unchanged; verified by the full
+  suite plus an end-to-end REPL smoke through the new modules. (Routing the interactive agent turn
+  through the SDK, and the Ink transcript adoption, are tracked as follow-ons.)
+
 ### Changed — the SDK is the single engine façade; MCP + serve consume it (F3.5)
 - **`@personaxis/sdk` reaches full parity**: the `Persona` class gained `envelopes`, `agentRun`,
   `forget`, `proposeEdit`/`listProposals`/`decideEdit` (with an explicit proposer≠approver `approver`),
