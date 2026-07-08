@@ -58,6 +58,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   without per-band `expression`, or identical prose across reachable bands.
 - J_behavior (probe-based, BYOK — MATH_CORE Def. 11) ships with the experiment harness (RQ3).
 
+### Fixed/Hardened — the LLM pipelines (F6.5, pre-Genesis audit)
+- **Every provider HTTP call is hardened** (`providers/http.ts`): bounded timeout (120 s
+  AbortSignal), jittered retry on 429/5xx/network errors, and error messages that carry the
+  response-body excerpt (byok Anthropic/OpenAI + local now share one code path).
+- **Structured output** (`Provider.runStructured`): OpenAI `json_schema`, Anthropic forced
+  tool-use, local with graceful degradation (`json_schema` → `json_object` → plain+parse) —
+  the schema-constrained primitive Genesis synthesizes through.
+- **`decompile` gained the error-fed repair loop** (`llm-repair.ts`, bounded 3 rounds): the
+  exact failing fields/rules go back to the model instead of discarding the round; an invalid
+  personaxis.md is still NEVER written. The loop is generic — Genesis reuses it.
+- **The inline deterministic recompile is real now**: the REPL wires `assemble` into
+  `makeRecompileHook`, so a band crossing rewrites the compiled doc via the stage-1 assembler
+  (band-selected expression from fresh state) — F3.1's seam existed but nothing passed it.
+- Stale help strings fixed: `validate`/`spec` descriptions and the failure hint now say
+  v1.1 / `migrate 0.10-to-1.0` (they still said v0.7.0/v0.10); policy template header bumped.
+
 ### Changed — spec-faithful recompile trigger (F6.2)
 - The Living Loop now recompiles on a **band crossing** instead of on every applied mutation
   (SPEC v1.0 §L3: within-band movement is expression variance, not drift). Cheaper and

@@ -8,7 +8,7 @@ import { validatePersona, exitCodeFor } from "../schema.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { buildDecompilePrompt, type CompileTargetInfo } from "../compile-instructions.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
-import { runProviderOrExit } from "../provider-run.js";
+import { runWithRepair } from "../llm-repair.js";
 import { hashContent, saveManifest } from "../manifest.js";
 
 function readSibling(baseDir: string, name: string): string | undefined {
@@ -62,31 +62,57 @@ export async function runDecompile(opts: RunDecompileOptions): Promise<void> {
   const prompt = buildDecompilePrompt({ currentPersonaxisMd, editedCompiledMd, policyYaml, stateJson, resourceManifest, target });
 
   const provider = resolveProvider(opts.provider);
-  const result = await runProviderOrExit(provider, prompt, opts.fromFile);
-  let proposed = result.text.trim();
-  // Some providers wrap the whole document in a ```fence``` despite instructions — strip it,
-  // otherwise gray-matter sees the fence as body and the frontmatter (all the spec) is lost.
-  const fence = proposed.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
-  if (fence) proposed = fence[1].trim();
-  const proposedSpecMarkdown = proposed + "\n";
 
-  let data;
-  try {
-    data = matter(proposedSpecMarkdown).data;
-  } catch (err) {
-    console.error(chalk.red("✗"), "Provider returned content that could not be parsed as YAML frontmatter:", (err as Error).message);
-    process.exit(1);
-  }
-
-  const validation = validatePersona(data);
-  if (!validation.valid) {
-    console.error(chalk.red("✗"), `Proposed personaxis.md failed validation (${validation.status}). Nothing was written.`);
-    for (const err of validation.errors) {
-      const field = err.field ? chalk.yellow(err.field) + " — " : "";
-      console.error(`  ${chalk.red("✗")} ${field}${err.message}`);
+  // Fence-strip + frontmatter-parse + five-state validation as the repair
+  // critique: the exact failing fields go back to the model (bounded rounds,
+  // F6.5) — an invalid personaxis.md is NEVER written.
+  const normalize = (raw: string): string => {
+    let proposed = raw.trim();
+    // Some providers wrap the whole document in a ```fence``` despite instructions — strip it,
+    // otherwise gray-matter sees the fence as body and the frontmatter (all the spec) is lost.
+    const fence = proposed.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
+    if (fence) proposed = fence[1].trim();
+    return proposed + "\n";
+  };
+  const critique = (raw: string): string | null => {
+    let data: unknown;
+    try {
+      data = matter(normalize(raw)).data;
+    } catch (err) {
+      return `The document could not be parsed as YAML frontmatter: ${(err as Error).message}`;
     }
-    process.exit(exitCodeFor(validation.status));
+    const v = validatePersona(data as Record<string, unknown>);
+    if (v.valid) return null;
+    return v.errors.map((e) => `- ${e.field ? `${e.field}: ` : ""}${e.message}`).join("\n");
+  };
+
+  const outcome = await runWithRepair({
+    provider,
+    prompt,
+    critique,
+    fromFile: opts.fromFile,
+    onRetry: (round, c) =>
+      console.log(chalk.yellow(`! validation failed — repair round ${round}:`) + chalk.dim(` ${c.split("\n")[0]}${c.includes("\n") ? " …" : ""}`)),
+  });
+
+  if ("failed" in outcome) {
+    const status = (() => {
+      try {
+        return validatePersona(matter(normalize(outcome.last.text)).data as Record<string, unknown>).status;
+      } catch {
+        return "FAIL_SCHEMA" as const;
+      }
+    })();
+    console.error(chalk.red("✗"), `Proposed personaxis.md failed validation after ${outcome.critiques.length} round(s). Nothing was written.`);
+    console.error(chalk.dim(outcome.critiques[outcome.critiques.length - 1] ?? ""));
+    process.exit(exitCodeFor(status));
   }
+
+  const result = outcome;
+  const proposedSpecMarkdown = normalize(result.text);
+  const data = matter(proposedSpecMarkdown).data;
+  const validation = validatePersona(data);
+  if (result.rounds > 1) console.log(chalk.dim(`  accepted on repair round ${result.rounds}`));
 
   writeFileSync(sourcePath, proposedSpecMarkdown, "utf-8");
 

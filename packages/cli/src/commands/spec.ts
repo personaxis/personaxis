@@ -47,7 +47,7 @@ const RULES_JSON = [
 ];
 
 export const specCommand = new Command("spec")
-  .description("Print the current personaxis.md spec (v0.10, from persona.md/docs/SPEC.md) + lint rules — inject into agent prompts")
+  .description("Print the current personaxis.md spec (v1.1, from persona.md/docs/SPEC.md) + lint rules — inject into agent prompts")
   .option("--rules", "Append the lint rules table")
   .option("--rules-only", "Output only the lint rules")
   .option("--format <format>", "Output format: text (default) or json", "text")

@@ -139,7 +139,7 @@ function worstStatus(a: ValidationStatus, b: ValidationStatus): ValidationStatus
 }
 
 export const validateCommand = new Command("validate")
-  .description("Validate personaxis.md + sibling policy.yaml against spec v0.7.0 (v0.3-0.6 accepted with deprecation warnings)")
+  .description("Validate personaxis.md + sibling policy.yaml against spec v1.1 (0.3.0-0.10.0 read-compat via the frozen legacy schema)")
   .argument("[file]", "Path to personaxis.md, or a subagent slug (defaults to ./.personaxis/personaxis.md)")
   .option("--all", "Validate the root persona + every persona in .personaxis/personas/")
   .action((file?: string, opts?: { all?: boolean }) => {
@@ -183,7 +183,7 @@ export const validateCommand = new Command("validate")
     console.log("");
 
     if (!result.valid) {
-      console.error(chalk.dim("See "), chalk.cyan("personaxis spec"), chalk.dim(" for the v0.7.0 spec, or "), chalk.cyan("personaxis init"), chalk.dim(" to generate a valid template. Run "), chalk.cyan("personaxis migrate 0.6-to-0.7"), chalk.dim(" to move a legacy root PERSONA.md into .personaxis/personaxis.md."));
+      console.error(chalk.dim("See "), chalk.cyan("personaxis spec"), chalk.dim(" for the current spec, or "), chalk.cyan("personaxis init"), chalk.dim(" to generate a valid template. Run "), chalk.cyan("personaxis migrate 0.10-to-1.0"), chalk.dim(" to upgrade a legacy document (chain older codemods first if needed)."));
       console.error("");
     }
     process.exit(exitCodeFor(result.status));

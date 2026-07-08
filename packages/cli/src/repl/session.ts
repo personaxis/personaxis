@@ -25,6 +25,9 @@ import {
   fallbackName,
   nameSession,
   makeRecompileHook,
+  assemblePersonaDoc,
+  activeOverlay,
+  readState,
   type ContextMeter,
 } from "@personaxis/core";
 import { isSubagentPath, slugAddressFromPath } from "../load.js";
@@ -48,7 +51,24 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
   const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
   const loop = new LivingLoop(personaPath, {
     appraiser: pickAppraiser(modelArg),
-    recompile: makeRecompileHook(existsSync(compiled) ? compiled : undefined),
+    // F6.5: the inline recompile is REAL — on a band crossing the stage-1
+    // assembler rewrites the compiled doc deterministically (band-selected
+    // expression from fresh state; F3.1's `assemble` seam, finally wired).
+    recompile: makeRecompileHook({
+      compiledPath: existsSync(compiled) ? compiled : undefined,
+      assemble: (h) =>
+        assemblePersonaDoc({
+          persona: h.frontmatter as Record<string, unknown>,
+          target: {
+            name: displayName(h.frontmatter),
+            isSubagent: isSub,
+            ...(isSub ? { slug: slugAddressFromPath(personaPath) } : {}),
+            resourceBase: isSub ? "./" : "./.personaxis/",
+          },
+          appliedOverlay: activeOverlay(personaPath),
+          stateValues: existsSync(h.statePath) ? readState(h.statePath).values : undefined,
+        }),
+    }),
   });
   let postureIndex = POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox);
   if (postureIndex < 0) postureIndex = 1;

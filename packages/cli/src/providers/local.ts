@@ -1,6 +1,7 @@
-import { resolveModel } from "@personaxis/core";
-import type { Provider, ProviderRunResult } from "./types.js";
+import { resolveModel, portableJsonSchema } from "@personaxis/core";
+import type { Provider, ProviderRunResult, ProviderStructuredResult } from "./types.js";
 import type { PersonaxisConfig } from "../config.js";
+import { postJson } from "./http.js";
 
 const DEFAULT_ENDPOINT = "http://localhost:11434/v1";
 const DEFAULT_MODEL = "llama3.1";
@@ -23,38 +24,55 @@ export function createLocalProvider(config: PersonaxisConfig): Provider {
   const model = resolved?.model ?? config.local?.model ?? DEFAULT_MODEL;
   const apiKey = resolved?.apiKey ?? config.local?.apiKey;
 
+  const url = `${endpoint.replace(/\/$/, "")}/chat/completions`;
+  const headers: Record<string, string> = apiKey ? { authorization: `Bearer ${apiKey}` } : {};
+
+  const call = async (body: Record<string, unknown>): Promise<{ text: string; model: string }> => {
+    let json: { model?: string; choices?: { message?: { content?: string } }[] };
+    try {
+      json = (await postJson(url, headers, { model, temperature: 0.2, ...body })) as typeof json;
+    } catch (e) {
+      throw new Error(
+        `Local provider request failed: ${(e as Error).message}\n` +
+          `Is your local model server running? Configure the endpoint with ` +
+          `"personaxis config set local.endpoint <url>".`,
+      );
+    }
+    const text = json.choices?.[0]?.message?.content;
+    if (!text) throw new Error(`Local provider at ${endpoint} returned no content.`);
+    return { text, model: json.model ?? model };
+  };
+
   return {
     name: "local",
     source: "cli-local",
     async run(prompt: string): Promise<ProviderRunResult> {
-      const res = await fetch(`${endpoint.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.2,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(
-          `Local provider request to ${endpoint} failed: ${res.status} ${res.statusText}\n` +
-            `Is your local model server running? Configure the endpoint with ` +
-            `"personaxis config set local.endpoint <url>".`,
-        );
+      const r = await call({ messages: [{ role: "user", content: prompt }] });
+      return { ...r, source: "cli-local" };
+    },
+    /** Structured output with graceful degradation: json_schema (llama.cpp,
+     *  LM Studio, vLLM, hosted OpenAI-compatibles) → json_object (Ollama and
+     *  older servers) → plain text + parse. The caller's validator is the
+     *  final gate either way. */
+    async runStructured(prompt: string, schema: unknown, name: string): Promise<ProviderStructuredResult> {
+      const messages = [{ role: "user", content: prompt }];
+      const attempts: Array<Record<string, unknown>> = [
+        { messages, response_format: { type: "json_schema", json_schema: { name, schema: portableJsonSchema(schema), strict: false } } },
+        { messages, response_format: { type: "json_object" } },
+        { messages },
+      ];
+      let lastErr: Error | undefined;
+      for (const body of attempts) {
+        try {
+          const r = await call(body);
+          // Some servers wrap JSON in a code fence even under response_format.
+          const raw = r.text.trim().replace(/^```[a-zA-Z]*\s*\n?|\n?```$/g, "");
+          return { json: JSON.parse(raw) as unknown, model: r.model, source: "cli-local" };
+        } catch (e) {
+          lastErr = e as Error;
+        }
       }
-
-      const json = (await res.json()) as {
-        model?: string;
-        choices?: { message?: { content?: string } }[];
-      };
-      const text = json.choices?.[0]?.message?.content;
-      if (!text) {
-        throw new Error(`Local provider at ${endpoint} returned no content.`);
-      }
-
-      return { text, model: json.model ?? model, source: "cli-local" };
+      throw new Error(`Local provider structured call failed after all fallbacks: ${lastErr?.message}`);
     },
   };
 }
