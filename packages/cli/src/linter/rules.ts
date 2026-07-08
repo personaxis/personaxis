@@ -1,3 +1,4 @@
+import { extractEnvelopes, staticallyDecorative, type PersonaFrontmatter } from "@personaxis/core";
 import type { Finding } from "./types.js";
 
 export const REQUIRED_LAYERS = [
@@ -155,6 +156,26 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         }
       }
     }
+  }
+
+  // F6.4 decorative numbers (MATH_CORE Def. 10 / audit F-21): a mutable coordinate
+  // whose value PROVABLY cannot change the compiled artifact — no expression, a
+  // band-independent string, or identical prose across its reachable bands.
+  // σ_compile = 0 exactly; `personaxis jacobian` shows the full ranking.
+  try {
+    const lookup = extractEnvelopes(data as PersonaFrontmatter);
+    for (const [field, e] of Object.entries(lookup.envelopes)) {
+      if (staticallyDecorative(e)) {
+        findings.push({
+          rule: "decorative-number",
+          severity: "warning",
+          path: field,
+          message: `'${field}' declares an envelope but no per-band expression — its value cannot change the compiled artifact (σ=0). Add expression {low, moderate, high} to make the number load-bearing (SPEC §L3).`,
+        });
+      }
+    }
+  } catch {
+    // envelope extraction must never crash the linter on malformed frontmatter
   }
 
   // identity completeness (v0.3.0 shape)

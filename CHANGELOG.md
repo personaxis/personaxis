@@ -46,6 +46,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **5 new conformance evals** (C2): `drift-metric-bounded`, `band-crossing-audited` (T3),
   `homeostasis-returns-to-baseline` (T6), `arbitration-deterministic`, `u7-derivable` — 15/15.
 
+### Added — the persona Jacobian (F6.4)
+- **`personaxis jacobian`** — J_compile: the deterministic compile stage is a step function of
+  each coordinate's band, so its sensitivity is EXACT (no LLM, offline): compile at each
+  reachable band's representative, measure normalized line-edit distance between adjacent
+  artifacts. σ = 0 flags a **decorative number** — a mutable coordinate that provably cannot
+  change the compiled artifact (exit code 2 when any exist). Ranking shows which coordinates
+  actually matter. Run against the golden CMO it exposes 8/12 decorative coordinates (all
+  affect dimensions + two plain-string traits) — audit F-21, now measurable.
+- New lint warning **`decorative-number`** (static variant, no compile needed): envelope
+  without per-band `expression`, or identical prose across reachable bands.
+- J_behavior (probe-based, BYOK — MATH_CORE Def. 11) ships with the experiment harness (RQ3).
+
 ### Changed — spec-faithful recompile trigger (F6.2)
 - The Living Loop now recompiles on a **band crossing** instead of on every applied mutation
   (SPEC v1.0 §L3: within-band movement is expression variance, not drift). Cheaper and
