@@ -1,0 +1,110 @@
+/**
+ * PB-T1 / PB-T2 — the box is a deterministic safe set (MATH_CORE.md §3).
+ *
+ * T1 Invariance: no sequence of mutations — adversarial deltas included — leaves
+ *    the envelope box; an out-of-box (hand-tampered) value re-enters in one step.
+ * T2 Bounded step: |to − from| ≤ |delta_requested| whenever from is in the box
+ *    (the clamp is nonexpansive along the step); with the gate's cap this yields
+ *    ‖S_{t+1} − S_t‖_∞ ≤ δ_max.
+ *
+ * These run against the REAL mutation primitive (applyMutation), not a model of it.
+ */
+import { describe, it, expect } from "vitest";
+import fc from "fast-check";
+import { applyMutation } from "../../src/index.js";
+import { NUM_RUNS, envelopesArb, planArb, deltaArb, envelopeArb, freshState } from "./arbitraries.js";
+
+describe("PB-T1 invariance: the box is inescapable", () => {
+  it("every value stays in [min,max] under arbitrary mutation sequences", () => {
+    fc.assert(
+      fc.property(
+        envelopesArb.chain((envs) =>
+          fc.tuple(fc.constant(envs), planArb(Object.keys(envs).length)),
+        ),
+        ([envs, plan]) => {
+          const fields = Object.keys(envs);
+          const state = freshState();
+          for (const [idx, delta] of plan) {
+            const field = fields[idx];
+            const r = applyMutation(state, envs, { field, delta, reason: "pb-t1" });
+            const e = envs[field];
+            // The just-written value AND the audit record are in-box.
+            expect(r.to).toBeGreaterThanOrEqual(e.min);
+            expect(r.to).toBeLessThanOrEqual(e.max);
+            expect(state.values[field]).toBe(r.to);
+          }
+          // Post-condition over the whole state: S ∈ B, exactly (no epsilon — min/max are FP-exact).
+          for (const [field, v] of Object.entries(state.values)) {
+            expect(v).toBeGreaterThanOrEqual(envs[field].min);
+            expect(v).toBeLessThanOrEqual(envs[field].max);
+          }
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  it("one-step recovery: a tampered out-of-box value re-enters B on the next mutation", () => {
+    fc.assert(
+      fc.property(envelopeArb, deltaArb, deltaArb, (e, tamper, delta) => {
+        const envs = { "personality.traits.x": e };
+        const state = freshState();
+        state.values["personality.traits.x"] = e.max + Math.abs(tamper) + 1; // outside
+        const r = applyMutation(state, envs, { field: "personality.traits.x", delta, reason: "pb-t1-recovery" });
+        expect(r.to).toBeGreaterThanOrEqual(e.min);
+        expect(r.to).toBeLessThanOrEqual(e.max);
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  it("blocked mutations move nothing (to === from) and still audit", () => {
+    fc.assert(
+      fc.property(envelopeArb, deltaArb, (e, delta) => {
+        const envs = { "personality.traits.x": e };
+        const state = freshState();
+        const r = applyMutation(state, envs, {
+          field: "personality.traits.x",
+          delta,
+          reason: "pb-t1-blocked",
+          governanceBlocked: true,
+        });
+        expect(r.to).toBe(r.from);
+        expect(r.blocked).toBe(true);
+        expect(state.mutation_log.at(-1)?.governance_blocked).toBe(true);
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+});
+
+describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
+  it("|to − from| ≤ |delta| when starting inside the box", () => {
+    fc.assert(
+      fc.property(envelopeArb, deltaArb, fc.double({ min: 0, max: 1, noNaN: true }), (e, delta, frac) => {
+        const envs = { "personality.traits.x": e };
+        const state = freshState();
+        // Seed strictly inside the box (convex combination of the bounds).
+        state.values["personality.traits.x"] = e.min + (e.max - e.min) * frac;
+        const r = applyMutation(state, envs, { field: "personality.traits.x", delta, reason: "pb-t2" });
+        // FP: |to−from| can exceed |delta| only by rounding of (from+delta); allow 1e-9 (engine tolerance).
+        expect(Math.abs(r.to - r.from)).toBeLessThanOrEqual(Math.abs(delta) + 1e-9);
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  it("clamped flag ⟺ the request exceeded the envelope (audit truthfulness)", () => {
+    fc.assert(
+      fc.property(envelopeArb, deltaArb, (e, delta) => {
+        const envs = { "personality.traits.x": e };
+        const state = freshState();
+        const r = applyMutation(state, envs, { field: "personality.traits.x", delta, reason: "pb-t2-flag" });
+        const requested = r.from + delta;
+        const exceeded = requested < e.min || requested > e.max;
+        expect(r.clamped).toBe(exceeded && r.to !== requested);
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+});

@@ -22,8 +22,10 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "@fast-check/vitest": "^0.4.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
+    "fast-check": "^4.8.0",
     "typescript": "^5.8.3",
     "vitest": "^3.0.0"
   },

@@ -41,6 +41,10 @@ jobs:
 
       - name: Test
         run: pnpm run test
+        env:
+          # Property-based suite (PB-T1..T6, MATH_CORE.md): high adversarial-case
+          # count in CI; local runs default to 200 for speed.
+          FC_NUM_RUNS: "5000"
 
   golden:
     name: golden test (validate CMO = PASS)
@@ -85,22 +89,13 @@ jobs:
           fi
 
       # Byte-identity rule (CLAUDE.md): schemas AND templates must match persona.md.
-      # Blocking — drift is a spec-conformance regression.
+      # Blocking — drift is a spec-conformance regression. `check-mirror` owns the
+      # file list (scripts/sync-spec-mirror.mjs) so this gate never drifts from the
+      # `sync-mirror` command contributors run locally. A missing sibling is a skip.
       - name: Enforce schema + template byte-identity with persona.md
         if: ${{ hashFiles('persona.md/schema/persona.schema.json') != '' }}
         working-directory: cli
-        run: |
-          fail=0
-          check() { if ! diff -q "$1" "$2" >/dev/null; then echo "::error::$1 differs from $2 (byte-identity rule)"; fail=1; fi; }
-          check packages/spec/schema/persona.schema.json ../persona.md/schema/persona.schema.json
-          check packages/spec/schema/policy.schema.json  ../persona.md/schema/policy.schema.json
-          check packages/spec/schema/state.schema.json   ../persona.md/schema/state.schema.json
-          check packages/spec/schema/memory.schema.json  ../persona.md/schema/memory.schema.json
-          check packages/spec/schema/legacy/persona-0.10.schema.json ../persona.md/schema/legacy/persona-0.10.schema.json
-          check packages/cli/templates/personaxis_template.md ../persona.md/.personaxis/personaxis_template.md
-          check packages/cli/templates/PERSONA_template.md     ../persona.md/PERSONA_template.md
-          check packages/cli/templates/policy_template.yaml    ../persona.md/.personaxis/policy_template.yaml
-          exit $fail
+        run: pnpm run check-mirror
 
   evals:
     name: governance evals (deterministic, no API keys)
