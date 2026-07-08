@@ -17,6 +17,7 @@ import { runtimeCommand } from "./commands/runtime.js";
 import { stateCommand } from "./commands/state.js";
 import { arbitrateCommand } from "./commands/arbitrate.js";
 import { jacobianCommand } from "./commands/jacobian.js";
+import { createCommand } from "./commands/create.js";
 import { editCommand } from "./commands/edit.js";
 import { improveCommand } from "./commands/improve.js";
 import { migrateCommand } from "./commands/migrate.js";
@@ -56,6 +57,7 @@ program
   });
 
 program.addCommand(initCommand);
+program.addCommand(createCommand);
 program.addCommand(validateCommand);
 program.addCommand(lintCommand);
 program.addCommand(compileCommand);

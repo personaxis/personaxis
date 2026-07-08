@@ -42,6 +42,9 @@
   },
   "dependencies": {
     "@personaxis/core": "workspace:*",
+    "@personaxis/protocol": "workspace:*",
+    "@personaxis/sdk": "workspace:*",
+    "@personaxis/spec": "workspace:*",
     "@personaxis/tui": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
@@ -49,14 +52,12 @@
     "commander": "^13.1.0",
     "gray-matter": "^4.0.3",
     "inquirer": "^12.5.2",
-    "js-yaml": "^4.1.0",
-    "@personaxis/spec": "workspace:*",
-    "@personaxis/protocol": "workspace:*",
-    "@personaxis/sdk": "workspace:*"
+    "js-yaml": "^4.1.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
+    "fast-check": "^4.8.0",
     "typescript": "^5.8.3",
     "vitest": "^3.0.0"
   },

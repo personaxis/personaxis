@@ -83,7 +83,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
     });
   }
 
-  const SUPPORTED_SPEC_VERSIONS = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0", "0.8.0", "0.9.0", "0.10.0", "1.0.0"]);
+  const SUPPORTED_SPEC_VERSIONS = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0", "0.8.0", "0.9.0", "0.10.0", "1.0.0", "1.1.0"]);
   if (data.spec_version && !SUPPORTED_SPEC_VERSIONS.has(String(data.spec_version))) {
     findings.push({
       rule: "spec-version",

@@ -58,6 +58,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   without per-band `expression`, or identical prose across reachable bands.
 - J_behavior (probe-based, BYOK — MATH_CORE Def. 11) ships with the experiment harness (RQ3).
 
+### Added — Persona Genesis: `personaxis create` (F6.6)
+- **A governed persona from zero, every entry case covered**: the psychometric interview
+  (BFI-style items → trait means, value ranking → weights, dilemmas → hard limits — every
+  answer becomes auditable evidence), `--from-prompt` (NL brief), `--from-project` (the
+  project's own docs), `--from-import` (character cards V2/V3 as .json or PNG-embedded
+  tEXt `chara`/`ccv3`, bare system prompts, CLAUDE.md/AGENTS.md), `--from-transcript`.
+  Modes compose; later evidence wins per field, visibly.
+- **Valid BY CONSTRUCTION — machine-checked**: the spec builder imposes every universal
+  (safety ≥ 0.90 governance and un-outrankable by seeds, honesty hard, the three universal
+  hard limits, sane envelopes) on ANY input; property PB-G feeds hostile random seeds
+  through the REAL five-state validator (found 2 real builder bugs before shipping:
+  value-type enum, voice_exemplars required `user`).
+- **Creation report with per-number provenance** (`creation-report.md`): every quantitative
+  field traces to an evidence item (answer / imported field / model inference WITH quote)
+  or a **labeled default** — "every number earned, not invented". Provenance completeness
+  is computed, not asserted.
+- **Honest degradation**: no model → interview still works fully; extraction falls back to
+  labeled heuristics recorded in the gates (never silent invention). Import prose is
+  LLM-only refinement — deterministic card fields are never overridden by guesses.
+- Outputs: validated `personaxis.md` (Genesis cannot write an invalid persona), `state.json`,
+  stage-1 compiled `PERSONA.md`, `creation-report.md`. `--json` (dry-run sin `--yes`).
+- Linter accepts spec_version 1.1.0 (was rejecting it — caught by dogfood).
+
 ### Fixed/Hardened — the LLM pipelines (F6.5, pre-Genesis audit)
 - **Every provider HTTP call is hardened** (`providers/http.ts`): bounded timeout (120 s
   AbortSignal), jittered retry on 429/5xx/network errors, and error messages that carry the
