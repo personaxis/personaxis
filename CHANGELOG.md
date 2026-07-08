@@ -58,6 +58,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   without per-band `expression`, or identical prose across reachable bands.
 - J_behavior (probe-based, BYOK — MATH_CORE Def. 11) ships with the experiment harness (RQ3).
 
+### Added — the live proof + interactive surfaces (F6.7)
+- **`personaxis proof`** — the guarantees demonstrated on the REAL engine, offline, ~1 s
+  (`--quick`) / full 10,000-step storm: (1) adversarial storm with live u-space gauges and
+  0 escapes (T1/T2, seeded PRNG — same `--seed`, same run); (2) prompt injection blocked;
+  (3) evidence cost: a watchable band crossing that takes EXACTLY its certified minimum of
+  chained audit entries (T3); (4) one forged memory byte caught AND located (T5);
+  (5) replay exposes a forged state value (T4). TTY: animated frames + Enter/r/q
+  navigation; `--auto`/non-TTY: CI-friendly; `NO_COLOR`: ASCII card. Honest exit codes.
+  Ends on the theorem card — every number from THIS run.
+- **Drift gauge in `personaxis dash`**: live `D = max |u|` bar checked against the declared
+  `governance.drift_thresholds`, red ⚠ per layer over threshold.
+- **`/replay` in the REPL**: animated playback of the mutation_log (per-entry gauge,
+  clamped/blocked flags, actor), ending with the T4 verdict (replay ≡ live state).
+
 ### Added — Persona Genesis: `personaxis create` (F6.6)
 - **A governed persona from zero, every entry case covered**: the psychometric interview
   (BFI-style items → trait means, value ranking → weights, dilemmas → hard limits — every

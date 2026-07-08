@@ -21,6 +21,9 @@ import {
   readMemory,
   personaTheme,
   displayName,
+  driftReport,
+  readDriftThresholds,
+  readMaxStepDelta,
 } from "@personaxis/core";
 import { sigilLines, auraBar, envelopeBars } from "./visual.js";
 
@@ -61,6 +64,26 @@ export function renderFrame(personaPath: string, frame: number): string {
   lines.push(...sigilLines(theme, state.values, frame));
   lines.push("");
   lines.push(envelopeBars(theme, state.values, env.envelopes));
+  lines.push("");
+  // F6.7 — the drift gauge: D = max |u| vs the declared layer thresholds, live.
+  const report = driftReport({
+    values: state.values,
+    envelopes: env.envelopes,
+    maxStepDelta: readMaxStepDelta(handle.frontmatter as Record<string, unknown>),
+    thresholds: readDriftThresholds(handle.frontmatter as Record<string, unknown>),
+    protectedFields: env.protectedFields,
+  });
+  const gaugeWidth = 24;
+  const filled = Math.round(Math.min(1, report.global) * gaugeWidth);
+  const over = report.layers.filter((l) => l.exceeded);
+  lines.push(
+    "  " + chalk.bold("drift ") +
+      chalk.ansi256(theme.palette.accent)("▰".repeat(filled)) + chalk.dim("▱".repeat(gaugeWidth - filled)) +
+      ` D ${report.global.toFixed(2)}` +
+      (over.length
+        ? "  " + chalk.red(`⚠ ${over.map((l) => `${l.layer} ${l.drift.toFixed(2)}>${l.threshold}`).join(" ")}`)
+        : chalk.dim("  within all thresholds")),
+  );
   lines.push("");
   lines.push(
     chalk.dim(

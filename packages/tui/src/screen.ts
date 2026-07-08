@@ -35,6 +35,12 @@ export interface ReplHooks {
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+/**
+ * @deprecated Superseded by `InkScreen` (`../ink-repl`) — the REPL renders through
+ * Ink now (FR.3 adoption finished). This class is kept only as a zero-dep reference
+ * and as the home of the shared `ReplHooks` / `SlashItem` / `LineRole` types that
+ * `InkScreen` reuses. No code path constructs it.
+ */
 export class Screen {
   private readonly out = process.stdout;
   private readonly inp = process.stdin;

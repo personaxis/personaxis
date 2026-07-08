@@ -12,3 +12,4 @@ export type { TranscriptProps, DashboardProps } from "./components.js";
 export { CommitQueue } from "./streaming/commit-queue.js";
 export { renderMarkdown, highlightCode, renderDiff } from "./markdown.js";
 export { createEngineStore, type EngineStore, type EngineUiState } from "./store.js";
+export { InkScreen, ReplApp, createReplStore, type ReplUiState } from "./ink-repl.js";

@@ -16,6 +16,8 @@ import {
   driftReport,
   readDriftThresholds,
   readMaxStepDelta,
+  rebuildStateValues,
+  resolveField,
   readArbitrationValues,
   arbitrate,
   rankValues,
@@ -158,6 +160,49 @@ export const COMMANDS: CommandDef[] = [
         const mark = l.exceeded ? chalk.red("✗ over threshold") : chalk.green("✓");
         ctx.out(`  ${mark} ${l.layer}: D ${l.drift.toFixed(3)} / ${l.threshold}`);
       }
+    },
+  },
+  {
+    name: "replay",
+    desc: "replay the mutation_log as an animated trajectory (T4: state is a fold of history)",
+    run: async (arg, ctx) => {
+      const st = readState(ctx.handle.statePath);
+      const env = extractEnvelopes(ctx.handle.frontmatter);
+      const log = st.mutation_log;
+      if (!log.length) return void ctx.out(chalk.dim("  mutation_log is empty — nothing to replay"));
+      const last = Math.max(1, Math.min(log.length, Number(arg.trim()) || 30));
+      const slice = log.slice(-last);
+      const values: Record<string, number> = {};
+      for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
+      for (const e of log.slice(0, log.length - last)) values[e.field] = e.to; // fast-forward the prefix
+      ctx.out(chalk.bold(`  Replaying ${slice.length}/${log.length} mutation(s)`) + chalk.dim("  (each line is one audited entry)"));
+      const animate = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+      for (const entry of slice) {
+        values[entry.field] = entry.to;
+        // Legacy logs use short keys (mood.tone); resolve onto the v1.0 envelope.
+        const e = env.envelopes[resolveField(entry.field, env.envelopes)];
+        const short = entry.field.split(".").pop() ?? entry.field;
+        const marks = e
+          ? (() => {
+              const w = 20;
+              const frac = e.max === e.min ? 0.5 : (entry.to - e.min) / (e.max - e.min);
+              const pos = Math.max(0, Math.min(w - 1, Math.round(frac * (w - 1))));
+              return "·".repeat(pos) + chalk.bold("●") + "·".repeat(w - 1 - pos);
+            })()
+          : "";
+        ctx.out(
+          `  ${chalk.dim(entry.ts.slice(11, 19))} ${chalk.cyan(short.padEnd(14))} ${entry.from.toFixed(2)}→${entry.to.toFixed(2)} [${marks}] ` +
+            (entry.governance_blocked ? chalk.red("blocked") : entry.clamped ? chalk.yellow("clamped") : chalk.dim(entry.actor)) +
+            chalk.dim(` ${entry.reason.slice(0, 34)}`),
+        );
+        if (animate) await new Promise((r) => setTimeout(r, 90));
+      }
+      const rebuilt = rebuildStateValues(env.envelopes, log, st.values);
+      ctx.out(
+        rebuilt.drift.length === 0
+          ? chalk.green("  ✓ replay reproduces the live state exactly (T4)")
+          : chalk.red(`  ✗ ${rebuilt.drift.length} field(s) diverge from the log — run \`personaxis state rebuild\``),
+      );
     },
   },
   {
