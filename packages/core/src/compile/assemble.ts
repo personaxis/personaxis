@@ -19,6 +19,10 @@
  * the section from the quantitative layers. It invents nothing.
  */
 
+import { extractEnvelopes } from "../envelopes.js";
+import type { PersonaFrontmatter } from "../persona.js";
+import { bandOf, expressionFor } from "../math/bands.js";
+
 type Dict = Record<string, unknown>;
 
 const asDict = (v: unknown): Dict => (v && typeof v === "object" && !Array.isArray(v) ? (v as Dict) : {});
@@ -42,6 +46,9 @@ export interface AssembleInput {
   target: AssembleTarget;
   /** Applied governed self-edits (dot-path → value); authoritative over the spec. */
   appliedOverlay?: Record<string, unknown>;
+  /** Current state.json values (F6.2): selects WHICH band's `expression` prose is
+   *  injected per coordinate (Def. 6 / ADR-004). Absent → each envelope's mean. */
+  stateValues?: Record<string, number>;
 }
 
 /** Read the persona-prompting source, preferring v1.0 layer-10 over legacy. */
@@ -309,8 +316,30 @@ function sectionSelfImprovement(persona: Dict): string {
 }
 
 /**
+ * F6.2 — the denotational band→prose stage (MATH_CORE.md Def. 6; SPEC §L3).
+ * For every envelope coordinate that declares `expression`, inject ONLY the
+ * variant of the band its CURRENT value sits in. Deterministic: value → band →
+ * prose, no LLM. This is what makes the spec's numbers compile-load-bearing —
+ * and what the persona Jacobian (J_compile) measures.
+ */
+function sectionExpression(persona: Dict, stateValues?: Record<string, number>): string {
+  const lookup = extractEnvelopes(persona as PersonaFrontmatter);
+  const lines: string[] = [];
+  for (const [field, e] of Object.entries(lookup.envelopes)) {
+    const value = stateValues?.[field] ?? e.mean;
+    const prose = expressionFor(value, e);
+    if (!prose) continue;
+    const name = field.split(".").pop()?.replace(/_/g, " ") ?? field;
+    lines.push(`- **${name}** (${bandOf(value, e)}): ${prose}`);
+  }
+  if (lines.length === 0) return "";
+  return ["## How your traits express right now", "", ...lines].join("\n");
+}
+
+/**
  * Assemble the canonical compiled persona document. Deterministic: the same
- * persona spec (+ manifest + target) always produces byte-identical output.
+ * persona spec (+ manifest + target + state band assignment) always produces
+ * byte-identical output.
  */
 export function assemblePersonaDoc(input: AssembleInput): string {
   const persona = applyOverlay(input.persona, input.appliedOverlay);
@@ -320,6 +349,7 @@ export function assemblePersonaDoc(input: AssembleInput): string {
     sectionOpener(persona, target),
     sectionWhoYouAre(persona),
     sectionHowYouSpeak(persona),
+    sectionExpression(persona, input.stateValues),
     sectionAlwaysNever(persona),
     sectionScenes(persona),
     sectionHowYouThink(persona),

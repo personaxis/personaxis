@@ -36,6 +36,8 @@ import {
   readMode,
   readMaxStepDelta,
   machineId,
+  driftReport,
+  readDriftThresholds,
   type MutationLogEntry,
 } from "@personaxis/core";
 
@@ -278,6 +280,69 @@ const rebuildSubcommand = new Command("rebuild")
     }
   });
 
+// ─── state drift ─────────────────────────────────────────────────────────────
+
+const driftSubcommand = new Command("drift")
+  .description(
+    "Drift report (MATH_CORE.md): per-coordinate u/band/headroom, layer drift vs " +
+      "governance.drift_thresholds, and the T3 evidence cost (min audited steps to the next band).",
+  )
+  .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
+  .option("--json", "Output the report as JSON")
+  .action((options: { file?: string; json?: boolean }) => {
+    try {
+      const { personaPath, statePath } = resolvePersonaAndState(options.file);
+      const handle = loadPersona(personaPath);
+      const fm = handle.frontmatter as Record<string, unknown>;
+      const env = extractEnvelopes(handle.frontmatter);
+      const state = readState(statePath);
+      const report = driftReport({
+        values: state.values,
+        envelopes: env.envelopes,
+        maxStepDelta: readMaxStepDelta(fm),
+        thresholds: readDriftThresholds(fm),
+        protectedFields: env.protectedFields,
+      });
+
+      if (options.json) {
+        console.log(JSON.stringify(report, null, 2));
+        return;
+      }
+
+      console.log(chalk.bold(`Drift report — ${state.persona_id}@${state.persona_version}`));
+      console.log(
+        chalk.dim(
+          `global D = max |u| = ${report.global.toFixed(3)} · δ_max = ${report.maxStepDelta} · ` +
+            `u = fraction of allowed deviation consumed`,
+        ),
+      );
+      console.log("");
+      console.log(chalk.bold("Coordinates (sorted by drift):"));
+      for (const c of report.coordinates) {
+        const dir = c.u > 0 ? "+" : c.u < 0 ? "−" : " ";
+        const cost = c.protected
+          ? chalk.magenta("immutable (backs a hard virtue)")
+          : chalk.dim(`≥${c.minStepsToCross} audited step(s) to cross`);
+        console.log(
+          `  ${chalk.cyan(c.field.padEnd(38))} ${c.value.toFixed(3)}  ` +
+            `u ${dir}${Math.abs(c.u).toFixed(2)}  band ${chalk.bold(c.band.padEnd(8))} ` +
+            cost,
+        );
+      }
+      console.log("");
+      console.log(chalk.bold("Layers vs drift_thresholds:"));
+      for (const l of report.layers) {
+        const mark = l.exceeded ? chalk.red("✗ over") : chalk.green("✓");
+        const thr = l.threshold !== undefined ? ` / threshold ${l.threshold}` : chalk.dim(" / no threshold declared");
+        console.log(`  ${mark} ${l.layer}: D = ${l.drift.toFixed(3)}${thr}`);
+      }
+      if (report.layers.some((l) => l.exceeded)) process.exitCode = 2;
+    } catch (err) {
+      console.error(chalk.red("Error:"), (err as Error).message);
+      process.exit(1);
+    }
+  });
+
 // ─── Parent state command ──────────────────────────────────────────────────
 
 export const stateCommand = new Command("state")
@@ -285,4 +350,5 @@ export const stateCommand = new Command("state")
   .addCommand(initSubcommand)
   .addCommand(mutateSubcommand)
   .addCommand(showSubcommand)
-  .addCommand(rebuildSubcommand);
+  .addCommand(rebuildSubcommand)
+  .addCommand(driftSubcommand);

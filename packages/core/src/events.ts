@@ -24,6 +24,9 @@ export type LoopEvent =
   | { type: "evaluation"; target: string; dimension: string; score: number; rationale: string }
   | { type: "self-edit"; op: "queued" | "applied" | "rejected"; targetPath: string; id?: string; reason?: string }
   | { type: "anomaly"; kind: string; detail: string }
+  // Drift metric after this tick's mutations (F6.2, MATH_CORE.md Def. 5): global D,
+  // the coordinates that crossed a band, and the layers over their declared threshold.
+  | { type: "drift"; global: number; crossings: string[]; layersExceeded: string[] }
   | { type: "recompile"; reason: string }
   | { type: "abstain"; reason: string }
   | { type: "error"; message: string }

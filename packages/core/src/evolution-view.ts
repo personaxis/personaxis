@@ -14,6 +14,7 @@
  */
 
 import type { Envelope } from "./envelopes.js";
+import { bandOf as specBandOf } from "./math/bands.js";
 
 export interface EvolutionField {
   path: string;
@@ -37,13 +38,13 @@ export interface EvolutionView {
 }
 
 function bandOf(current: number, e: Envelope): EvolutionField["band"] {
-  const span = e.max - e.min || 1;
-  const pct = (current - e.min) / span;
   if (current <= e.min + 1e-9) return "at-min";
   if (current >= e.max - 1e-9) return "at-max";
-  if (pct < 0.34) return "low";
-  if (pct > 0.66) return "high";
-  return "mid";
+  // F6.2: honor the coordinate's DECLARED behavior bands (spec defaults otherwise)
+  // instead of fixed positional cuts — the appraiser sees the same bands the
+  // compiler and the drift metric use (single semantics, MATH_CORE.md Def. 6).
+  const band = specBandOf(current, e);
+  return band === "moderate" ? "mid" : band;
 }
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;

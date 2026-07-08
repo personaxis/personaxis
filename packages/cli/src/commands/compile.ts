@@ -27,6 +27,20 @@ import { hashContent, saveManifest } from "../manifest.js";
 import { placeCompiledDocument, isSoulPlatform, PLACEMENT_PLATFORMS, type PlacementPlatform } from "../targets/placement.js";
 import { resolveDeclaredSkills, materializeLocalSkills, writeSkillsManifest, applySkillsToSubagent } from "../targets/skills.js";
 
+/** Values block of a state.json payload, or undefined when absent/malformed. */
+function parseStateValues(stateJson: string | undefined): Record<string, number> | undefined {
+  if (!stateJson) return undefined;
+  try {
+    const v = (JSON.parse(stateJson) as { values?: Record<string, unknown> }).values;
+    if (!v || typeof v !== "object") return undefined;
+    const out: Record<string, number> = {};
+    for (const [k, n] of Object.entries(v)) if (typeof n === "number") out[k] = n;
+    return out;
+  } catch {
+    return undefined; // a torn state.json must not break compile; means apply
+  }
+}
+
 function readSibling(baseDir: string, name: string): string | undefined {
   const p = join(baseDir, name);
   return existsSync(p) ? readFileSync(p, "utf-8") : undefined;
@@ -212,6 +226,9 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
       resourceBase: isSubagent ? "./" : "./.personaxis/",
     },
     appliedOverlay: Object.keys(appliedOverlay).length ? appliedOverlay : undefined,
+    // F6.2: current state selects WHICH band's expression prose compiles in
+    // (value → band → prose, deterministic). No state.json → envelope means.
+    stateValues: parseStateValues(stateJson),
   };
   const assembled = assemblePersonaDoc(assembleInput);
 

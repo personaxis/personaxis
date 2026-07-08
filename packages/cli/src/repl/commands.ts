@@ -13,6 +13,9 @@ import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import {
   readState,
   extractEnvelopes,
+  driftReport,
+  readDriftThresholds,
+  readMaxStepDelta,
   activeOverlay,
   proposals,
   readMemory,
@@ -117,6 +120,41 @@ export const COMMANDS: CommandDef[] = [
       // (3) governance queue — proposals awaiting /review.
       const pending = proposals(p).filter((x) => x.status === "pending");
       if (pending.length) ctx.out(chalk.yellow(`  ${pending.length} pending proposal(s)`) + chalk.dim(" — /review"));
+    },
+  },
+  {
+    name: "drift",
+    desc: "drift metric: u per coordinate, bands, layer thresholds, steps-to-cross (T3)",
+    run: (_a, ctx) => {
+      const st = readState(ctx.handle.statePath);
+      const fm = ctx.handle.frontmatter as Record<string, unknown>;
+      const env = extractEnvelopes(ctx.handle.frontmatter);
+      const report = driftReport({
+        values: st.values,
+        envelopes: env.envelopes,
+        maxStepDelta: readMaxStepDelta(fm),
+        thresholds: readDriftThresholds(fm),
+        protectedFields: env.protectedFields,
+      });
+      ctx.out(
+        chalk.bold("  Drift") +
+          chalk.dim(`  D = ${report.global.toFixed(3)} (max |u|) · δ_max ${report.maxStepDelta}`),
+      );
+      for (const c of report.coordinates) {
+        const dir = c.u > 0 ? "+" : c.u < 0 ? "−" : " ";
+        ctx.out(
+          `  ${chalk.cyan(c.field.padEnd(36))} u ${dir}${Math.abs(c.u).toFixed(2)} ` +
+            `${chalk.bold(c.band.padEnd(8))}` +
+            (c.protected
+              ? chalk.magenta(" immutable")
+              : chalk.dim(` ≥${c.minStepsToCross} step(s) to cross`)),
+        );
+      }
+      for (const l of report.layers) {
+        if (l.threshold === undefined) continue;
+        const mark = l.exceeded ? chalk.red("✗ over threshold") : chalk.green("✓");
+        ctx.out(`  ${mark} ${l.layer}: D ${l.drift.toFixed(3)} / ${l.threshold}`);
+      }
     },
   },
   {

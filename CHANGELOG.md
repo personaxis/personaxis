@@ -6,7 +6,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+
+### Added — the denotational core (F6.1–F6.2)
+- **Property-based proof harness** (`@personaxis/core` test/properties): 19 fast-check properties
+  machine-verify the engine's theorems — T1 box invariance under adversarial mutation sequences,
+  T2 bounded step, T4 replay determinism + tamper detection, T5 ledger integrity + real erasure,
+  gate policy invariants, u-space/metric axioms, and the T3 evidence-cost bound. `FC_NUM_RUNS`
+  scales the case count (CI runs 5000).
+- **`personaxis state drift`** (+ `/drift` in the REPL): the drift report — per coordinate its
+  value, `u` (fraction of allowed deviation consumed), behavior band, and the **T3 evidence
+  cost** (minimum audited mutation-log entries before the next band crossing; `immutable` for
+  hard-virtue-backed coordinates); per layer `D = max |u|` checked against
+  `governance.drift_thresholds` (a MUST spec field that now actually computes — exit code 2 on
+  exceedance). New `drift` event on the loop bus.
+- **Band→prose compilation (ADR-004 implemented)**: envelope coordinates with `expression`
+  band maps now compile deterministically — the CURRENT band's prose (selected from state.json
+  values, envelope means as fallback) is injected as "How your traits express right now" by the
+  stage-1 assembler. Numbers are compile-load-bearing for the first time.
+
+### Changed — spec-faithful recompile trigger (F6.2)
+- The Living Loop now recompiles on a **band crossing** instead of on every applied mutation
+  (SPEC v1.0 §L3: within-band movement is expression variance, not drift). Cheaper and
+  normative; the tick still emits `mutate` + `drift` events for every change.
+
 ## [Unreleased] — Fase 3 living engine (per `ARCHITECTURE_REVIEW.md` §11–§13, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+
+### Fixed — v1.0 concordance sweep (F5.2): the toolchain now fully speaks v1.0
+- **`lint` was broken on v1.0 personas** — it emitted three FALSE errors (`apiVersion` must be
+  `persona.dev/v1`; `spec_version 1.0.0` "not supported"; `reflexive_self_regulation` "missing") plus a
+  bogus `metadata.display_name` warning, even though `validate` passed the same persona. The linter is
+  now version-aware (like the validator): at v1.0 it expects `personaxis.com/v1`, accepts `spec_version
+  1.0.0`, treats `self_regulation` as the layer-9 name, drops the `display_name` requirement, and reads
+  refusals from `character.prohibited_behaviors`. Regression test added (`test/lint-v1.test.ts`).
+- **First-run scaffold shipped a legacy persona** — `personaxis` first-run onboarding wrote a
+  `spec_version 0.8.0` starter. The starter template is now v1.0 (`spec_version 1.0.0`), so new users
+  start on the current spec.
+- **Subagent scaffolds (`personaxis use`) could drop safety** — the Claude Code / Codex placement
+  builders read `reflexive_self_regulation` and `metadata.display_name`, so a v1.0 persona compiled via
+  `use` would lose its hard limits and display name. They now read `self_regulation` (legacy fallback)
+  and `identity.display_name` first.
+- **Injected `## Behavioral Baseline` block** (CLAUDE.md / AGENTS.md) referenced the old layer-9 name;
+  corrected to `self_regulation`.
+- Docs + guidance updated to v1.0: `CLAUDE.md`, `AGENTS.md`, `README.md`, and `docs/` (layer-9 rename,
+  `persona_prompting` folded into layer-10 `persona`, `spec_version 1.0.0`, the `migrate 0.10-to-1.0`
+  codemod, and the new `edit` / `state rebuild` / `dash` commands).
 
 ### Changed — compile is now a deterministic two-stage pipeline (F3.1)
 - **Stage 1 — deterministic assembler** (`@personaxis/core` `assemblePersonaDoc`): `personaxis compile`

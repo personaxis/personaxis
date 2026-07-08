@@ -10,6 +10,8 @@
  */
 
 import { extractEnvelopes } from "./envelopes.js";
+import { bandCrossing } from "./math/bands.js";
+import { driftReport, readDriftThresholds } from "./math/drift.js";
 import {
   governMutations,
   readMode,
@@ -162,6 +164,10 @@ export class LivingLoop {
       // remembered, tagged, for audit) — defense in depth over the governance gate.
       const admitted = injectionBlocked ? [] : decision.admitted;
       let mutationsApplied = 0;
+      // F6.2 (MATH_CORE.md Def. 6): a band crossing — not any mutation — is the
+      // normative drift event. Within-band movement is expression variance.
+      const bandCrossings: string[] = [];
+      let postValues: Record<string, number> | null = null;
       if (admitted.length > 0) {
         // Serialize the read→apply→write against concurrent writers (serve, MCP,
         // another tick): re-read fresh state under the lock — the proposed deltas
@@ -179,10 +185,37 @@ export class LivingLoop {
               sessionId: this.sessionId,
             });
             bus.emit({ type: "mutate", result });
-            if (result.to !== result.from) mutationsApplied++;
+            if (result.to !== result.from) {
+              mutationsApplied++;
+              if (bandCrossing(result.from, result.to, env.envelopes[m.field])) {
+                bandCrossings.push(m.field);
+              }
+            }
           }
           this.storage.state.write(this.handle.statePath, fresh);
+          postValues = { ...fresh.values };
         });
+      }
+
+      // Drift metric after this tick's mutations: report D, crossings, and any layer
+      // over its declared governance.drift_thresholds (which now actually computes).
+      if (mutationsApplied > 0 && postValues) {
+        const report = driftReport({
+          values: postValues,
+          envelopes: env.envelopes,
+          maxStepDelta: gov.maxStepDelta,
+          thresholds: readDriftThresholds(fm),
+          protectedFields: env.protectedFields,
+        });
+        const layersExceeded = report.layers.filter((l) => l.exceeded).map((l) => l.layer);
+        bus.emit({ type: "drift", global: report.global, crossings: bandCrossings, layersExceeded });
+        for (const l of report.layers.filter((x) => x.exceeded)) {
+          bus.emit({
+            type: "anomaly",
+            kind: "drift-threshold",
+            detail: `${l.layer} drift ${l.drift.toFixed(2)} > threshold ${l.threshold}`,
+          });
+        }
       }
 
       // 3b. evolve QUALITATIVE — the appraiser may propose prose self-edits to
@@ -290,9 +323,11 @@ export class LivingLoop {
         if (evals > 0) bus.emit({ type: "memory-kind", kind: "evaluations", detail: `+${evals} eval(s)` });
       }
 
-      // 4. recompile on drift (after state changes so the doc reflects them)
-      if (mutationsApplied > 0 && this.opts.recompile) {
-        bus.emit({ type: "recompile", reason: `${mutationsApplied} envelope mutation(s) applied` });
+      // 4. recompile on DRIFT — i.e. on a band crossing, not on any mutation
+      // (SPEC v1.0 §L3: within-band movement is expression variance; the crossing
+      // is the recompile trigger). Cheaper and spec-faithful (changed in F6.2).
+      if (bandCrossings.length > 0 && this.opts.recompile) {
+        bus.emit({ type: "recompile", reason: `band crossing: ${bandCrossings.join(", ")}` });
         await this.opts.recompile(this.handle);
         this.reload();
       }
