@@ -3,9 +3,10 @@
  *
  * A persistent, interactive session where you talk to your persona in natural
  * language, drive it with /commands, and hand it real tasks with /do (the governed
- * Agent Loop). On a TTY it runs as a full alternate-screen app (Screen): no frame
- * pile-up, a live `/` menu, and shift+tab to cycle the sandbox posture. When stdin
- * isn't a TTY (pipes/CI) it falls back to a simple line reader.
+ * Agent Loop). On a TTY it renders through Ink (InkScreen): a <Static> transcript
+ * (native scrollback), a bounded live region (spinner/approval), a live `/` command
+ * palette, and shift+tab to cycle the sandbox posture. When stdin isn't a TTY
+ * (pipes/CI) it falls back to a simple line reader.
  */
 
 import * as readline from "node:readline/promises";
@@ -14,7 +15,8 @@ import { join } from "node:path";
 import chalk from "chalk";
 import { readState } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell } from "@personaxis/tui/visual";
-import { Screen, type SlashItem } from "@personaxis/tui/screen";
+import { type SlashItem } from "@personaxis/tui/screen";
+import { InkScreen } from "@personaxis/tui/ink";
 import { writeStarterPersona } from "../starter.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
@@ -93,7 +95,7 @@ async function runLineMode(ctx: Ctx): Promise<void> {
 // ── TTY: minimalist interactive REPL in the NORMAL buffer ────────────────────
 async function runScreenMode(ctx: Ctx): Promise<void> {
   const commands: SlashItem[] = COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
-  let screen: Screen;
+  let screen: InkScreen;
   let lastMs = 0;
 
   const roster = buildRoster(ctx);
@@ -112,7 +114,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     return chalk.dim("  " + seg.join("  ·  "));
   };
 
-  screen = new Screen({
+  screen = new InkScreen({
     prompt: () => chalk.bold("› "),
     status,
     commands,
@@ -163,6 +165,11 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     screen.print(chalk.dim(`  sub-personas: `) + tags + chalk.dim("  ·  @address · @all · @parent/all"));
   }
   if (!llmConfig(ctxModelArg(ctx))) firstRunModelHint((s) => screen.print(s, "activity"));
+
+  // Ink keeps the process alive until unmount / ctrl+c; block here so the session
+  // stays open, then say goodbye (the /quit path exits directly before this).
+  await screen.waitUntilExit();
+  await farewell(ctx.handle.frontmatter);
 }
 
 /** Guide a first-time user to configure a model instead of silently falling back to heuristic mode. */

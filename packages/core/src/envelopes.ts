@@ -21,12 +21,16 @@ export interface Envelope {
   mean: number;
   min: number;
   max: number;
-  /** v1.0 behavior bands `[b1, b2]` — boundaries on the raw value axis. Absent →
-   *  spec defaults apply (math/bands.ts). Crossing one is the normative drift event. */
-  bands?: [number, number];
+  /** v1.0 behavior bands ($defs/bandBoundaries): boundaries on the raw value axis.
+   *  Partial/absent → spec defaults apply (math/bands.ts: 0.33/0.66 unsigned,
+   *  −0.33/+0.33 signed). Crossing one is the normative drift event. */
+  bands?: { low_max?: number; moderate_max?: number };
   /** Per-band behavior prose (normative form) or a plain string (deprecated). The
    *  compiler injects ONLY the current band's variant — Def. 6 / ADR-004. */
   expression?: string | Partial<Record<"low" | "moderate" | "high", string>>;
+  /** v1.1 (MAY, spec field `half_life`): homeostatic half-life in turns — the
+   *  deviation from `mean` halves every `halfLife` ticks absent stimulus (T6). */
+  halfLife?: number;
 }
 
 export interface EnvelopeLookup {
@@ -89,15 +93,18 @@ function readEnv(v: unknown): Omit<Envelope, "min" | "max"> & { range: [number, 
     const e = v as { mean: number; range: [number, number]; bands?: unknown; expression?: unknown };
     const out: ReturnType<typeof readEnv> = { mean: e.mean, range: e.range };
     // v1.0 denotational fields (F6.2): carried when well-formed, ignored otherwise.
-    if (
-      Array.isArray(e.bands) &&
-      e.bands.length === 2 &&
-      typeof e.bands[0] === "number" &&
-      typeof e.bands[1] === "number" &&
-      e.bands[0] < e.bands[1]
-    ) {
-      out.bands = [e.bands[0], e.bands[1]];
+    // Schema form ($defs/bandBoundaries): { low_max, moderate_max } — the normative
+    // shape. (SPEC.md §L3 briefly described an array form; the schema wins — the
+    // erratum is recorded in the v1.1 spec delta.) Partial declarations keep the
+    // default for the missing boundary (resolved in math/bands.ts).
+    if (typeof e.bands === "object" && e.bands !== null && !Array.isArray(e.bands)) {
+      const b = e.bands as { low_max?: unknown; moderate_max?: unknown };
+      const lo = typeof b.low_max === "number" ? b.low_max : undefined;
+      const hi = typeof b.moderate_max === "number" ? b.moderate_max : undefined;
+      if (lo !== undefined || hi !== undefined) out.bands = { low_max: lo, moderate_max: hi };
     }
+    const hl = (v as { half_life?: unknown }).half_life;
+    if (typeof hl === "number" && hl > 0) out.halfLife = hl;
     if (typeof e.expression === "string") {
       out.expression = e.expression;
     } else if (typeof e.expression === "object" && e.expression !== null) {
@@ -118,6 +125,7 @@ function toEnvelope(e: NonNullable<ReturnType<typeof readEnv>>): Envelope {
   const out: Envelope = { mean: e.mean, min: e.range[0], max: e.range[1] };
   if (e.bands) out.bands = e.bands;
   if (e.expression !== undefined) out.expression = e.expression;
+  if (e.halfLife !== undefined) out.halfLife = e.halfLife;
   return out;
 }
 

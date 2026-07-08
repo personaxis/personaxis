@@ -12,7 +12,7 @@ Always read @PERSONA.md at project root before acting.
 Apply everything defined there to every decision, regardless of role.
 Read your own @PERSONA.md too if one was provided to you.
 
-The persona file conforms to the PERSONA.md spec: ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, reflexive_self_regulation, persona) plus governance and security. The reflexive_self_regulation.hard_limits are categorical absolutes and are never crossed.
+The persona file conforms to the PERSONA.md spec: ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, self_regulation, persona) plus governance and security. The self_regulation.hard_limits are categorical absolutes and are never crossed.
 ${BASELINE_END}`;
 
 type Obj = Record<string, unknown>;
@@ -59,7 +59,7 @@ function buildPersonaInstructions(data: PersonaData, heading: string, skillName?
   const cognition = asRecord(data.cognition);
   const memory = asRecord(data.memory);
   const meta = asRecord(data.metacognition);
-  const reflexive = asRecord(data.reflexive_self_regulation);
+  const reflexive = asRecord(data.self_regulation) ?? asRecord(data.reflexive_self_regulation); // v1.0 rename, legacy fallback
   const persona = asRecord(data.persona);
   const governance = asRecord(data.governance);
 
@@ -72,7 +72,7 @@ function buildPersonaInstructions(data: PersonaData, heading: string, skillName?
 
   // Metadata
   lines.push("## Metadata");
-  pushField(lines, "Display name", metadata.display_name);
+  pushField(lines, "Display name", asString(identity?.display_name) ?? asString(metadata.display_name)); // v1.0: identity owns display_name
   pushField(lines, "Description", metadata.description);
   pushField(lines, "Version", metadata.version);
   lines.push("");
@@ -306,7 +306,7 @@ export function compileCodexAgent(data: PersonaData, slug: string, skillName?: s
   const role = asRecord(identity?.role_identity);
   const sys = asRecord(identity?.system_identity);
 
-  const displayName = asString(metadata.display_name) ?? asString(metadata.name) ?? slug;
+  const displayName = asString(identity?.display_name) ?? asString(metadata.display_name) ?? asString(metadata.name) ?? slug; // v1.0: identity owns display_name
   const roleName = asString(role?.primary_role);
   const purpose = asString(sys?.purpose) ?? asString(metadata.description);
   const descriptionBase = [displayName, roleName].filter(Boolean).join(" - ") || slug;

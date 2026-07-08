@@ -16,17 +16,27 @@ import type { Envelope } from "../envelopes.js";
 export type Band = "low" | "moderate" | "high";
 export const BANDS: readonly Band[] = ["low", "moderate", "high"];
 
-/** Spec default band boundaries on the unit scale (SPEC §6 L3). */
-export const DEFAULT_BANDS: readonly [number, number] = [0.33, 0.66];
+/** Spec default band boundaries ($defs/bandBoundaries description): unsigned
+ *  dimensions split at 0.33/0.66; signed ([−1,1]) dimensions at −0.33/+0.33. */
+export const DEFAULT_BANDS_UNSIGNED: readonly [number, number] = [0.33, 0.66];
+export const DEFAULT_BANDS_SIGNED: readonly [number, number] = [-0.33, 0.33];
 
-/** Resolve the effective [b1, b2] boundaries for an envelope (declared or default). */
+/** Resolve the effective [low_max, moderate_max] boundaries for an envelope:
+ *  declared boundaries win per-field; a missing one takes its default; malformed
+ *  (low_max ≥ moderate_max) falls back to defaults entirely. */
 export function bandBoundaries(e: Envelope): [number, number] {
-  if (e.bands && e.bands.length === 2 && e.bands[0] < e.bands[1]) return [e.bands[0], e.bands[1]];
-  // Defaults are defined on [0,1]; map affinely onto the envelope's raw axis so
-  // non-unit envelopes still partition into three non-empty intervals.
-  const span = e.max - e.min;
-  if (e.min >= 0 && e.max <= 1) return [DEFAULT_BANDS[0], DEFAULT_BANDS[1]];
-  return [e.min + span * DEFAULT_BANDS[0], e.min + span * DEFAULT_BANDS[1]];
+  const signed = e.min < 0;
+  const dflt: readonly [number, number] =
+    signed && e.min >= -1 && e.max <= 1
+      ? DEFAULT_BANDS_SIGNED
+      : !signed && e.max <= 1
+        ? DEFAULT_BANDS_UNSIGNED
+        : // Off-scale envelope (neither [0,1] nor [−1,1]): map the unsigned
+          // defaults affinely so three non-empty intervals always exist.
+          [e.min + (e.max - e.min) * 0.33, e.min + (e.max - e.min) * 0.66];
+  const b1 = e.bands?.low_max ?? dflt[0];
+  const b2 = e.bands?.moderate_max ?? dflt[1];
+  return b1 < b2 ? [b1, b2] : [dflt[0], dflt[1]];
 }
 
 /** The band of a value (Def. 6): low if x ≤ b1, moderate if b1 < x ≤ b2, else high. */

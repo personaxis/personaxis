@@ -46,7 +46,8 @@ export interface PersonaData {
   cognition?: Record<string, unknown>;
   memory?: Record<string, unknown>;
   metacognition?: Record<string, unknown>;
-  reflexive_self_regulation?: Record<string, unknown>;
+  self_regulation?: Record<string, unknown>; // v1.0 layer-9 name
+  reflexive_self_regulation?: Record<string, unknown>; // legacy (≤0.10) layer-9 name
   persona?: Record<string, unknown>;
   governance?: Record<string, unknown>;
   evaluation?: Record<string, unknown>;

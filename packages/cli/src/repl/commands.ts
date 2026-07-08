@@ -16,6 +16,9 @@ import {
   driftReport,
   readDriftThresholds,
   readMaxStepDelta,
+  readArbitrationValues,
+  arbitrate,
+  rankValues,
   activeOverlay,
   proposals,
   readMemory,
@@ -155,6 +158,33 @@ export const COMMANDS: CommandDef[] = [
         const mark = l.exceeded ? chalk.red("✗ over threshold") : chalk.green("✓");
         ctx.out(`  ${mark} ${l.layer}: D ${l.drift.toFixed(3)} / ${l.threshold}`);
       }
+    },
+  },
+  {
+    name: "arbitrate",
+    desc: "resolve a value conflict: /arbitrate <a> <b> — or no args for the full ranking",
+    run: (arg, ctx) => {
+      const values = readArbitrationValues(ctx.handle.frontmatter as Record<string, unknown>);
+      if (!values.length) return void ctx.out(chalk.dim("  no weighted values declared"));
+      const [a, b] = arg.trim().split(/\s+/).filter(Boolean);
+      if (!a || !b) {
+        ctx.out(chalk.bold("  Arbitration ranking") + chalk.dim("  governance ≻ weight ≻ name"));
+        rankValues(values).forEach((v, i) => {
+          const gov = v.type === "governance" ? chalk.magenta(" governance") : "";
+          ctx.out(`  ${String(i + 1).padStart(2)}. ${chalk.cyan(v.name)} ${chalk.dim(String(v.weight))}${gov}`);
+        });
+        return;
+      }
+      const va = values.find((v) => v.name === a);
+      const vb = values.find((v) => v.name === b);
+      if (!va || !vb) {
+        return void ctx.out(
+          chalk.red(`  unknown value '${!va ? a : b}'`) + chalk.dim(` — declared: ${values.map((v) => v.name).join(", ")}`),
+        );
+      }
+      const verdict = arbitrate(va, vb);
+      ctx.out(`  ${chalk.green("✓")} ${chalk.bold(verdict.winner)} prevails ${chalk.dim(`(${verdict.rule})`)}`);
+      ctx.out(chalk.dim(`  ${verdict.trace}`));
     },
   },
   {

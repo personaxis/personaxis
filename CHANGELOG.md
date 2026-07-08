@@ -25,6 +25,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   values, envelope means as fallback) is injected as "How your traits express right now" by the
   stage-1 assembler. Numbers are compile-load-bearing for the first time.
 
+### Added — governed dynamics + spec v1.1.0 (F6.3, additive — no codemod)
+- **Homeostasis (opt-in, T6)**: an envelope may declare `half_life: h` (turns) — the deviation
+  from `mean` halves every `h` ticks absent stimulus (λ = 1 − 2^(−1/h), applied before each
+  tick's admitted deltas, audited as actor `runtime-decay`). Proven consequence: bounded
+  adversarial pressure yields standing drift ≤ `max_step_delta/λ` (input-to-state stability,
+  property-tested).
+- **Value arbitration is an algorithm** (`personaxis arbitrate [a] [b]` + `/arbitrate`): the
+  strict total order `type: governance` ≻ `weight` ≻ name, with an explanatory trace. U7
+  (`safety_over_completion`) is now DERIVABLE from U6 — verified by the eval `u7-derivable`.
+  New lint warning `arbitration-governance-outranks-safety`.
+- **Tamper-evident mutation_log**: every new entry hash-chains to its predecessor
+  (`prev_hash`/`hash`, the episodic-memory scheme; legacy prefix tolerated) — T3's evidence
+  bound is now forensic: a band crossing costs ≥⌈dist/δ_max⌉ VERIFIABLE audit entries.
+  `verifyMutationChain` exported from core.
+- **Spec v1.1.0** (additive; every 1.0.0 document remains valid): envelope `half_life`,
+  normative SPEC.md §15 "Mathematical semantics", state.schema.json chain fields; schemas +
+  template + SPEC.md mirrored byte-identically (`check-mirror` ✓). Erratum fixed: `bands` is
+  the schema's `{low_max, moderate_max}` object (SPEC.md/template briefly showed an array form).
+- **5 new conformance evals** (C2): `drift-metric-bounded`, `band-crossing-audited` (T3),
+  `homeostasis-returns-to-baseline` (T6), `arbitration-deterministic`, `u7-derivable` — 15/15.
+
 ### Changed — spec-faithful recompile trigger (F6.2)
 - The Living Loop now recompiles on a **band crossing** instead of on every applied mutation
   (SPEC v1.0 §L3: within-band movement is expression variance, not drift). Cheaper and

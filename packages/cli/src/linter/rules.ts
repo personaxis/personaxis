@@ -55,6 +55,12 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   const kind = typeof data.kind === "string" ? data.kind : undefined;
   const isAgent = kind === "AgentPersona";
 
+  // v1.0 vs legacy (≤0.10) dispatch — the linter mirrors the validator's version awareness.
+  const isV1 = String(data.spec_version ?? "").startsWith("1.") || data.apiVersion === "personaxis.com/v1";
+  const expectedApi = isV1 ? "personaxis.com/v1" : "persona.dev/v1";
+  const layer9 = isV1 ? "self_regulation" : "reflexive_self_regulation";
+  const requiredLayers = REQUIRED_LAYERS.map((l) => (l === "reflexive_self_regulation" ? layer9 : l));
+
   // top-level identifiers
   for (const field of REQUIRED_TOP_LEVEL) {
     if (!data[field]) {
@@ -67,16 +73,16 @@ export function runRules(data: Record<string, unknown>): RuleResult {
     }
   }
 
-  if (data.apiVersion && data.apiVersion !== "persona.dev/v1") {
+  if (data.apiVersion && data.apiVersion !== expectedApi) {
     findings.push({
       rule: "api-version",
       severity: "error",
       path: "apiVersion",
-      message: "apiVersion must be exactly 'persona.dev/v1'.",
+      message: `apiVersion must be exactly '${expectedApi}'.`,
     });
   }
 
-  const SUPPORTED_SPEC_VERSIONS = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0", "0.8.0", "0.9.0", "0.10.0"]);
+  const SUPPORTED_SPEC_VERSIONS = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.7.0", "0.8.0", "0.9.0", "0.10.0", "1.0.0"]);
   if (data.spec_version && !SUPPORTED_SPEC_VERSIONS.has(String(data.spec_version))) {
     findings.push({
       rule: "spec-version",
@@ -89,7 +95,11 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   // metadata completeness
   const metadata = asObj(data.metadata);
   if (metadata) {
-    for (const field of ["name", "version", "display_name", "description", "created"] as const) {
+    // v1.0 dropped metadata.display_name (single owner: identity.display_name).
+    const metaFields: string[] = isV1
+      ? ["name", "version", "description", "created"]
+      : ["name", "version", "display_name", "description", "created"];
+    for (const field of metaFields) {
       if (!metadata[field] || typeof metadata[field] !== "string") {
         findings.push({
           rule: "metadata-completeness",
@@ -105,9 +115,9 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   const presentLayers: string[] = [];
   const missingLayers: string[] = [];
   const userPersonaRequired = ["identity", "values_and_drives", "cognition", "persona"];
-  const layersToCheck = isAgent ? REQUIRED_LAYERS : userPersonaRequired;
+  const layersToCheck = isAgent ? requiredLayers : userPersonaRequired;
 
-  for (const layer of REQUIRED_LAYERS) {
+  for (const layer of requiredLayers) {
     if (asObj(data[layer])) presentLayers.push(layer);
     else missingLayers.push(layer);
   }
@@ -120,6 +130,30 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         path: layer,
         message: `Required layer '${layer}' is missing from the frontmatter.`,
       });
+    }
+  }
+
+  // v1.1 arbitration coherence (SPEC §15 / MATH_CORE A2): a non-safety value that
+  // is governance-typed with weight ≥ safety's would outrank safety in arbitration —
+  // legal, but almost always an authoring mistake worth flagging.
+  const vad = asObj(data.values_and_drives);
+  const vals = asObj(vad?.values);
+  if (vals) {
+    const safety = asObj(vals.safety);
+    const safetyWeight = typeof safety?.weight === "number" ? safety.weight : undefined;
+    if (safetyWeight !== undefined) {
+      for (const [name, raw] of Object.entries(vals)) {
+        if (name === "safety") continue;
+        const v = asObj(raw);
+        if (v?.type === "governance" && typeof v.weight === "number" && v.weight >= safetyWeight) {
+          findings.push({
+            rule: "arbitration-governance-outranks-safety",
+            severity: "warning",
+            path: `values_and_drives.values.${name}`,
+            message: `'${name}' is type: governance with weight ${v.weight} ≥ safety's ${safetyWeight} — it would outrank safety in arbitration (SPEC §15). Lower its weight or drop the governance type unless this is deliberate.`,
+          });
+        }
+      }
     }
   }
 
@@ -154,9 +188,9 @@ export function runRules(data: Record<string, unknown>): RuleResult {
     }
   }
 
-  // reflexive — universal hard_limits + refusals
+  // self_regulation (v1.0) / reflexive_self_regulation (legacy) — universal hard_limits + refusals
   if (isAgent) {
-    const reflexive = asObj(data.reflexive_self_regulation);
+    const reflexive = asObj(data[layer9]);
     if (reflexive) {
       const hardLimits = Array.isArray(reflexive.hard_limits) ? (reflexive.hard_limits as unknown[]) : [];
       const universals = [
@@ -169,19 +203,22 @@ export function runRules(data: Record<string, unknown>): RuleResult {
           findings.push({
             rule: "universal-hard-limit-missing",
             severity: "error",
-            path: "reflexive_self_regulation.hard_limits",
+            path: `${layer9}.hard_limits`,
             message: `Universal hard_limit missing: "${u}"`,
           });
         }
       }
-      const refusals = reflexive.principled_refusals;
+      // v1.0 folded principled_refusals into character.prohibited_behaviors; legacy keeps it under layer 9.
+      const refusals = isV1
+        ? asObj(data.character)?.prohibited_behaviors
+        : reflexive.principled_refusals;
       if (!refusals || !Array.isArray(refusals) || refusals.length === 0) {
         findings.push({
           rule: "refusals-present",
           severity: "warning",
-          path: "reflexive_self_regulation.principled_refusals",
+          path: isV1 ? "character.prohibited_behaviors" : "reflexive_self_regulation.principled_refusals",
           message:
-            "principled_refusals is empty. Without explicit refusals, the agent has no defined limits under situational pressure.",
+            "No explicit refusals declared. Without them, the agent has no defined limits under situational pressure.",
         });
       }
     }
@@ -251,6 +288,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         "cognition",
         "memory",
         "metacognition",
+        "self_regulation",
         "reflexive_self_regulation",
         "persona",
       ]);

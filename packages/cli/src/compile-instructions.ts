@@ -92,7 +92,7 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
       `present in or directly implied by the spec.`,
     ``,
     `Two hard rules: (1) "Hard limits" must reproduce the safety universals ` +
-      `(reflexive_self_regulation.hard_limits + persona.constraints), and "Staying in character" must ` +
+      `(self_regulation.hard_limits + persona.constraints), and "Staying in character" must ` +
       `explicitly state it NEVER overrides those limits. (2) The "Memory & resources" section must ` +
       `reproduce the resource manifest below verbatim (bullet list), with paths relative to ` +
       `${target.outputPath} (e.g. "${target.isSubagent ? "./" : "./.personaxis/"}memory.md" — a sub-persona's ` +

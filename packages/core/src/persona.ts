@@ -46,6 +46,14 @@ export interface MutationLogEntry {
   origin_node?: string;
   /** v0.8: runtime session id, for traceability. */
   session_id?: string;
+  /** v1.1 (F6.3, T3 forensic upgrade): hash of the previous chained entry ("" for
+   *  the first). Same scheme as episodic memory — the audit trail is tamper-evident,
+   *  not merely append-only by convention. Absent on pre-1.1 entries (legacy prefix
+   *  tolerated by verifyMutationChain). */
+  prev_hash?: string;
+  /** v1.1: sha256 over {ts, field, from, to, delta_requested, clamped, reason,
+   *  actor, governance_blocked, prev_hash}. */
+  hash?: string;
 }
 
 export interface StateFile {

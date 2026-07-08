@@ -5,7 +5,7 @@ import matter from "gray-matter";
 
 const REQUIRED_LAYERS = [
   "identity", "character", "personality", "values_and_drives", "affect",
-  "cognition", "memory", "metacognition", "reflexive_self_regulation", "persona",
+  "cognition", "memory", "metacognition", "self_regulation", "reflexive_self_regulation", "persona",
   "metadata", "governance", "security",
 ];
 

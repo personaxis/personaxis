@@ -12,6 +12,7 @@
 import { extractEnvelopes } from "./envelopes.js";
 import { bandCrossing } from "./math/bands.js";
 import { driftReport, readDriftThresholds } from "./math/drift.js";
+import { applyHomeostasis, decayingFields } from "./math/homeostasis.js";
 import {
   governMutations,
   readMode,
@@ -168,13 +169,30 @@ export class LivingLoop {
       // normative drift event. Within-band movement is expression variance.
       const bandCrossings: string[] = [];
       let postValues: Record<string, number> | null = null;
-      if (admitted.length > 0) {
+      // F6.3 (T6): coordinates with a declared half_life decay toward baseline
+      // every tick — even one with no admitted proposals.
+      const hasDecay = decayingFields(env.envelopes).length > 0;
+      if (admitted.length > 0 || hasDecay) {
         // Serialize the read→apply→write against concurrent writers (serve, MCP,
         // another tick): re-read fresh state under the lock — the proposed deltas
         // are relative, so applying them to fresh values is correct — and never
         // hold the lock across a model call (the appraisal already happened).
         this.storage.lock.withLock(this.handle.statePath, () => {
           const fresh: StateFile = this.storage.state.read(this.handle.statePath);
+          // Homeostatic step FIRST (the dynamics' decay term precedes the tick's
+          // forcing; every decay is an audited runtime-decay mutation).
+          for (const r of applyHomeostasis(fresh, env.envelopes, {
+            sessionId: this.sessionId,
+            originNode: machineId(),
+          })) {
+            bus.emit({ type: "mutate", result: r });
+            if (r.to !== r.from) {
+              mutationsApplied++;
+              if (bandCrossing(r.from, r.to, env.envelopes[r.entry.field])) {
+                bandCrossings.push(r.entry.field);
+              }
+            }
+          }
           for (const m of admitted) {
             const result = applyMutation(fresh, env.envelopes, {
               field: m.field,

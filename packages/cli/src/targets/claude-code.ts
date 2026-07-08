@@ -25,7 +25,8 @@ function sortedMapKeys<T extends { weight?: number; priority?: number; intensity
 
 export function compileClaudeCode(data: PersonaData): string {
   const metadata = data.metadata ?? {};
-  const displayName = metadata.display_name ?? metadata.name ?? "Agent";
+  // v1.0 dropped metadata.display_name (single owner: identity.display_name); read it first, fall back for legacy.
+  const displayName = asStr(asObj(data.identity)?.display_name) ?? metadata.display_name ?? metadata.name ?? "Agent";
   const description = metadata.description ?? "";
 
   const identity = asObj(data.identity);
@@ -36,7 +37,7 @@ export function compileClaudeCode(data: PersonaData): string {
   const cognition = asObj(data.cognition);
   const memory = asObj(data.memory);
   const meta = asObj(data.metacognition);
-  const reflexive = asObj(data.reflexive_self_regulation);
+  const reflexive = asObj(data.self_regulation) ?? asObj(data.reflexive_self_regulation); // v1.0 rename, legacy fallback
   const persona = asObj(data.persona);
 
   const lines: string[] = [];
@@ -250,7 +251,7 @@ Always read @PERSONA.md at project root before acting.
 Apply everything defined there to every decision, regardless of role.
 Read your own @PERSONA.md too if one was provided to you.
 
-The persona file conforms to the PERSONA.md spec. It defines ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, reflexive_self_regulation, persona) plus governance and security. The reflexive_self_regulation.hard_limits are absolute and never crossed.
+The persona file conforms to the PERSONA.md spec. It defines ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, self_regulation, persona) plus governance and security. The self_regulation.hard_limits are absolute and never crossed.
 <!-- PERSONA:BASELINE:END -->`;
 
 export function injectBaselineIntoClaude(existingContent: string): string {

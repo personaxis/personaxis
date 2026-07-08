@@ -11,6 +11,8 @@ export * from "./envelopes.js";
 export * from "./math/uspace.js";
 export * from "./math/bands.js";
 export * from "./math/drift.js";
+export * from "./math/homeostasis.js";
+export * from "./math/arbitration.js";
 export * from "./state-engine.js";
 export * from "./state-rebuild.js";
 export * from "./spec-edit.js";
