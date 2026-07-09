@@ -21,6 +21,7 @@ docs/
   GUARANTEES.md        what is guaranteed (theorems) vs measured vs pending — the honest scoreboard
   MATH_CORE.md         the formal core: definitions, T1–T6 with proofs, arbitration, Jacobians
   RESEARCH.md          preregistered research protocol (RQ1–RQ6, hypotheses, metrics, lit review)
+  paper/bounded-persona-dynamics.md   the paper (APA 7, web edition; results trace to committed runs)
   configuration.md     model/endpoint/API-key config (global+project+per-persona, dev & prod)
   providers.md         the local | byok | agent | remote providers for compile/decompile
   guides/              task-oriented entry points

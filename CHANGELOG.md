@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] — Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Added — the paper + final audit (F6.10)
+- **`docs/paper/bounded-persona-dynamics.md`** — *Bounded Persona Dynamics: Deterministic
+  Runtime Governance and Grounded Synthesis for Portable AI Personas* (APA 7, web/Markdown
+  edition): formal model + T1–T6/A1–A2, external persona Jacobian, grounded synthesis,
+  preregistered design, and **only recorded results** (E3 2.3M cases/0 counterexamples, E4
+  p99 ≤ 0.12 ms, conformance 15/15, proof 12/12; behavioral headline runs explicitly pending).
+  All 21 arXiv references re-verified against the arXiv API with full author lists (one title
+  correction recorded in RESEARCH.md's amendment log).
+- **CLI startup 2× faster** (audit finding → fix): the REPL (Ink/React, ~1 s of import cost)
+  was imported eagerly by every subcommand; it is now lazy-loaded only on the no-subcommand
+  path. `--version` 1.26 s → 0.62 s; the flaky-at-5 s multi-spawn e2e is green again.
+- Final audit recorded in IMPLEMENTATION_CHECKLIST (build 8/8, 477 unit/property tests green,
+  evals 15/15, golden CMO PASS, check-mirror byte-identical, proof 12/12 under
+  NO_COLOR/80 col, all relative doc links resolve, help strings speak v1.1).
+
 ### Changed — docs speak v1.1 everywhere; guides complete (F6.9)
 - README leads with the pitch + the recorded evidence (2.3M cases, 0 counterexamples) and a
   60-second `proof --quick`; command tables gain the v1.1 rows (`create`, `proof`,

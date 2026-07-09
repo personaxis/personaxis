@@ -41,7 +41,6 @@ import { onboardCommand } from "./commands/onboard.js";
 import { personasCommand } from "./commands/personas.js";
 import { traceCommand } from "./commands/trace.js";
 import { scanCommand } from "./commands/scan.js";
-import { startRepl } from "./repl/index.js";
 
 // Options after a subcommand belong to that subcommand (so `sigil --persona X`
 // is parsed by `sigil`, not captured by the root REPL's own --persona).
@@ -54,6 +53,9 @@ program
   // `personaxis` with no subcommand enters the living REPL.
   .option("--persona <path>", "Path to the persona (personaxis.md / PERSONA.md) for the REPL")
   .action(async (opts: { persona?: string }) => {
+    // Lazy: the REPL pulls in Ink/React (~1 s of import cost) — only the
+    // no-subcommand path pays it, never `validate`/CI/hook invocations.
+    const { startRepl } = await import("./repl/index.js");
     await startRepl({ persona: opts.persona });
   });
 

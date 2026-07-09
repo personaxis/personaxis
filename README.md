@@ -65,7 +65,7 @@ personaxis-mcp     # stdio MCP server: persona_compiled, persona_state,
 
 This repo is a **pnpm monorepo** of eight lockstep packages (`@personaxis/spec`, `core`, `protocol`, `persona.md` [the CLI], `mcp`, `sdk`, `evals`, `tui`).
 
-**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — what personaxis is, the three-artifact model, the governed Living Loop, the security model, the full command reference, and the architecture. See [`plan/`](plan/) for the roadmap + research dossier and [`plan/14-apa-report/REPORT.md`](plan/14-apa-report/REPORT.md) for the APA report.
+**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — what personaxis is, the three-artifact model, the governed Living Loop, the security model, the full command reference, and the architecture. **📄 The paper:** [`docs/paper/bounded-persona-dynamics.md`](docs/paper/bounded-persona-dynamics.md) — *Bounded Persona Dynamics* (theorems, preregistered experiments, recorded results). `plan/` is the historical research dossier.
 
 ---
 
