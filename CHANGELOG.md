@@ -8,6 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] — Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Added — preregistered experiments + the superiority kit (F6.8)
+- **Experiment harness** (`packages/evals/experiments/`, protocols frozen in `docs/RESEARCH.md`):
+  - **E4 recorded (REAL)**: hot-path bench — p99 0.059/0.073/0.119 ms per governed tick at
+    n=8/16/64 coordinates (H4 "p99 < 1 ms" PASS; `results/e4-bench.json`).
+  - **E1/E2/E5/E6 runners ready** (`behavioral.mjs`): engine vs system-prompt vs character-card
+    under drift pressure/injection, blind dual LLM judges, Cliff's δ, fixed seeds, raw
+    transcripts embedded in each results file. `--mock` self-tests recorded (suffixed `-mock`,
+    NOT evidence); headline runs need a model endpoint (`PXS_EXP_*`).
+  - **E3** runs the full property suite at `FC_NUM_RUNS=100000` per property (~11 h; recorded
+    to `results/e3-scale.json` on completion — CI runs the identical suite at 5000).
+- **`docs/GUARANTEES.md`** — the superiority kit on one page: guaranteed-by-theorem vs measured
+  vs pending, with an honest evidence scoreboard (nothing outruns its recorded run).
+- **Guides**: `docs/guides/getting-started.md` (by audience: developers, teams/enterprises,
+  creators) and `docs/guides/recipes.md` (8 vertical recipes: NPC, brand voice,
+  legal/compliance, fintech analyst, tutor, sales, companion/AI-world, coding agent).
+- **Command docs** for the F6 surface: `docs/commands/{create,proof,drift,jacobian,arbitrate}.md`
+  + `docs/architecture/math-core.md` (theorem→code map for newcomers).
+- Property suite: explicit per-test timeout (`PROP_TIMEOUT` in `arbitraries.ts`) so the 10⁵ E3
+  run is not killed by vitest's 5 s default — timeouts were masking completion, not failures.
+
 ### Added — the denotational core (F6.1–F6.2)
 - **Property-based proof harness** (`@personaxis/core` test/properties): 19 fast-check properties
   machine-verify the engine's theorems — T1 box invariance under adversarial mutation sequences,

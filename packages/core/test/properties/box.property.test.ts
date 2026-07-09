@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import { applyMutation } from "../../src/index.js";
-import { NUM_RUNS, envelopesArb, planArb, deltaArb, envelopeArb, freshState } from "./arbitraries.js";
+import { NUM_RUNS, envelopesArb, planArb, deltaArb, envelopeArb, freshState, PROP_TIMEOUT } from "./arbitraries.js";
 
 describe("PB-T1 invariance: the box is inescapable", () => {
   it("every value stays in [min,max] under arbitrary mutation sequences", () => {
@@ -42,7 +42,7 @@ describe("PB-T1 invariance: the box is inescapable", () => {
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("one-step recovery: a tampered out-of-box value re-enters B on the next mutation", () => {
     fc.assert(
@@ -56,7 +56,7 @@ describe("PB-T1 invariance: the box is inescapable", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("blocked mutations move nothing (to === from) and still audit", () => {
     fc.assert(
@@ -75,7 +75,7 @@ describe("PB-T1 invariance: the box is inescapable", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
@@ -92,7 +92,7 @@ describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("clamped flag ⟺ the request exceeded the envelope (audit truthfulness)", () => {
     fc.assert(
@@ -106,5 +106,5 @@ describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });

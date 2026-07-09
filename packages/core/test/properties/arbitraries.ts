@@ -20,6 +20,8 @@ export const FS_NUM_RUNS = Number(
 );
 /** Generous vitest timeout for fs-bound property tests (ms). */
 export const FS_TIMEOUT = 600_000;
+/** Timeout for CPU-bound properties — E3 runs them at FC_NUM_RUNS=100000. */
+export const PROP_TIMEOUT = 600_000;
 
 const bounded = (min: number, max: number) =>
   fc.double({ min, max, noNaN: true, noDefaultInfinity: true });

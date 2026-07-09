@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import { applyMutation, rebuildStateValues } from "../../src/index.js";
-import { NUM_RUNS, envelopesArb, planArb, freshState } from "./arbitraries.js";
+import { NUM_RUNS, envelopesArb, planArb, freshState, PROP_TIMEOUT } from "./arbitraries.js";
 
 const historyArb = envelopesArb.chain((envs) =>
   fc.record({
@@ -50,7 +50,7 @@ describe("PB-T4 replay: the log is the state", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("tampering a mutated stored value is detected as drift naming that field", () => {
     fc.assert(
@@ -72,7 +72,7 @@ describe("PB-T4 replay: the log is the state", () => {
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("blocked entries are inert in replay (to === from)", () => {
     fc.assert(
@@ -87,5 +87,5 @@ describe("PB-T4 replay: the log is the state", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });

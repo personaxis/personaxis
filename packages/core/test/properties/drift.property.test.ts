@@ -24,7 +24,7 @@ import {
   driftReport,
   type Envelope,
 } from "../../src/index.js";
-import { NUM_RUNS, envelopeArb, freshState } from "./arbitraries.js";
+import { NUM_RUNS, envelopeArb, freshState, PROP_TIMEOUT } from "./arbitraries.js";
 
 /** Non-degenerate envelopes (positive half-width on both sides) for u-inversion. */
 const solidEnvelopeArb: fc.Arbitrary<Envelope> = envelopeArb.filter(
@@ -49,7 +49,7 @@ describe("u-space (Def. 4)", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("projectValue is idempotent and lands in the box", () => {
     fc.assert(
@@ -61,7 +61,7 @@ describe("u-space (Def. 4)", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("ρ is a metric: identity, symmetry, triangle inequality", () => {
     fc.assert(
@@ -80,7 +80,7 @@ describe("u-space (Def. 4)", () => {
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe("bands (Def. 6)", () => {
@@ -100,7 +100,7 @@ describe("bands (Def. 6)", () => {
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe("PB-T3 evidence cost: minStepsToCross is a certified lower bound", () => {
@@ -144,7 +144,7 @@ describe("PB-T3 evidence cost: minStepsToCross is a certified lower bound", () =
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("driftReport: D = max coordinate drift; layer thresholds flag exceedance", () => {
     fc.assert(
@@ -166,5 +166,5 @@ describe("PB-T3 evidence cost: minStepsToCross is a certified lower bound", () =
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });

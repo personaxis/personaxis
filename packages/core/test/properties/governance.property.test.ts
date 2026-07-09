@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import { governMutations, type EnvelopeLookup, type ProposedMutation } from "../../src/index.js";
-import { NUM_RUNS, envelopesArb, deltaArb } from "./arbitraries.js";
+import { NUM_RUNS, envelopesArb, deltaArb, PROP_TIMEOUT } from "./arbitraries.js";
 
 const modeArb = fc.constantFrom("locked", "suggesting", "autonomous") as fc.Arbitrary<
   "locked" | "suggesting" | "autonomous"
@@ -75,7 +75,7 @@ describe("PB gate: policy invariants of governMutations", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("human direction bypasses the cap but NOT protection or envelope membership", () => {
     fc.assert(
@@ -97,5 +97,5 @@ describe("PB gate: policy invariants of governMutations", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });

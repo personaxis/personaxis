@@ -18,7 +18,7 @@ import {
   extractEnvelopes,
   type PersonaFrontmatter,
 } from "../../src/index.js";
-import { NUM_RUNS } from "./arbitraries.js";
+import { NUM_RUNS, PROP_TIMEOUT } from "./arbitraries.js";
 
 const textArb = fc.string({ minLength: 0, maxLength: 200 });
 
@@ -36,7 +36,7 @@ describe("PB-J normalized line distance", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 /** A persona whose warmth trait has (possibly identical) per-band expression. */
@@ -98,7 +98,7 @@ describe("PB-J J_compile against the real assembler", () => {
       }),
       { numRuns: Math.min(NUM_RUNS, 100) }, // each case does up to 4 real compiles
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("the compile stage is a step function: within-band moves change nothing", () => {
     const fm = personaWith("terse.", "balanced.", "warm.");
@@ -116,5 +116,5 @@ describe("PB-J J_compile against the real assembler", () => {
       ),
       { numRuns: 40 },
     );
-  });
+  }, PROP_TIMEOUT);
 });

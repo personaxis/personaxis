@@ -25,7 +25,7 @@ import {
   type Envelope,
   type MutationLogEntry,
 } from "../../src/index.js";
-import { NUM_RUNS, envelopeArb, freshState, deltaArb } from "./arbitraries.js";
+import { NUM_RUNS, envelopeArb, freshState, deltaArb, PROP_TIMEOUT } from "./arbitraries.js";
 
 const solidEnvelopeArb: fc.Arbitrary<Envelope> = envelopeArb.filter(
   (e) => e.mean - e.min > 1e-3 && e.max - e.mean > 1e-3,
@@ -71,7 +71,7 @@ describe("PB-T6 homeostasis", () => {
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("(b) ISS: adversarial forcing |δ| ≤ δ_max yields standing deviation ≤ δ_max/λ (+FP slack)", () => {
     fc.assert(
@@ -106,7 +106,7 @@ describe("PB-T6 homeostasis", () => {
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 const valueArb: fc.Arbitrary<ArbitrationValue> = fc.record({
@@ -134,7 +134,7 @@ describe("PB-A1/A2 arbitration", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("A2: U7 derivable — safety (governance, ≥0.90) beats every non-governance value, with a trace", () => {
     fc.assert(
@@ -153,7 +153,7 @@ describe("PB-A1/A2 arbitration", () => {
       ),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });
 
 describe("mutation_log hash chain (T3 forensic upgrade)", () => {
@@ -191,7 +191,7 @@ describe("mutation_log hash chain (T3 forensic upgrade)", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 
   it("a legacy (unhashed) prefix is tolerated; interior deletion of chained entries is detected", () => {
     fc.assert(
@@ -226,5 +226,5 @@ describe("mutation_log hash chain (T3 forensic upgrade)", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, PROP_TIMEOUT);
 });
