@@ -126,6 +126,13 @@ role adoption, character card, voice exemplars, scene contracts, guardrails (see
 
 ## 5. Recompile triggers
 
+- **Numeric path: band crossing, and only band crossing (Implemented, v1.1 — the normative
+  trigger, SPEC §15).** Envelope movement *within* a behavior band is expression variance and
+  does NOT recompile. When a governed tick makes a coordinate **cross a band**, the loop
+  emits a `drift` event and rewrites the compiled doc via the deterministic stage-1 assembler
+  with fresh `stateValues` (the crossing selects new per-band `expression` prose — no LLM in
+  this path). See `loop.ts` + `compile/assemble.ts sectionExpression`;
+  [math-core.md](./math-core.md) maps it to the theorems.
 - **Stale-marking, not inline recompile (Implemented).** A full LLM recompile on every turn was
   the "stuck thinking" hang, so the loop no longer blocks the turn to recompile. When a self-edit
   is applied it writes `.recompile-pending.json`; the REPL surfaces `· PERSONA.md stale (self-edits

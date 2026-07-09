@@ -11,7 +11,8 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 
 | Command | What it does |
 |---|---|
-| [`init [slug]`](./init.md) | Scaffold a persona (root or sub) — generates `personaxis.md` + `policy.yaml` (spec 0.10). |
+| [`create [slug]`](./create.md) | **Persona Genesis** — build a governed persona from scratch: interview, `--from-prompt`, `--from-project`, `--from-import` (character cards V2/V3, system prompts), `--from-transcript`. Valid by construction + creation report with per-number provenance. |
+| [`init [slug]`](./init.md) | Scaffold a persona (root or sub) from the commented template — generates `personaxis.md` + `policy.yaml` (spec 1.0; prefer `create` for a grounded persona). |
 | [`validate <file>`](./validate.md) | 5-status validator (PASS / PASS_WITH_WARNINGS / FAIL_SCHEMA / FAIL_POLICY / FAIL_CONCEPTUAL). |
 | [`lint <file>`](./lint.md) | Tier-aware semantic findings against the layer/field contract. |
 | [`compile [slug]`](./compile.md) | Compile to the canonical `PERSONA.md`; `--platform` exports a host placement. |
@@ -22,8 +23,13 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`onboard`](../integrations/README.md) | One command to wire a host: config check → compile → hook. |
 | [`config`](../configuration.md) | Set the model/endpoint/key (global or project, per-persona). |
 | [`improve [mode]`](./improve.md) | View/set self-improvement posture (`locked` / `suggesting` / `autonomous`). |
-| [`state`](./state.md) | init / show / mutate `state.json` (envelope-clamped). |
-| [`migrate <a-to-b>`](./migrate.md) | Version codemods (`0.9-to-0.10` is additive — bumps `spec_version`). |
+| `edit <dot-path> <value>` | Surgical governed single-leaf spec edit — re-validates; refuses any edit that would break a universal ([self-evolution](../architecture/self-evolution.md)). |
+| [`state`](./state.md) | init / show / mutate / rebuild `state.json` (envelope-clamped; hash-chained mutation_log). |
+| [`state drift`](./drift.md) | The drift report: per-coordinate `u`, band, headroom + T3 evidence cost; per-layer `D` vs `drift_thresholds` (exit 2 on exceedance — CI gate). |
+| [`proof`](./proof.md) | Live, offline proof-of-guarantees demo: adversarial storm, tamper detection, replay, T3 crossing — 5 scenes with real numbers (`--quick`, `--auto`). |
+| [`jacobian`](./jacobian.md) | Exact compile sensitivity per coordinate (σ); flags decorative numbers (exit 2). |
+| [`arbitrate [a] [b]`](./arbitrate.md) | Deterministic value-conflict resolution with an explanatory trace (governance ≻ weight ≻ name). |
+| [`migrate <a-to-b>`](./migrate.md) | Version codemods (`0.10-to-1.0` is the breaking one, comment-preserving; earlier bumps additive). |
 | [`sigil`](./sigil.md) | Render a persona's deterministic, state-aware ASCII sigil. |
 | [`dash`](./dash.md) | Live ASCII dashboard (sigil + envelopes + memory chain), refreshed from `state.json` each frame. |
 | [`scan`](./scan.md) | Cross-harness config scanner (red/blue/auditor). |
@@ -35,7 +41,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`sync`](./sync.md) | Reconcile a persona's state across machines (merge, no clobber). |
 | [`serve`](./serve.md) | Expose the living persona over HTTP + `agents.md` (non-MCP interop). |
 | [`skills`](./skills.md) | List / pull `extensions.skills` (e.g. `github:org/repo`) with a security review. |
-| [`spec`](./spec.md) | Print the personaxis.md spec (v0.10) + lint rules — inject into agent prompts. |
+| [`spec`](./spec.md) | Print the personaxis.md spec (v1.1) + lint rules — inject into agent prompts. |
 | [`export`](./export.md) | Export the compiled doc to clean JSON / YAML / Markdown (no pedagogical comments). |
 | [`diff <a> <b>`](./diff.md) | Field-by-field diff of two `PERSONA.md`; flags breaking changes (CI gate). |
 | `list` · `templates` · `template` | Installed personas · built-in templates · authoring scaffolds (`--help` each; see the cross-refs in their descriptions). |
@@ -51,6 +57,9 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | `/help` | List commands. |
 | `/persona` | Identity, role (root/sub), sub-personas, resources + sigil. |
 | `/state` | Show runtime state + envelopes. |
+| `/drift` | Where the persona is: per-coordinate `u`/band/headroom + T3 evidence cost; layer `D` vs thresholds. |
+| `/arbitrate [a b]` | Rank values / resolve one conflict, with the deciding rule named. |
+| `/replay` | Animated replay of the mutation_log with the T4 verdict (state ≡ history). |
 | `/improve [mode]` | View/set self-improvement mode `locked\|suggesting\|autonomous` (≠ `/mode`). |
 | `/review [approve\|reject] <id\|all>` | Review the queue of proposed qualitative self-edits. |
 | `/compile` | Recompile `PERSONA.md` from the evolved spec (only when marked stale). |

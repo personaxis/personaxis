@@ -18,9 +18,19 @@ deeper architecture doc below.
 ```
 docs/
   CONCEPTS_FAQ.md      START HERE — direct answers to the common conceptual questions
+  GUARANTEES.md        what is guaranteed (theorems) vs measured vs pending — the honest scoreboard
+  MATH_CORE.md         the formal core: definitions, T1–T6 with proofs, arbitration, Jacobians
+  RESEARCH.md          preregistered research protocol (RQ1–RQ6, hypotheses, metrics, lit review)
   configuration.md     model/endpoint/API-key config (global+project+per-persona, dev & prod)
   providers.md         the local | byok | agent | remote providers for compile/decompile
+  guides/              task-oriented entry points
+    getting-started.md   by audience: developers / teams & enterprises / creators
+    creating-personas.md which `create` door for which input, provenance review, iteration
+    production.md        MCP / SDK / serve, the four production controls, troubleshooting
+    recipes.md           8 vertical starting points (NPC, brand voice, legal, fintech, tutor, …)
   architecture/        how the system works, end to end
+    math-core.md         theorem→code map (which module implements which definition/theorem)
+    genesis.md           the persona-creation pipeline design (`personaxis create`)
     deployment.md        the two use-modes, the four surfaces, hooks, cross-OS, self-host vs SaaS
     self-evolution.md    how personaxis.md self-edits (whole spec), and how it compiles to PERSONA.md (the "living" loop)
     compile.md           compile / decompile, the artifact model, canonical output paths, purely-qualitative compiled doc

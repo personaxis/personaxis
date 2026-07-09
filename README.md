@@ -4,11 +4,23 @@
 
 [![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Spec](https://img.shields.io/badge/spec-1.0.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
+[![Spec](https://img.shields.io/badge/spec-1.1.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
 
-CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- define, validate, lint, compile, decompile, edit, push, pull, and migrate AI agent personas (spec v1.0.0). Personas at 0.3.0–0.10.0 still validate unchanged.
+**The portable, governed, _proven_ persona layer that lives above every model.** Define an AI persona once — all 10 layers, not just a name and a vibe — in plain git-versionable files, run it unchanged on Claude, GPT, Gemini, or a local model, and get **mathematical guarantees** that it cannot drift outside what you declared:
 
-Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md).
+- **It can't escape.** Every mutable value lives in a declared envelope; no adversarial input sequence can leave it (theorem T1, verified against **2.3M generated adversarial cases, 0 counterexamples** — [`docs/GUARANTEES.md`](docs/GUARANTEES.md)).
+- **Change is forensic.** Crossing into different behavior costs a provable minimum of hash-chained audit entries (T3); history replays deterministically and tampering is located, not just detected (T4/T5).
+- **Created from anything, grounded in evidence.** `personaxis create` builds a valid-by-construction persona from an interview, a prompt, your repo, a character card, or transcripts — with a creation report giving the provenance of every number.
+
+See it hold in 60 seconds, offline:
+
+```bash
+npx @personaxis/persona.md proof --quick
+```
+
+CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- create, define, validate, lint, compile, decompile, edit, push, pull, and migrate AI agent personas (spec v1.1.0). Personas at 0.3.0–1.0.0 still validate unchanged.
+
+Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md); guarantees: [`docs/GUARANTEES.md`](docs/GUARANTEES.md); the formal core: [`docs/MATH_CORE.md`](docs/MATH_CORE.md); guides: [`docs/guides/`](docs/guides/).
 
 ---
 
@@ -18,7 +30,7 @@ Full documentation lives in the [PERSONA.md spec repository](https://github.com/
 
 ```bash
 personaxis                       # first run scaffolds a valid starter persona, then it wakes up
-# › hi! talk in natural language, or use /state /evolve /audit /memory /sigil ...
+# › hi! talk in natural language, or use /state /drift /audit /memory /persona ...
 ```
 
 It creates a valid, playable companion (`.personaxis/personaxis.md`), the persona **awakens** with its own animated sigil, and **replies** to you. For a real conversation, point it at a model:
@@ -32,7 +44,7 @@ Beyond the REPL, `personaxis` is a **living, governed persona agent**. Drive an 
 
 ```bash
 node packages/cli/dist/index.js --persona .personaxis/personaxis.md
-# › talk in natural language, or use /state /evolve /audit /memory /sigil /persona ...
+# › talk in natural language, or use /state /drift /arbitrate /replay /audit /memory /persona ...
 ```
 
 Each turn feeds a **governed Living Loop** — `observe → appraise → evolve → recompile → memory` — where every state change is **clamped to the persona's envelopes, audited in an immutable mutation log, and reversible**, and episodic memory is written to an **append-only hash chain** (tamper/poisoning-evident). Identity stays immutable; only `state.json` and memory evolve, within the spec's universal invariants.
@@ -51,7 +63,7 @@ personaxis-mcp     # stdio MCP server: persona_compiled, persona_state,
                    # adjust_persona_state, persona_observe, persona_audit, ...
 ```
 
-This repo is a **pnpm monorepo** (`@personaxis/core`, `@personaxis/cli`, `@personaxis/mcp`, `@personaxis/tui`).
+This repo is a **pnpm monorepo** of eight lockstep packages (`@personaxis/spec`, `core`, `protocol`, `persona.md` [the CLI], `mcp`, `sdk`, `evals`, `tui`).
 
 **📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — what personaxis is, the three-artifact model, the governed Living Loop, the security model, the full command reference, and the architecture. See [`plan/`](plan/) for the roadmap + research dossier and [`plan/14-apa-report/REPORT.md`](plan/14-apa-report/REPORT.md) for the APA report.
 
@@ -103,7 +115,7 @@ Requires Node.js 18+.
 | `export --format json\|md\|yaml` | Export personaxis.md as clean semantic content |
 | `template list\|show\|get` | Manage pedagogical templates |
 | `diff <before> <after>` | Compare two versions field by field |
-| `spec` | Print the v1.0.0 spec — useful for injecting into agent prompts |
+| `spec` | Print the v1.1.0 spec — useful for injecting into agent prompts |
 | `use <template>` | Scaffold a persona from a template |
 | `list` | List personas installed in this project |
 | `templates` | List built-in templates |
@@ -127,6 +139,11 @@ Requires Node.js 18+.
 | **`state rebuild`** | **v1.0:** Replay the mutation_log to rebuild/repair `state.json` as a derived checkpoint (drift detection; `--write`) |
 | **`dash [--persona <p>]`** | **v1.0:** Live ASCII dashboard (Ink) — sigil, envelopes, and chain, reflecting evolution in real time |
 | **`migrate 0.10-to-1.0`** | **v1.0:** Codemod to the stable spec (layer-9 rename, `persona_prompting`→`persona`, refusal-surface fold, memory knobs→`runtime`, dot-path state keys) |
+| **`create [slug]`** | **v1.1:** Persona Genesis — interview / `--from-prompt` / `--from-project` / `--from-import` (cards V2/V3, system prompts) / `--from-transcript` → valid-by-construction spec + creation report with per-number provenance |
+| **`proof [--quick] [--auto]`** | **v1.1:** Watch the guarantees hold, offline: adversarial storm (0 escapes), certified band-crossing cost, tamper located, deterministic replay |
+| **`state drift`** | **v1.1:** Per-coordinate `u`/band/headroom + T3 evidence cost; layer `D` vs `governance.drift_thresholds` (exit 2 past tolerance — CI gate) |
+| **`jacobian`** | **v1.1:** Exact compile-sensitivity per coordinate (σ); flags provably decorative numbers (exit 2) |
+| **`arbitrate [a] [b]`** | **v1.1:** Deterministic value-conflict resolution with a trace (`governance` ≻ `weight` ≻ name; safety-beats-completion is a theorem) |
 
 ### Validate exit codes
 

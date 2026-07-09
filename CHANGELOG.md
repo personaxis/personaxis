@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] — Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Changed — docs speak v1.1 everywhere; guides complete (F6.9)
+- README leads with the pitch + the recorded evidence (2.3M cases, 0 counterexamples) and a
+  60-second `proof --quick`; command tables gain the v1.1 rows (`create`, `proof`,
+  `state drift`, `jacobian`, `arbitrate`); stale `/evolve`/`/sigil` mentions fixed.
+- CLAUDE.md, `docs/README.md` (map), `docs/commands/README.md` (CLI + REPL indexes),
+  HOW_IT_WORKS (band-crossing recompile trigger, math-moat section, v1.1 commands),
+  CONCEPTS_FAQ (§13 the math, §14 `create` vs `init`), architecture/self-evolution
+  (normative numeric recompile trigger) — all updated surgically to v1.1.
+- New guides: `docs/guides/creating-personas.md` (which `create` door for which input,
+  provenance review, jacobian step, iterate-under-governance) and `docs/guides/production.md`
+  (MCP/SDK/serve surfaces, four production controls, sizing, troubleshooting).
+
 ### Added — preregistered experiments + the superiority kit (F6.8)
 - **Experiment harness** (`packages/evals/experiments/`, protocols frozen in `docs/RESEARCH.md`):
   - **E4 recorded (REAL)**: hot-path bench — p99 0.059/0.073/0.119 ms per governed tick at

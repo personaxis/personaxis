@@ -31,7 +31,7 @@ diferenciador.
 
 ## 2. El modelo de tres artefactos
 
-Una persona se describe con tres archivos (spec `personaxis.md` v0.7):
+Una persona se describe con tres archivos (spec `personaxis.md` v1.1):
 
 | Artefacto | Qué es | Mutabilidad |
 |---|---|---|
@@ -56,7 +56,9 @@ appraise  → el modelo propone SOLO señales estructuradas (JSON-schema), no mu
    ↓
 evolve    → el código del spec aplica el delta CLAMPEADO al envelope + gate de gobernanza
    ↓        + entrada inmutable en mutation_log
-recompile → si hubo drift, sincroniza el doc compilado del host (live-sync) + marcador .live.json
+recompile → SOLO si una coordenada CRUZÓ de banda de comportamiento (lo normativo, spec §15):
+   ↓        movimiento dentro de banda = varianza de expresión, no recompila; el cruce
+   ↓        reescribe el doc compilado (live-sync) + marcador .live.json + evento `drift`
    ↓
 memory    → escribe a memoria episódica (append-only, encadenada por hash) tras verificar la cadena
 ```
@@ -90,6 +92,14 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
 
 ## 4. Gobernanza y seguridad (el *moat*)
 
+- **Garantías matemáticas machine-checked (v1.1):** los envelopes forman una caja compacta B;
+  el clamp es la proyección Π_B. Teoremas T1–T6 ([`MATH_CORE.md`](./MATH_CORE.md)): ninguna
+  secuencia adversaria escapa de B (T1), paso acotado (T2), cruzar una banda de comportamiento
+  cuesta un mínimo demostrable de entradas de auditoría hash-encadenadas (T3), replay
+  determinista + tamper localizado (T4/T5), homeostasis opt-in con drift estacionario acotado
+  (T6). Verificado contra 2.3M de casos adversarios generados, 0 contraejemplos
+  ([`GUARANTEES.md`](./GUARANTEES.md)). `personaxis proof` lo muestra en vivo; `state drift`
+  computa dónde está la persona vs `governance.drift_thresholds` (gate de CI, exit 2).
 - **Envelopes + clamping:** ningún valor sale de su rango declarado.
 - **Invariantes universales (12):** el validador los enforce; un `personaxis.md` que falle no
   compila. Salidas con 5 exit codes.
@@ -114,7 +124,8 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
   (alternate-screen, sin dejar historial de frames): menú `/` en vivo y `shift+tab` para ciclar la
   postura del sandbox. Comandos: `/persona`, `/state`, `/improve`, `/review`, `/compile`, `/audit`,
   `/memory`, `/sessions`, `/resume`, `/compact`, `/goal`, `/loop` (corre ticks gobernados), `/mode`,
-  `/model`, `/overseer`, `/help`, `/exit` (el sigil está dentro de `/persona`; no hay `/do` ni
+  `/model`, `/drift` (reporte u/banda/costo T3), `/arbitrate` (conflictos de valores),
+  `/replay` (historia animada + veredicto T4), `/overseer`, `/help`, `/exit` (el sigil está dentro de `/persona`; no hay `/do` ni
   `/evolve` — hablar ya usa herramientas y evoluciona cada turno). (En pipe/CI cae a un lector simple.)
 - `personaxis sigil [--persona <path>]` — sigilo ascii único de la persona + panel de envelopes.
 - `personaxis-dash [--persona <path>]` — TUI viva que respira con el estado.
@@ -129,7 +140,16 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
 
 **Interop:**
 - `personaxis serve --persona <path>` — servidor HTTP + `agents.md` (para agentes que no hablan MCP).
-- `personaxis-mcp` — servidor MCP (stdio) con 12 herramientas de persona.
+- `personaxis-mcp` — servidor MCP (stdio) con 16 herramientas de persona.
+
+**Génesis y prueba (v1.1):**
+- `personaxis create [slug]` — crea una persona desde cero: entrevista psicométrica,
+  `--from-prompt`, `--from-project`, `--from-import` (character cards V2/V3, system prompts),
+  `--from-transcript`. Válida por construcción + creation report con procedencia por número.
+- `personaxis proof [--quick]` — demo offline de las garantías (tormenta adversaria, tamper,
+  replay, costo de cruce certificado).
+- `personaxis state drift` · `personaxis jacobian` · `personaxis arbitrate` — reporte de drift
+  (gate CI), sensibilidad exacta del compile (números decorativos), arbitraje determinista.
 
 **Spec (motor existente):** `init`, `validate`, `lint`, `compile`, `decompile`, `state`,
 `migrate`, `push`, `pull`, `skills`, `template`, `diff`, `export`, `spec`, `use`, `list`, `config`.
