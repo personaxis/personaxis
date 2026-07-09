@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/evals",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Governance/property eval harness for Personaxis — proves the clamp holds, the gate blocks, memory stays tamper-evident, budgets stop, and verification catches. Deterministic (no API key needed).",
   "license": "MIT",
   "type": "module",

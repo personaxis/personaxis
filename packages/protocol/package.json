@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/protocol",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "The UI↔engine seam for Personaxis: typed operations (SQ) and events (EQ) as discriminated unions, carried over JSON-RPC 2.0 on node:net (Unix domain sockets + Windows named pipes, one API). The engine never renders; a front-end never mutates state directly — everything crosses this boundary.",
   "license": "MIT",
   "type": "module",

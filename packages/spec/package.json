@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/spec",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "The personaxis.md spec as a package: canonical JSON Schemas (v1.0 + frozen 0.10 legacy), the five-state validator with version dispatch, and the twelve universal invariants. Single source consumed by the CLI, MCP server, SDK, and SaaS — replaces the manual byte-identical schema mirror.",
   "license": "MIT",
   "type": "module",
