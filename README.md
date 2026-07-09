@@ -1,6 +1,6 @@
 # @personaxis/persona.md
 
-> **This repo is ahead of npm.** Everything below works TODAY from a clone (see [Run it now](#run-it-now)); the published npm package is an older version until the next lockstep release ships. Where you see `personaxis <cmd>`, from a clone that's `node packages/cli/dist/index.js <cmd>` (or the `pnpm run cli -- <cmd>` shortcut).
+> **Two ways to use this** — install the official release from npm, or run the newest code from a clone: see [Install & run](#install--run--two-paths).
 
 [![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -16,19 +16,33 @@ Full documentation lives in the [PERSONA.md spec repository](https://github.com/
 
 ---
 
-## Run it now
+## Install & run — two paths
 
-From a clone of this repo (Node 18+, pnpm):
+**Path 1 · Users (official releases, npm).** For using personaxis directly, no clone:
 
 ```bash
-pnpm install
-pnpm run build                                   # builds the 8 packages
-alias personaxis="node $PWD/packages/cli/dist/index.js"   # (or use pnpm run cli --)
-
+npm i -g @personaxis/persona.md
 personaxis proof --quick     # 60 s, offline: watch the guarantees hold before trusting them
 ```
 
-Once the next release is published to npm this becomes `npm i -g @personaxis/persona.md`.
+> The published version lags this repo until the next lockstep release (0.12.0) ships —
+> `create`, `proof`, `state drift`, `jacobian`, and `arbitrate` need 0.12.0. Check with
+> `personaxis --version`; if npm still serves an older version, use Path 2 today.
+
+**Path 2 · Developers (from source).** For hacking on personaxis, or for the newest
+features before they're published (Node 18+, pnpm):
+
+```bash
+git clone https://github.com/personaxis/cli && cd cli
+pnpm install
+pnpm run build                        # builds the 8 packages
+cd packages/cli && npm link && cd ../..   # makes `personaxis` global, pointing at YOUR build
+personaxis proof --quick
+```
+
+After editing source: `pnpm run build` again (the global link picks the new build up
+automatically). Tests: `pnpm run test`. Without the link, every `personaxis <cmd>` below is
+`node packages/cli/dist/index.js <cmd>` (or `pnpm run cli -- <cmd>`).
 
 ## Your first 10 minutes
 
