@@ -6,7 +6,11 @@ no daemon, plain git-versionable files.
 ## Developers (5 minutes)
 
 ```bash
-npm i -g @personaxis/persona.md      # or: npx @personaxis/persona.md <cmd>
+# Until the next npm release, run from a clone (the repo is ahead of npm):
+#   pnpm install && pnpm run build
+#   alias personaxis="node $PWD/packages/cli/dist/index.js"
+# After the release: npm i -g @personaxis/persona.md
+
 personaxis proof --quick             # watch the guarantees hold before trusting them
 personaxis create dev-buddy          # the interview builds a governed persona
 personaxis --persona .personaxis/personas/dev-buddy/personaxis.md   # live REPL

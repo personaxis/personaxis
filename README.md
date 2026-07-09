@@ -1,6 +1,6 @@
 # @personaxis/persona.md
 
-> **This version has not been published to npm yet.** The code in this repository is ahead of the latest npm release. To use the latest published version run `npx @personaxis/persona.md`. To use this unreleased version, clone the repo and run `pnpm install && pnpm run build && node dist/index.js`.
+> **This repo is ahead of npm.** Everything below works TODAY from a clone (see [Run it now](#run-it-now)); the published npm package is an older version until the next lockstep release ships. Where you see `personaxis <cmd>`, from a clone that's `node packages/cli/dist/index.js <cmd>` (or the `pnpm run cli -- <cmd>` shortcut).
 
 [![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -12,56 +12,89 @@
 - **Change is forensic.** Crossing into different behavior costs a provable minimum of hash-chained audit entries (T3); history replays deterministically and tampering is located, not just detected (T4/T5).
 - **Created from anything, grounded in evidence.** `personaxis create` builds a valid-by-construction persona from an interview, a prompt, your repo, a character card, or transcripts — with a creation report giving the provenance of every number.
 
-See it hold in 60 seconds, offline:
-
-```bash
-npx @personaxis/persona.md proof --quick
-```
-
-CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- create, define, validate, lint, compile, decompile, edit, push, pull, and migrate AI agent personas (spec v1.1.0). Personas at 0.3.0–1.0.0 still validate unchanged.
-
 Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md); guarantees: [`docs/GUARANTEES.md`](docs/GUARANTEES.md); the formal core: [`docs/MATH_CORE.md`](docs/MATH_CORE.md); guides: [`docs/guides/`](docs/guides/).
 
 ---
 
-## Living persona (new)
+## Run it now
 
-**Play in 60 seconds** — run `personaxis` in any empty folder:
-
-```bash
-personaxis                       # first run scaffolds a valid starter persona, then it wakes up
-# › hi! talk in natural language, or use /state /drift /audit /memory /persona ...
-```
-
-It creates a valid, playable companion (`.personaxis/personaxis.md`), the persona **awakens** with its own animated sigil, and **replies** to you. For a real conversation, point it at a model:
+From a clone of this repo (Node 18+, pnpm):
 
 ```bash
-export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama / llama.cpp
-export PERSONAXIS_MODEL=qwen3:4b
+pnpm install
+pnpm run build                                   # builds the 8 packages
+alias personaxis="node $PWD/packages/cli/dist/index.js"   # (or use pnpm run cli --)
+
+personaxis proof --quick     # 60 s, offline: watch the guarantees hold before trusting them
 ```
 
-Beyond the REPL, `personaxis` is a **living, governed persona agent**. Drive an existing persona directly:
+Once the next release is published to npm this becomes `npm i -g @personaxis/persona.md`.
+
+## Your first 10 minutes
+
+**1. Create a persona** (in any folder — your project, or an empty dir):
 
 ```bash
-node packages/cli/dist/index.js --persona .personaxis/personaxis.md
-# › talk in natural language, or use /state /drift /arbitrate /replay /audit /memory /persona ...
+personaxis create dev-buddy --from-prompt "A blunt senior code reviewer. Never rubber-stamps;
+praises only what earned it; explains the WHY of every rejection. Patient with juniors."
 ```
 
-Each turn feeds a **governed Living Loop** — `observe → appraise → evolve → recompile → memory` — where every state change is **clamped to the persona's envelopes, audited in an immutable mutation log, and reversible**, and episodic memory is written to an **append-only hash chain** (tamper/poisoning-evident). Identity stays immutable; only `state.json` and memory evolve, within the spec's universal invariants.
+You get four files under `.personaxis/personas/dev-buddy/`: `personaxis.md` (the quantitative
+10-layer spec — **this is the persona**), `PERSONA.md` (the compiled document a model actually
+reads), `state.json` (its mutable runtime state), and `creation-report.md` (**read this one**:
+it shows which sentence of your brief produced each number, and labels every default it had to
+assume). No brief? Run `personaxis create dev-buddy` with no flags for the psychometric
+interview, or `--from-project` to infer a persona from your repo, or `--from-import card.png`
+to upgrade a character card.
 
-Set a local model for the appraisal step (constrained decoding keeps even a ≤4B model safe):
+**2. Talk to it** — the REPL is the app:
 
 ```bash
-export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama / llama.cpp
-export PERSONAXIS_MODEL=qwen3:4b
+personaxis --persona .personaxis/personas/dev-buddy/personaxis.md
+# › chat in natural language, or: /state /drift /arbitrate /replay /audit /memory /persona /help
 ```
 
-**Use it inside a bigger agent (Claude Code, Codex, Cursor)** via the MCP server — the host brings the powerful model, personaxis brings the living identity:
+It works offline (heuristic appraiser). For real conversation quality, point it at any
+OpenAI-compatible model once:
 
 ```bash
-personaxis-mcp     # stdio MCP server: persona_compiled, persona_state,
-                   # adjust_persona_state, persona_observe, persona_audit, ...
+export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama / LM Studio / llama.cpp / hosted
+export PERSONAXIS_MODEL=qwen3:4b                       # even a small local model is safe here
 ```
+
+**3. Watch it live, bounded.** Every turn runs a governed tick: state moves only inside the
+declared envelopes, every change lands in a hash-chained audit log, and behavior changes only
+when a value crosses a declared band. See exactly where it is:
+
+```bash
+personaxis state drift -f .personaxis/personas/dev-buddy/personaxis.md
+                              # per-coordinate position, band, and the audited cost of change
+personaxis dash               # live dashboard in a second terminal
+```
+
+**4. Give it to your coding agent** (Claude Code / Codex / Cursor):
+
+```bash
+personaxis compile dev-buddy --platform claude-code   # -> .claude/agents/dev-buddy.md
+personaxis-mcp                                        # or: MCP server with 16 persona tools
+```
+
+Where to next: [`docs/guides/getting-started.md`](docs/guides/getting-started.md) (by
+audience) · [`docs/guides/creating-personas.md`](docs/guides/creating-personas.md) (all the
+`create` doors + how to review provenance) · [`docs/guides/production.md`](docs/guides/production.md)
+(deploy, CI gates, troubleshooting) · [`docs/guides/recipes.md`](docs/guides/recipes.md)
+(8 vertical starting points).
+
+---
+
+## Living persona (what's actually running)
+
+Each REPL turn feeds a **governed Living Loop** — `observe → appraise → evolve → recompile →
+memory` — where every state change is **clamped to the persona's envelopes, audited in an
+immutable mutation log, and reversible**, and episodic memory is written to an **append-only
+hash chain** (tamper/poisoning-evident). Identity stays immutable; only `state.json` and
+memory evolve, within the spec's universal invariants. The model — any model — only
+*proposes*; the code and the spec *enforce*.
 
 This repo is a **pnpm monorepo** of eight lockstep packages (`@personaxis/spec`, `core`, `protocol`, `persona.md` [the CLI], `mcp`, `sdk`, `evals`, `tui`).
 
@@ -69,32 +102,32 @@ This repo is a **pnpm monorepo** of eight lockstep packages (`@personaxis/spec`,
 
 ---
 
-## Quick start
+## Spec toolchain quick reference
 
 ```bash
-npx @personaxis/persona.md init
-npx @personaxis/persona.md validate
-npx @personaxis/persona.md lint
-npx @personaxis/persona.md compile --root                              # root persona -> PERSONA.md
-npx @personaxis/persona.md compile <slug> --platform claude-code      # subagent -> .claude/agents/<slug>.md
-npx @personaxis/persona.md compile <slug> --platform codex            # subagent -> .codex/agents/<slug>.toml
+personaxis init                                   # scaffold from the commented template (prefer `create`)
+personaxis validate                               # 5-state validator (PASS ... FAIL_CONCEPTUAL)
+personaxis lint
+personaxis compile --root                         # root persona -> PERSONA.md
+personaxis compile <slug> --platform claude-code  # subagent -> .claude/agents/<slug>.md
+personaxis compile <slug> --platform codex        # subagent -> .codex/agents/<slug>.toml
 ```
 
 Migrate an existing persona:
 
 ```bash
-npx @personaxis/persona.md migrate 0.5-to-0.6 ./PERSONA.md --apply   # v0.5 -> v0.6 structural codemod
-npx @personaxis/persona.md migrate 0.6-to-0.7 --apply                # v0.6 layout -> v0.7 layout
-npx @personaxis/persona.md migrate 0.7-to-0.8 --apply                # v0.7 -> v0.8 (additive: spec_version bump)
-npx @personaxis/persona.md migrate 0.10-to-1.0 --apply               # v0.10 -> v1.0 (stable spec; breaking, comment-preserving)
+personaxis migrate 0.5-to-0.6 ./PERSONA.md --apply   # v0.5 -> v0.6 structural codemod
+personaxis migrate 0.6-to-0.7 --apply                # v0.6 layout -> v0.7 layout
+personaxis migrate 0.7-to-0.8 --apply                # v0.7 -> v0.8 (additive: spec_version bump)
+personaxis migrate 0.10-to-1.0 --apply               # v0.10 -> v1.0 (stable spec; breaking, comment-preserving)
 ```
 
 Mutate runtime state (clamped to envelopes declared in personaxis.md):
 
 ```bash
-npx @personaxis/persona.md state init                                  # seed state.json from envelope means
-npx @personaxis/persona.md state mutate --field mood.tone --delta -0.10 --reason "less playful"
-npx @personaxis/persona.md state show
+personaxis state init                                  # seed state.json from envelope means
+personaxis state mutate --field mood.tone --delta -0.10 --reason "less playful"
+personaxis state show
 ```
 
 Requires Node.js 18+.
