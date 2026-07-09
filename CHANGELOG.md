@@ -16,8 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     under drift pressure/injection, blind dual LLM judges, Cliff's δ, fixed seeds, raw
     transcripts embedded in each results file. `--mock` self-tests recorded (suffixed `-mock`,
     NOT evidence); headline runs need a model endpoint (`PXS_EXP_*`).
-  - **E3** runs the full property suite at `FC_NUM_RUNS=100000` per property (~11 h; recorded
-    to `results/e3-scale.json` on completion — CI runs the identical suite at 5000).
+  - **E3 recorded (REAL)**: the full property suite at `FC_NUM_RUNS=100000` per CPU-bound
+    property — 28/28 properties green, **2,306,140 generated adversarial cases, 0
+    counterexamples**, 215 s wall on 20 cores (`results/e3-scale.json`; CI runs the identical
+    suite at 5000). Two earlier attempts discarded as non-evidence (timeout-killed / `| tail`
+    swallowed the exit code) — details in the results file.
 - **`docs/GUARANTEES.md`** — the superiority kit on one page: guaranteed-by-theorem vs measured
   vs pending, with an honest evidence scoreboard (nothing outruns its recorded run).
 - **Guides**: `docs/guides/getting-started.md` (by audience: developers, teams/enterprises,

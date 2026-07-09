@@ -23,7 +23,8 @@ runtime with mathematical guarantees:
 
 Every claim above is **machine-verified**: a property-based suite hunts for
 counterexamples with thousands of adversarial cases on every CI build
-(`FC_NUM_RUNS=5000`; the E3 run targets 100,000), and a 15-scenario conformance
+(`FC_NUM_RUNS=5000`; the recorded E3 run: 2.3M generated cases, 0 counterexamples
+— `packages/evals/experiments/results/e3-scale.json`), and a 15-scenario conformance
 suite (`personaxis-evals`) exercises the real engine. Formal statements and proofs:
 [`docs/MATH_CORE.md`](./MATH_CORE.md). Preregistered research protocol:
 [`docs/RESEARCH.md`](./RESEARCH.md).
@@ -78,7 +79,7 @@ personaxis state drift                       # where is my persona right now, an
 
 | Claim | Status |
 |---|---|
-| Deterministic guarantees T1–T6 | ✅ proven + property-verified (28 properties, CI at 5·10³ runs each); 🔬 E3 at 10⁵ per property running — recorded to `e3-scale.json` on completion |
+| Deterministic guarantees T1–T6 | ✅ proven + property-verified — E3 recorded: 28 properties, 2,306,140 generated adversarial cases (10⁵ per CPU-bound property), **0 counterexamples** (`e3-scale.json`) |
 | Conformance suite | ✅ 15/15 scenarios green (C0/C1/C2) |
 | Hot-path cost | ✅ E4: p99 0.06–0.12 ms per tick (n=8–64) — negligible |
 | Behavioral drift reduction vs prompt-only (RQ2) | 🔬 runner ready + pipeline self-tested; headline multi-model runs pending credentials |
