@@ -74,6 +74,20 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
 }
 
 async function runInterview(): Promise<SeedContribution> {
+  // F6.7b: the Ink wizard is the primary interview surface — progress, live
+  // field→rule mapping per answer, arrow-key inputs. Lazy import (Ink costs ~1 s;
+  // only the interview path pays it); readline below stays as the fallback for
+  // odd terminals (PERSONAXIS_NO_WIZARD=1 forces it).
+  if (process.stdin.isTTY && process.stdout.isTTY && process.env.PERSONAXIS_NO_WIZARD !== "1") {
+    try {
+      const { runInterviewWizard } = await import("@personaxis/tui");
+      const wizardAnswers = await runInterviewWizard(pendingItems({}));
+      const { seed, evidence } = applyAnswers(wizardAnswers);
+      return { label: "interview", seed, evidence };
+    } catch {
+      /* fall through to readline */
+    }
+  }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const answers: InterviewAnswers = {};
   console.log(chalk.bold("\nGenesis interview") + chalk.dim(" — every answer becomes auditable evidence; Enter skips a question.\n"));

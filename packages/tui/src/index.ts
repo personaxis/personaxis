@@ -126,11 +126,23 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
     import("./components.js"),
   ]);
   const app = render(
-    React.createElement(Dashboard, { personaPath, intervalMs: opts.interval }),
+    // F6.7b: keyboard drill-down when stdin is a TTY (↑/↓ · Enter · Esc · q).
+    React.createElement(Dashboard, { personaPath, intervalMs: opts.interval, interactive: Boolean(process.stdin.isTTY) }),
     { exitOnCtrlC: true },
   );
   await app.waitUntilExit();
   console.log(chalk.dim("  dashboard closed.\n"));
+}
+
+// F6.7b: the Genesis interview wizard. Deliberately NOT a static re-export —
+// wizard.tsx pulls Ink/React (~1 s of import cost) and this barrel loads on
+// EVERY CLI startup (via the dash command); only the interview path may pay.
+// The component itself is deep-importable ("@personaxis/tui/dist/wizard.js").
+export async function runInterviewWizard(
+  items: import("@personaxis/core").InterviewItem[],
+): Promise<import("@personaxis/core").InterviewAnswers> {
+  const { runInterviewWizard: run } = await import("./wizard.js");
+  return run(items);
 }
 
 /**

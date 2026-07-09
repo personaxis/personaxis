@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased] — Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Added — the interview wizard + dashboard drill-down (F6.7b)
+- **Genesis interview wizard (Ink)**: `personaxis create` with no flags now opens a full-screen
+  wizard on a TTY — progress bar, arrow-key likert/choice/ranking (weights previewed live as
+  you rank), and the honesty surface: every answer immediately shows the exact
+  `field ← value · rule` mapping it will produce; skips are announced as labeled defaults.
+  The interview engine stays pure in core; readline remains the fallback (no TTY, or
+  `PERSONAXIS_NO_WIZARD=1`).
+- **`personaxis dash` is now interactive**: ↑/↓ selects a coordinate, Enter opens its detail —
+  value/u/band, the live T3 evidence cost (`immutable` for hard-virtue-backed coordinates), a
+  sparkline of its mutation history scaled to the envelope, and the last 5 audit entries; Esc
+  back, q quit. Non-TTY/`--once` output unchanged.
+- Startup guard: the tui barrel exposes the wizard only through a lazy async wrapper, so
+  Ink/React never load for plain subcommands (caught by the multi-spawn e2e re-failing; fixed
+  before commit).
+
 ### Added — the paper + final audit (F6.10)
 - **`docs/paper/bounded-persona-dynamics.md`** — *Bounded Persona Dynamics: Deterministic
   Runtime Governance and Grounded Synthesis for Portable AI Personas* (APA 7, web/Markdown

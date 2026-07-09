@@ -174,6 +174,22 @@ export function auraBar(theme: PersonaTheme, values: Record<string, number>, fra
   return bar;
 }
 
+/** One envelope row; `selected` renders the drill-down cursor (F6.7b). */
+export function envelopeRow(
+  theme: PersonaTheme,
+  key: string,
+  value: number,
+  e: { min: number; max: number },
+  width = 18,
+  selected = false,
+): string {
+  const pos = barIndex(value, { ...e, mean: 0 }, width);
+  let bar = "";
+  for (let i = 0; i < width; i++) bar += i === pos ? chalk.ansi256(theme.palette.accent)("◉") : chalk.ansi256(theme.palette.dim)("─");
+  const label = selected ? chalk.ansi256(theme.palette.accent).bold(key.padEnd(28)) : key.padEnd(28);
+  return `${selected ? chalk.ansi256(theme.palette.accent)("▸ ") : "  "}${label} ${bar} ${chalk.dim(value.toFixed(2))}`;
+}
+
 /** Envelope bars colored in the persona's palette. */
 export function envelopeBars(
   theme: PersonaTheme,
@@ -185,12 +201,21 @@ export function envelopeBars(
   for (const [k, v] of Object.entries(values)) {
     const e = envelopes[k];
     if (!e) continue;
-    const pos = barIndex(v, { ...e, mean: 0 }, width);
-    let bar = "";
-    for (let i = 0; i < width; i++) bar += i === pos ? chalk.ansi256(theme.palette.accent)("◉") : chalk.ansi256(theme.palette.dim)("─");
-    rows.push(`  ${k.padEnd(28)} ${bar} ${chalk.dim(v.toFixed(2))}`);
+    rows.push(envelopeRow(theme, k, v, e, width));
   }
   return rows.join("\n");
+}
+
+const SPARK = "▁▂▃▄▅▆▇█";
+
+/** Pure sparkline over a series, scaled to [min,max] (the coordinate's envelope). */
+export function sparkline(series: number[], min: number, max: number, width = 32): string {
+  if (series.length === 0) return "";
+  const pts = series.slice(-width);
+  const span = max - min || 1;
+  return pts
+    .map((v) => SPARK[Math.max(0, Math.min(SPARK.length - 1, Math.round(((v - min) / span) * (SPARK.length - 1))))])
+    .join("");
 }
 
 /** Per-event flourish — themed glyphs + color, distinct per event kind. */

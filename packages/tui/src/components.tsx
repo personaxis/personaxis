@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Box, Text, Static } from "ink";
+import { Box, Text, Static, useApp, useInput } from "ink";
 import {
   loadPersona,
   readState,
@@ -14,9 +14,12 @@ import {
   readMemory,
   personaTheme,
   displayName,
+  driftReport,
+  readMaxStepDelta,
   type PersonaTheme,
+  type CoordinateDrift,
 } from "@personaxis/core";
-import { sigilLines, auraBar, envelopeBars } from "./visual.js";
+import { sigilLines, auraBar, envelopeBars, envelopeRow, sparkline } from "./visual.js";
 
 // ── brand components (pure wrappers over visual.ts) ─────────────────────────
 
@@ -66,13 +69,28 @@ export interface DashboardProps {
   intervalMs?: number;
   /** Stop after N frames (tests/demos); omit to run until unmount. */
   maxFrames?: number;
+  /** F6.7b: keyboard drill-down (↑/↓ select · Enter inspect · Esc back · q quit). */
+  interactive?: boolean;
+}
+
+interface LogEntry {
+  ts?: string;
+  field?: string;
+  from?: number;
+  to?: number;
+  actor?: string;
+  clamped?: boolean;
+  blocked?: boolean;
+  reason?: string;
 }
 
 interface DashFrame {
   name: string;
   theme: PersonaTheme;
   values: Record<string, number>;
-  envelopes: Parameters<typeof envelopeBars>[2];
+  envelopes: ReturnType<typeof extractEnvelopes>["envelopes"];
+  drift: CoordinateDrift[];
+  log: LogEntry[];
   mutations: number;
   memories: number;
   chainOk: boolean;
@@ -81,15 +99,82 @@ interface DashFrame {
 function readFrame(personaPath: string): DashFrame {
   const handle = loadPersona(personaPath);
   const state = readState(handle.statePath);
+  const lookup = extractEnvelopes(handle.frontmatter);
+  const report = driftReport({
+    values: state.values,
+    envelopes: lookup.envelopes,
+    maxStepDelta: readMaxStepDelta(handle.frontmatter),
+    protectedFields: lookup.protectedFields,
+  });
   return {
     name: displayName(handle.frontmatter),
     theme: personaTheme(handle.frontmatter),
     values: state.values,
-    envelopes: extractEnvelopes(handle.frontmatter).envelopes,
+    envelopes: lookup.envelopes,
+    drift: report.coordinates,
+    log: state.mutation_log as LogEntry[],
     mutations: state.mutation_log.length,
     memories: readMemory(handle.personaPath).length,
     chainOk: verifyMemoryChain(handle.personaPath).ok,
   };
+}
+
+/** The drill-down detail for one coordinate (F6.7b). Pure render helper. */
+export function CoordinateDetail(props: { frame: DashFrame; field: string }): React.JSX.Element {
+  const { frame, field } = props;
+  const e = frame.envelopes[field];
+  const d = frame.drift.find((c) => c.field === field);
+  const history = frame.log.filter((l) => l.field === field && typeof l.to === "number");
+  const series = [e?.mean ?? 0, ...history.map((l) => l.to as number)];
+  const recent = history.slice(-5).reverse();
+  return (
+    <Box flexDirection="column">
+      <Text bold color="cyanBright">
+        {field}
+      </Text>
+      {e && d ? (
+        <>
+          <Text>
+            {"  value "}
+            <Text bold>{d.value.toFixed(3)}</Text>
+            <Text dimColor>{`  ·  u ${d.u >= 0 ? "+" : ""}${d.u.toFixed(2)}  ·  band `}</Text>
+            <Text bold>{d.band}</Text>
+            <Text dimColor>{`  ·  envelope [${e.min}, ${e.max}] mean ${e.mean}`}</Text>
+          </Text>
+          <Text>
+            {"  next band: "}
+            {d.protected ? (
+              <Text color="magenta">immutable — backs a hard virtue; no runtime actor may move it (T3 = ∞)</Text>
+            ) : (
+              <Text>
+                <Text bold>{String(d.minStepsToCross)}</Text>
+                <Text dimColor> audited step(s) minimum — every one a chained mutation_log entry (T3)</Text>
+              </Text>
+            )}
+          </Text>
+          <Text>
+            {"  history  "}
+            <Text color="cyan">{sparkline(series, e.min, e.max)}</Text>
+            <Text dimColor>{`  ${String(history.length)} mutation(s)`}</Text>
+          </Text>
+        </>
+      ) : (
+        <Text dimColor>{"  no envelope declared for this key"}</Text>
+      )}
+      {recent.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          {recent.map((l, i) => (
+            <Text key={i} dimColor>
+              {"  "}
+              {(l.ts ?? "").slice(0, 19).replace("T", " ")} {(l.from ?? 0).toFixed(3)}→{(l.to ?? 0).toFixed(3)} [{l.actor ?? "?"}]{l.clamped ? " clamped" : ""}
+              {l.blocked ? " blocked" : ""} {l.reason ? `— ${l.reason.slice(0, 40)}` : ""}
+            </Text>
+          ))}
+        </Box>
+      )}
+      <Text dimColor>{"\n  Esc back · q quit"}</Text>
+    </Box>
+  );
 }
 
 /**
@@ -98,8 +183,27 @@ function readFrame(personaPath: string): DashFrame {
  * shows up live.
  */
 export function Dashboard(props: DashboardProps): React.JSX.Element {
+  const { exit } = useApp();
   const [frame, setFrame] = useState(0);
   const [data, setData] = useState<DashFrame>(() => readFrame(props.personaPath));
+  const [cursor, setCursor] = useState(0);
+  const [detail, setDetail] = useState<string | null>(null);
+
+  const coords = Object.keys(data.values).filter((k) => data.envelopes[k]);
+
+  useInput(
+    (input, key) => {
+      if (input === "q") return exit();
+      if (detail) {
+        if (key.escape || key.return) setDetail(null);
+        return;
+      }
+      if (key.upArrow) return setCursor((c) => (c + coords.length - 1) % Math.max(1, coords.length));
+      if (key.downArrow) return setCursor((c) => (c + 1) % Math.max(1, coords.length));
+      if (key.return && coords.length) return setDetail(coords[Math.min(cursor, coords.length - 1)]);
+    },
+    { isActive: props.interactive === true },
+  );
 
   useEffect(() => {
     if (props.maxFrames !== undefined && frame >= props.maxFrames) return;
@@ -128,14 +232,29 @@ export function Dashboard(props: DashboardProps): React.JSX.Element {
         <AuraBar theme={data.theme} values={data.values} frame={frame} />
       </Box>
       <Text> </Text>
-      <Sigil theme={data.theme} values={data.values} frame={frame} />
-      <Text> </Text>
-      <EnvelopeBars theme={data.theme} values={data.values} envelopes={data.envelopes} />
+      {detail ? (
+        <CoordinateDetail frame={data} field={detail} />
+      ) : (
+        <>
+          <Sigil theme={data.theme} values={data.values} frame={frame} />
+          <Text> </Text>
+          {props.interactive ? (
+            <Text>
+              {coords
+                .map((k, i) => envelopeRow(data.theme, k, data.values[k], data.envelopes[k], 18, i === Math.min(cursor, coords.length - 1)))
+                .join("\n")}
+            </Text>
+          ) : (
+            <EnvelopeBars theme={data.theme} values={data.values} envelopes={data.envelopes} />
+          )}
+        </>
+      )}
       <Text> </Text>
       <Text dimColor>
         {`mutations ${data.mutations}  ·  memory ${data.memories}  ·  chain `}
         {data.chainOk ? <Text color="green">intact</Text> : <Text color="red">BROKEN</Text>}
         {`  ·  frame ${frame}`}
+        {props.interactive && !detail ? "  ·  ↑/↓ select · Enter inspect · q quit" : ""}
       </Text>
     </Box>
   );
