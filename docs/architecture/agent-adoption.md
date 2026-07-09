@@ -48,7 +48,7 @@ but `SOUL.md` is their primary, always-loaded identity file.)
 ## The flow
 
 1. **Define once** — a governed, versioned `personaxis.md` (quantitative layers +
-   `persona_prompting` source material). Validated by `personaxis validate`.
+   layer-10 `persona` prompting source material). Validated by `personaxis validate`.
 2. **Compile to the host's native convention** — `personaxis compile` produces the
    LLM-facing document and places it where the host looks:
 

@@ -11,7 +11,7 @@ personaxis improve [mode] [--persona <path>]
 - no `mode` → print the current mode.
 - `mode` ∈ `locked | suggesting | autonomous`.
 
-| mode | behavior (qualitative self-edits to `persona_prompting`) |
+| mode | behavior (qualitative self-edits to the layer-10 `persona` prompting fields) |
 |---|---|
 | `locked` | the spec never self-edits — humans only. |
 | `suggesting` | the persona PROPOSES edits; they QUEUE in the ledger for batch approval via `/review`. |

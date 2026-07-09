@@ -1,7 +1,7 @@
 # `/review` — review queued qualitative self-edits
 
 When a persona runs in `suggesting` mode, the appraiser's proposed **qualitative** self-edits
-(to `persona_prompting.*`) are queued in the append-only ledger `self-edits.jsonl` rather than
+(to `persona.*`) are queued in the append-only ledger `self-edits.jsonl` rather than
 applied. `/review` is the human approval surface for that queue.
 
 Source: `packages/cli/src/repl/index.ts` (the `review` command) → `proposals` /
@@ -15,7 +15,7 @@ Source: `packages/cli/src/repl/index.ts` (the `review` command) → `proposals` 
 ```
 
 ## What it shows
-Each pending proposal lists its `id`, the `targetPath` (always under `persona_prompting`), a
+Each pending proposal lists its `id`, the `targetPath` (always under `persona`), a
 preview of the new value, and the rationale. Approving runs the full consensus verification
 (invariant / envelope-sanity / rationale / qualitative-safety, unanimous) and the protected-path
 check; on success it mints a PersonaVersion, marks `PERSONA.md` stale, and the REPL recompiles.

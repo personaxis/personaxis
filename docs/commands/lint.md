@@ -9,12 +9,15 @@ personaxis lint <file>
 ```
 
 ## What it checks (selection)
-- Required top-level fields + supported `spec_version` (0.3 … 0.10).
+- Required top-level fields + supported `spec_version` (0.3 … 0.10, 1.0). The linter is
+  version-aware: at v1.0 it expects `apiVersion personaxis.com/v1`, the layer-9 name
+  `self_regulation`, and no `metadata.display_name`; legacy personas are checked at their
+  legacy paths.
 - Metadata completeness; layer coverage summary.
-- **v0.10 persona-prompting** (honest, tier-aware): if `persona_prompting.address` is set,
-  recommend a non-empty `you_are`; suggest 2-4 `voice_exemplars`; remind that
-  `break_character_guardrails` never override safety; hint when the block is absent (the
-  compiled doc will be derived from the quantitative layers).
+- **Persona prompting** (honest, tier-aware): if the layer-10 `persona.address` is set,
+  recommend a non-empty `you_are`; suggest 2-4 `voice_exemplars`; remind that hard limits
+  never override safety; hint when the material is absent (the compiled doc will be derived
+  from the quantitative layers).
 
 ## Example
 ```bash

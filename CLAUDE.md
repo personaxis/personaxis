@@ -4,33 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-The reference CLI implementation of the **personaxis.md spec v0.10.0** (Personaxis v15). Published to npm as `@personaxis/persona.md`. The spec itself lives at [persona.md](https://github.com/personaxis/persona.md); this repo implements the validator, linter, init templates, compile/decompile, push/pull, providers, state mutation, and migration codemods.
+The reference CLI implementation of the **personaxis.md spec v1.0.0** (`spec_version 1.0.0`, `apiVersion personaxis.com/v1`). Published to npm as `@personaxis/persona.md`; the canonical schemas, the five-state validator, and the 12 universals now live in the sibling **`@personaxis/spec`** package (consumed by cli/mcp/sdk/SaaS). The spec is authored at [persona.md](https://github.com/personaxis/persona.md); this repo implements the validator (via `@personaxis/spec`), linter, init templates, compile/decompile, push/pull, providers, state mutation, and migration codemods.
 
-**v0.10.0** (additive on v0.9.0; v0.9 personas validate unchanged) makes the compiled `PERSONA.md` a **persona-prompting artifact**. New OPTIONAL fields: `identity.short_name`, inline `improvement_policy.mode`, and the `persona_prompting` block (`address`, `voice_exemplars`, `scene_contracts`, `behavioral_anchors`, `break_character_guardrails`, `consistency`) — compile assembles them into a second-person, character-card + scene-contract document (methodology + citations: `persona.md/docs/PERSONA_PROMPTING.md`). Self-evolution now covers **qualitative** material under the same governance. Multi-persona: a sub-persona compiles to `.personaxis/personas/<slug>/PERSONA.md` (inside its folder), addressable in the REPL with `@slug`/`@all`, read-only across personas. Change the self-improvement posture with `personaxis improve <mode>`; migrate with `personaxis migrate 0.9-to-0.10`. Feature docs live in `docs/`. (v0.9.0 added `verification`, `agent_budget`, `observability`.)
+**v1.0.0** is the first stable spec. It anchors the **10 canonical layers** (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, **`self_regulation`** [renamed from `reflexive_self_regulation`], persona) to their psychological constructs + an operational contract each, organized into three blocks: **ANATOMY** (the 10 layers) / **CHANGE GOVERNANCE** (governance, improvement_policy, security, permissions) / **RUNTIME CONTRACT** (runtime, verification, agent_budget, observability, interop, lineage, integrity). Breaking corrections vs 0.10: layer-10 `persona` absorbs the old top-level `persona_prompting`; enforcement has a **single owner** (`character.virtues`, with `refs:` to backing traits/values, validator-checked for coherence); the five refusal surfaces collapse to **two** (`hard_limits` absorbs `break_character_guardrails`; `principled_refusals` → `prohibited_behaviors`); traits gain `expression`+`bands`; `drives` take an envelope or `level`; memory splits faculty from retrieval knobs (knobs → `runtime`); `metadata.display_name` drops (single owner `identity.display_name`); `apiVersion` → `personaxis.com/v1`. Conformance is testable via classes **C0 Identity / C1 Governed State / C2 Living Runtime**. Migrate with `personaxis migrate 0.10-to-1.0`. Feature docs live in `docs/`.
 
-v0.8.0 is **additive** on top of v0.7.0 (no field changes; v0.7 personas validate unchanged): new OPTIONAL fields lift runtime-governance guarantees into the spec — `identity.capabilities` (routing), `governance.max_step_delta` (per-step drift cap), a `permissions` block (per-persona sandbox posture), `mutation_log.origin_node`/`session_id` (cross-OS reconciliation), and a normative `schema/memory.schema.json` (episodic entry: provenance + hash chain). Migrate with `personaxis migrate 0.7-to-0.8`. v0.7.0 was a layout-only move: the quantitative 10-layer spec lives at `.personaxis/[personas/<slug>/]personaxis.md`, and the repo-root `PERSONA.md` (or `.claude/agents/<slug>.md` / `.codex/agents/<slug>.toml` in subagent mode) is a separate, LLM-compiled qualitative document generated via `personaxis compile`.
+**Read-compat:** personas at 0.3.0–0.10.0 still validate unchanged via the frozen `schema/legacy/persona-0.10.schema.json` (the validator dispatches by `spec_version`). The three-artifact model is unchanged: the quantitative 10-layer spec lives at `.personaxis/[personas/<slug>/]personaxis.md`, and the repo-root `PERSONA.md` (or `.claude/agents/<slug>.md` / `.codex/agents/<slug>.toml` in subagent mode) is a separate, LLM-compiled qualitative document generated via `personaxis compile`. A sub-persona compiles to `.personaxis/personas/<slug>/PERSONA.md`, addressable in the REPL with `@slug`/`@all` (read-only across personas). Change the self-improvement posture with `personaxis improve <mode>`.
 
-## Monorepo & living architecture (WIP — "personaxis")
+## Monorepo & living architecture ("personaxis")
 
-This repo is migrating from a single CLI package into a **pnpm monorepo** that turns the CLI into a *living, governed persona agent* (see `plan/` for the full roadmap + research, and `plan/MASTER_CHECKLIST.md`).
+This repo is a **pnpm monorepo** (eight lockstep packages) that turns the CLI into a *living, governed persona agent*. The architecture, roadmap, and ADRs live in `ARCHITECTURE_REVIEW.md` with execution state in `IMPLEMENTATION_CHECKLIST.md`; `plan/` is historical research.
 
 | Package | Role |
 |---|---|
 | `packages/spec` (`@personaxis/spec`) | **The spec as a package**: canonical JSON Schemas (v1.0 + frozen `legacy/persona-0.10` for the 1.x read-compat window), the five-state validator with version dispatch, and the 12 universal invariants. Single source consumed by cli/mcp/sdk/SaaS — replaces the manual byte-identical schema mirror inside the monorepo (the persona.md repo mirror remains, now pointed at `packages/spec/schema/`). |
 | `packages/core` (`@personaxis/core`) | Framework-agnostic engine: persona/state IO, envelope extraction, **clamp+audit state engine**, appraisal signals + JSON schema, **governance gate** (locked/suggesting/autonomous), **append-only hash-chained episodic memory**, the **Living Loop** (`observe→appraise→evolve→recompile→memory`), event bus, deterministic per-persona **sigil**, heuristic + **LLM (constrained-decoding) appraisers**. |
+| `packages/protocol` (`@personaxis/protocol`) | **Op/EventMsg protocol + transport** (FR.2): typed discriminated unions (submission `Op`s / `EventMsg`s, carrying core `LoopEvent`s verbatim) over **JSON-RPC 2.0** on `node:net` (UDS + Windows named pipes via one API). The CLI's `EngineHost` binds ops 1:1 onto core, so one seam serves TUI / headless / MCP / serve. |
 | `packages/cli` (`@personaxis/persona.md`) | The existing CLI (validate/lint/compile/decompile/state/...) **plus** the interactive **REPL**: `personaxis` with no subcommand enters a living session (NL + `/commands`). F3.6 split the REPL into `repl/{types,config,render,daemons,session,turn,commands}.ts` with `index.ts` as the entry point. |
 | `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (bin `personaxis-mcp`) exposing **16 persona tools** (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, `persona_propose_edit`, `agent_run`, `skill_review`, `scan_text`, …) to any host (Claude Code, Codex, Cursor). Persona paths are confined to `--root` (default cwd); `persona_decide_edit` requires the explicit `--allow-decide` flag (proposer≠approver). |
 | `packages/sdk` (`@personaxis/sdk`) | The **single engine façade** (F3.5) — the `Persona` class (`compiledIdentity` / `state` / `envelopes` / `observe` / `adjust` / `agentRun` / `audit` / `forget` / `proposeEdit` / `listProposals` / `decideEdit` / `recompileStatus` / `reload`) + `scanText`/`scanConfig`/`skillReview`/`evaluateCmd`, wrapping `core`. **mcp and serve consume it** (they add only host concerns — MCP `--root` confinement, HTTP shaping — not engine logic); an app backend embeds it directly (Modo 2 self-host). |
 | `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): deterministic scenario suite + runner (no API key) proving the spec's guarantees against the real engine — categories **governance / security / spec-fidelity** (clamp holds, gate blocks, memory tamper-evident, injection can't steer evolution, budgets stop, verification catches). |
 | `packages/tui` (`@personaxis/tui`) | **ASCII dashboard + render lib**. Its `visual`/`screen` modules back the REPL and `sigil`; the live dashboard is surfaced as `personaxis dash` (and `/dash` in the REPL) plus the standalone bin `personaxis-dash`. Reads `state.json` each frame, reflecting evolution in another process. |
 
-All seven publish at the same lockstep version (currently `0.11.0`); the spec they implement is `spec_version 1.0.0` (0.3.0–0.10.0 read-compat via the frozen legacy schema).
+All eight publish at the same lockstep version (currently `0.11.0`); the spec they implement is `spec_version 1.0.0` (0.3.0–0.10.0 read-compat via the frozen legacy schema).
 
 **Build/test/run (from repo root):**
 ```bash
 pnpm install
-pnpm run build            # pnpm -r build (core first, then cli/mcp/sdk/evals/tui)
-pnpm run test             # vitest across all seven packages
+pnpm run build            # pnpm -r build (spec/core/protocol first, then cli/mcp/sdk/evals/tui)
+pnpm run test             # vitest across all eight packages
 node packages/cli/dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md   # golden -> PASS
 node packages/cli/dist/index.js --persona <path>   # enter the living REPL
 ```
@@ -77,24 +78,21 @@ node packages/cli/dist/index.js --persona <path>   # enter the living REPL
 
 ## Schema and template sync rule
 
-Schemas and templates MUST be byte-identical between this repo and `persona.md/`:
+Schemas and templates MUST be byte-identical between this repo and `persona.md/`. The single source
+is `@personaxis/spec` (`packages/spec/schema/`) for schemas and `packages/cli/templates/` for
+templates; SPEC.md flows the OTHER way (authored in persona.md, mirrored into the CLI so `personaxis
+spec` prints it). **One command does all of it** (F5.1 — replaces the manual `cp` steps):
 
-```powershell
-# After editing any schema or template in this repo
-cp packages/spec/schema/persona.schema.json ../persona.md/schema/persona.schema.json
-cp packages/spec/schema/policy.schema.json ../persona.md/schema/policy.schema.json
-cp packages/spec/schema/state.schema.json ../persona.md/schema/state.schema.json
-cp packages/spec/schema/memory.schema.json ../persona.md/schema/memory.schema.json
-cp packages/spec/schema/legacy/persona-0.10.schema.json ../persona.md/schema/legacy/persona-0.10.schema.json
-cp packages/cli/templates/personaxis_template.md ../persona.md/.personaxis/personaxis_template.md
-cp packages/cli/templates/PERSONA_template.md ../persona.md/PERSONA_template.md
-cp packages/cli/templates/policy_template.yaml ../persona.md/.personaxis/policy_template.yaml
-diff -qr packages/spec/schema ../persona.md/schema   # must show no differences
-
-# The normative spec doc is AUTHORED in persona.md and MIRRORED into the CLI (embedded by
-# scripts/embed-assets.mjs so `personaxis spec` prints the current spec). Direction is the reverse:
-cp ../persona.md/docs/SPEC.md packages/cli/SPEC.md   # after editing persona.md/docs/SPEC.md
+```bash
+pnpm run sync-mirror     # copy source -> persona.md mirror (and SPEC.md persona.md -> cli), both ways
+pnpm run check-mirror    # verify byte-identity; exits 1 on drift (this is the CI gate)
 ```
+
+`scripts/sync-spec-mirror.mjs` owns the file list (5 schemas incl. `legacy/`, 3 templates, SPEC.md
+reverse). The CI byte-identity gate (`.github/workflows/ci.yml`) enforces it here, and the sibling
+`persona.md` repo has its own `.github/workflows/ci.yml` that re-checks its `schema/` mirror against
+the **published** `@personaxis/spec` tarball. Run `sync-mirror` after any schema/template edit and
+commit both repos.
 
 ## Validator semantics
 
@@ -108,17 +106,17 @@ cp ../persona.md/docs/SPEC.md packages/cli/SPEC.md   # after editing persona.md/
 | `FAIL_POLICY` | 2 | Universal policy invariant violated |
 | `FAIL_CONCEPTUAL` | 3 | Prohibited claim or wrong universal constant |
 
-The universals enforced semantically (in `src/schema.ts`):
+The universals enforced semantically (in `@personaxis/spec`; `src/schema.ts` re-exports it). Paths shown at v1.0; the validator version-dispatches, so 0.x personas are checked at their legacy paths:
 
-1. `apiVersion === "persona.dev/v1"` → FAIL_CONCEPTUAL
+1. `apiVersion` matches the version's constant — `"personaxis.com/v1"` at v1.0 (legacy 0.x: `"persona.dev/v1"`) → FAIL_CONCEPTUAL
 2. `affect.representation === "hybrid_dimensional_appraisal_discrete_mood"` → FAIL_CONCEPTUAL
 3. `affect.regulation_policy.never_claim_real_feeling === true` → FAIL_CONCEPTUAL
 4. `persona.constraints.cannot_claim_real_emotion === true` → FAIL_CONCEPTUAL
 5. `character.virtues.honesty.enforcement === "hard"` → FAIL_POLICY
 6. `values_and_drives.values.safety.weight >= 0.90` with `type: "governance"` → FAIL_POLICY
 7. `values_and_drives.conflict_resolution.safety_over_completion === true` → FAIL_POLICY
-8. 3 literal `reflexive_self_regulation.hard_limits` present → FAIL_POLICY
-9. Edit policy for reflexive_self_regulation must be `"governance_controlled"` (v0.6: read from `governance.per_layer_edit_policy.reflexive_self_regulation`; v0.5 fallback to `reflexive_self_regulation.edit_policy`) → FAIL_POLICY
+8. 3 literal `self_regulation.hard_limits` present (v1.0; legacy `reflexive_self_regulation`) → FAIL_POLICY
+9. Edit policy for `self_regulation` must be `"governance_controlled"` (read from `governance.per_layer_edit_policy.self_regulation`; legacy names `reflexive_self_regulation`; v0.5 fallback to the layer's `edit_policy`) → FAIL_POLICY
 10. `persona.constraints.cannot_override_{identity,character} === true` → FAIL_POLICY
 11. `memory.deletion_policy.user_request_supported === true` → FAIL_POLICY
 12. `cognition.uncertainty_policy.abstain_when_above > disclose_when_above` → FAIL_POLICY
@@ -174,5 +172,5 @@ Always read @PERSONA.md at project root before acting.
 Apply everything defined there to every decision, regardless of role.
 Read your own @PERSONA.md too if one was provided to you.
 
-The persona file conforms to the PERSONA.md spec. It defines ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, reflexive_self_regulation, persona) plus governance and security. The reflexive_self_regulation.hard_limits are absolute and never crossed.
+The persona file conforms to the PERSONA.md spec. It defines ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, self_regulation, persona) plus governance and security. The self_regulation.hard_limits are absolute and never crossed.
 <!-- PERSONA:BASELINE:END -->

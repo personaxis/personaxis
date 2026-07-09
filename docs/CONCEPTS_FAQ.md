@@ -74,7 +74,7 @@ persona-prompting prose, *and* any other layer (`cognition`, `values_and_drives`
 **except the protected safety floor, which can never change**. Editability is decided by `editGate`,
 which composes three layers:
 
-1. **The safety floor** (`PROTECTED_PREFIXES`) — `identity`, `character`, `reflexive_self_regulation.hard_limits`,
+1. **The safety floor** (`PROTECTED_PREFIXES`) — `identity`, `character`, `self_regulation.hard_limits`,
    the `safety` value + `safety_over_completion`, `affect.regulation_policy`, `memory.deletion_policy`,
    `governance.max_step_delta`, `governance.per_layer_edit_policy`, `permissions`. **Always blocked**,
    in every mode. This is the universal-invariant set the validator enforces.

@@ -40,7 +40,7 @@ Una persona se describe con tres archivos (spec `personaxis.md` v0.7):
 | `state.json` | Estado **mutable** de runtime: valores actuales + `mutation_log` | Muta vía la herramienta `adjust_persona_state`, clampeado a los envelopes |
 
 Las 10 capas: identity, character, personality, values_and_drives, affect, cognition,
-memory, metacognition, reflexive_self_regulation, persona. Cada campo mutable (traits,
+memory, metacognition, self_regulation, persona. Cada campo mutable (traits,
 affect, mood) declara un *envelope* `mean + [min,max]`; el valor actual vive en `state.json`
 y **nunca** puede salir de su rango.
 

@@ -18,6 +18,8 @@
     "lint": "pnpm -r run lint",
     "test": "pnpm -r run test",
     "package": "node scripts/package.mjs",
+    "sync-mirror": "node scripts/sync-spec-mirror.mjs",
+    "check-mirror": "node scripts/sync-spec-mirror.mjs --check",
     "cli": "node packages/cli/dist/index.js"
   },
   "devDependencies": {

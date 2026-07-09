@@ -4,9 +4,9 @@
 
 [![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Spec](https://img.shields.io/badge/spec-0.9.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
+[![Spec](https://img.shields.io/badge/spec-1.0.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
 
-CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- define, validate, lint, compile, decompile, push, pull, and migrate AI agent personas (spec v0.9.0 / Personaxis v14).
+CLI for [PERSONA.md](https://github.com/personaxis/persona.md) -- define, validate, lint, compile, decompile, edit, push, pull, and migrate AI agent personas (spec v1.0.0). Personas at 0.3.0–0.10.0 still validate unchanged.
 
 Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md).
 
@@ -74,6 +74,7 @@ Migrate an existing persona:
 npx @personaxis/persona.md migrate 0.5-to-0.6 ./PERSONA.md --apply   # v0.5 -> v0.6 structural codemod
 npx @personaxis/persona.md migrate 0.6-to-0.7 --apply                # v0.6 layout -> v0.7 layout
 npx @personaxis/persona.md migrate 0.7-to-0.8 --apply                # v0.7 -> v0.8 (additive: spec_version bump)
+npx @personaxis/persona.md migrate 0.10-to-1.0 --apply               # v0.10 -> v1.0 (stable spec; breaking, comment-preserving)
 ```
 
 Mutate runtime state (clamped to envelopes declared in personaxis.md):
@@ -102,7 +103,7 @@ Requires Node.js 18+.
 | `export --format json\|md\|yaml` | Export personaxis.md as clean semantic content |
 | `template list\|show\|get` | Manage pedagogical templates |
 | `diff <before> <after>` | Compare two versions field by field |
-| `spec` | Print the v0.9.0 spec — useful for injecting into agent prompts |
+| `spec` | Print the v1.0.0 spec — useful for injecting into agent prompts |
 | `use <template>` | Scaffold a persona from a template |
 | `list` | List personas installed in this project |
 | `templates` | List built-in templates |
@@ -122,6 +123,10 @@ Requires Node.js 18+.
 | **`orchestrate "<task>" [--team <name>] [--run]`** | **v0.8.0:** Route a task to the best-matching persona via the capability blackboard |
 | **`sync <other-state.json> --persona <p>`** | **v0.8.0:** Reconcile a portable persona's `state.json` across machines (no clobber) |
 | **`serve --persona <p>`** | **v0.8.0:** Serve a persona over HTTP + `agents.md` (low-context interop for any agent) |
+| **`edit <dot-path> <value>`** | **v1.0:** Surgical, governed single-leaf edit — re-validates and refuses any edit that would break a universal (`--force`, `--dry-run`) |
+| **`state rebuild`** | **v1.0:** Replay the mutation_log to rebuild/repair `state.json` as a derived checkpoint (drift detection; `--write`) |
+| **`dash [--persona <p>]`** | **v1.0:** Live ASCII dashboard (Ink) — sigil, envelopes, and chain, reflecting evolution in real time |
+| **`migrate 0.10-to-1.0`** | **v1.0:** Codemod to the stable spec (layer-9 rename, `persona_prompting`→`persona`, refusal-surface fold, memory knobs→`runtime`, dot-path state keys) |
 
 ### Validate exit codes
 
@@ -181,9 +186,9 @@ sparse clone, validates `SKILL.md` against agentskills.io rules, copies it to
 
 ---
 
-## v0.7 three-artifact model
+## Three-artifact model
 
-A persona package in v0.7 contains these primary artifacts:
+A persona package contains these primary artifacts:
 
 | Artifact | Role | Mutability |
 |---|---|---|

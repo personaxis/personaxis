@@ -27,7 +27,7 @@ except the protected safety floor — quantitative *and* qualitative, in any lay
 
 - **Quantitative** — envelope values/numbers, e.g. `personality.traits.openness.mean`,
   `affect.baseline.mood.tone`. These are clamped to the declared `mean ± range`.
-- **Qualitative / any other layer** — `persona_prompting.voice_exemplars`,
+- **Qualitative / any other layer** — `persona.voice_exemplars`,
   `cognition.uncertainty_policy.disclose_when_above`, `values_and_drives.values.curiosity.weight`,
   `metacognition.*`, … Whether a given section is editable is decided by `editGate` (§3b), which
   composes the protected floor + the author's declared per-layer policy + the global mode.
@@ -42,7 +42,7 @@ the signal based on `improvement_policy.mode` and per-layer edit policy.
 Defense in depth, all in `self-evolution.ts`:
 
 1. **Protected paths** — `identity`, `character`, `values_and_drives.values.safety`,
-   `reflexive_self_regulation.hard_limits`, `persona.constraints`, `permissions`,
+   `self_regulation.hard_limits`, `persona.constraints`, `permissions`,
    `governance.max_step_delta`, … can NEVER be self-edited (rejected, not clamped).
 2. **Provenance gate** — the justification must clear the `self_edit` sensitive-action gate
    (untrusted sources are refused).
@@ -64,7 +64,7 @@ Defense in depth, all in `self-evolution.ts`:
 ## 3b. Whole-spec self-edits in the Living Loop (live) — `editGate`
 
 The loop no longer evolves only numbers, and qualitative edits are **no longer limited to
-`persona_prompting`**. Each turn the appraiser may emit `selfEdits[]` targeting any editable
+`persona`**. Each turn the appraiser may emit `selfEdits[]` targeting any editable
 section alongside its numeric signal (`loop.ts` step 3b; `appraisal.ts` / `llm-appraiser.ts`).
 The loop offers the appraiser the list of editable sections via `editableLayers(frontmatter, mode)`.
 Each proposed edit is resolved by **`editGate(targetPath, frontmatter, mode)`** → `block | queue | auto`,
@@ -118,7 +118,7 @@ Under `suggesting`, proposals sit in `self-edits.jsonl` as `pending`. In the REP
 
 ## 4. From spec to `PERSONA.md` (compile)
 
-`personaxis compile` takes `personaxis.md` (including the `persona_prompting` block) and asks
+`personaxis compile` takes `personaxis.md` (including the `persona` block) and asks
 the configured provider to assemble the **persona-prompting** `PERSONA.md` — second-person
 role adoption, character card, voice exemplars, scene contracts, guardrails (see
 [compile.md](./compile.md) and the methodology in `persona.md/docs/PERSONA_PROMPTING.md`).
@@ -135,7 +135,7 @@ role adoption, character card, voice exemplars, scene contracts, guardrails (see
 - **Overlay-aware compile (Implemented).** `compile` now folds the **active overlay** (applied
   governed self-edits) into the prompt as authoritative overrides (`activeOverlay`), so a
   recompile reflects what the persona evolved into — including *qualitative*
-  `persona_prompting` edits — without machine-rewriting the commented spec.
+  `persona` edits — without machine-rewriting the commented spec.
 
 ### Honest gaps (Planned)
 
@@ -153,5 +153,5 @@ personaxis improve suggesting            # set the mode (writes improvement_poli
 # MCP: persona_propose_edit              # propose a quantitative OR qualitative edit
 ```
 Tests: `packages/core/test/self-evolution.test.ts` (protected paths, consensus, revert) and
-`qualitative-evolution.test.ts` (`editGate` composition; a self-edit to a non-`persona_prompting`
+`qualitative-evolution.test.ts` (`editGate` composition; a self-edit to a non-`persona`
 layer is applied under `autonomous`).
