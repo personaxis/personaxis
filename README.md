@@ -162,10 +162,8 @@ Requires Node.js 18+.
 | `export --format json\|md\|yaml` | Export personaxis.md as clean semantic content |
 | `template list\|show\|get` | Manage pedagogical templates |
 | `diff <before> <after>` | Compare two versions field by field |
-| `spec` | Print the v1.1.0 spec — useful for injecting into agent prompts |
-| `use <template>` | Scaffold a persona from a template |
 | `list` | List personas installed in this project |
-| `templates` | List built-in templates |
+| `spec` | Print the v1.1.0 spec — useful for injecting into agent prompts |
 | **`state init`** | **v0.6:** Create `state.json` beside PERSONA.md, seeded from envelope means |
 | **`state mutate`** | **v0.6:** Adjust a current value (clamped to envelope, logged to mutation_log) |
 | **`state show`** | **v0.6:** Pretty-print current state, active context, and recent mutations |

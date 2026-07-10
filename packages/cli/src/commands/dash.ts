@@ -9,7 +9,6 @@
 
 import { Command } from "commander";
 import { resolve } from "node:path";
-import { runDashboard } from "@personaxis/tui";
 
 export const dashCommand = new Command("dash")
   .description("Live ASCII dashboard: sigil + envelopes + memory-chain, refreshed from state.json each frame.")
@@ -18,6 +17,9 @@ export const dashCommand = new Command("dash")
   .option("--frames <n>", "How many frames to print with --once (default 30)", (v) => Number(v), 30)
   .option("--interval <ms>", "Refresh interval in interactive mode (default 500ms)", (v) => Number(v), 500)
   .action(async (opts: { persona: string; once?: boolean; frames: number; interval: number }) => {
+    // Lazy: the tui barrel costs ~90 ms of import and only this command needs it
+    // at the CLI entry (PB startup-budget review, FASE 7).
+    const { runDashboard } = await import("@personaxis/tui");
     await runDashboard({
       persona: resolve(opts.persona),
       once: Boolean(opts.once),

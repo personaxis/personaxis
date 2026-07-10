@@ -1,36 +1,33 @@
+/**
+ * `personaxis list` — the personas installed in THIS project.
+ *
+ * Reads each persona's quantitative spec (personaxis.md, the source of truth)
+ * rather than the compiled document, and prints working next steps. Rebuilt in
+ * the FASE 7 PB review: the old version read the dropped `metadata.display_name`
+ * from PERSONA.md and hinted at removed commands (`use`, `compile --target`).
+ */
+
 import { Command } from "commander";
 import { existsSync, readdirSync, statSync } from "fs";
 import { resolve, join } from "path";
 import chalk from "chalk";
 import matter from "gray-matter";
 
-const BUILT_IN_TEMPLATES: Array<{ slug: string; display: string }> = [
-  { slug: "marketing-guru", display: "Full-stack marketing professional for founders and small teams" },
-  // coming soon: software-engineer, code-reviewer, legal-assistant, data-analyst, product-manager
-];
-
 export const listCommand = new Command("list")
-  .description("List personas installed in THIS project (.personaxis/personas/). See also: `templates` (built-in), `template` (authoring scaffolds).")
+  .description("List personas installed in THIS project (.personaxis/personas/). See also: `template` (authoring scaffolds).")
   .action(() => {
     const personasDir = resolve(process.cwd(), ".personaxis", "personas");
+    const rootSpec = resolve(process.cwd(), ".personaxis", "personaxis.md");
 
-    if (!existsSync(personasDir)) {
-      console.log("");
-      console.log(chalk.dim("No personas found in .personaxis/personas/"));
-      console.log(chalk.dim("Create one with:"), chalk.cyan("personaxis init --agent"));
-      console.log(chalk.dim("Or use a template:"), chalk.cyan("personaxis use marketing-guru"));
-      console.log("");
-      return;
-    }
+    const entries = existsSync(personasDir)
+      ? readdirSync(personasDir).filter((name) => statSync(join(personasDir, name)).isDirectory())
+      : [];
 
-    const entries = readdirSync(personasDir).filter((name) => {
-      return statSync(join(personasDir, name)).isDirectory();
-    });
-
-    if (entries.length === 0) {
+    if (!existsSync(rootSpec) && entries.length === 0) {
       console.log("");
-      console.log(chalk.dim("No personas found in .personaxis/personas/"));
-      console.log(chalk.dim("Create one with:"), chalk.cyan("personaxis init --agent"));
+      console.log(chalk.dim("No personas found in .personaxis/"));
+      console.log(chalk.dim("Create one:"), chalk.cyan("personaxis create <slug>"), chalk.dim("(interview, --from-prompt, --from-project, --from-import, --from-transcript)"));
+      console.log(chalk.dim("Or scaffold the commented template:"), chalk.cyan("personaxis init"));
       console.log("");
       return;
     }
@@ -39,48 +36,30 @@ export const listCommand = new Command("list")
     console.log(chalk.bold("Installed personas"));
     console.log("");
 
-    for (const slug of entries) {
-      const personaPath = join(personasDir, slug, "PERSONA.md");
+    const row = (slug: string, specPath: string, isRoot: boolean): void => {
       let name = slug;
       let role = "";
-
-      if (existsSync(personaPath)) {
+      if (existsSync(specPath)) {
         try {
-          const parsed = matter.read(personaPath);
-          const metadata = parsed.data.metadata as Record<string, unknown> | undefined;
+          const parsed = matter.read(specPath);
           const identity = parsed.data.identity as Record<string, unknown> | undefined;
+          const metadata = parsed.data.metadata as Record<string, unknown> | undefined;
           const roleIdentity = identity?.role_identity as Record<string, unknown> | undefined;
-          name = (metadata?.display_name as string) ?? (metadata?.name as string) ?? slug;
+          name = (identity?.display_name as string) ?? (metadata?.name as string) ?? slug;
           role = (metadata?.description as string) ?? (roleIdentity?.primary_role as string) ?? "";
-        } catch {}
+        } catch {
+          /* an unparseable spec still gets listed by slug */
+        }
       }
+      const label = isRoot ? "root" : slug;
+      console.log(`  ${chalk.cyan(name.padEnd(20))} ${chalk.dim(`(${label})`).padEnd(32)} ${role}`);
+    };
 
-      const nameCol = name.padEnd(20);
-      const slugCol = chalk.dim(`(${slug})`).padEnd(30);
-      console.log(`  ${chalk.cyan(nameCol)} ${slugCol} ${role}`);
-    }
-
-    console.log("");
-    console.log(chalk.dim("Compile a persona:"), chalk.cyan("personaxis compile .personaxis/personas/<slug>/PERSONA.md --target claude-code"));
-    console.log(chalk.dim("Compile for Codex:"), chalk.cyan("personaxis compile .personaxis/personas/<slug>/PERSONA.md --target codex"));
-    console.log("");
-  });
-
-export const templatesCommand = new Command("templates")
-  .description("List built-in persona TEMPLATES (for `personaxis use`). See also: `list` (installed personas), `template` (authoring scaffolds).")
-  .action(() => {
-    console.log("");
-    console.log(chalk.bold("Built-in templates"));
-    console.log("");
-
-    for (const t of BUILT_IN_TEMPLATES) {
-      console.log(`  ${chalk.cyan(t.slug.padEnd(22))} ${t.display}`);
-    }
+    if (existsSync(rootSpec)) row("root", rootSpec, true);
+    for (const slug of entries) row(slug, join(personasDir, slug, "personaxis.md"), false);
 
     console.log("");
-    console.log(chalk.dim("Use a template:"), chalk.cyan("personaxis use <template> [--target claude-code|codex]"));
-    console.log(chalk.dim("Compile to a host:"), chalk.cyan("personaxis compile --platform claude-code|codex|openclaw|hermes"), chalk.dim("(openclaw/Hermes → SOUL.md)"));
-    console.log(chalk.dim("Archived (legacy `use` targets):"), chalk.cyan("cursor"));
-    console.log(chalk.dim("Search registry:"), chalk.cyan("personaxis search <query>"), chalk.dim("(coming soon)"));
+    console.log(chalk.dim("Talk to one:"), chalk.cyan("personaxis --persona .personaxis/personas/<slug>/personaxis.md"));
+    console.log(chalk.dim("Place into a coding agent:"), chalk.cyan("personaxis compile <slug> --platform claude-code|codex"));
     console.log("");
   });

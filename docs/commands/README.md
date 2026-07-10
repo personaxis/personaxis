@@ -44,9 +44,8 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`spec`](./spec.md) | Print the personaxis.md spec (v1.1) + lint rules — inject into agent prompts. |
 | [`export`](./export.md) | Export the compiled doc to clean JSON / YAML / Markdown (no pedagogical comments). |
 | [`diff <a> <b>`](./diff.md) | Field-by-field diff of two `PERSONA.md`; flags breaking changes (CI gate). |
-| `list` · `templates` · `template` | Installed personas · built-in templates · authoring scaffolds (`--help` each; see the cross-refs in their descriptions). |
+| `list` · `template` | Installed personas · authoring scaffolds (`--help` each). |
 | [`runtime`](./runtime.md) | **Requires a Personaxis backend account** — hosted sessions/traces/evaluate. |
-| [`use`](./use.md) | **[deprecated]** scaffold+compile in one step (pre-v0.7). Use `init` + `compile --platform`. |
 | [`trace`](./trace.md) | Inspect JSONL/OTLP traces (causal timeline). |
 | [_(no subcommand)_](./repl.md) | Enter the living **REPL**. |
 

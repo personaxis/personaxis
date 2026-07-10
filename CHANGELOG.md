@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+
+### Fixed — foundations review (PA)
+- **T2/T3 restated directionally** (MATH_CORE, SPEC §15, the paper, GUARANTEES): the
+  delta_max step cap and the ceil(D/delta_max) evidence floor certify movement that increases
+  |u| (the adversarial direction). Homeostatic decay is exempt by design: it can only reduce
+  |u|, and every decay step is an audited `runtime-decay` entry. The drift report gains
+  `decayAssisted` marking the exact exits where decay can cross (recovery on a `half_life`
+  coordinate); `state drift`, `/drift`, and the dash detail all show it.
+- **Gate composes per field**: k same-field proposals used to slip k*delta_max of net
+  movement through `governMutations`; the net is now folded and re-bounded per coordinate,
+  which also makes "one mutation per coordinate per tick" true by construction.
+- Three new machine-checked properties (PB-T2-compose, PB-T2-decay, PB-T3-decay); property
+  suite now 31. New lint `bands-unusable` (invalid declared bands were silently ignored).
+  RESEARCH source-fidelity corrections recorded as preregistration amendments; the paper's
+  E4 margin corrected from "~10x" to the measured 8x.
+
+### Changed — command and infrastructure review (PB)
+- **Removed `use` and `templates`** (deprecated pre-v0.7 flow; `create` replaced it and
+  `template list` covers authoring scaffolds). Docs and indexes updated.
+- **`list` rebuilt**: it read the v1.0-removed `metadata.display_name` from the compiled
+  document and hinted at removed commands; it now reads `personaxis.md` (source of truth),
+  includes the root persona, and prints working next steps.
+- **Startup cost**: `@personaxis/spec` no longer compiles its two Ajv schemas at module load
+  (~165 ms every CLI invocation, even `--version`); validators compile on first call with an
+  identical API. `dash` lazy-loads the tui barrel (~90 ms). Module-graph cost: 400 -> 314 ms.
+- Full verdict table (38 CLI subcommands, 29 slash-commands, core modules, infra) recorded
+  in IMPLEMENTATION_CHECKLIST.
+
 ## [Unreleased] — Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
 ### Added — the interview wizard + dashboard drill-down (F6.7b)

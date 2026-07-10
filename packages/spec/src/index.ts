@@ -12,13 +12,34 @@ import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { personaSchema as schema, personaSchemaLegacy as legacySchema } from "./generated/schemas.js";
 
-const ajv = new Ajv({ allErrors: true, strict: false });
-addFormats(ajv);
+// PB (FASE 7 infra review): Ajv compilation of the two schemas costs ~165 ms and
+// used to run at module load, taxing EVERY CLI startup (even `--version`). The
+// validators now compile once, on first call; the exported shape stays a plain
+// ValidateFunction (callable + `.errors`), so no consumer changes.
+let ajvSingleton: Ajv | null = null;
+function ajvInstance(): Ajv {
+  if (!ajvSingleton) {
+    ajvSingleton = new Ajv({ allErrors: true, strict: false });
+    addFormats(ajvSingleton);
+  }
+  return ajvSingleton;
+}
 
-/** v1.0 structural validator (schema/persona.schema.json). */
-export const validate: ValidateFunction = ajv.compile(schema);
+function lazyValidator(schemaObject: object): ValidateFunction {
+  let compiled: ValidateFunction | null = null;
+  const fn = ((data: unknown): boolean => {
+    if (!compiled) compiled = ajvInstance().compile(schemaObject);
+    const ok = compiled(data) as boolean;
+    (fn as { errors?: ValidateFunction["errors"] }).errors = compiled.errors;
+    return ok;
+  }) as ValidateFunction;
+  return fn;
+}
+
+/** v1.0 structural validator (schema/persona.schema.json). Compiles on first call. */
+export const validate: ValidateFunction = lazyValidator(schema);
 /** Frozen 0.10 validator for 0.3.0–0.10.0 documents (1.x read-compat window). */
-export const validateLegacy: ValidateFunction = ajv.compile(legacySchema);
+export const validateLegacy: ValidateFunction = lazyValidator(legacySchema);
 
 /** Version dispatch: v1.0 documents validate against the v1 schema + v1 universal paths. */
 function isV1Document(data: Record<string, unknown>): boolean {

@@ -152,7 +152,7 @@ El modo de evolución lo decide `improvement_policy.mode` del spec:
   (gate CI), sensibilidad exacta del compile (números decorativos), arbitraje determinista.
 
 **Spec (motor existente):** `init`, `validate`, `lint`, `compile`, `decompile`, `state`,
-`migrate`, `push`, `pull`, `skills`, `template`, `diff`, `export`, `spec`, `use`, `list`, `config`.
+`migrate`, `push`, `pull`, `skills`, `template`, `diff`, `export`, `spec`, `list`, `config`. (`use` y `templates` se eliminaron en FASE 7: `create` los reemplaza.)
 
 ## 6. Reuso de personas (global + overlay)
 
