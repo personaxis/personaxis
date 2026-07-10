@@ -1,4 +1,4 @@
-# Creating personas — which door, and what to do after
+# Creating personas: which door, and what to do after
 
 Reference for flags/gates: [`docs/commands/create.md`](../commands/create.md) ·
 design: [`docs/architecture/genesis.md`](../architecture/genesis.md). This guide is
@@ -14,7 +14,7 @@ the workflow: pick the right entry, review what Genesis earned vs assumed, itera
 | A SillyTavern-style card or a system prompt | `--from-import <file>` | Cards V2/V3 (`.json` and `.png` tEXt) map deterministically; prose fields go through evidence-quoted extraction. |
 | Great example conversations | `--from-transcript <file>` | Induces the persona that explains the exemplars (voice, values, refusals). |
 
-Doors **compose** — run the interview, then add `--from-import old-card.png`; later
+Doors **compose**: run the interview, then add `--from-import old-card.png`; later
 evidence wins per field and every override stays visible in the report.
 
 ## Worked example (prompt → governed persona in 2 minutes)
@@ -28,20 +28,27 @@ personaxis validate .personaxis/personas/bartender/personaxis.md   # PASS (guara
 
 Then read `creation-report.md` next to it. Two sections matter:
 
-1. **Provenance** — which sentence produced each mean/weight/limit ("never reveals a
-   patron's secrets" → hard limit + `discretion` virtue). If a number's evidence
-   looks weak, fix the *brief*, not the YAML.
-2. **Defaults** — every number Genesis had to assume, labeled. This is your review
+1. **Provenance**: which sentence produced each mean/weight/limit ("never reveals a
+   patron's secrets" gives a hard limit + `discretion` virtue), and whether each
+   coordinate's behavior prose was `earned` from a quote, `synthesized` from the
+   construct table, or a labeled `default`. If a number's evidence looks weak, fix the
+   *brief*, not the YAML.
+2. **Defaults**: every number Genesis had to assume, labeled. This is your review
    checklist: each default is either fine or worth an interview question.
 
-## Make the numbers load-bearing (the step most people skip)
+## The numbers are already load-bearing (verify, then tune)
+
+Genesis fills per-band `expression` prose for every trait and affect coordinate, so a
+fresh persona has **no decorative numbers**. Confirm it:
 
 ```bash
-personaxis jacobian -f .personaxis/personas/bartender/personaxis.md
+personaxis jacobian -f .personaxis/personas/bartender/personaxis.md   # 0 decorative
 ```
 
-Any coordinate flagged **decorative** (σ = 0) provably cannot change the compiled
-document. Fix by declaring per-band prose on the traits you care about:
+A coordinate is **decorative** (σ = 0) when its value provably cannot change the
+compiled document. Genesis will not ship one; the create gate repairs it by synthesis
+before writing. What you tune is the *wording*, not the presence, of the prose. Genesis
+synthesized something plausible; sharpen the traits you care about by hand:
 
 ```yaml
 warmth:
@@ -53,16 +60,16 @@ warmth:
     high: "Leans on the bar, asks about your run."
 ```
 
-Now crossing a band *rewrites the compiled persona* — and costs a provable minimum
-of audit entries (run `personaxis state drift` to see the price of every crossing).
+Crossing a band *rewrites the compiled persona* and costs a provable minimum of audit
+entries (run `personaxis state drift` to see the price of every crossing).
 
 ## Iterate under governance, not by re-rolling
 
-Don't regenerate the persona when something's off — that throws away provenance.
+Don't regenerate the persona when something's off; that throws away provenance.
 - Wording/voice → edit `PERSONA.md`, then `personaxis decompile` to fold it back.
 - One value → `personaxis edit <dot-path> <value>` (re-validates, refuses
   universal-breaking edits).
-- Behavior over time → run it in the REPL; watch `/drift`; let homeostasis
+- Behavior over time: run it in the REPL, watch the `/drift` view, and let homeostasis
   (`half_life`) pull moods back to baseline.
 
 ## Quality bar before you ship one

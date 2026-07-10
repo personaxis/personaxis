@@ -1,6 +1,7 @@
-# `personaxis state drift` — where is my persona, exactly?
+# `personaxis state drift`: where is my persona, exactly?
 
-The drift report (SPEC §15; `/drift` in the REPL; live gauge in `personaxis dash`):
+The drift report (SPEC §15; the `/drift` full-height view in the REPL; live gauge in the
+status bar and in `personaxis dash`):
 
 ```bash
 personaxis state drift [-f path/to/personaxis.md] [--json]

@@ -1,4 +1,4 @@
-# Getting started — by audience
+# Getting started: by audience
 
 One toolchain, three doors. Everything below is local-first and BYOK: no account,
 no daemon, plain git-versionable files.
@@ -26,7 +26,7 @@ follows your repo, not a vendor.
 
 ## Teams & enterprises
 
-1. **Author** the persona with `create` (the creation report is your review doc —
+1. **Author** the persona with `create` (the creation report is your review doc:
    every number has provenance; the "Defaults" section is the review checklist).
 2. **Lock it**: `personaxis improve locked` (state still adapts inside envelopes;
    the SPEC cannot self-modify). Governance postures: locked → suggesting →
@@ -46,11 +46,13 @@ starting points: [`recipes.md`](./recipes.md).
 
 ## Prompts & tips that pay off
 
-- **Make numbers load-bearing**: give every trait you care about per-band
-  `expression {low, moderate, high}` prose, then run `personaxis jacobian` —
-  anything flagged decorative is a number doing nothing.
+- **The numbers are already load-bearing**: `create` synthesizes per-band
+  `expression {low, moderate, high}` prose for every trait and affect coordinate, so
+  `personaxis jacobian` shows zero decorative numbers out of the box. Tune the wording
+  on the traits you care about; you are sharpening prose, not adding it.
 - **Half-life for moods**: `half_life: 4` on mood coordinates gives you a persona
-  that reacts AND recovers — with a provable ceiling on standing drift (δ_max/λ).
+  that reacts AND recovers, with a provable ceiling on standing drift (δ_max/λ).
+  Genesis already sets one where the evidence implies volatility.
 - **Write briefs like evidence**: `create --from-prompt` keeps only what it can
   quote. "Never reveals sources; terse; warms up to regulars over weeks" beats
   "cool mysterious vibe".
@@ -63,7 +65,7 @@ starting points: [`recipes.md`](./recipes.md).
 ## Where things live
 
 ```
-.personaxis/personaxis.md        the quantitative spec (identity — version this)
+.personaxis/personaxis.md        the quantitative spec (identity: version this)
 PERSONA.md                       the compiled document agents actually read
 .personaxis/state.json           mutable runtime state (envelope-clamped)
 .personaxis/personas/<slug>/     sub-personas (same trio each)
