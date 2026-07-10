@@ -25,6 +25,7 @@ import {
   provenanceSummary,
   extractEnvelopes,
   staticallyDecorative,
+  canCross,
   synthesizeTraitExpression,
   type PersonaSeed,
 } from "@personaxis/core";
@@ -134,7 +135,7 @@ describe("PB-G: Genesis is valid by construction", () => {
         // Zero-width envelopes are immutable by geometry (nothing to express or
         // cross); the load-bearing claim applies to every envelope with freedom.
         const decorative = Object.entries(lookup.envelopes)
-          .filter(([, e]) => e.max - e.min > 0 && staticallyDecorative(e))
+          .filter(([, e]) => canCross(e) && staticallyDecorative(e))
           .map(([f]) => f);
         expect(decorative, decorative.join(", ")).toEqual([]);
         // And the synthesis is honest: every SEED trait that lacked band prose

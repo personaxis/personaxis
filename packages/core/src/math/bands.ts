@@ -69,7 +69,27 @@ export function crossableBands(e: Envelope): { low_max: number; moderate_max: nu
   const [b1, b2] = bandBoundaries(e);
   const intersecting = (e.min <= b1 ? 1 : 0) + (e.max > b1 && e.min <= b2 ? 1 : 0) + (e.max > b2 ? 1 : 0);
   if (intersecting >= 2) return undefined;
-  return { low_max: e.min + width / 3, moderate_max: e.min + (2 * width) / 3 };
+  const low_max = e.min + width / 3;
+  const moderate_max = e.min + (2 * width) / 3;
+  // FP guard (found by PB-G2 with a subnormal-width envelope, 5e-324): when the
+  // width is too small for three REPRESENTABLE intervals, the thirds collapse
+  // onto the endpoints and no boundary pair can exist. Such an envelope is a
+  // point in every sense that matters: nothing to cross, by design.
+  if (!(low_max > e.min && moderate_max > low_max && e.max > moderate_max)) return undefined;
+  return { low_max, moderate_max };
+}
+
+/** True when a crossing is geometrically possible for this envelope: at least
+ *  two band intervals intersect it, or explicit envelope-third boundaries can
+ *  make that true (FASE 7 P1/P3). Point and FP-collapsed envelopes return
+ *  false: they are immutable by geometry, and the load-bearing gate and PB-G2
+ *  exclude them for that reason. */
+export function canCross(e: Envelope): boolean {
+  if (e.max - e.min <= 0) return false;
+  const [b1, b2] = bandBoundaries(e);
+  const intersecting = (e.min <= b1 ? 1 : 0) + (e.max > b1 && e.min <= b2 ? 1 : 0) + (e.max > b2 ? 1 : 0);
+  if (intersecting >= 2) return true;
+  return crossableBands(e) !== undefined;
 }
 
 /** A representative value inside each band (interval midpoints, clamped to the

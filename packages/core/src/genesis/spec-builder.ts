@@ -31,6 +31,15 @@ const slugify = (s: string): string =>
 const nonEmpty = (s: unknown, dflt: string): string =>
   typeof s === "string" && s.trim().length > 0 ? s.trim() : dflt;
 
+/** Map any seed phrasing onto the spec enum for persona.voice.verbosity
+ *  (schema: adaptive | concise | detailed). */
+function sanitizeVerbosity(v: unknown): "adaptive" | "concise" | "detailed" {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  if (["concise", "terse", "brief", "short", "laconic", "minimal"].includes(s)) return "concise";
+  if (["detailed", "expansive", "verbose", "thorough", "long"].includes(s)) return "detailed";
+  return "adaptive";
+}
+
 /** Sanitize one trait envelope: 0 ≤ min ≤ mean ≤ max ≤ 1 always holds. */
 function sanitizeTrait(t: SeedTrait): Record<string, unknown> {
   const mean = clamp01(t.mean, 0.5);
@@ -144,7 +153,10 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
       tone: nonEmpty(seed.tone, "professional_direct").toLowerCase().replace(/\s+/g, "_"),
       formality: clamp01(seed.formality, 0.5),
       warmth: clamp01(seed.warmth, 0.5),
-      verbosity: nonEmpty(seed.verbosity, "adaptive"),
+      // FASE 7 P3 (caught by the valid-by-construction gate on a REAL model run):
+      // verbosity is a spec enum; seed values (extractor output, imported cards)
+      // are mapped onto it, never trusted. Synonyms cover the common phrasings.
+      verbosity: sanitizeVerbosity(seed.verbosity),
     },
     constraints: {
       cannot_override_identity: true,

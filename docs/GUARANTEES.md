@@ -82,8 +82,10 @@ personaxis state drift                       # where is my persona right now, an
 | Deterministic guarantees T1–T6 | ✅ proven + property-verified — E3 recorded: 28 properties, 2,306,140 generated adversarial cases (10⁵ per CPU-bound property), **0 counterexamples** (`e3-scale.json`) |
 | Conformance suite | ✅ 15/15 scenarios green (C0/C1/C2) |
 | Hot-path cost | ✅ E4: p99 0.06–0.12 ms per tick (n=8–64) — negligible |
-| Behavioral drift reduction vs prompt-only (RQ2) | 🔬 runner ready + pipeline self-tested; headline multi-model runs pending credentials |
-| Cross-model portability measurement (RQ6) | 🔬 same status |
+| Behavioral drift reduction vs prompt-only (RQ2) | 🔬 first single-model run recorded (E1/E2 on command-a: direction favors the engine, δ below the preregistered 0.33 bar, same-model judges saturated near ceiling; `e1/e2-command-a.json`); headline needs ≥2 models with independent judges |
+| Genesis vs hand-written prompt (RQ5) | 🔬 single-model run recorded (E5: personaxis 8.25 vs card-style 5.42, δ 0.26; ties prompt-only; `e5-command-a.json`) |
+| Compile-sensitivity predicts behavior (RQ3/H3) | 🔬 run recorded: band prose moves behavior (σ_behavior mean 0.56 at temperature 0) but σ_compile had no rank spread on the test persona, so ρ is undefined in practice (`rq3-jbehavior-command-a.json`) |
+| Cross-model portability measurement (RQ6) | 🔬 runner ready; needs ≥3 models |
 
-*Nothing on this page outruns the evidence: the two 🔬 rows become ✅ only with
+*Nothing on this page outruns the evidence: the 🔬 rows become ✅ only with
 published multi-model runs (protocol frozen in RESEARCH.md).*

@@ -37,6 +37,7 @@ import {
   assemblePersonaDoc,
   extractEnvelopes,
   staticallyDecorative,
+  canCross,
   type PersonaFrontmatter,
   type SeedContribution,
   type StructuredCaller,
@@ -234,7 +235,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     const lookup = extractEnvelopes(result.spec as PersonaFrontmatter);
     // Zero-width envelopes are immutable by geometry: excluded, nothing to express.
     const decorative = Object.entries(lookup.envelopes)
-      .filter(([, e]) => e.max - e.min > 0 && staticallyDecorative(e))
+      .filter(([, e]) => canCross(e) && staticallyDecorative(e))
       .map(([f]) => f);
     gates.push({
       name: "load-bearing (jacobian)",

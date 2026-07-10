@@ -25,7 +25,7 @@ export const SEED_JSON_SCHEMA = {
     origin: { type: "string" },
     selfConcept: { type: "string" },
     tone: { type: "string" },
-    verbosity: { type: "string", enum: ["terse", "adaptive", "expansive"] },
+    verbosity: { type: "string", enum: ["adaptive", "concise", "detailed"] },
     traits: {
       type: "array",
       maxItems: 8,

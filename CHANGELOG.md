@@ -23,6 +23,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   RESEARCH source-fidelity corrections recorded as preregistration amendments; the paper's
   E4 margin corrected from "~10x" to the measured 8x.
 
+### Added — first real-model runs of the behavioral program (P3)
+- **E1/E2/E5 recorded against a real model** (`command-a-03-2025`, single-model, labeled as
+  such in every artifact): direction favors personaxis on E1/E2 means (9.83 vs 9.00; 9.67
+  vs 9.08) and Genesis separates sharply from card-style on E5 (8.25 vs 5.42), but no
+  Cliff's delta reaches the preregistered 0.33 bar and same-model judging saturated
+  (inter-judge r between -0.10 and 0.12). No superiority claim; the H2 bar needs >= 2
+  models with independent judges. Full transcripts in
+  `packages/evals/experiments/results/e{1,2,5}-command-a.json`.
+- **RQ3 runner** (`experiments/rq3-jbehavior.mjs`): compiles the persona at adjacent band
+  representatives, asks frozen probes at temperature 0, measures lexical divergence
+  (1 - Jaccard) and Spearman rho against sigma_compile; judge-free and deterministic.
+  First run: band prose alone moves behavior (sigma_behavior 0.26 to 0.93, mean 0.56 over
+  11 coordinates), but sigma_compile had zero rank spread on the test persona, so rho is
+  recorded as undefined in practice (explicit `spread_note`), not as evidence.
+- **Genesis dogfooded on a real model**: committed fixture `experiments/fixtures/marlow/`
+  (13 evidenced numbers, half-lives extracted from "quick to anger, slow to forgive",
+  0 decorative coordinates by the jacobian gate).
+- Transport retry with backoff in both runners for intermittent HTTP 422/429/5xx and
+  network faults (prompts, probes, and scoring stay frozen). API keys live only in
+  environment variables at run time; results record model and date, never credentials.
+
+### Fixed — bugs the gates caught during the real runs (P3)
+- `persona.voice.verbosity` could leave the spec enum when an extraction used
+  terse/expansive vocabulary: `sanitizeVerbosity` in the spec builder maps synonyms onto
+  `adaptive | concise | detailed`, and the extractor's schema now asks for the spec enum
+  directly. Caught by the valid-by-construction gate on a live extraction.
+- `crossableBands` could emit boundaries that collapse onto the envelope endpoints for
+  subnormal-width envelopes (PB-G2 shrank to width 5e-324): an FP guard now treats such
+  envelopes as points (nothing to cross, by design) and the new exported `canCross`
+  predicate is what the create gate and PB-G2 use.
+
 ### Added — the app breathes the math (P0+P2)
 - **The loop's events now carry the physics** (gap G5): `drift` ships the full DriftReport
   the loop already computed (no surface re-reads disk to paint), and `recompile` on a band
