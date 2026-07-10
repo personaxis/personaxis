@@ -59,6 +59,22 @@ export function startStopDaemon(
   ctx.out(chalk.dim(`  /${name} stop to stop it (it also stops when you /exit).`));
 }
 
+/** FASE 7 P2 — run `personaxis <name> <args>` on the RAW TTY (stdio inherited),
+ *  for full-screen flows the app suspends into: proof scenes, the Genesis wizard.
+ *  Cross-OS: process.execPath + argv[1], no shell. */
+export function runCliInteractive(name: string, arg: string): Promise<void> {
+  const args = arg.split(/\s+/).filter(Boolean);
+  return new Promise<void>((resolve) => {
+    const child = spawn(process.execPath, [process.argv[1], name, ...args], {
+      cwd: process.cwd(),
+      stdio: "inherit",
+      env: { ...process.env, FORCE_COLOR: process.env.NO_COLOR ? "0" : "1" },
+    });
+    child.on("close", () => resolve());
+    child.on("error", () => resolve());
+  });
+}
+
 /** Run `personaxis <name> <args>` as a subprocess (the same build) and echo its output into the REPL. */
 export function runCliPassthrough(name: string, arg: string, ctx: Ctx): void {
   const args = arg.split(/\s+/).filter(Boolean);

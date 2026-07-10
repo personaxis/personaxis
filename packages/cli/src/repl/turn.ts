@@ -126,9 +126,16 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     } else if (e.type === "self-edit") {
       if (e.op === "queued") selfEdits.push(`proposed ${e.targetPath} (/review)`);
       else if (e.op === "applied") selfEdits.push(`self-edit applied: ${e.targetPath}`);
+    } else if (e.type === "drift") {
+      // FASE 7 P2 (gap G5): the loop already computed the full report; the app's
+      // gauge and drift view consume it directly, no disk re-read.
+      ctx.onDrift?.(e.report);
+    } else if (e.type === "recompile" && e.crossings?.length) {
+      // FASE 7 P2: the theorem made visible — stage the band-crossing moment
+      // (field pulses, the new band's prose lands, then a committed summary).
+      ctx.onMoment?.(e.crossings);
     }
-    // NB: the loop's "recompile" event is just the .live.json state marker (fast, internal) —
-    // not an LLM recompile of PERSONA.md, so we no longer surface it as noise every turn.
+    // NB: within-band ticks emit no recompile; the fast .live.json marker stays internal.
   });
   await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch(() => {});
   off();

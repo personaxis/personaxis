@@ -23,6 +23,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   RESEARCH source-fidelity corrections recorded as preregistration amendments; the paper's
   E4 margin corrected from "~10x" to the measured 8x.
 
+### Added — the app breathes the math (P0+P2)
+- **The loop's events now carry the physics** (gap G5): `drift` ships the full DriftReport
+  the loop already computed (no surface re-reads disk to paint), and `recompile` on a band
+  crossing ships structured details (field, fromBand, toBand, the new band's prose).
+- **The band-crossing moment**: when a coordinate crosses a band, the app's live region
+  stages it (the field pulses, the old band gives way, the new expression line lands), then
+  commits a summary to the transcript. `PERSONAXIS_NO_ANIM=1` skips straight to the summary
+  (CI-deterministic).
+- **Live drift gauge** on the status line (persona-themed, red when a layer exceeds its
+  declared threshold) plus a persistent header (compact wordmark · persona · posture).
+- **In-app drift view**: `/drift` and `/dash` open a full-height interactive view (↑/↓
+  select, Enter inspects a coordinate with sparkline + audit log, Esc returns to chat);
+  pipe/CI line mode keeps the inline reports.
+- **Full-screen suspension**: `/proof` runs the animated guarantee scenes and `/create`
+  runs the Genesis wizard on the raw TTY from inside the app (the app re-mounts after).
+  Two doors, one engine: CLI subcommands stay the scriptable surface (ADR'd in the
+  checklist); everything is reachable inside the app.
+
 ### Added — every number is born load-bearing (P1)
 - **Deterministic band-prose synthesis** (`genesis/expression-synth.ts`): every trait and
   affect coordinate Genesis emits now carries three distinct behavioral lines, one per band,

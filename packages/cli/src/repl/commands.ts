@@ -59,7 +59,7 @@ import { buildResourceManifest } from "../resource-manifest.js";
 import { discoverTree } from "./roster.js";
 import type { Ctx, CommandDef } from "./types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, readGoalText } from "./config.js";
-import { stopDaemons, startStopDaemon, runCliPassthrough } from "./daemons.js";
+import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
 import { ensureCtxSession } from "./session.js";
 import { maybeRecompile } from "./turn.js";
 
@@ -96,12 +96,42 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "dash",
-    desc: "snapshot of the living dashboard (sigil + envelopes + memory chain)",
+    desc: "the living dashboard: in-app drift view (↑/↓ · Enter · Esc), inline frame in pipes",
     run: (_a, ctx) => {
-      // A single inline frame — the REPL owns the TTY, so we don't take over the screen.
-      // For the animated live view, run `personaxis dash` in a second terminal.
+      // FASE 7 P2: inside the app the dashboard IS a view. Line mode (pipe/CI)
+      // keeps the single inline frame.
+      if (ctx.openDriftView) {
+        ctx.openDriftView();
+        return;
+      }
       for (const line of renderFrame(ctx.handle.personaPath, 0).split("\n")) ctx.out(line);
       ctx.out(chalk.dim(`  live view: `) + chalk.cyan(`personaxis dash -p ${relative(process.cwd(), ctx.handle.personaPath) || ctx.handle.personaPath}`) + chalk.dim(" (second terminal — animates as this session evolves)"));
+    },
+  },
+  {
+    name: "proof",
+    desc: "run the live guarantee scenes full-screen inside the app",
+    run: async (arg, ctx) => {
+      // FASE 7 P2: proof takes the raw TTY (animated scenes); the app suspends
+      // and re-mounts after. In pipes it degrades to the captured passthrough.
+      if (!ctx.suspend) {
+        runCliPassthrough("proof", arg, ctx);
+        return;
+      }
+      await ctx.suspend(() => runCliInteractive("proof", arg));
+      ctx.out(chalk.dim("  proof finished — the scenes are in the scrollback above."));
+    },
+  },
+  {
+    name: "create",
+    desc: "Genesis full-screen: interview wizard or --from-prompt/--from-import/...",
+    run: async (arg, ctx) => {
+      if (!ctx.suspend) {
+        runCliPassthrough("create", arg, ctx);
+        return;
+      }
+      await ctx.suspend(() => runCliInteractive("create", arg));
+      ctx.out(chalk.dim("  create finished — its output is in the scrollback above."));
     },
   },
   {
@@ -141,6 +171,13 @@ export const COMMANDS: CommandDef[] = [
         thresholds: readDriftThresholds(fm),
         protectedFields: env.protectedFields,
       });
+      // FASE 7 P2: in the app, /drift opens the full-height interactive view
+      // (↑/↓ · Enter · Esc). Pipe/CI line mode keeps the inline report below.
+      if (ctx.openDriftView) {
+        ctx.onDrift?.(report);
+        ctx.openDriftView();
+        return;
+      }
       ctx.out(
         chalk.bold("  Drift") +
           chalk.dim(`  D = ${report.global.toFixed(3)} (max |u|) · δ_max ${report.maxStepDelta}`),

@@ -9,6 +9,7 @@ import type { MutationResult } from "./state-engine.js";
 import type { AppraisalSignal } from "./appraisal.js";
 import type { Verdict } from "./governance.js";
 import type { MemoryEntry } from "./memory.js";
+import type { DriftReport } from "./math/drift.js";
 
 export type LoopEvent =
   | { type: "observe"; observation: string; source: string }
@@ -26,8 +27,17 @@ export type LoopEvent =
   | { type: "anomaly"; kind: string; detail: string }
   // Drift metric after this tick's mutations (F6.2, MATH_CORE.md Def. 5): global D,
   // the coordinates that crossed a band, and the layers over their declared threshold.
-  | { type: "drift"; global: number; crossings: string[]; layersExceeded: string[] }
-  | { type: "recompile"; reason: string }
+  // FASE 7 P2 (gap G5): the event carries the FULL report the loop already computed,
+  // so no surface (REPL, dash, MCP, serve) has to re-read state from disk to paint.
+  | { type: "drift"; global: number; crossings: string[]; layersExceeded: string[]; report: DriftReport }
+  // FASE 7 P2: structured crossing details alongside the human-readable reason, so
+  // the UI can stage the band-crossing moment without parsing strings. `prose` is
+  // the expression line the NEW band injects into the compiled document.
+  | {
+      type: "recompile";
+      reason: string;
+      crossings?: Array<{ field: string; fromBand: string; toBand: string; prose: string | null }>;
+    }
   | { type: "abstain"; reason: string }
   | { type: "error"; message: string }
   | { type: "tick-complete"; mutationsApplied: number; memoriesWritten: number }

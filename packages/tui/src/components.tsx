@@ -180,6 +180,107 @@ export function CoordinateDetail(props: { frame: DashFrame; field: string }): Re
 }
 
 /**
+ * FASE 7 P2 — the drift drill-down as an EMBEDDABLE view (the REPL mounts it
+ * full-height; `personaxis dash` keeps its own Dashboard shell). Keys: ↑/↓
+ * select a coordinate, Enter opens its detail, Esc walks detail -> list ->
+ * `onBack()`. `report` (from the loop's drift event) supplies u/band/T3 rows
+ * without touching disk; the frame re-read only feeds the sparkline/log detail.
+ */
+export function DriftView(props: {
+  personaPath: string;
+  report: CoordinateDriftReport | null;
+  active: boolean;
+  onBack: () => void;
+}): React.JSX.Element {
+  const [cursor, setCursor] = useState(0);
+  const [detail, setDetail] = useState<string | null>(null);
+  const [frame, setFrame] = useState<DashFrame | null>(null);
+
+  // One frame read on mount / detail open (sparkline + log need the file).
+  useEffect(() => {
+    if (!props.personaPath) return;
+    try {
+      setFrame(readFrame(props.personaPath));
+    } catch {
+      setFrame(null);
+    }
+  }, [props.personaPath, detail]);
+
+  const coords = props.report?.coordinates ?? frame?.drift ?? [];
+
+  useInput(
+    (_ch, key) => {
+      if (key.escape) {
+        if (detail) setDetail(null);
+        else props.onBack();
+        return;
+      }
+      if (detail) {
+        if (key.return) setDetail(null);
+        return;
+      }
+      if (key.upArrow) setCursor((c) => (c + coords.length - 1) % Math.max(1, coords.length));
+      else if (key.downArrow) setCursor((c) => (c + 1) % Math.max(1, coords.length));
+      else if (key.return && coords.length) setDetail(coords[Math.min(cursor, coords.length - 1)].field);
+    },
+    { isActive: props.active },
+  );
+
+  if (detail && frame) {
+    return (
+      <Box flexDirection="column" paddingLeft={2} paddingTop={1}>
+        <CoordinateDetail frame={frame} field={detail} />
+      </Box>
+    );
+  }
+
+  const gaugeWidth = 24;
+  const global = props.report?.global ?? 0;
+  const filled = Math.round(Math.min(1, global) * gaugeWidth);
+  const over = (props.report?.layers ?? []).filter((l) => l.exceeded);
+  return (
+    <Box flexDirection="column" paddingLeft={2} paddingTop={1}>
+      <Text bold>
+        {"drift  "}
+        <Text color={over.length ? "red" : "cyanBright"}>{"▰".repeat(filled)}</Text>
+        <Text dimColor>{"▱".repeat(gaugeWidth - filled)}</Text>
+        {`  D ${global.toFixed(2)}`}
+        {over.length ? <Text color="red">{`  ⚠ ${over.map((l) => l.layer).join(", ")}`}</Text> : <Text dimColor>{"  within all thresholds"}</Text>}
+      </Text>
+      <Text> </Text>
+      {coords.length === 0 ? (
+        <Text dimColor>{"  no drift data yet — say something and the loop will report after its tick"}</Text>
+      ) : (
+        coords.map((c, i) => {
+          const selected = i === Math.min(cursor, coords.length - 1);
+          const dir = c.u > 0 ? "+" : c.u < 0 ? "−" : " ";
+          const cost = c.protected
+            ? "immutable"
+            : c.decayAssisted
+              ? "recovery exit (decay-assisted, audited)"
+              : `≥${c.minStepsToCross} step(s) to cross`;
+          return (
+            <Text key={c.field} color={selected ? "cyanBright" : undefined} dimColor={!selected}>
+              {selected ? "▸ " : "  "}
+              {c.field.padEnd(38)} u {dir}
+              {Math.abs(c.u).toFixed(2)} {c.band.padEnd(8)} {cost}
+            </Text>
+          );
+        })
+      )}
+      <Text> </Text>
+      <Text dimColor>{"  ↑/↓ select · Enter inspect · Esc back"}</Text>
+    </Box>
+  );
+}
+
+interface CoordinateDriftReport {
+  global: number;
+  coordinates: CoordinateDrift[];
+  layers: Array<{ layer: string; drift: number; threshold?: number; exceeded: boolean }>;
+}
+
+/**
  * The live dashboard as an Ink app. Reads state.json each frame (same contract
  * as the pre-Ink loop), so evolution in ANOTHER process (REPL, MCP, HTTP)
  * shows up live.

@@ -10,7 +10,7 @@
  */
 
 import { extractEnvelopes } from "./envelopes.js";
-import { bandCrossing } from "./math/bands.js";
+import { bandCrossing, bandOf, expressionFor } from "./math/bands.js";
 import { driftReport, readDriftThresholds } from "./math/drift.js";
 import { applyHomeostasis, decayingFields } from "./math/homeostasis.js";
 import {
@@ -168,6 +168,15 @@ export class LivingLoop {
       // F6.2 (MATH_CORE.md Def. 6): a band crossing — not any mutation — is the
       // normative drift event. Within-band movement is expression variance.
       const bandCrossings: string[] = [];
+      // FASE 7 P2: structured crossing details for the UI (from/to band + the
+      // prose the NEW band injects), captured at mutation time.
+      const crossingDetails: Array<{ field: string; fromBand: string; toBand: string; prose: string | null }> = [];
+      const recordCrossing = (field: string, from: number, to: number): void => {
+        const e = env.envelopes[field];
+        if (!e || !bandCrossing(from, to, e)) return;
+        bandCrossings.push(field);
+        crossingDetails.push({ field, fromBand: bandOf(from, e), toBand: bandOf(to, e), prose: expressionFor(to, e) });
+      };
       let postValues: Record<string, number> | null = null;
       // F6.3 (T6): coordinates with a declared half_life decay toward baseline
       // every tick — even one with no admitted proposals.
@@ -188,9 +197,7 @@ export class LivingLoop {
             bus.emit({ type: "mutate", result: r });
             if (r.to !== r.from) {
               mutationsApplied++;
-              if (bandCrossing(r.from, r.to, env.envelopes[r.entry.field])) {
-                bandCrossings.push(r.entry.field);
-              }
+              recordCrossing(r.entry.field, r.from, r.to);
             }
           }
           for (const m of admitted) {
@@ -205,9 +212,7 @@ export class LivingLoop {
             bus.emit({ type: "mutate", result });
             if (result.to !== result.from) {
               mutationsApplied++;
-              if (bandCrossing(result.from, result.to, env.envelopes[m.field])) {
-                bandCrossings.push(m.field);
-              }
+              recordCrossing(m.field, result.from, result.to);
             }
           }
           this.storage.state.write(this.handle.statePath, fresh);
@@ -226,7 +231,7 @@ export class LivingLoop {
           protectedFields: env.protectedFields,
         });
         const layersExceeded = report.layers.filter((l) => l.exceeded).map((l) => l.layer);
-        bus.emit({ type: "drift", global: report.global, crossings: bandCrossings, layersExceeded });
+        bus.emit({ type: "drift", global: report.global, crossings: bandCrossings, layersExceeded, report });
         for (const l of report.layers.filter((x) => x.exceeded)) {
           bus.emit({
             type: "anomaly",
@@ -345,7 +350,7 @@ export class LivingLoop {
       // (SPEC v1.0 §L3: within-band movement is expression variance; the crossing
       // is the recompile trigger). Cheaper and spec-faithful (changed in F6.2).
       if (bandCrossings.length > 0 && this.opts.recompile) {
-        bus.emit({ type: "recompile", reason: `band crossing: ${bandCrossings.join(", ")}` });
+        bus.emit({ type: "recompile", reason: `band crossing: ${bandCrossings.join(", ")}`, crossings: crossingDetails });
         await this.opts.recompile(this.handle);
         this.reload();
       }

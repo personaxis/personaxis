@@ -208,6 +208,24 @@ export function envelopeBars(
 
 const SPARK = "▁▂▃▄▅▆▇█";
 
+/** Compact drift gauge for status lines and headers (FASE 7 P2). Pure string
+ *  builder over a DriftReport-shaped input; the caller owns the data. */
+export function driftGauge(
+  theme: PersonaTheme,
+  report: { global: number; layers: Array<{ layer: string; drift: number; threshold?: number; exceeded: boolean }> },
+  width = 10,
+): string {
+  const filled = Math.round(Math.min(1, report.global) * width);
+  const over = report.layers.filter((l) => l.exceeded);
+  const bar =
+    chalk.ansi256(over.length ? 196 : theme.palette.accent)("▰".repeat(filled)) +
+    chalk.ansi256(theme.palette.dim)("▱".repeat(width - filled));
+  const tail = over.length
+    ? chalk.red(` ⚠${over.map((l) => l.layer).join(",")}`)
+    : "";
+  return `D ${bar} ${report.global.toFixed(2)}${tail}`;
+}
+
 /** Pure sparkline over a series, scaled to [min,max] (the coordinate's envelope). */
 export function sparkline(series: number[], min: number, max: number, width = 32): string {
   if (series.length === 0) return "";

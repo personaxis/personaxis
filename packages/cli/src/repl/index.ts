@@ -14,7 +14,7 @@ import { stdin, stdout } from "node:process";
 import { join } from "node:path";
 import chalk from "chalk";
 import { readState } from "@personaxis/core";
-import { animateLogo, awaken, voiceWrap, farewell } from "@personaxis/tui/visual";
+import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
 import { writeStarterPersona } from "../starter.js";
@@ -114,10 +114,22 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     return chalk.dim("  " + seg.join("  ·  "));
   };
 
+  // FASE 7 P2 — the persistent header: compact wordmark · persona · posture.
+  const header = (): string =>
+    chalk.bold("◉ personaxis") +
+    chalk.dim("  ·  ") +
+    chalk.bold.ansi256(ctx.theme.palette.accent)(ctx.name) +
+    chalk.dim(`  ·  ${POSTURES[ctx.postureIndex]}`);
+
   screen = new InkScreen({
     prompt: () => chalk.bold("› "),
     status,
     commands,
+    header,
+    personaPath: ctx.handle.personaPath,
+    // FASE 7 P2 — the live drift gauge, themed by the persona (gap G5).
+    driftSegment: (report) =>
+      driftGauge(ctx.theme, report as Parameters<typeof driftGauge>[1]),
     onCycleMode: () => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
       notePostureChange(ctx);
@@ -157,6 +169,12 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`)).trim().toLowerCase();
     return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
   };
+  // FASE 7 P2 — the app breathes the math: the loop's events drive the gauge,
+  // the crossing moment, the drift view, and full-screen suspensions.
+  ctx.onDrift = (report) => screen.setDrift(report as never);
+  ctx.onMoment = (crossings) => screen.playMoment(crossings);
+  ctx.openDriftView = () => screen.openView("drift");
+  ctx.suspend = (fn) => screen.suspend(fn);
 
   screen.start();
   screen.print(replyLine(ctx, "awake — talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");

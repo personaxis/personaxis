@@ -31,6 +31,13 @@ export interface ReplHooks {
   onSubmit(line: string): Promise<void> | void;
   onCycleMode?(): void;
   onExit?(): void;
+  /** FASE 7 P2 — persistent app header (compact wordmark · persona · posture). */
+  header?(): string;
+  /** FASE 7 P2 — render the live drift gauge segment (the CLI owns the theme).
+   *  Receives the DriftReport the loop emitted; appended to the status line. */
+  driftSegment?(report: unknown): string;
+  /** FASE 7 P2 — lets the in-app drift view read sparkline/log detail. */
+  personaPath?: string;
 }
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

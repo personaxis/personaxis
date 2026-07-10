@@ -58,6 +58,15 @@ export interface Ctx {
   pendingEnvNote?: string;
   /** Long-running daemons (serve/watch) launched from `/` in the background, so they can be stopped. */
   bg?: Record<string, ChildProcess>;
+  // ── FASE 7 P2: the app breathes the math (screen mode only) ────────────────
+  /** Feed the loop's per-tick DriftReport to the live gauge + drift view. */
+  onDrift?: (report: unknown) => void;
+  /** Stage the band-crossing moment in the live region. */
+  onMoment?: (crossings: Array<{ field: string; fromBand: string; toBand: string; prose: string | null }>) => void;
+  /** Switch the app to the full-height drift view (Esc returns to chat). */
+  openDriftView?: () => void;
+  /** Hand the raw TTY to a full-screen flow (proof scenes, the Genesis wizard). */
+  suspend?: (fn: () => Promise<void>) => Promise<void>;
 }
 
 export interface CommandDef {
