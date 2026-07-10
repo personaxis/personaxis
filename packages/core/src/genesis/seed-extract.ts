@@ -40,10 +40,12 @@ export const SEED_JSON_SCHEMA = {
           expressionLow: { type: "string" },
           expressionModerate: { type: "string" },
           expressionHigh: { type: "string" },
+          halfLife: { type: "number", minimum: 1, maximum: 50 },
           evidence: { type: "string", maxLength: 200 },
         },
       },
     },
+    moodHalfLife: { type: "number", minimum: 1, maximum: 50 },
     values: {
       type: "array",
       maxItems: 8,
@@ -87,6 +89,9 @@ export function buildExtractionPrompt(material: string, sourceLabel: string): st
     "- Per-band `expression{Low,Moderate,High}` prose: how the persona ACTS at that band,",
     "  second person, one sentence each — include them whenever the material shows how the",
     "  persona behaves.",
+    "- `halfLife` (turns, on a trait) and `moodHalfLife` (turns, top level): how fast a",
+    "  displaced trait/mood returns to baseline. Include ONLY when the material shows it",
+    "  (e.g. 'quick to anger, slow to forgive' implies a large moodHalfLife).",
     "- hardLimits are ABSOLUTE refusals stated or clearly implied by the material.",
     "- Do NOT include a `safety` value (the platform injects it above everything).",
     "",
@@ -107,7 +112,8 @@ interface ExtractedSeed {
   selfConcept?: string;
   tone?: string;
   verbosity?: string;
-  traits?: Array<{ name: string; mean: number; flexibility?: number; expressionLow?: string; expressionModerate?: string; expressionHigh?: string; evidence: string }>;
+  traits?: Array<{ name: string; mean: number; flexibility?: number; expressionLow?: string; expressionModerate?: string; expressionHigh?: string; halfLife?: number; evidence: string }>;
+  moodHalfLife?: number;
   values?: Array<{ name: string; weight: number; evidence: string }>;
   hardLimits?: string[];
   prohibitedBehaviors?: string[];
@@ -148,13 +154,24 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
             ...(t.expressionHigh ? { high: t.expressionHigh } : {}),
           }
         : undefined;
+    const halfLife = typeof t.halfLife === "number" && t.halfLife >= 1 && t.halfLife <= 50 ? t.halfLife : undefined;
     seed.traits![name] = {
       mean: t.mean,
       range: [Math.max(0, t.mean - half), Math.min(1, t.mean + half)],
       ...(expression ? { expression } : {}),
+      ...(halfLife !== undefined ? { halfLife } : {}),
     };
     push(`x-trait-${name}`, "inference", t.evidence, [
       { path: `personality.traits.${name}.mean`, value: t.mean, rule: "llm-extraction-with-evidence" },
+      ...(expression ? [{ path: `personality.traits.${name}.expression`, value: "{per-band prose}", rule: "llm-extraction-with-evidence" }] : []),
+      ...(halfLife !== undefined ? [{ path: `personality.traits.${name}.half_life`, value: halfLife, rule: "llm-extraction-with-evidence" }] : []),
+    ]);
+  }
+
+  if (typeof x.moodHalfLife === "number" && x.moodHalfLife >= 1 && x.moodHalfLife <= 50) {
+    seed.moodHalfLife = x.moodHalfLife;
+    push("x-mood-halflife", "inference", `moodHalfLife ${x.moodHalfLife}`, [
+      { path: "affect.baseline.mood.tone.half_life", value: x.moodHalfLife, rule: "llm-extraction-with-evidence" },
     ]);
   }
 
@@ -193,14 +210,48 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
   return { seed, evidence: trail };
 }
 
-/** Run the extractor through an injected structured caller. */
+/** A usable extraction names the persona or grounds at least one number. */
+function usableExtraction(seed: Partial<PersonaSeed>): boolean {
+  return (
+    (typeof seed.displayName === "string" && seed.displayName.trim().length > 0) ||
+    Object.keys(seed.traits ?? {}).length > 0 ||
+    Object.keys(seed.values ?? {}).length > 0
+  );
+}
+
+/**
+ * Run the extractor through an injected structured caller. FASE 7 P1: one
+ * error-directed repair attempt (the pattern proven by decompile's repair
+ * loop): if the call throws or returns an unusable object, re-prompt ONCE with
+ * the exact failure appended, then give up to the caller's heuristic fallback.
+ */
 export async function extractSeed(
   material: string,
   sourceLabel: string,
   call: StructuredCaller,
 ): Promise<{ seed: Partial<PersonaSeed>; evidence: EvidenceItem[] }> {
-  const raw = await call(buildExtractionPrompt(material, sourceLabel), SEED_JSON_SCHEMA, "persona_seed");
-  return seedFromExtraction(raw, sourceLabel);
+  const prompt = buildExtractionPrompt(material, sourceLabel);
+  let failure = "";
+  try {
+    const raw = await call(prompt, SEED_JSON_SCHEMA, "persona_seed");
+    const first = seedFromExtraction(raw, sourceLabel);
+    if (usableExtraction(first.seed)) return first;
+    failure = "the response parsed but carried no displayName, traits, or values";
+  } catch (e) {
+    failure = (e as Error).message.slice(0, 300);
+  }
+  const repairPrompt =
+    prompt +
+    "\n\nYOUR PREVIOUS RESPONSE FAILED: " +
+    failure +
+    "\nReturn a corrected JSON object that satisfies the schema. At minimum include" +
+    " displayName, role, and purpose grounded in the material.";
+  const raw = await call(repairPrompt, SEED_JSON_SCHEMA, "persona_seed");
+  const second = seedFromExtraction(raw, sourceLabel);
+  if (!usableExtraction(second.seed)) {
+    throw new Error(`extractor produced no usable seed after one repair attempt (${failure})`);
+  }
+  return second;
 }
 
 /**

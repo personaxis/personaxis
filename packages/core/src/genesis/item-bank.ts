@@ -51,6 +51,16 @@ export const ITEM_BANK: InterviewItem[] = [
   { id: "t-agree", kind: "likert", construct: "personality.traits.agreeableness", rule: "likert-to-mean", question: "This persona is warm and accommodating rather than blunt and challenging." },
   { id: "t-neuro", kind: "likert", construct: "personality.traits.neuroticism", rule: "likert-to-mean", question: "This persona is easily rattled by setbacks (vs unshakeably even-keeled)." },
   { id: "t-conf", kind: "likert", construct: "personality.traits.*.range", rule: "confidence-to-halfwidth", question: "How fixed should this personality be? (1 = may flex a lot, 5 = very fixed)" },
+  // FASE 7 P1 (G4): the homeostasis knob, asked instead of assumed. Maps to
+  // mood.tone.half_life; T6 makes the answer a provable recovery guarantee.
+  {
+    id: "a-volatility",
+    kind: "choice",
+    construct: "affect.baseline.mood.tone.half_life",
+    rule: "volatility-to-halflife",
+    question: "After a jolt (praise, a setback, bad news), how fast should its mood return to baseline?",
+    options: ["almost immediately (half-life 2 turns)", "within a few exchanges (half-life 4 turns)", "slowly, it lingers (half-life 8 turns)"],
+  },
 
   // ── Values (Schwartz-style ranking → weights; safety is injected regardless) ──
   {

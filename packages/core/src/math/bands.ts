@@ -52,6 +52,26 @@ export function bandCrossing(from: number, to: number, e: Envelope): boolean {
   return bandOf(from, e) !== bandOf(to, e);
 }
 
+/**
+ * FASE 7 P1: explicit boundaries when the defaults leave the envelope inside a
+ * single band (typical for narrow or signed envelopes: valence [-0.3, 0.3] sits
+ * entirely inside the signed moderate band, so no crossing is ever possible and
+ * every number there is decorative by geometry). Returns envelope thirds when
+ * fewer than two bands are reachable; undefined when the declared or default
+ * boundaries already work, or when the envelope has no width (a point envelope
+ * cannot cross anything, by design). Reachability here counts band INTERVALS
+ * that intersect the envelope (jacobian.ts owns the representative-based
+ * variant used for compile probing).
+ */
+export function crossableBands(e: Envelope): { low_max: number; moderate_max: number } | undefined {
+  const width = e.max - e.min;
+  if (width <= 0) return undefined;
+  const [b1, b2] = bandBoundaries(e);
+  const intersecting = (e.min <= b1 ? 1 : 0) + (e.max > b1 && e.min <= b2 ? 1 : 0) + (e.max > b2 ? 1 : 0);
+  if (intersecting >= 2) return undefined;
+  return { low_max: e.min + width / 3, moderate_max: e.min + (2 * width) / 3 };
+}
+
 /** A representative value inside each band (interval midpoints, clamped to the
  *  envelope) — used by the persona Jacobian (J_compile) and by tests. */
 export function bandRepresentatives(e: Envelope): Record<Band, number> {

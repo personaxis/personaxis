@@ -23,6 +23,9 @@ import {
   extractCardFromPng,
   seedFromExtraction,
   provenanceSummary,
+  extractEnvelopes,
+  staticallyDecorative,
+  synthesizeTraitExpression,
   type PersonaSeed,
 } from "@personaxis/core";
 import { validatePersona } from "../src/schema.js";
@@ -116,6 +119,56 @@ describe("PB-G: Genesis is valid by construction", () => {
         const reparsed = matter(document).data as Record<string, unknown>;
         expect(validatePersona(reparsed).valid).toBe(true);
       }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+
+  // PB-G2 (FASE 7 P1, gap G1): no number leaves Genesis decorative. For ANY
+  // hostile seed, every envelope coordinate of the FULL pipeline's spec (merge
+  // -> synthesis pass -> builder) carries load-bearing band prose: sigma > 0.
+  it("PB-G2: ANY seed → 0 statically decorative coordinates (every number is load-bearing)", () => {
+    fc.assert(
+      fc.property(seedArb, (seed) => {
+        const result = genesis([{ label: "hostile", seed, evidence: [] }]);
+        const lookup = extractEnvelopes(result.spec as never);
+        // Zero-width envelopes are immutable by geometry (nothing to express or
+        // cross); the load-bearing claim applies to every envelope with freedom.
+        const decorative = Object.entries(lookup.envelopes)
+          .filter(([, e]) => e.max - e.min > 0 && staticallyDecorative(e))
+          .map(([f]) => f);
+        expect(decorative, decorative.join(", ")).toEqual([]);
+        // And the synthesis is honest: every SEED trait that lacked band prose
+        // carries a kind:"synthesis" ledger item (the builder's own default
+        // trait is instead labeled by the report as a builder default).
+        const synthItems = result.ledger.items.filter((i) => i.kind === "synthesis");
+        for (const name of Object.keys(seed.traits ?? {})) {
+          if (!/^[a-z][a-z0-9_]*$/.test(name)) continue; // dropped by the builder
+          expect(
+            synthItems.some((i) => i.mappedFields.some((m) => m.path === `personality.traits.${name}.expression`)),
+          ).toBe(true);
+        }
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+});
+
+describe("PB-SYNTH: the construct table is pure and band-distinct", () => {
+  it("same input ⇒ same prose; three distinct lines per construct, known or invented", () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(
+          fc.constantFrom("openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism", "honesty_humility", "emotionality"),
+          fc.stringMatching(/^[a-z][a-z_]{0,20}$/),
+        ),
+        (name) => {
+          const a = synthesizeTraitExpression(name);
+          const b = synthesizeTraitExpression(name);
+          expect(a).toEqual(b); // deterministic
+          expect(new Set([a.low, a.moderate, a.high]).size).toBe(3); // sigma > 0 by construction
+          for (const line of [a.low, a.moderate, a.high]) expect(line.trim().length).toBeGreaterThan(10);
+        },
+      ),
       { numRuns: NUM_RUNS },
     );
   });

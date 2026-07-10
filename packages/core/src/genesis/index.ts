@@ -8,6 +8,7 @@
  */
 
 import { buildSpecDocument } from "./spec-builder.js";
+import { fillSeedExpressions } from "./expression-synth.js";
 import type { EvidenceItem, EvidenceLedger, GenesisResult, PersonaSeed } from "./types.js";
 
 export * from "./types.js";
@@ -17,6 +18,7 @@ export * from "./interview.js";
 export * from "./imports.js";
 export * from "./seed-extract.js";
 export * from "./report.js";
+export * from "./expression-synth.js";
 
 export interface SeedContribution {
   label: string;
@@ -64,6 +66,10 @@ export function mergeSeed(contributions: SeedContribution[]): { seed: PersonaSee
 /** The whole pipeline minus I/O and validation (which live in the CLI). */
 export function genesis(contributions: SeedContribution[]): GenesisResult {
   const { seed, ledger } = mergeSeed(contributions);
+  // FASE 7 P1 (gap G1): no number leaves Genesis decorative. Every trait that
+  // lacks load-bearing band prose gets the deterministic construct table, and
+  // the ledger records it as kind "synthesis" (never passed off as earned).
+  ledger.items.push(...fillSeedExpressions(seed));
   const { spec, document } = buildSpecDocument(seed);
   return { spec, document, seed, ledger };
 }

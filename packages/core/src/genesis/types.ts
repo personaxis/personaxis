@@ -7,7 +7,16 @@
  * quantitative field has the value it has — C6, "every number earned").
  */
 
-export type EvidenceKind = "answer" | "document" | "dialogue" | "imported-field" | "inference" | "default";
+export type EvidenceKind =
+  | "answer"
+  | "document"
+  | "dialogue"
+  | "imported-field"
+  | "inference"
+  | "default"
+  /** FASE 7 P1: deterministic construct-table prose (expression-synth.ts). A third
+   *  honesty tier: not user-earned evidence, but not an unlabeled default either. */
+  | "synthesis";
 
 export interface EvidenceItem {
   id: string;
@@ -75,6 +84,9 @@ export interface PersonaSeed {
   behavioralAnchors?: { do?: string[]; dont?: string[]; examples?: string[] };
 
   improvementMode?: "locked" | "suggesting" | "autonomous";
+  /** FASE 7 P1 (G4): mood.tone half_life in turns; the interview's volatility
+   *  item maps here (rule volatility-to-halflife). Builder default: 4. */
+  moodHalfLife?: number;
   memoryTypes?: Partial<Record<"episodic" | "semantic" | "procedural" | "autobiographical" | "user_preferences" | "evaluations", boolean>>;
 }
 

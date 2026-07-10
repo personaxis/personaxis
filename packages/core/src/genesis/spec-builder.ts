@@ -12,6 +12,8 @@
  */
 
 import { dump } from "js-yaml";
+import { synthesizeTraitExpression, synthesizeAffectExpression } from "./expression-synth.js";
+import { crossableBands } from "../math/bands.js";
 import type { PersonaSeed, SeedTrait } from "./types.js";
 
 const clamp01 = (n: unknown, dflt: number): number =>
@@ -45,7 +47,21 @@ function sanitizeTrait(t: SeedTrait): Record<string, unknown> {
     if (typeof t.bands.moderate_max === "number") b.moderate_max = t.bands.moderate_max;
     if (b.low_max !== undefined && b.moderate_max !== undefined && b.low_max < b.moderate_max) out.bands = b;
   }
+  // FASE 7 P1: when the (declared or default) boundaries leave this envelope
+  // inside a single band, no crossing is ever possible and the number is
+  // decorative by geometry. Emit explicit envelope-third boundaries instead.
+  const fix = crossableBands({ mean, min: lo, max: hi, bands: out.bands as { low_max?: number; moderate_max?: number } | undefined });
+  if (fix) out.bands = fix;
   if (typeof t.halfLife === "number" && t.halfLife > 0) out.half_life = t.halfLife;
+  return out;
+}
+
+/** An affect/mood coordinate with band prose and crossable boundaries. */
+function affectCoord(mean: number, min: number, max: number, key: string, halfLife?: number): Record<string, unknown> {
+  const out: Record<string, unknown> = { mean, range: [min, max], expression: synthesizeAffectExpression(key) };
+  const fix = crossableBands({ mean, min, max });
+  if (fix) out.bands = fix;
+  if (typeof halfLife === "number" && halfLife > 0) out.half_life = halfLife;
   return out;
 }
 
@@ -73,11 +89,16 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
   const today = new Date().toISOString().slice(0, 10);
 
   // Traits: at least one is required (schema minProperties) — default a balanced core.
+  // FASE 7 P1: the default is born load-bearing (band prose from the construct table).
   const traitEntries = Object.entries(seed.traits ?? {}).filter(([k]) => /^[a-z][a-z0-9_]*$/.test(k));
   const traits: Record<string, unknown> = {};
   for (const [name, t] of traitEntries) traits[name] = sanitizeTrait(t);
   if (Object.keys(traits).length === 0) {
-    traits.conscientiousness = sanitizeTrait({ mean: 0.7, range: [0.5, 0.9] });
+    traits.conscientiousness = sanitizeTrait({
+      mean: 0.7,
+      range: [0.5, 0.9],
+      expression: synthesizeTraitExpression("conscientiousness"),
+    });
   }
 
   // Values: safety is the builder's, always (U6); others sanitized, name-guarded.
@@ -198,16 +219,21 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
       representation: "hybrid_dimensional_appraisal_discrete_mood",
       allow_user_visible_expression: true,
       user_visible_disclaimer: "Affective states are functional model states, not evidence of subjective feeling.",
+      // FASE 7 P1 (gaps G1+G4): every affect coordinate is born load-bearing
+      // (band prose from the construct table, crossable boundaries when the
+      // defaults leave the envelope inside one band) and mood.tone keeps its
+      // half_life (T6 observable by default; seed.moodHalfLife overrides it,
+      // interview rule volatility-to-halflife).
       baseline: {
         core_affect: {
-          valence: { mean: 0.0, range: [-0.3, 0.3] },
-          arousal: { mean: 0.4, range: [0.2, 0.6] },
-          dominance: { mean: 0.6, range: [0.4, 0.8] },
+          valence: affectCoord(0.0, -0.3, 0.3, "core_affect.valence"),
+          arousal: affectCoord(0.4, 0.2, 0.6, "core_affect.arousal"),
+          dominance: affectCoord(0.6, 0.4, 0.8, "core_affect.dominance"),
         },
         mood: {
-          tone: { mean: 0.0, range: [-0.25, 0.25], half_life: 4 },
-          stability: { mean: 0.7, range: [0.5, 0.9] },
-          recovery_rate: { mean: 0.6, range: [0.4, 0.8] },
+          tone: affectCoord(0.0, -0.25, 0.25, "mood.tone", typeof seed.moodHalfLife === "number" && seed.moodHalfLife > 0 ? seed.moodHalfLife : 4),
+          stability: affectCoord(0.7, 0.5, 0.9, "mood.stability"),
+          recovery_rate: affectCoord(0.6, 0.4, 0.8, "mood.recovery_rate"),
         },
       },
       regulation_policy: { express_only_if_relevant: true, never_claim_real_feeling: true },

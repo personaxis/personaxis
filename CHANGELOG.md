@@ -23,6 +23,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   RESEARCH source-fidelity corrections recorded as preregistration amendments; the paper's
   E4 margin corrected from "~10x" to the measured 8x.
 
+### Added — every number is born load-bearing (P1)
+- **Deterministic band-prose synthesis** (`genesis/expression-synth.ts`): every trait and
+  affect coordinate Genesis emits now carries three distinct behavioral lines, one per band,
+  from a versioned BFI/HEXACO construct table (generic fallback for invented trait names).
+  Ledger entries are `kind: "synthesis"` with rule `construct-band-prose@v1`: a third honesty
+  tier the creation report shows separately from earned evidence and labeled defaults.
+- **Crossable bands by construction** (`crossableBands`, math/bands.ts): signed or narrow
+  envelopes used to sit entirely inside one default band (valence [-0.3, 0.3] inside the
+  signed moderate band), making every crossing geometrically impossible and the number
+  decorative no matter what prose it carried. The builder now emits envelope-third
+  boundaries whenever fewer than two bands are reachable.
+- **Hard load-bearing gate in `create`**: after validate/lint/compile, `staticallyDecorative`
+  must find zero decorative coordinates (width-0 envelopes excluded: immutable by geometry)
+  or nothing is written. Property PB-G2 proves it for arbitrary hostile seeds; PB-SYNTH
+  proves the table is pure and band-distinct.
+- **Homeostasis by default** (G4): Genesis mood.tone ships `half_life` (interview item
+  `a-volatility` maps the user's answer to 2/4/8 turns); the extractor schema accepts
+  `halfLife`/`moodHalfLife` with evidence, and gained a one-shot error-directed repair loop.
+- **Provenance covers the whole denotational surface** (G6): the creation report enumerates
+  expression/bands/half_life and every affect coordinate (25 fields on the dogfood persona,
+  up from 3) and separates earned / synthesized / default.
+- Starter persona, the four `init` builders, and the canonical template now ship banded
+  expression, crossable bands, and mood half_life; Clio (this repo) and the CMO golden were
+  hand-upgraded the same way and recompiled (their compiled docs now select prose per band
+  from live state). The validator's coherence check caught and forced a fix where a hard
+  virtue referenced a trait whose bands permitted the contradicting low band.
+
 ### Changed — command and infrastructure review (PB)
 - **Removed `use` and `templates`** (deprecated pre-v0.7 flow; `create` replaced it and
   `template list` covers authoring scaffolds). Docs and indexes updated.

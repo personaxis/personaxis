@@ -95,6 +95,18 @@ export function applyAnswers(answers: InterviewAnswers): { seed: Partial<Persona
     );
   }
 
+  // Mood volatility → half_life (T6 knob; FASE 7 P1, gap G4).
+  const vol = num(answers["a-volatility"]);
+  const HALF_LIVES = [2, 4, 8] as const;
+  if (vol !== undefined && HALF_LIVES[vol] !== undefined) {
+    seed.moodHalfLife = HALF_LIVES[vol];
+    trail.push(
+      evidence("a-volatility", `half-life ${HALF_LIVES[vol]} turns`, [
+        { path: "affect.baseline.mood.tone.half_life", value: HALF_LIVES[vol], rule: "volatility-to-halflife" },
+      ]),
+    );
+  }
+
   // Values ranking → weights (safety injected by the builder above all of them).
   const ranked = answers["v-rank"];
   if (Array.isArray(ranked)) {

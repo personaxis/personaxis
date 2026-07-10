@@ -11,8 +11,6 @@
 import type { EvidenceLedger, GenesisResult } from "./types.js";
 import { ITEM_BANK_VERSION } from "./item-bank.js";
 
-const QUANT_PATHS = [/personality\.traits\.[^.]+\.(mean|range)/, /values_and_drives\.values\.[^.]+\.weight/];
-
 export interface ProvenanceSummary {
   /** Quantitative spec fields present in the built spec. */
   quantitativeFields: string[];
@@ -20,15 +18,32 @@ export interface ProvenanceSummary {
   covered: string[];
   /** Fields whose ONLY evidence is a default (visible honesty). */
   defaultsOnly: string[];
+  /** FASE 7 P1 (G6): fields whose strongest evidence is deterministic synthesis
+   *  (construct-table prose). A third honesty tier between earned and default. */
+  synthesizedOnly: string[];
   completeness: number;
 }
 
-/** Quantitative fields the built spec actually carries (traits + value weights). */
+/** Quantitative fields the built spec actually carries. FASE 7 P1 (gap G6):
+ *  the enumeration now covers the whole denotational surface — per-trait
+ *  mean/range PLUS expression/bands/half_life when declared, every affect and
+ *  mood coordinate, and value weights. Anything here that lacks evidence shows
+ *  up as a labeled default instead of escaping the audit. */
 export function quantitativeFields(spec: Record<string, unknown>): string[] {
   const out: string[] = [];
-  const traits = ((spec.personality as Record<string, unknown>)?.traits ?? {}) as Record<string, unknown>;
-  for (const name of Object.keys(traits)) {
-    out.push(`personality.traits.${name}.mean`, `personality.traits.${name}.range`);
+  const pushEnvelope = (base: string, e: Record<string, unknown>): void => {
+    out.push(`${base}.mean`, `${base}.range`);
+    if (e.expression !== undefined) out.push(`${base}.expression`);
+    if (e.bands !== undefined) out.push(`${base}.bands`);
+    if (e.half_life !== undefined) out.push(`${base}.half_life`);
+  };
+  const traits = ((spec.personality as Record<string, unknown>)?.traits ?? {}) as Record<string, Record<string, unknown>>;
+  for (const [name, t] of Object.entries(traits)) pushEnvelope(`personality.traits.${name}`, t ?? {});
+  const baseline = ((spec.affect as Record<string, unknown>)?.baseline ?? {}) as Record<string, Record<string, Record<string, unknown>>>;
+  for (const group of ["core_affect", "mood"] as const) {
+    for (const [name, coord] of Object.entries(baseline[group] ?? {})) {
+      if (coord && typeof coord === "object" && "mean" in coord) pushEnvelope(`affect.baseline.${group}.${name}`, coord);
+    }
   }
   const values = ((spec.values_and_drives as Record<string, unknown>)?.values ?? {}) as Record<string, unknown>;
   for (const name of Object.keys(values)) out.push(`values_and_drives.values.${name}.weight`);
@@ -43,15 +58,24 @@ export function provenanceSummary(spec: Record<string, unknown>, ledger: Evidenc
     );
   const covered: string[] = [];
   const defaultsOnly: string[] = [];
+  const synthesizedOnly: string[] = [];
   for (const f of fields) {
     let ev = evidenceFor(f);
     // Builder-owned universals count as platform evidence (safety weight, honesty).
     if (ev.length === 0 && /values\.safety\.weight/.test(f)) {
       ev = [{ id: "universal-u6", kind: "default", source: "internal", excerpt: "U6: safety ≥ 0.90, governance", mappedFields: [] }];
     }
+    // The builder's affect prose and half_life come from the deterministic
+    // construct table; when no explicit item exists, label them synthesis, not
+    // an anonymous default (they are principled, versioned, and reproducible).
+    if (ev.length === 0 && /affect\.baseline\..+\.(expression|half_life)$/.test(f)) {
+      ev = [{ id: `synth-${f}`, kind: "synthesis", source: "synthesis", excerpt: "construct table (expression-synth.ts)", mappedFields: [] }];
+      ledger.items.push({ ...ev[0], mappedFields: [{ path: f, value: "(construct table)", rule: "construct-band-prose@v1" }] });
+    }
     if (ev.length > 0) {
       covered.push(f);
       if (ev.every((e) => e.kind === "default")) defaultsOnly.push(f);
+      else if (ev.every((e) => e.kind === "default" || e.kind === "synthesis")) synthesizedOnly.push(f);
     } else {
       defaultsOnly.push(f); // builder default with no explicit item — count as default, still covered below
       covered.push(f);
@@ -68,6 +92,7 @@ export function provenanceSummary(spec: Record<string, unknown>, ledger: Evidenc
     quantitativeFields: fields,
     covered,
     defaultsOnly,
+    synthesizedOnly,
     completeness: fields.length === 0 ? 1 : covered.length / fields.length,
   };
 }
@@ -93,6 +118,7 @@ export function renderCreationReport(result: GenesisResult, gates: Array<{ name:
     "",
     `- Quantitative fields: ${summary.quantitativeFields.length}`,
     `- Evidence-covered: ${summary.covered.length} (completeness ${(summary.completeness * 100).toFixed(0)}%)`,
+    `- Synthesized (deterministic construct table, versioned): ${summary.synthesizedOnly.length}`,
     `- Defaults (labeled, review these): ${summary.defaultsOnly.length}`,
     "",
     "| Evidence | Kind | Maps to | Rule |",

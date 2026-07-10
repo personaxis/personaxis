@@ -35,6 +35,9 @@ import {
   loadPersona,
   ensureState,
   assemblePersonaDoc,
+  extractEnvelopes,
+  staticallyDecorative,
+  type PersonaFrontmatter,
   type SeedContribution,
   type StructuredCaller,
   type InterviewAnswers,
@@ -223,6 +226,30 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     gates.push({ name: "compile (stage-1)", pass: compiled.length > 0, detail: `${compiled.split("\n").length} lines` });
   } catch (e) {
     gates.push({ name: "compile (stage-1)", pass: false, detail: (e as Error).message });
+  }
+  // FASE 7 P1 hard gate (gap G1): no number leaves Genesis decorative. The
+  // synthesis pass guarantees band prose; sigma = 0 here means a pipeline bug,
+  // not a user error, exactly like valid-by-construction.
+  try {
+    const lookup = extractEnvelopes(result.spec as PersonaFrontmatter);
+    // Zero-width envelopes are immutable by geometry: excluded, nothing to express.
+    const decorative = Object.entries(lookup.envelopes)
+      .filter(([, e]) => e.max - e.min > 0 && staticallyDecorative(e))
+      .map(([f]) => f);
+    gates.push({
+      name: "load-bearing (jacobian)",
+      pass: decorative.length === 0,
+      detail: decorative.length === 0 ? "0 decorative coordinates" : `${decorative.length} decorative: ${decorative.slice(0, 4).join(", ")}`,
+    });
+    if (decorative.length > 0) {
+      console.error(chalk.red("✗ internal error:"), "Genesis produced decorative coordinates — nothing was written. Please report this.");
+      for (const f of decorative) console.error(`  ${chalk.red("✗")} ${f} (σ=0: value cannot change the compiled artifact)`);
+      process.exit(1);
+    }
+  } catch (e) {
+    gates.push({ name: "load-bearing (jacobian)", pass: false, detail: (e as Error).message });
+    console.error(chalk.red("✗ internal error:"), "load-bearing gate crashed — nothing was written.", (e as Error).message);
+    process.exit(1);
   }
   for (const n of llmNotes) gates.push({ name: "provider", pass: true, detail: n });
 
