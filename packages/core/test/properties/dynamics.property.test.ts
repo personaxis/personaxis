@@ -21,6 +21,10 @@ import {
   arbitrate,
   compareValues,
   rankValues,
+  toU,
+  bandOf,
+  bandBoundaries,
+  coordinateDrift,
   type ArbitrationValue,
   type Envelope,
   type MutationLogEntry,
@@ -102,6 +106,79 @@ describe("PB-T6 homeostasis", () => {
               expect(dev).toBeLessThanOrEqual(bound + transient + 1e-9);
             }
           }
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  }, PROP_TIMEOUT);
+
+  // PB-T2-decay (PA-1, FASE 7 foundations review): a decay step may exceed
+  // δ_max in raw magnitude, but it NEVER increases |u|. This is the fact that
+  // lets T2/T3 exempt homeostasis: decay cannot contribute adversarial movement.
+  it("PB-T2-decay: homeostatic steps never increase |u| and preserve the deviation's sign", () => {
+    fc.assert(
+      fc.property(
+        solidEnvelopeArb,
+        halfLifeArb,
+        fc.double({ min: 0.01, max: 1, noNaN: true }),
+        fc.boolean(),
+        (e, h, frac, up) => {
+          const env: Envelope = { ...e, halfLife: h };
+          const envs = { "affect.baseline.mood.tone": env };
+          const state = freshState();
+          const start = up ? e.mean + (e.max - e.mean) * frac : e.mean - (e.mean - e.min) * frac;
+          state.values["affect.baseline.mood.tone"] = start;
+          const uBefore = toU(start, env);
+          applyHomeostasis(state, envs);
+          const uAfter = toU(state.values["affect.baseline.mood.tone"], env);
+          expect(Math.abs(uAfter)).toBeLessThanOrEqual(Math.abs(uBefore) + 1e-9);
+          if (Math.abs(uAfter) > 1e-9) {
+            expect(Math.sign(uAfter)).toBe(Math.sign(uBefore));
+          }
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  }, PROP_TIMEOUT);
+
+  // PB-T3-decay (PA-1): with half_life ACTIVE, an adversarial (away-from-baseline)
+  // band crossing still costs at least ceil(D/δ_max) gate steps; decay only opposes
+  // the move. The report marks the exact exits where decay CAN help (recovery on a
+  // half_life coordinate) as decayAssisted.
+  it("PB-T3-decay: away-crossings respect the floor under active decay; decayAssisted marks recovery exits only", () => {
+    fc.assert(
+      fc.property(
+        solidEnvelopeArb.filter((e) => e.max - e.min > 1e-2),
+        halfLifeArb,
+        fc.double({ min: 0.02, max: 0.15, noNaN: true }),
+        (e, h, deltaMax) => {
+          const env: Envelope = { ...e, halfLife: h };
+          const envs = { "affect.baseline.mood.tone": env };
+          const [, b2] = bandBoundaries(env);
+          // Start at the mean; adversary pushes upward toward the high band.
+          const state = freshState();
+          state.values["affect.baseline.mood.tone"] = e.mean;
+          const startBand = bandOf(e.mean, env);
+          if (startBand === "high" || b2 >= e.max) return; // no upward crossing available
+          const floor = Math.ceil((b2 - e.mean) / deltaMax);
+          let gateSteps = 0;
+          for (let t = 0; t < floor + 40; t++) {
+            applyHomeostasis(state, envs);
+            applyMutation(state, envs, { field: "affect.baseline.mood.tone", delta: deltaMax, reason: "pb-t3-decay push" });
+            gateSteps++;
+            if (bandOf(state.values["affect.baseline.mood.tone"], env) === "high") break;
+          }
+          const crossed = bandOf(state.values["affect.baseline.mood.tone"], env) === "high";
+          if (crossed) {
+            expect(gateSteps).toBeGreaterThanOrEqual(floor);
+            // Once outside the baseline's band, the exit back is decay-reachable:
+            // the report must say so.
+            const d = coordinateDrift("affect.baseline.mood.tone", state.values["affect.baseline.mood.tone"], env, deltaMax);
+            expect(d.decayAssisted).toBe(true);
+          }
+          // At the baseline's own band the floor is certified: never decayAssisted.
+          const atMean = coordinateDrift("affect.baseline.mood.tone", e.mean, env, deltaMax);
+          expect(atMean.decayAssisted).toBe(false);
         },
       ),
       { numRuns: NUM_RUNS },

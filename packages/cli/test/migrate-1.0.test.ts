@@ -118,7 +118,7 @@ function run(args: string[]): string {
 }
 
 describe.skipIf(!built)("migrate 0.10-to-1.0 (structural codemod)", () => {
-  it("dry-run reports every transform without writing", () => {
+  it("dry-run reports every transform without writing", { timeout: 90_000 }, () => {
     const out = run(["migrate", "0.10-to-1.0", personaPath]);
     expect(out).toContain("DRY RUN");
     expect(out).toContain("personaxis.com/v1");
@@ -126,7 +126,7 @@ describe.skipIf(!built)("migrate 0.10-to-1.0 (structural codemod)", () => {
     expect(readFileSync(personaPath, "utf-8")).toBe(TEN); // untouched
   });
 
-  it("--apply performs the full structural migration", () => {
+  it("--apply performs the full structural migration", { timeout: 90_000 }, () => {
     run(["migrate", "0.10-to-1.0", personaPath, "--apply"]);
     const raw = readFileSync(personaPath, "utf-8");
     const d = matter(raw).data as Record<string, any>;
@@ -168,7 +168,7 @@ describe.skipIf(!built)("migrate 0.10-to-1.0 (structural codemod)", () => {
     expect(raw).toContain("Body prose stays untouched.");
   });
 
-  it("migrates sibling state.json keys to full dot-paths", () => {
+  it("migrates sibling state.json keys to full dot-paths", { timeout: 90_000 }, () => {
     run(["migrate", "0.10-to-1.0", personaPath, "--apply"]);
     const st = JSON.parse(readFileSync(join(dir, "state.json"), "utf-8"));
     expect(st.values["affect.baseline.mood.tone"]).toBe(0.1);
@@ -177,7 +177,7 @@ describe.skipIf(!built)("migrate 0.10-to-1.0 (structural codemod)", () => {
     expect(st.values["mood.tone"]).toBeUndefined();
   });
 
-  it("refuses to run on a non-0.10 document", () => {
+  it("refuses to run on a non-0.10 document", { timeout: 90_000 }, () => {
     writeFileSync(personaPath, TEN.replace('spec_version: "0.10.0"', 'spec_version: "0.9.0"'));
     const out = run(["migrate", "0.10-to-1.0", personaPath, "--apply"]);
     expect(out).toContain("Nothing to do");

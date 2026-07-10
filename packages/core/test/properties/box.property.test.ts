@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { applyMutation } from "../../src/index.js";
+import { applyMutation, governMutations, type EnvelopeLookup } from "../../src/index.js";
 import { NUM_RUNS, envelopesArb, planArb, deltaArb, envelopeArb, freshState, PROP_TIMEOUT } from "./arbitraries.js";
 
 describe("PB-T1 invariance: the box is inescapable", () => {
@@ -104,6 +104,44 @@ describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
         const exceeded = requested < e.min || requested > e.max;
         expect(r.clamped).toBe(exceeded && r.to !== requested);
       }),
+      { numRuns: NUM_RUNS },
+    );
+  }, PROP_TIMEOUT);
+
+  // PB-T2-compose (PA-2, FASE 7 foundations review): k same-field proposals must
+  // NOT slip k·δ_max of net movement through the gate. The gate folds admitted
+  // deltas per field and re-bounds the net, so the tick applies at most one
+  // composed mutation per coordinate with |δ| ≤ δ_max.
+  it("PB-T2-compose: the gate folds same-field proposals; net admitted delta ≤ δ_max", () => {
+    fc.assert(
+      fc.property(
+        envelopeArb,
+        fc.array(deltaArb, { minLength: 2, maxLength: 6 }),
+        fc.double({ min: 0.01, max: 0.5, noNaN: true }),
+        (e, deltas, maxStep) => {
+          const lookup: EnvelopeLookup = {
+            envelopes: { "personality.traits.x": e },
+            hardEnforcedVirtues: [],
+          };
+          const decision = governMutations(
+            deltas.map((delta) => ({ field: "personality.traits.x", delta, reason: "pb-t2-compose" })),
+            lookup,
+            { mode: "autonomous", maxStepDelta: maxStep },
+          );
+          // One composed admission per field, net inside the cap.
+          expect(decision.admitted.length).toBeLessThanOrEqual(1);
+          for (const a of decision.admitted) {
+            expect(Math.abs(a.delta)).toBeLessThanOrEqual(maxStep + 1e-12);
+          }
+          // Applying the composed admission moves the state by at most δ_max (T2).
+          const state = freshState();
+          state.values["personality.traits.x"] = e.mean;
+          for (const a of decision.admitted) {
+            const r = applyMutation(state, lookup.envelopes, { ...a });
+            expect(Math.abs(r.to - r.from)).toBeLessThanOrEqual(maxStep + 1e-9);
+          }
+        },
+      ),
       { numRuns: NUM_RUNS },
     );
   }, PROP_TIMEOUT);

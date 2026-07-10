@@ -173,6 +173,22 @@ export function runRules(data: Record<string, unknown>): RuleResult {
           message: `'${field}' declares an envelope but no per-band expression — its value cannot change the compiled artifact (σ=0). Add expression {low, moderate, high} to make the number load-bearing (SPEC §L3).`,
         });
       }
+      // PA-7 (FASE 7 foundations review): bandBoundaries silently falls back to
+      // the defaults when a declared pair is unusable (low_max >= moderate_max).
+      // Silence hides authoring mistakes; say it.
+      if (
+        e.bands &&
+        typeof e.bands.low_max === "number" &&
+        typeof e.bands.moderate_max === "number" &&
+        e.bands.low_max >= e.bands.moderate_max
+      ) {
+        findings.push({
+          rule: "bands-unusable",
+          severity: "warning",
+          path: field,
+          message: `'${field}' declares bands with low_max (${e.bands.low_max}) >= moderate_max (${e.bands.moderate_max}); the runtime ignores the pair and falls back to the defaults. Fix the boundaries so low_max < moderate_max.`,
+        });
+      }
     }
   } catch {
     // envelope extraction must never crash the linter on malformed frontmatter

@@ -56,9 +56,18 @@ describe("PB gate: policy invariants of governMutations", () => {
       fc.property(scenarioArb, ({ lookup, proposals, mode, maxStepDelta, humanDirected }) => {
         const d = governMutations(proposals, lookup, { mode, maxStepDelta, humanDirected });
 
-        // Conservation: one verdict per proposal; admitted+rejected partition them.
+        // Conservation: one verdict per proposal. PA-2 composed the admitted side
+        // per FIELD (one net entry per coordinate), so admissions count fields,
+        // rejections count proposals. Human-directed batches keep 1:1 semantics.
         expect(d.verdicts).toHaveLength(proposals.length);
-        expect(d.admitted.length + d.rejected.length).toBe(proposals.length);
+        expect(d.rejected.length).toBe(d.verdicts.filter((v) => !v.admitted).length);
+        const admittedVerdictFields = new Set(d.verdicts.filter((v) => v.admitted).map((v) => v.field));
+        if (humanDirected) {
+          expect(d.admitted.length).toBe(d.verdicts.filter((v) => v.admitted).length);
+        } else {
+          expect(new Set(d.admitted.map((a) => a.field))).toEqual(admittedVerdictFields);
+          expect(d.admitted.length).toBe(admittedVerdictFields.size);
+        }
 
         for (const a of d.admitted) {
           // Only real envelope fields are ever admitted…

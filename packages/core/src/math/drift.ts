@@ -25,9 +25,17 @@ export interface CoordinateDrift {
   band: Band;
   /** Raw distance to the nearest band boundary (0 when sitting on one). */
   toNextBoundary: number;
-  /** T3 live: ⌈distance/δ_max⌉ — minimum audited steps before a band crossing.
-   *  Infinity when the coordinate backs a hard-enforced virtue (gate-immutable). */
+  /** T3 live: ⌈distance/δ_max⌉, the minimum GATE-ADMITTED audited steps before this
+   *  coordinate can cross its next band boundary. Infinity when the coordinate
+   *  backs a hard-enforced virtue (gate-immutable). Certified floor for every
+   *  crossing that increases |u| (the adversarial direction); when the exit
+   *  boundary lies toward the baseline AND the coordinate declares half_life,
+   *  audited homeostatic decay can reach it in fewer steps: `decayAssisted`. */
   minStepsToCross: number;
+  /** PA-1: true when the exit boundary is toward the baseline on a half_life
+   *  coordinate, so the T3 floor does not bound that (recovery) crossing. Decay
+   *  steps are still audited runtime-decay entries; only the count floor lifts. */
+  decayAssisted: boolean;
   /** True when the coordinate backs a hard virtue — no runtime actor may move it. */
   protected: boolean;
   headroomUp: number;
@@ -80,6 +88,16 @@ export function coordinateDrift(
     : maxStepDelta > 0
       ? Math.max(1, Math.ceil(toNextBoundary / maxStepDelta))
       : Infinity;
+  // PA-1 direction check: when the value's band no longer contains the baseline,
+  // the only exit boundary points back toward the mean; homeostatic decay (if
+  // declared) crosses it in audited steps that are exempt from the gate cap.
+  // When the band still contains the mean, either exit increases |u| and decay
+  // can only oppose the move, so the floor is certified.
+  const decayAssisted =
+    !isProtected &&
+    typeof e.halfLife === "number" &&
+    e.halfLife > 0 &&
+    bandOf(e.mean, e) !== band;
   return {
     field,
     value,
@@ -88,6 +106,7 @@ export function coordinateDrift(
     band,
     toNextBoundary,
     minStepsToCross,
+    decayAssisted,
     protected: isProtected,
     headroomUp: e.max - value,
     headroomDown: value - e.min,

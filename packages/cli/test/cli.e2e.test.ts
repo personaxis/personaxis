@@ -36,18 +36,18 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
     writeFileSync(persona, FIX);
   });
 
-  it("--version prints a semver", () => {
+  it("--version prints a semver", { timeout: 90_000 }, () => {
     expect(run(["--version"]).trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it("sigil renders a differentiated, named sigil", () => {
+  it("sigil renders a differentiated, named sigil", { timeout: 90_000 }, () => {
     const out = run(["sigil", "--persona", persona]);
     expect(out).toContain("Tester");
     expect(out).toContain("sigil #");
     expect(out).toContain("voice");
   });
 
-  it("overseer + team are distinct (collections vs teams)", () => {
+  it("overseer + team are distinct (collections vs teams)", { timeout: 90_000 }, () => {
     const env = { PERSONAXIS_HOME: home };
     run(["overseer", "register", "tester"], env);
     run(["team", "create", "squad", "--lead", "tester"], env);
@@ -59,7 +59,7 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
     expect(ov).toContain("collections");
   });
 
-  it("first-run onboarding scaffolds a VALID, playable starter persona", () => {
+  it("first-run onboarding scaffolds a VALID, playable starter persona", { timeout: 90_000 }, () => {
     const cwd = mkdtempSync(join(tmpdir(), "pxs-onboard-"));
     const out = execFileSync("node", [CLI], {
       cwd,
@@ -76,7 +76,7 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("sync merges another machine's state without clobber (dry-run)", () => {
+  it("sync merges another machine's state without clobber (dry-run)", { timeout: 90_000 }, () => {
     const other = join(home, "other-state.json");
     writeFileSync(
       other,

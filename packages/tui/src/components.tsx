@@ -144,11 +144,13 @@ export function CoordinateDetail(props: { frame: DashFrame; field: string }): Re
           <Text>
             {"  next band: "}
             {d.protected ? (
-              <Text color="magenta">immutable — backs a hard virtue; no runtime actor may move it (T3 = ∞)</Text>
+              <Text color="magenta">immutable: backs a hard virtue; no runtime actor may move it (T3 = ∞)</Text>
+            ) : d.decayAssisted ? (
+              <Text dimColor>recovery exit: homeostatic decay can cross it; every decay step is an audited runtime-decay entry (adversarial floor ≥{String(d.minStepsToCross)})</Text>
             ) : (
               <Text>
                 <Text bold>{String(d.minStepsToCross)}</Text>
-                <Text dimColor> audited step(s) minimum — every one a chained mutation_log entry (T3)</Text>
+                <Text dimColor> audited step(s) minimum: every one a chained mutation_log entry (T3)</Text>
               </Text>
             )}
           </Text>

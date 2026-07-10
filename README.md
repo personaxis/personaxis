@@ -9,7 +9,7 @@
 **The portable, governed, _proven_ persona layer that lives above every model.** Define an AI persona once — all 10 layers, not just a name and a vibe — in plain git-versionable files, run it unchanged on Claude, GPT, Gemini, or a local model, and get **mathematical guarantees** that it cannot drift outside what you declared:
 
 - **It can't escape.** Every mutable value lives in a declared envelope; no adversarial input sequence can leave it (theorem T1, verified against **2.3M generated adversarial cases, 0 counterexamples** — [`docs/GUARANTEES.md`](docs/GUARANTEES.md)).
-- **Change is forensic.** Crossing into different behavior costs a provable minimum of hash-chained audit entries (T3); history replays deterministically and tampering is located, not just detected (T4/T5).
+- **Change is forensic.** Pushing behavior away from its declared baseline costs a provable minimum of hash-chained audit entries (T3); history replays deterministically and tampering is located, not just detected (T4/T5).
 - **Created from anything, grounded in evidence.** `personaxis create` builds a valid-by-construction persona from an interview, a prompt, your repo, a character card, or transcripts — with a creation report giving the provenance of every number.
 
 Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md); guarantees: [`docs/GUARANTEES.md`](docs/GUARANTEES.md); the formal core: [`docs/MATH_CORE.md`](docs/MATH_CORE.md); guides: [`docs/guides/`](docs/guides/).

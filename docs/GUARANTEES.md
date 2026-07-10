@@ -15,8 +15,8 @@ runtime with mathematical guarantees:
 | Guarantee | What it means for you | The math behind it |
 |---|---|---|
 | **It cannot leave its declared self** | No user pressure, prompt injection, or runaway loop can push any personality/affect coordinate outside the range you declared. Ever. | T1 invariance: state is confined to a compact box by construction |
-| **It cannot change fast** | Every autonomous change is capped per step. A sudden personality shift is mathematically impossible. | T2: ‖ΔS‖ ≤ max_step_delta |
-| **Behavior change is never silent** | Crossing into different behavior costs a provable minimum number of audit entries — each attributable, each hash-chained. Forensic by design. | T3: ≥ ⌈distance/δ_max⌉ chained entries per band crossing |
+| **It cannot change fast** | Autonomous change is capped per step, and the gate re-bounds the net even when many proposals target one coordinate. Homeostatic recovery is exempt because it can only move a value back toward its declared baseline. | T2: gate-admitted ‖ΔS‖ ≤ max_step_delta per tick |
+| **Behavior change is never silent** | Pushing behavior away from its declared baseline costs a provable minimum number of audit entries, each attributable, each hash-chained. Recovery toward baseline can also happen through decay, and every decay step is audited too. | T3: ≥ ⌈distance/δ_max⌉ chained entries per adversarial band crossing |
 | **History cannot be faked** | State replays deterministically from its audit log; a forged value or a tampered memory is detected and located. | T4 replay + T5 ledger integrity (with GDPR-grade real erasure) |
 | **It comes back to itself** | Optional homeostasis: displaced traits decay back to baseline; sustained pressure yields bounded, computable standing drift. | T6 input-to-state stability: drift ≤ δ_max/λ |
 | **Conflicts resolve predictably** | Value conflicts resolve by a deterministic, explainable order — and safety wins every conflict with a task value, as a theorem, not a promise. | Arbitration total order; U7 derivable from U6 |

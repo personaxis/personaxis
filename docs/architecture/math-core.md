@@ -9,7 +9,7 @@
 |---|---|---|
 | `uspace.ts` | `toU/fromU` (Def. 4 — the meaning of every value), `projectValue/project` (Π_B), `rho` metric | drift, dash gauges, proof |
 | `bands.ts` | `bandOf/bandCrossing/bandBoundaries` (Def. 6; declared `{low_max, moderate_max}` or defaults 0.33/0.66 · signed −0.33/+0.33), `bandRepresentatives`, `expressionFor` | compile stage-1, loop recompile trigger, jacobian |
-| `drift.ts` | `driftReport` (per-coordinate u/band/headroom + **T3 live** `minStepsToCross`, ∞ for protected), `layerDrift` vs `governance.drift_thresholds` | `state drift`, `/drift`, dash, loop `drift` event |
+| `drift.ts` | `driftReport` (per-coordinate u/band/headroom + **T3 live** `minStepsToCross`, ∞ for protected, `decayAssisted` for recovery exits on `half_life` coordinates), `layerDrift` vs `governance.drift_thresholds` | `state drift`, `/drift`, dash, loop `drift` event |
 | `homeostasis.ts` | `decayRate` (λ = 1−2^(−1/h)), `applyHomeostasis` (audited `runtime-decay`) — T6 | loop tick (pre-gate) |
 | `arbitration.ts` | the total order (governance ≻ weight ≻ name), `arbitrate` with trace, `rankValues` — A1/A2 | `arbitrate`, `/arbitrate`, `.dist/` RUNTIME slice |
 | `jacobian.ts` | `jacobianCompile` (σ exact via band representatives + line-edit distance), `staticallyDecorative` | `jacobian`, `decorative-number` lint |

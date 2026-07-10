@@ -152,7 +152,9 @@ export const COMMANDS: CommandDef[] = [
             `${chalk.bold(c.band.padEnd(8))}` +
             (c.protected
               ? chalk.magenta(" immutable")
-              : chalk.dim(` ≥${c.minStepsToCross} step(s) to cross`)),
+              : c.decayAssisted
+                ? chalk.dim(" recovery exit (decay-assisted, audited)")
+                : chalk.dim(` ≥${c.minStepsToCross} step(s) to cross`)),
         );
       }
       for (const l of report.layers) {

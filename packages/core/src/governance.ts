@@ -65,9 +65,36 @@ export function governMutations(
     verdicts.push(v);
   }
 
-  const admitted = verdicts
-    .filter((v) => v.admitted)
-    .map((v) => ({ field: v.field, delta: v.delta, reason: v.reason }));
+  // PA-2 (FASE 7 foundations review): compose admitted deltas PER FIELD and
+  // re-bound the net to delta_max. T2 promises gate-admitted movement per
+  // coordinate per tick <= delta_max; without this fold, k same-field proposals
+  // each within the cap slip k*delta_max of net movement through the gate. One
+  // composed mutation per field also makes Def. 8's "at most one mutation per
+  // coordinate per lock-held write" true by construction. Human-directed
+  // batches keep per-proposal semantics (the cap does not apply to them).
+  let admitted: ProposedMutation[];
+  if (cfg.humanDirected) {
+    admitted = verdicts
+      .filter((v) => v.admitted)
+      .map((v) => ({ field: v.field, delta: v.delta, reason: v.reason }));
+  } else {
+    const byField = new Map<string, { delta: number; reasons: string[] }>();
+    for (const v of verdicts) {
+      if (!v.admitted) continue;
+      const slot = byField.get(v.field) ?? { delta: 0, reasons: [] };
+      slot.delta += v.delta;
+      slot.reasons.push(v.reason);
+      byField.set(v.field, slot);
+    }
+    admitted = [...byField.entries()].map(([field, slot]) => {
+      const net = Math.max(-cfg.maxStepDelta, Math.min(cfg.maxStepDelta, slot.delta));
+      const note =
+        slot.reasons.length > 1
+          ? ` (composed from ${slot.reasons.length} proposals${net !== slot.delta ? `; net drift-bounded from ${slot.delta.toFixed(4)}` : ""})`
+          : "";
+      return { field, delta: net, reason: slot.reasons[0] + note };
+    });
+  }
   const rejected = verdicts.filter((v) => !v.admitted);
   return { verdicts, admitted, rejected };
 }

@@ -35,10 +35,13 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("FR.4 shell-out hooks", () => {
   it("exit 0 = ok; exit 2 = BLOCK; other exit = warn (never blocks)", async () => {
+    // Generous per-hook timeout: under full-suite load a node spawn on Windows
+    // can exceed the 5 s default, which would turn the expected block into a
+    // timeout-warn and make this test flaky (PA infra fix, FASE 7).
     const config: HooksConfig = {
       hooks: {
         PreToolUse: [
-          { hooks: [{ type: "command", command: `node -e "process.exit(0)"` }] },
+          { hooks: [{ type: "command", command: `node -e "process.exit(0)"`, timeout: 30_000 }] },
         ],
       },
     };
@@ -53,7 +56,7 @@ describe("FR.4 shell-out hooks", () => {
     const warned = await runHooks("PreToolUse", { tool: "x" }, config, "x");
     expect(warned.blocked).toBe(false);
     expect(warned.outcomes[0].result).toBe("warn");
-  });
+  }, 90_000);
 
   it("receives the payload as JSON on stdin and may answer with a JSON decision", async () => {
     // The hook blocks IFF the tool named on stdin is `run_command`.
@@ -63,20 +66,20 @@ describe("FR.4 shell-out hooks", () => {
       "console.log(JSON.stringify({decision:p.tool==='run_command'?'block':'ok',seen:p.hook_event}));" +
       "});";
     const config: HooksConfig = {
-      hooks: { PreToolUse: [{ hooks: [{ type: "command", command: `node -e "${script}"` }] }] },
+      hooks: { PreToolUse: [{ hooks: [{ type: "command", command: `node -e "${script}"`, timeout: 30_000 }] }] },
     };
     const blocked = await runHooks("PreToolUse", { tool: "run_command" }, config, "run_command");
     expect(blocked.blocked).toBe(true);
     expect(blocked.outcomes[0].decision?.seen).toBe("PreToolUse");
     const ok = await runHooks("PreToolUse", { tool: "read_file" }, config, "read_file");
     expect(ok.blocked).toBe(false);
-  });
+  }, 90_000);
 
   it("matcher scopes a group to specific tools; timeout fails OPEN to warn", async () => {
     const config: HooksConfig = {
       hooks: {
         PreToolUse: [
-          { matcher: "^write_", hooks: [{ type: "command", command: `node -e "process.exit(2)"` }] },
+          { matcher: "^write_", hooks: [{ type: "command", command: `node -e "process.exit(2)"`, timeout: 30_000 }] },
         ],
       },
     };

@@ -322,7 +322,9 @@ const driftSubcommand = new Command("drift")
         const dir = c.u > 0 ? "+" : c.u < 0 ? "−" : " ";
         const cost = c.protected
           ? chalk.magenta("immutable (backs a hard virtue)")
-          : chalk.dim(`≥${c.minStepsToCross} audited step(s) to cross`);
+          : c.decayAssisted
+            ? chalk.dim(`recovery exit: decay-assisted, every step audited (adversarial floor ≥${c.minStepsToCross})`)
+            : chalk.dim(`≥${c.minStepsToCross} audited step(s) to cross`);
         console.log(
           `  ${chalk.cyan(c.field.padEnd(38))} ${c.value.toFixed(3)}  ` +
             `u ${dir}${Math.abs(c.u).toFixed(2)}  band ${chalk.bold(c.band.padEnd(8))} ` +

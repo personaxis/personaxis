@@ -71,12 +71,14 @@ describe("llm_judge + rubric gates (mocked judge)", () => {
 });
 
 describe("command gate (real exit code)", () => {
+  // Two real node spawns; under full-suite load they exceed vitest's 5 s
+  // default on Windows (PA infra fix, FASE 7). Gate timeouts are already 15 s.
   it("passes on exit 0, fails on exit 1", async () => {
-    const pass = { ...base, gates: [{ type: "command" as const, run: "node -e \"process.exit(0)\"", timeout_ms: 15000 }] };
-    const fail = { ...base, gates: [{ type: "command" as const, run: "node -e \"process.exit(1)\"", timeout_ms: 15000 }] };
+    const pass = { ...base, gates: [{ type: "command" as const, run: "node -e \"process.exit(0)\"", timeout_ms: 30000 }] };
+    const fail = { ...base, gates: [{ type: "command" as const, run: "node -e \"process.exit(1)\"", timeout_ms: 30000 }] };
     expect((await runVerification(pass, ctx("x"), { policy: { ...DEFAULT_POLICY, sandbox: "danger-full-access" } })).passed).toBe(true);
     expect((await runVerification(fail, ctx("x"), { policy: { ...DEFAULT_POLICY, sandbox: "danger-full-access" } })).passed).toBe(false);
-  });
+  }, 90_000);
 });
 
 describe("quorum + readers", () => {
