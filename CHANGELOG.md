@@ -6,9 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
-### Fixed — foundations review (PA)
+### Docs: reproducibility map + house-style sweep (P4)
+- **New `docs/paper/REPRODUCIBILITY.md`**: one row per number in the paper, each mapping
+  claim to the committed artifact and the exact command that regenerates it (E3 property
+  suite, E4 bench, conformance, PB-G seeds, the P3 single-model runs, RQ3, proof). It also
+  states what is still missing (the multi-model headline) and why (the H2 bar needs >= 2
+  models with independent judges). The paper links to it, and so does the marketing post.
+- **House-style pass** applied to the public-facing surfaces this phase touches: the paper,
+  `GUARANTEES.md`, `README.md`, `MATH_CORE.md`, `RESEARCH.md`, and the site post are now
+  free of the em dash and the common machine-writing tics (no meaning changed, no number
+  moved). Historical CHANGELOG and checklist entries from earlier phases keep their original
+  text as append-only records; only this phase's own new entries follow the new style.
+
+### Fixed: foundations review (PA)
 - **T2/T3 restated directionally** (MATH_CORE, SPEC §15, the paper, GUARANTEES): the
   delta_max step cap and the ceil(D/delta_max) evidence floor certify movement that increases
   |u| (the adversarial direction). Homeostatic decay is exempt by design: it can only reduce
@@ -23,7 +35,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   RESEARCH source-fidelity corrections recorded as preregistration amendments; the paper's
   E4 margin corrected from "~10x" to the measured 8x.
 
-### Added — first real-model runs of the behavioral program (P3)
+### Added: first real-model runs of the behavioral program (P3)
 - **E1/E2/E5 recorded against a real model** (`command-a-03-2025`, single-model, labeled as
   such in every artifact): direction favors personaxis on E1/E2 means (9.83 vs 9.00; 9.67
   vs 9.08) and Genesis separates sharply from card-style on E5 (8.25 vs 5.42), but no
@@ -44,7 +56,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   network faults (prompts, probes, and scoring stay frozen). API keys live only in
   environment variables at run time; results record model and date, never credentials.
 
-### Fixed — bugs the gates caught during the real runs (P3)
+### Fixed: bugs the gates caught during the real runs (P3)
 - `persona.voice.verbosity` could leave the spec enum when an extraction used
   terse/expansive vocabulary: `sanitizeVerbosity` in the spec builder maps synonyms onto
   `adaptive | concise | detailed`, and the extractor's schema now asks for the spec enum
@@ -54,7 +66,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   envelopes as points (nothing to cross, by design) and the new exported `canCross`
   predicate is what the create gate and PB-G2 use.
 
-### Added — the app breathes the math (P0+P2)
+### Added: the app breathes the math (P0+P2)
 - **The loop's events now carry the physics** (gap G5): `drift` ships the full DriftReport
   the loop already computed (no surface re-reads disk to paint), and `recompile` on a band
   crossing ships structured details (field, fromBand, toBand, the new band's prose).
@@ -72,7 +84,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Two doors, one engine: CLI subcommands stay the scriptable surface (ADR'd in the
   checklist); everything is reachable inside the app.
 
-### Added — every number is born load-bearing (P1)
+### Added: every number is born load-bearing (P1)
 - **Deterministic band-prose synthesis** (`genesis/expression-synth.ts`): every trait and
   affect coordinate Genesis emits now carries three distinct behavioral lines, one per band,
   from a versioned BFI/HEXACO construct table (generic fallback for invented trait names).
@@ -99,7 +111,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   from live state). The validator's coherence check caught and forced a fix where a hard
   virtue referenced a trait whose bands permitted the contradicting low band.
 
-### Changed — command and infrastructure review (PB)
+### Changed: command and infrastructure review (PB)
 - **Removed `use` and `templates`** (deprecated pre-v0.7 flow; `create` replaced it and
   `template list` covers authoring scaffolds). Docs and indexes updated.
 - **`list` rebuilt**: it read the v1.0-removed `metadata.display_name` from the compiled

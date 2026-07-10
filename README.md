@@ -1,22 +1,22 @@
 # @personaxis/persona.md
 
-> **Two ways to use this** — install the official release from npm, or run the newest code from a clone: see [Install & run](#install--run--two-paths).
+> **Two ways to use this**: install the official release from npm, or run the newest code from a clone: see [Install & run](#install--run-two-paths).
 
 [![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Spec](https://img.shields.io/badge/spec-1.1.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
 
-**The portable, governed, _proven_ persona layer that lives above every model.** Define an AI persona once — all 10 layers, not just a name and a vibe — in plain git-versionable files, run it unchanged on Claude, GPT, Gemini, or a local model, and get **mathematical guarantees** that it cannot drift outside what you declared:
+**The portable, governed, _proven_ persona layer that lives above every model.** Define an AI persona once (all 10 layers, not just a name and a vibe) in plain git-versionable files, run it unchanged on Claude, GPT, Gemini, or a local model, and get **mathematical guarantees** that it cannot drift outside what you declared:
 
-- **It can't escape.** Every mutable value lives in a declared envelope; no adversarial input sequence can leave it (theorem T1, verified against **2.3M generated adversarial cases, 0 counterexamples** — [`docs/GUARANTEES.md`](docs/GUARANTEES.md)).
+- **It can't escape.** Every mutable value lives in a declared envelope; no adversarial input sequence can leave it (theorem T1, verified against **2.3M generated adversarial cases, 0 counterexamples**: [`docs/GUARANTEES.md`](docs/GUARANTEES.md)).
 - **Change is forensic.** Pushing behavior away from its declared baseline costs a provable minimum of hash-chained audit entries (T3); history replays deterministically and tampering is located, not just detected (T4/T5).
-- **Created from anything, grounded in evidence.** `personaxis create` builds a valid-by-construction persona from an interview, a prompt, your repo, a character card, or transcripts — with a creation report giving the provenance of every number.
+- **Created from anything, grounded in evidence.** `personaxis create` builds a valid-by-construction persona from an interview, a prompt, your repo, a character card, or transcripts, with a creation report giving the provenance of every number.
 
 Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md); guarantees: [`docs/GUARANTEES.md`](docs/GUARANTEES.md); the formal core: [`docs/MATH_CORE.md`](docs/MATH_CORE.md); guides: [`docs/guides/`](docs/guides/).
 
 ---
 
-## Install & run — two paths
+## Install & run: two paths
 
 **Path 1 · Users (official releases, npm).** For using personaxis directly, no clone:
 
@@ -25,7 +25,7 @@ npm i -g @personaxis/persona.md
 personaxis proof --quick     # 60 s, offline: watch the guarantees hold before trusting them
 ```
 
-> The published version lags this repo until the next lockstep release (0.12.0) ships —
+> The published version lags this repo until the next lockstep release (0.12.0) ships;
 > `create`, `proof`, `state drift`, `jacobian`, and `arbitrate` need 0.12.0. Check with
 > `personaxis --version`; if npm still serves an older version, use Path 2 today.
 
@@ -46,7 +46,7 @@ automatically). Tests: `pnpm run test`. Without the link, every `personaxis <cmd
 
 ## Your first 10 minutes
 
-**1. Create a persona** (in any folder — your project, or an empty dir):
+**1. Create a persona** (in any folder: your project, or an empty dir):
 
 ```bash
 personaxis create dev-buddy --from-prompt "A blunt senior code reviewer. Never rubber-stamps;
@@ -54,14 +54,14 @@ praises only what earned it; explains the WHY of every rejection. Patient with j
 ```
 
 You get four files under `.personaxis/personas/dev-buddy/`: `personaxis.md` (the quantitative
-10-layer spec — **this is the persona**), `PERSONA.md` (the compiled document a model actually
+10-layer spec, **this is the persona**), `PERSONA.md` (the compiled document a model actually
 reads), `state.json` (its mutable runtime state), and `creation-report.md` (**read this one**:
 it shows which sentence of your brief produced each number, and labels every default it had to
 assume). No brief? Run `personaxis create dev-buddy` with no flags for the psychometric
 interview, or `--from-project` to infer a persona from your repo, or `--from-import card.png`
 to upgrade a character card.
 
-**2. Talk to it** — the REPL is the app:
+**2. Talk to it**: the REPL is the app:
 
 ```bash
 personaxis --persona .personaxis/personas/dev-buddy/personaxis.md
@@ -103,16 +103,16 @@ audience) · [`docs/guides/creating-personas.md`](docs/guides/creating-personas.
 
 ## Living persona (what's actually running)
 
-Each REPL turn feeds a **governed Living Loop** — `observe → appraise → evolve → recompile →
-memory` — where every state change is **clamped to the persona's envelopes, audited in an
+Each REPL turn feeds a **governed Living Loop** (`observe → appraise → evolve → recompile →
+memory`) where every state change is **clamped to the persona's envelopes, audited in an
 immutable mutation log, and reversible**, and episodic memory is written to an **append-only
 hash chain** (tamper/poisoning-evident). Identity stays immutable; only `state.json` and
-memory evolve, within the spec's universal invariants. The model — any model — only
+memory evolve, within the spec's universal invariants. The model, any model, only
 *proposes*; the code and the spec *enforce*.
 
 This repo is a **pnpm monorepo** of eight lockstep packages (`@personaxis/spec`, `core`, `protocol`, `persona.md` [the CLI], `mcp`, `sdk`, `evals`, `tui`).
 
-**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — what personaxis is, the three-artifact model, the governed Living Loop, the security model, the full command reference, and the architecture. **📄 The paper:** [`docs/paper/bounded-persona-dynamics.md`](docs/paper/bounded-persona-dynamics.md) — *Bounded Persona Dynamics* (theorems, preregistered experiments, recorded results). `plan/` is the historical research dossier.
+**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md): what personaxis is, the three-artifact model, the governed Living Loop, the security model, the full command reference, and the architecture. **📄 The paper:** [`docs/paper/bounded-persona-dynamics.md`](docs/paper/bounded-persona-dynamics.md), *Bounded Persona Dynamics* (theorems, preregistered experiments, recorded results). `plan/` is the historical research dossier.
 
 ---
 
@@ -163,7 +163,7 @@ Requires Node.js 18+.
 | `template list\|show\|get` | Manage pedagogical templates |
 | `diff <before> <after>` | Compare two versions field by field |
 | `list` | List personas installed in this project |
-| `spec` | Print the v1.1.0 spec — useful for injecting into agent prompts |
+| `spec` | Print the v1.1.0 spec, useful for injecting into agent prompts |
 | **`state init`** | **v0.6:** Create `state.json` beside PERSONA.md, seeded from envelope means |
 | **`state mutate`** | **v0.6:** Adjust a current value (clamped to envelope, logged to mutation_log) |
 | **`state show`** | **v0.6:** Pretty-print current state, active context, and recent mutations |
@@ -173,20 +173,20 @@ Requires Node.js 18+.
 | **`skills list [--root\|<slug>]`** | **v0.7.0:** List `extensions.skills` entries and their materialization status (`materialized`, `missing-local`, `reference-only`) |
 | **`skills pull <name> [--root\|<slug>]`** | **v0.7.0:** Pull a `github:org/repo[/path]` skill entry into `skills/<name>/`, validate it against agentskills.io rules, and offer to rewrite the `extensions.skills` entry to `./skills/<name>` |
 | **`migrate 0.7-to-0.8`** | **v0.8.0:** Additive bump (no field changes); makes the new optional fields available |
-| **(no subcommand)** | **v0.8.0:** Enter the living **REPL** — talk to your persona; it replies and evolves via the governed Living Loop. First run scaffolds a valid starter persona |
+| **(no subcommand)** | **v0.8.0:** Enter the living **REPL**: talk to your persona; it replies and evolves via the governed Living Loop. First run scaffolds a valid starter persona |
 | **`sigil [--persona <p>]`** | **v0.8.0:** Render a persona's deterministic, state-aware ASCII sigil + envelope panel |
-| **`overseer show\|register\|collection`** | **v0.8.0:** The master view — all personas, projects, and **collections** (taxonomy) |
-| **`team create\|add\|goal\|show`** | **v0.8.0:** Operational multi-agent **teams** (roles + lead + shared goal) — distinct from collections |
+| **`overseer show\|register\|collection`** | **v0.8.0:** The master view: all personas, projects, and **collections** (taxonomy) |
+| **`team create\|add\|goal\|show`** | **v0.8.0:** Operational multi-agent **teams** (roles + lead + shared goal), distinct from collections |
 | **`orchestrate "<task>" [--team <name>] [--run]`** | **v0.8.0:** Route a task to the best-matching persona via the capability blackboard |
 | **`sync <other-state.json> --persona <p>`** | **v0.8.0:** Reconcile a portable persona's `state.json` across machines (no clobber) |
 | **`serve --persona <p>`** | **v0.8.0:** Serve a persona over HTTP + `agents.md` (low-context interop for any agent) |
-| **`edit <dot-path> <value>`** | **v1.0:** Surgical, governed single-leaf edit — re-validates and refuses any edit that would break a universal (`--force`, `--dry-run`) |
+| **`edit <dot-path> <value>`** | **v1.0:** Surgical, governed single-leaf edit; re-validates and refuses any edit that would break a universal (`--force`, `--dry-run`) |
 | **`state rebuild`** | **v1.0:** Replay the mutation_log to rebuild/repair `state.json` as a derived checkpoint (drift detection; `--write`) |
-| **`dash [--persona <p>]`** | **v1.0:** Live ASCII dashboard (Ink) — sigil, envelopes, and chain, reflecting evolution in real time |
+| **`dash [--persona <p>]`** | **v1.0:** Live ASCII dashboard (Ink): sigil, envelopes, and chain, reflecting evolution in real time |
 | **`migrate 0.10-to-1.0`** | **v1.0:** Codemod to the stable spec (layer-9 rename, `persona_prompting`→`persona`, refusal-surface fold, memory knobs→`runtime`, dot-path state keys) |
-| **`create [slug]`** | **v1.1:** Persona Genesis — interview / `--from-prompt` / `--from-project` / `--from-import` (cards V2/V3, system prompts) / `--from-transcript` → valid-by-construction spec + creation report with per-number provenance |
+| **`create [slug]`** | **v1.1:** Persona Genesis: interview / `--from-prompt` / `--from-project` / `--from-import` (cards V2/V3, system prompts) / `--from-transcript` → valid-by-construction spec + creation report with per-number provenance |
 | **`proof [--quick] [--auto]`** | **v1.1:** Watch the guarantees hold, offline: adversarial storm (0 escapes), certified band-crossing cost, tamper located, deterministic replay |
-| **`state drift`** | **v1.1:** Per-coordinate `u`/band/headroom + T3 evidence cost; layer `D` vs `governance.drift_thresholds` (exit 2 past tolerance — CI gate) |
+| **`state drift`** | **v1.1:** Per-coordinate `u`/band/headroom + T3 evidence cost; layer `D` vs `governance.drift_thresholds` (exit 2 past tolerance, the CI gate) |
 | **`jacobian`** | **v1.1:** Exact compile-sensitivity per coordinate (σ); flags provably decorative numbers (exit 2) |
 | **`arbitrate [a] [b]`** | **v1.1:** Deterministic value-conflict resolution with a trace (`governance` ≻ `weight` ≻ name; safety-beats-completion is a theorem) |
 
@@ -208,8 +208,8 @@ See [github.com/personaxis/persona.md](https://github.com/personaxis/persona.md)
 |---|---|---|---|
 | `claude-code` | `PERSONA.md` (+ `CLAUDE.md` baseline injection) | `.claude/agents/<slug>.md` | Local skills materialized to `.claude/skills/<name>/` |
 | `codex` | `PERSONA.md` (+ `AGENTS.md` baseline injection) | `.codex/agents/<slug>.toml` | Local skills materialized to `.agents/skills/<name>/` |
-| `cursor` | `.cursor/rules/persona.mdc` | — | Archived |
-| `soul-md` | `SOUL.md` | — | Archived |
+| `cursor` | `.cursor/rules/persona.mdc` | n/a | Archived |
+| `soul-md` | `SOUL.md` | n/a | Archived |
 
 Compile is LLM-based (via the configured provider). Edit `.personaxis/[personas/<slug>/]personaxis.md`, then recompile; do not edit `PERSONA.md`, `.claude/agents/`, `.codex/agents/`, or materialized skills directly (use `personaxis decompile` to fold hand-edits back into the spec).
 
