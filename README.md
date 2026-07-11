@@ -127,7 +127,7 @@ memory evolve, within the spec's universal invariants. The model, any model, onl
 
 This repo is a **pnpm monorepo** of eight lockstep packages (`@personaxis/spec`, `core`, `protocol`, `persona.md` [the CLI], `mcp`, `sdk`, `evals`, `tui`).
 
-**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md): what personaxis is, the three-artifact model, the governed Living Loop, the security model, the full command reference, and the architecture. **📄 The paper:** [`docs/paper/bounded-persona-dynamics.md`](docs/paper/bounded-persona-dynamics.md), *Bounded Persona Dynamics* (theorems, preregistered experiments, recorded results). `plan/` is the historical research dossier.
+**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md): what personaxis is, the three-artifact model, the governed Living Loop, the security model, and the architecture. **The full per-command reference** (every flag, exit code, and example) is [`docs/commands/`](docs/commands/README.md). **📄 The paper:** [`docs/paper/bounded-persona-dynamics.md`](docs/paper/bounded-persona-dynamics.md), *Bounded Persona Dynamics* (theorems, preregistered experiments, recorded results). `plan/` is the historical research dossier.
 
 ---
 
@@ -164,6 +164,9 @@ Requires Node.js 18+.
 ---
 
 ## Commands
+
+Highlights below. The canonical, complete reference (one page per command, with every flag and
+exit code) is [`docs/commands/`](docs/commands/README.md); this table is a curated subset.
 
 | Command | Description |
 |---|---|
