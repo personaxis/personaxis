@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Docs: FASE 7 surfaces documented + final audit (P5)
+- **Command and guide docs** now describe the FASE 7 surfaces: `create` and the persona
+  guides say the numbers are born load-bearing (Genesis synthesizes per-band prose and
+  half-lives; the jacobian gate enforces zero decoratives; hand-writing prose is tuning);
+  `repl`/`dash`/`drift` and the command index describe the full-height in-app views
+  (`/drift`, `/dash`, `/audit`), the full-screen suspensions (`/proof`, `/create`), the
+  live drift gauge, the persistent header, and the animated band-crossing moment.
+  `CLAUDE.md` gains the FASE 7 notes for core / cli / tui.
+- **Clio (the CLI's own golden persona) closes acceptance criterion 4**: it gains an
+  `affect.baseline.mood` block with per-band expression and `half_life: 2` on tone, so T6
+  homeostasis is observable on the house persona (validate PASS, jacobian 0 decoratives,
+  spec bumped to 1.1.0). Starter, init, CMO, and Clio now all carry mood half-life plus
+  banded trait prose.
+- **Final audit recorded** in `IMPLEMENTATION_CHECKLIST.md`: build clean across 8 packages;
+  tests spec 4/4, core 324/325 (the one red is a timing-sensitive hooks-timeout test that
+  passes in isolation, unrelated to this phase), protocol 4/4, sdk 10/10, mcp 11/11, evals
+  5/5, cli 86/86, tui 33/33; conformance 15/15; golden CMO PASS with 0 decoratives; spec
+  mirror byte-identical; em dash count 0 in every public and doc file touched.
+
 ### Docs: reproducibility map + house-style sweep (P4)
 - **New `docs/paper/REPRODUCIBILITY.md`**: one row per number in the paper, each mapping
   claim to the committed artifact and the exact command that regenerates it (E3 property
