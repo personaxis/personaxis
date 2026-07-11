@@ -1,5 +1,5 @@
 /**
- * PB-T4 — state.values is a deterministic fold of mutation_log (MATH_CORE.md §3).
+ * PB-T4, state.values is a deterministic fold of mutation_log (MATH_CORE.md §3).
  *
  *  - replaying the log reproduces the engine-produced values exactly (drift = ∅);
  *  - replay is deterministic (two runs, identical output);

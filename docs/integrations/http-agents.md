@@ -1,12 +1,12 @@
-# HTTP integration — `personaxis serve` for non-MCP agents
+# HTTP integration, `personaxis serve` for non-MCP agents
 
 Not every agent speaks MCP. `personaxis serve` exposes a living, governed persona over plain HTTP,
 plus a self-describing `agents.md` contract (the Hugging Face "Spaces as Agent Tools" pattern): any
 agent in any language can `curl /agents.md`, learn the endpoints, and drive the persona. It is the
-same governed engine as the REPL and the MCP server — every mutation is clamped and audited, every
+same governed engine as the REPL and the MCP server, every mutation is clamped and audited, every
 observation is prompt-injection scanned.
 
-This is a Modo 2 surface (persona runtime powering a product) — see
+This is a Mode 2 surface (persona runtime powering a product), see
 [../architecture/deployment.md](../architecture/deployment.md). Prefer embedding
 [`@personaxis/sdk`](../architecture/deployment.md) when your backend is Node/TS; use `serve` when you
 want a language-agnostic HTTP boundary or an out-of-process persona.
@@ -18,7 +18,7 @@ personaxis serve --persona <path-to-personaxis.md-or-PERSONA.md> [--port 7637]
 ```
 
 Default port is `7637`. `serve` resolves the persona's model through the normal
-[configuration](../configuration.md) precedence (`config.json` `local.endpoint`/`model` or
+[configuration](../guides/configuration.md) precedence (`config.json` `local.endpoint`/`model` or
 `PERSONAXIS_ENDPOINT` + `PERSONAXIS_MODEL`), **not** just env vars. When no model resolves,
 `/persona/observe` falls back to the deterministic heuristic appraiser; `/persona/agent` requires a
 configured tool-calling model and returns `400` without one.
@@ -87,7 +87,7 @@ Request:
 ```json
 { "field": "mood.tone", "delta": -0.1, "reason": "user expressed frustration" }
 ```
-`field` must be a known envelope field — otherwise `400` with the list of valid `fields`. `delta`
+`field` must be a known envelope field, otherwise `400` with the list of valid `fields`. `delta`
 must be a finite number. The delta is clamped to the field's declared envelope.
 
 Response:
@@ -119,7 +119,7 @@ a non-empty string.
 - Invalid JSON bodies return `400 { "error": "invalid JSON body" }`; unknown routes return `404`;
   unexpected errors return `500` with the message.
 - Untrusted observations are injection-scanned; malicious content does not steer evolution.
-- Identity is immutable over HTTP — only runtime state + memory evolve, within the universal invariants.
+- Identity is immutable over HTTP, only runtime state + memory evolve, within the universal invariants.
 
 ## When to use this vs. the alternatives
 

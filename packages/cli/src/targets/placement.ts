@@ -1,5 +1,5 @@
 /**
- * Placement adapter — thin CLI shim over the core target registry (F3.2).
+ * Placement adapter, thin CLI shim over the core target registry (F3.2).
  *
  * The pure placement logic (paths + content per host, SOUL.md, TOML) now lives
  * in `@personaxis/core` (`compile/targets.ts`) so the SaaS can place documents

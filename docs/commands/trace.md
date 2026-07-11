@@ -1,6 +1,6 @@
 # `personaxis trace`
 
-Inspect the causal trace of a persona's runtime — the JSONL/OTLP spans emitted by the Living
+Inspect the causal trace of a persona's runtime, the JSONL/OTLP spans emitted by the Living
 Loop and Agent Loop (observe → appraise → govern → mutate → memory; tool proposals/verdicts;
 verification gates).
 

@@ -35,7 +35,7 @@ function writeProject(cfg: unknown): void {
   writeFileSync(join(project, ".personaxis", "config.json"), JSON.stringify(cfg));
 }
 
-describe("resolveModel — layered precedence (env > frontmatter > persona > project > global)", () => {
+describe("resolveModel, layered precedence (env > frontmatter > persona > project > global)", () => {
   it("returns undefined when nothing is configured", () => {
     expect(resolveModel({ cwd: project })).toBeUndefined();
   });
@@ -72,7 +72,7 @@ describe("resolveModel — layered precedence (env > frontmatter > persona > pro
   });
 });
 
-describe("resolveModel — API key resolution (never required in a file)", () => {
+describe("resolveModel, API key resolution (never required in a file)", () => {
   it("reads the key from the env var named by apiKeyEnv (preferred)", () => {
     writeProject({ local: { endpoint: "https://p", model: "m", apiKeyEnv: "COHERE_API_KEY" } });
     process.env.COHERE_API_KEY = "secret-from-env";

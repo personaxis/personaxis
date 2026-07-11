@@ -1,12 +1,12 @@
 /**
- * Skill lifecycle governance (F6 — plan/06-skills; SkillsVote, Liu et al., 2026).
+ * Skill lifecycle governance (F6; SkillsVote, Liu et al., 2026).
  *
  * We don't author skills; we use them from external sources. Beyond the pre-use
  * security review (skill-review.ts), a skill must be *governed over its life*:
  *   - attribution: record each use + outcome (success/failure) -> success rate;
  *   - recommendation: rank candidates by security verdict, success rate, and
- *     capability match — never recommend an unreviewed/dangerous skill;
- *   - evolution: evidence-gated — a new version is promoted ONLY if it beats the
+ *     capability match, never recommend an unreviewed/dangerous skill;
+ *   - evolution: evidence-gated, a new version is promoted ONLY if it beats the
  *     incumbent on success rate over a minimum sample (revert-on-regression);
  *     persistently failing skills are deprecated.
  *

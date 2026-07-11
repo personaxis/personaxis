@@ -1,9 +1,9 @@
 /**
- * `personaxis serve` — expose a living persona over plain HTTP + agents.md (F5).
+ * `personaxis serve`, expose a living persona over plain HTTP + agents.md (F5).
  *
  * The low-context interop path (Hugging Face "Spaces as Agent Tools" pattern):
  * any agent that doesn't speak MCP can `curl /agents.md`, learn the endpoints,
- * and drive the persona over HTTP. Same governed engine as the REPL/MCP — every
+ * and drive the persona over HTTP. Same governed engine as the REPL/MCP, every
  * mutation clamped + audited, every observation injection-scanned.
  *
  *   GET  /agents.md            human/agent-readable tool contract
@@ -28,17 +28,17 @@ import {
 } from "@personaxis/core";
 import { Persona } from "@personaxis/sdk";
 
-const AGENTS_MD = (name: string) => `# ${name} — personaxis agent tools
+const AGENTS_MD = (name: string) => `# ${name}, personaxis agent tools
 
 This endpoint hosts a living, governed persona. All mutation is clamped to the
 persona's envelopes and appended to an immutable audit log.
 
 ## Endpoints
-- \`GET  /persona/state\` — current envelope values + recent mutations
-- \`GET  /persona/audit\` — mutation log + memory-chain integrity + anomalies
-- \`POST /persona/observe\` — body \`{ "observation": string, "source": "user|tool|internal|synthesis" }\`; runs one governed loop cycle
-- \`POST /persona/adjust\`  — body \`{ "field": string, "delta": number, "reason": string }\`; clamped, audited mutation
-- \`POST /persona/agent\`   — body \`{ "task": string }\`; runs the governed Agent Loop (sandbox-gated tool calls); needs a tool-calling model
+- \`GET  /persona/state\`, current envelope values + recent mutations
+- \`GET  /persona/audit\`, mutation log + memory-chain integrity + anomalies
+- \`POST /persona/observe\`, body \`{ "observation": string, "source": "user|tool|internal|synthesis" }\`; runs one governed loop cycle
+- \`POST /persona/adjust\`, body \`{ "field": string, "delta": number, "reason": string }\`; clamped, audited mutation
+- \`POST /persona/agent\`, body \`{ "task": string }\`; runs the governed Agent Loop (sandbox-gated tool calls); needs a tool-calling model
 
 ## Notes
 - Untrusted observations are prompt-injection scanned; malicious ones do not steer evolution.
@@ -132,7 +132,7 @@ interface ParsedBody {
 function readJson(req: IncomingMessage): Promise<ParsedBody> {
   return new Promise((resolveBody, rejectBody) => {
     let raw = "";
-    const MAX = 1_000_000; // 1 MB cap — refuse oversized bodies
+    const MAX = 1_000_000; // 1 MB cap, refuse oversized bodies
     req.on("data", (c) => {
       raw += c;
       if (raw.length > MAX) {
@@ -166,7 +166,7 @@ export const serveCommand = new Command("serve")
     const port = Number(opts.port) || 7637;
     server.on("error", (err: NodeJS.ErrnoException) => {
       const why = err.code === "EADDRINUSE" ? `port ${port} is already in use` : err.message;
-      console.error(chalk.red("Error:"), `could not start server — ${why}`);
+      console.error(chalk.red("Error:"), `could not start server, ${why}`);
       process.exit(1);
     });
     server.listen(port, () => {

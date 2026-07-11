@@ -1,13 +1,13 @@
 /**
- * FR.6 — background session writer + derived index.
+ * FR.6, background session writer + derived index.
  *
  * The Codex rollout-writer pattern: turns enter an in-memory queue and a single
  * background drain appends them IN ORDER; `flush()` acks when everything queued
  * so far is on disk, `shutdown()` drains and closes deterministically. A crash
- * between queue and drain loses at most the un-acked tail — and a caller that
+ * between queue and drain loses at most the un-acked tail, and a caller that
  * needs durability awaits `flush()` at the turn boundary.
  *
- * The index (`sessions/index.json`) is DERIVED — rebuildable at any time from
+ * The index (`sessions/index.json`) is DERIVED, rebuildable at any time from
  * the JSONL files (the source of truth). No SQLite (bun-compile forbids native
  * addons; persona = git-versionable plain files is a standing requirement).
  */
@@ -30,7 +30,7 @@ export class SessionWriter {
   private draining: Promise<void> = Promise.resolve();
   private closed = false;
   private readonly file: string;
-  /** The last turn's uuid — the next turn's parent by default (threading). */
+  /** The last turn's uuid, the next turn's parent by default (threading). */
   lastUuid: string | undefined;
 
   constructor(
@@ -85,7 +85,7 @@ export class SessionWriter {
     if (this.queue.length === 0) return;
     this.draining = this.draining.then(async () => {
       while (this.queue.length > 0) {
-        // Batch whatever accumulated — one append syscall per drain pass.
+        // Batch whatever accumulated, one append syscall per drain pass.
         const batch = this.queue.join("");
         this.queue = [];
         await appendFile(this.file, batch, "utf-8");
@@ -123,7 +123,7 @@ export function readSessionIndex(personaPath: string): SessionIndex {
     try {
       return JSON.parse(readFileSync(p, "utf-8")) as SessionIndex;
     } catch {
-      /* corrupt index — fall through to the source of truth */
+      /* corrupt index, fall through to the source of truth */
     }
   }
   const fresh: SessionIndex = { built: new Date().toISOString(), sessions: listSessions(personaPath) };

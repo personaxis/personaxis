@@ -1,5 +1,5 @@
 /**
- * Behavior bands — the spec's denotational semantics for envelope values
+ * Behavior bands, the spec's denotational semantics for envelope values
  * (MATH_CORE.md Def. 6; SPEC v1.0 §L3: `bands: [b1, b2]`, drift ≡ band crossing).
  *
  * A band names WHICH behavior expression the compiler injects; the band interval
@@ -7,7 +7,7 @@
  * expression variance; a crossing is the normative drift event (recompile trigger).
  *
  * Boundaries live on the RAW value axis (spec-faithful). When a coordinate
- * declares no `bands`, the spec defaults apply on the unit scale — for envelopes
+ * declares no `bands`, the spec defaults apply on the unit scale, for envelopes
  * not on [0,1] the defaults are mapped affinely onto [min, max].
  */
 
@@ -93,7 +93,7 @@ export function canCross(e: Envelope): boolean {
 }
 
 /** A representative value inside each band (interval midpoints, clamped to the
- *  envelope) — used by the persona Jacobian (J_compile) and by tests. */
+ *  envelope), used by the persona Jacobian (J_compile) and by tests. */
 export function bandRepresentatives(e: Envelope): Record<Band, number> {
   const [b1, b2] = bandBoundaries(e);
   const clamp = (x: number) => Math.max(e.min, Math.min(e.max, x));
@@ -105,7 +105,7 @@ export function bandRepresentatives(e: Envelope): Record<Band, number> {
 }
 
 /**
- * Select the expression prose for a value. Normative form: a per-band map — only
+ * Select the expression prose for a value. Normative form: a per-band map, only
  * the CURRENT band's prose is injected (deterministic compile, ADR-004). A plain
  * string applies regardless of band (accepted, deprecated). Returns null when the
  * coordinate declares no expression (a J_compile-zero "decorative" candidate).

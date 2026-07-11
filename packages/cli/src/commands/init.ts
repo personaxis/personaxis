@@ -43,7 +43,7 @@ identity:
   display_name: "${displayName}"
   short_name: "${displayName}"          # v0.10: chat/UI handle
   system_identity:
-    purpose: "Own the complete marketing function — from positioning and brand to content, growth, campaigns, and analytics."
+    purpose: "Own the complete marketing function, from positioning and brand to content, growth, campaigns, and analytics."
     allowed_domains:
       - positioning_and_icp
       - brand_voice
@@ -430,11 +430,11 @@ Most effective when given a defined ICP, a real product, and a measurable goal.
 
 ## Design Rationale
 
-**Values** — "Honesty over comfort" is the hardest value to hold when a founder is excited about a weak idea. Every other value follows from the commitment to be useful over the long term.
+**Values**, "Honesty over comfort" is the hardest value to hold when a founder is excited about a weak idea. Every other value follows from the commitment to be useful over the long term.
 
-**Personality model** — HEXACO instead of Big Five because honesty_humility as a separate dimension is load-bearing for a marketing advisor.
+**Personality model**, HEXACO instead of Big Five because honesty_humility as a separate dimension is load-bearing for a marketing advisor.
 
-**Drift monitor** — Specifically watches for increasing agreeableness over conversation length. This is the most common failure mode in advisory work.
+**Drift monitor**, Specifically watches for increasing agreeableness over conversation length. This is the most common failure mode in advisory work.
 
 ## Do's
 
@@ -451,8 +451,8 @@ Most effective when given a defined ICP, a real product, and a measurable goal.
 
 ## Resources
 
-- \`extensions.skills\` — Skill modules that can be injected at runtime.
-- \`extensions.knowledge_anchors\` — Brief list of key frameworks.
+- \`extensions.skills\`, Skill modules that can be injected at runtime.
+- \`extensions.knowledge_anchors\`, Brief list of key frameworks.
 `;
 }
 
@@ -1115,7 +1115,7 @@ runtime:
 
 Project-level behavioral baseline for ${projectName}.
 
-Any agent working in this project — regardless of its specific role — should embody the character, values, and limits defined here.
+Any agent working in this project, regardless of its specific role, should embody the character, values, and limits defined here.
 
 TODO: Add a brief description of what this project is and who the agents here serve.
 
@@ -1182,12 +1182,12 @@ function makeSimpleSlug(text: string): string {
 }
 
 const TEMPLATE_DISPLAY: Record<TemplateRole, string> = {
-  "marketing-guru": "Marketing Guru — full-stack marketing professional",
-  custom: "Custom — blank template with TODO markers",
+  "marketing-guru": "Marketing Guru, full-stack marketing professional",
+  custom: "Custom, blank template with TODO markers",
 };
 
 export const initCommand = new Command("init")
-  .description("Create a PERSONA.md — project baseline at root or named agent/user persona")
+  .description("Create a PERSONA.md, project baseline at root or named agent/user persona")
   .option("-f, --force", "Overwrite existing file")
   .option("--agent", "Create an agent persona instead of a project baseline")
   .option("--user", "Create a user persona (kind=UserPersona)")
@@ -1201,9 +1201,9 @@ export const initCommand = new Command("init")
       mode = (await select({
         message: "What do you want to create?",
         choices: [
-          { value: "baseline", name: "Project baseline — root PERSONA.md shared by all agents in this project" },
-          { value: "agent", name: "Agent persona — role-specific persona in .personaxis/personas/" },
-          { value: "user", name: "User persona — represent yourself (kind=UserPersona)" },
+          { value: "baseline", name: "Project baseline, root PERSONA.md shared by all agents in this project" },
+          { value: "agent", name: "Agent persona, role-specific persona in .personaxis/personas/" },
+          { value: "user", name: "User persona, represent yourself (kind=UserPersona)" },
         ],
       })) as "baseline" | "agent" | "user";
     }
@@ -1282,13 +1282,13 @@ export const initCommand = new Command("init")
     let nameWasProvided = false;
     if (template === "marketing-guru") {
       const nameInput = await input({
-        message: "Agent name — optional, press Enter to skip (e.g. Maven, Jordan):",
+        message: "Agent name, optional, press Enter to skip (e.g. Maven, Jordan):",
       });
       nameWasProvided = !!nameInput.trim();
       displayName = nameInput.trim() || "Maven";
     } else {
       const nameInput = await input({
-        message: "Agent name — optional, press Enter to skip:",
+        message: "Agent name, optional, press Enter to skip:",
       });
       nameWasProvided = !!nameInput.trim();
       displayName = nameInput.trim() || (customInputs?.role ?? template);

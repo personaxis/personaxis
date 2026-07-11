@@ -1,11 +1,11 @@
 /**
- * Persona service — the MCP boundary over the @personaxis/sdk façade (F3.5).
+ * Persona service, the MCP boundary over the @personaxis/sdk façade (F3.5).
  *
  * The engine operations (observe, adjust, audit, agent, forget, self-edits,
  * scans) live ONCE, in the SDK. This module is the MCP-specific wrapper: it
  * (1) CONFINES every persona/skill path to the server root (ADR-011), and
  * (2) adapts the SDK's typed results into the MCP tools' snake_case wire shapes.
- * It no longer re-implements the clamp/audit/loop/agent logic — that duplication
+ * It no longer re-implements the clamp/audit/loop/agent logic, that duplication
  * (the old service.ts ≈ sdk/index.ts) is gone.
  */
 
@@ -20,7 +20,7 @@ import { loadPersona, ensureState, extractEnvelopes, type ProvenanceSource } fro
 import { resolve as presolve, relative, isAbsolute } from "node:path";
 
 // ── Path confinement (ADR-011: --root) ──────────────────────────────────────
-// When a root is set (the stdio server ALWAYS sets one — the --root flag or its
+// When a root is set (the stdio server ALWAYS sets one, the --root flag or its
 // cwd default), every persona/skill path the MCP client supplies must resolve
 // inside it: an MCP client must not be able to read or mutate arbitrary
 // filesystem personas. Library/test embedders that call service functions

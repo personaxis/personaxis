@@ -1,5 +1,5 @@
 /**
- * F6.5 — shared HTTP hardening for every provider call.
+ * F6.5, shared HTTP hardening for every provider call.
  *
  * Before this, a hung endpoint hung the CLI forever, a 429 failed immediately,
  * and errors dropped the response body (the part that says WHY). One helper

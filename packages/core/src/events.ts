@@ -1,5 +1,5 @@
 /**
- * Submit/event bus — engine ⟂ UI separation (the Codex pattern).
+ * Submit/event bus, engine ⟂ UI separation (the Codex pattern).
  *
  * The engine never prints. It emits typed events; consumers (REPL, TUI, MCP,
  * HTTP) render them. This keeps one core reusable across every entry point.
@@ -41,7 +41,7 @@ export type LoopEvent =
   | { type: "abstain"; reason: string }
   | { type: "error"; message: string }
   | { type: "tick-complete"; mutationsApplied: number; memoriesWritten: number }
-  // Agent loop (G1) — governed task execution.
+  // Agent loop (G1), governed task execution.
   | { type: "agent-step"; step: number }
   | { type: "agent-think"; text: string }
   | { type: "tool-propose"; tool: string; args: Record<string, unknown> }

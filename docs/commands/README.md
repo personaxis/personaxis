@@ -21,7 +21,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`watch`](./watch.md) | Optional local daemon: recompile on hand-edits + a drift heartbeat (`--once` for cron/CI). |
 | [`hooks`](./hooks.md) | Install/remove a host's end-of-turn hook (claude-code/codex/openclaw/hermes) that feeds `observe`. |
 | [`onboard`](../integrations/README.md) | One command to wire a host: config check → compile → hook. |
-| [`config`](../configuration.md) | Set the model/endpoint/key (global or project, per-persona). |
+| [`config`](../guides/configuration.md) | Set the model/endpoint/key (global or project, per-persona). |
 | [`improve [mode]`](./improve.md) | View/set self-improvement posture (`locked` / `suggesting` / `autonomous`). |
 | `edit <dot-path> <value>` | Surgical governed single-leaf spec edit; re-validates and refuses any edit that would break a universal ([self-evolution](../architecture/self-evolution.md)). |
 | [`state`](./state.md) | init / show / mutate / rebuild `state.json` (envelope-clamped; hash-chained mutation_log). |

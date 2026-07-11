@@ -38,14 +38,14 @@ You talk to the **root** by default. To reach sub-personas, prefix the message:
 - `@all status?` → every sub-persona.
 
 Unknown `@tokens` (e.g. an email) are left in the message, never mis-routed. A reply comes
-**from the addressed persona** — its own name and its own fixed color — not ventriloquized by
+**from the addressed persona**: its own name and its own fixed color, not ventriloquized by
 the root. Each sub runs with its **own** spec, compiled `PERSONA.md`, `state.json`, memory,
 and self-improvement ledger; only the screen + the session context-meter are shared.
 
 > Why `@` and not a format that clashes with hosts: addressing is a CLI-level convenience.
 > When a persona is adopted by Claude Code / Codex, it is *compiled to that host's subagent
 > convention* (`.claude/agents/<slug>.md`, `.codex/agents/<slug>.toml`), so there is no
-> format collision — see [agent-adoption.md](./agent-adoption.md).
+> format collision, see [agent-adoption.md](./agent-adoption.md).
 
 ## Root awareness
 
@@ -72,7 +72,7 @@ Deny has the highest precedence in the policy engine (`evaluateCommand` /
 
 The root replies in the terminal's **default foreground** (white on dark, black on light).
 Each sub gets a **fixed, deterministic, non-repeating** ANSI-256 color (`colorForSlug`),
-derived from the slug hash with in-roster collision avoidance — so a persona looks the same
+derived from the slug hash with in-roster collision avoidance, so a persona looks the same
 every session and two personas never share a color.
 
 ## Verify it yourself

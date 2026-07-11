@@ -1,5 +1,5 @@
 /**
- * `personaxis migrate` — version-to-version codemods for PERSONA.md / policy.yaml.
+ * `personaxis migrate`, version-to-version codemods for PERSONA.md / policy.yaml.
  *
  * v0.6 ships with one path:
  *   personaxis migrate 0.5-to-0.6 ./PERSONA.md
@@ -146,7 +146,7 @@ function rewriteFrontmatter(yamlText: string, report: MigrationReport): string {
   }
 
   // 3. Detect context_modifiers (we don't try to merge into task_modes
-  //    automatically — that requires semantic understanding)
+  //    automatically, that requires semantic understanding)
   if (/^\s*context_modifiers:/m.test(next)) {
     report.manualFollowups.push(
       "Removed-or-pending: `personality.context_modifiers`. Re-express as entries in `persona.task_modes` where semantically equivalent, then delete the block.",
@@ -281,7 +281,7 @@ const fiveToSix = new Command("0.5-to-0.6")
       console.log(
         apply
           ? chalk.green.bold("Migration applied.")
-          : chalk.yellow.bold("DRY RUN — no files written. Add --apply to write changes."),
+          : chalk.yellow.bold("DRY RUN, no files written. Add --apply to write changes."),
       );
       console.log("");
       console.log(formatReport(report));
@@ -402,7 +402,7 @@ const sixToSeven = new Command("0.6-to-0.7")
       console.log(
         apply
           ? chalk.green.bold("Restructure applied.")
-          : chalk.yellow.bold("DRY RUN — no files written. Add --apply to write changes."),
+          : chalk.yellow.bold("DRY RUN, no files written. Add --apply to write changes."),
       );
       console.log("");
       console.log(formatRestructureReport(report));
@@ -423,10 +423,10 @@ const sixToSeven = new Command("0.6-to-0.7")
     }
   });
 
-// ─── 0.7-to-0.8 subcommand (additive — no field changes) ───────────────────
+// ─── 0.7-to-0.8 subcommand (additive, no field changes) ───────────────────
 
 const sevenToEight = new Command("0.7-to-0.8")
-  .description("Bump a persona from spec 0.7.0 to 0.8.0. Additive: no field changes — just updates spec_version. New OPTIONAL fields (identity.capabilities, governance.max_step_delta, permissions, mutation_log origin_node/session_id) become available.")
+  .description("Bump a persona from spec 0.7.0 to 0.8.0. Additive: no field changes, just updates spec_version. New OPTIONAL fields (identity.capabilities, governance.max_step_delta, permissions, mutation_log origin_node/session_id) become available.")
   .argument("[file]", "personaxis.md path (default: .personaxis/personaxis.md)", ".personaxis/personaxis.md")
   .option("--apply", "Write changes (default: dry-run; prints what would change)")
   .action((file: string, options: { apply?: boolean }) => {
@@ -443,7 +443,7 @@ const sevenToEight = new Command("0.7-to-0.8")
       }
       const after = before.replace(/spec_version:\s*["']?0\.7\.0["']?/, 'spec_version: "0.8.0"');
       console.log("");
-      console.log(options.apply ? chalk.green.bold("0.7.0 → 0.8.0 applied (additive).") : chalk.yellow.bold("DRY RUN — add --apply to write."));
+      console.log(options.apply ? chalk.green.bold("0.7.0 → 0.8.0 applied (additive).") : chalk.yellow.bold("DRY RUN, add --apply to write."));
       console.log(chalk.dim("  - spec_version: 0.7.0 → 0.8.0 (no field changes; v0.7 personas remain valid)"));
       console.log(chalk.dim("  - new optional fields now available: identity.capabilities, governance.max_step_delta,"));
       console.log(chalk.dim("    permissions, mutation_log.origin_node/session_id, episodic-memory entry schema"));
@@ -457,10 +457,10 @@ const sevenToEight = new Command("0.7-to-0.8")
     }
   });
 
-// ─── 0.8-to-0.9 subcommand (additive — no field changes) ───────────────────
+// ─── 0.8-to-0.9 subcommand (additive, no field changes) ───────────────────
 
 const eightToNine = new Command("0.8-to-0.9")
-  .description("Bump a persona from spec 0.8.0 to 0.9.0. Additive: no field changes — just updates spec_version. New OPTIONAL blocks (verification, agent_budget, observability, runtime_artifacts.agent_state_file) become available.")
+  .description("Bump a persona from spec 0.8.0 to 0.9.0. Additive: no field changes, just updates spec_version. New OPTIONAL blocks (verification, agent_budget, observability, runtime_artifacts.agent_state_file) become available.")
   .argument("[file]", "personaxis.md path (default: .personaxis/personaxis.md)", ".personaxis/personaxis.md")
   .option("--apply", "Write changes (default: dry-run; prints what would change)")
   .action((file: string, options: { apply?: boolean }) => {
@@ -477,7 +477,7 @@ const eightToNine = new Command("0.8-to-0.9")
       }
       const after = before.replace(/spec_version:\s*["']?0\.8\.0["']?/, 'spec_version: "0.9.0"');
       console.log("");
-      console.log(options.apply ? chalk.green.bold("0.8.0 → 0.9.0 applied (additive).") : chalk.yellow.bold("DRY RUN — add --apply to write."));
+      console.log(options.apply ? chalk.green.bold("0.8.0 → 0.9.0 applied (additive).") : chalk.yellow.bold("DRY RUN, add --apply to write."));
       console.log(chalk.dim("  - spec_version: 0.8.0 → 0.9.0 (no field changes; v0.8 personas remain valid)"));
       console.log(chalk.dim("  - new optional blocks now available: verification (objective gates),"));
       console.log(chalk.dim("    agent_budget (stop-conditions + caps), observability (tracing), runtime_artifacts.agent_state_file"));
@@ -491,10 +491,10 @@ const eightToNine = new Command("0.8-to-0.9")
     }
   });
 
-// ─── 0.9-to-0.10 subcommand (additive — no field changes) ──────────────────
+// ─── 0.9-to-0.10 subcommand (additive, no field changes) ──────────────────
 
 const nineToTen = new Command("0.9-to-0.10")
-  .description("Bump a persona from spec 0.9.0 to 0.10.0. Additive: no field changes — just updates spec_version. New OPTIONAL blocks (identity.short_name, improvement_policy.mode inline, persona_prompting) become available.")
+  .description("Bump a persona from spec 0.9.0 to 0.10.0. Additive: no field changes, just updates spec_version. New OPTIONAL blocks (identity.short_name, improvement_policy.mode inline, persona_prompting) become available.")
   .argument("[file]", "personaxis.md path (default: .personaxis/personaxis.md)", ".personaxis/personaxis.md")
   .option("--apply", "Write changes (default: dry-run; prints what would change)")
   .action((file: string, options: { apply?: boolean }) => {
@@ -511,7 +511,7 @@ const nineToTen = new Command("0.9-to-0.10")
       }
       const after = before.replace(/spec_version:\s*["']?0\.9\.0["']?/, 'spec_version: "0.10.0"');
       console.log("");
-      console.log(options.apply ? chalk.green.bold("0.9.0 → 0.10.0 applied (additive).") : chalk.yellow.bold("DRY RUN — add --apply to write."));
+      console.log(options.apply ? chalk.green.bold("0.9.0 → 0.10.0 applied (additive).") : chalk.yellow.bold("DRY RUN, add --apply to write."));
       console.log(chalk.dim("  - spec_version: 0.9.0 → 0.10.0 (no field changes; v0.9 personas remain valid)"));
       console.log(chalk.dim("  - new optional blocks now available: identity.short_name,"));
       console.log(chalk.dim("    improvement_policy.mode (inline), persona_prompting (voice/scene/anchors/guardrails)"));
@@ -526,7 +526,7 @@ const nineToTen = new Command("0.9-to-0.10")
     }
   });
 
-// ─── 0.10-to-1.0 subcommand (STRUCTURAL — comment-preserving codemod) ───────
+// ─── 0.10-to-1.0 subcommand (STRUCTURAL, comment-preserving codemod) ───────
 //
 // v1.0 is the first breaking release. The codemod rewrites the frontmatter
 // TEXTUALLY (never parse→re-serialize, so every author comment survives):
@@ -690,7 +690,7 @@ function migrateTenToOne(text: string, report: MigrationReport): string {
         );
       } else {
         report.manualFollowups.push(
-          "`principled_refusals` was removed but `character.prohibited_behaviors` was not found — re-add the items there manually.",
+          "`principled_refusals` was removed but `character.prohibited_behaviors` was not found, re-add the items there manually.",
         );
       }
     }
@@ -726,7 +726,7 @@ function migrateTenToOne(text: string, report: MigrationReport): string {
       );
     } else {
       report.manualFollowups.push(
-        "`persona_prompting` was removed but layer 10 `persona` was not found — re-add its material there manually.",
+        "`persona_prompting` was removed but layer 10 `persona` was not found, re-add its material there manually.",
       );
     }
     if (guardItems.length > 0) {
@@ -744,7 +744,7 @@ function migrateTenToOne(text: string, report: MigrationReport): string {
         );
       } else {
         report.manualFollowups.push(
-          "`break_character_guardrails` items could not be appended to `self_regulation.hard_limits` — add them manually.",
+          "`break_character_guardrails` items could not be appended to `self_regulation.hard_limits`, add them manually.",
         );
       }
     }
@@ -840,7 +840,7 @@ function migrateTenToOne(text: string, report: MigrationReport): string {
       `Wrapped ${wrapped} bare core_affect/mood scalar(s) into degenerate {mean, range} envelopes (v1.0 requires envelopes)`,
     );
     report.manualFollowups.push(
-      "Bare affect scalars were wrapped as {mean: v, range: [v, v]} — a degenerate envelope declares the field IMMUTABLE. Widen the ranges you want the runtime to be able to move.",
+      "Bare affect scalars were wrapped as {mean: v, range: [v, v]}, a degenerate envelope declares the field IMMUTABLE. Widen the ranges you want the runtime to be able to move.",
     );
   }
 
@@ -912,7 +912,7 @@ const tenToOneZero = new Command("0.10-to-1.0")
       console.log(
         apply
           ? chalk.green.bold("0.10.0 → 1.0.0 applied (structural).")
-          : chalk.yellow.bold("DRY RUN — no files written. Add --apply to write changes."),
+          : chalk.yellow.bold("DRY RUN, no files written. Add --apply to write changes."),
       );
       console.log("");
       console.log(formatReport(report).replace("0.5 → 0.6", "0.10 → 1.0"));

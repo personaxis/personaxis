@@ -1,12 +1,12 @@
 /**
- * Agent-config security scanner (v0.9 — the "Shield" wedge).
+ * Agent-config security scanner (v0.9, the "Shield" wedge).
  *
  * AI-agent config files (CLAUDE.md, AGENTS.md, .cursorrules, .codex/*.toml,
  * agents.json, personaxis.md) are an unattended attack surface: prompt injection
  * hidden in instructions/skill descriptions, over-broad permissions, and leaked
  * credentials. (AgentShield reports 520 of 17,022 audited skills leak creds.) This
- * scanner audits any of those, cross-harness, in three passes — red-team (find the
- * attack), blue-team (check the boundaries), auditor (leaks + structured report) —
+ * scanner audits any of those, cross-harness, in three passes, red-team (find the
+ * attack), blue-team (check the boundaries), auditor (leaks + structured report), 
  * reusing the engine's injection scanner. Pure + dependency-free; CLI exit codes.
  */
 
@@ -67,7 +67,7 @@ const DANGER_TOKENS: Array<{ rule: string; re: RegExp; message: string }> = [
   { rule: "perm:autorun", re: /auto[-_]?(approve|run|accept)\s*[:=]\s*(true|all|yes)/i, message: "auto-approves/auto-runs actions" },
 ];
 
-// ── Remote skill/source references (auditor — supply chain) ──────────────────
+// ── Remote skill/source references (auditor, supply chain) ──────────────────
 const REMOTE_SOURCE = /\b(github:[\w./-]+|https?:\/\/[^\s"')]+)/gi;
 
 function inject(findings: ScanFinding[], f: ScanFinding): void {
@@ -78,7 +78,7 @@ export function scanAgentConfig(text: string, kindHint?: ConfigKind): ConfigScan
   const kind = kindHint ?? "unknown";
   const findings: ScanFinding[] = [];
 
-  // RED TEAM — prompt injection in the config body / instructions / descriptions.
+  // RED TEAM, prompt injection in the config body / instructions / descriptions.
   const scan = scanForInjection(text);
   if (scan.verdict !== "clean") {
     inject(findings, {
@@ -93,7 +93,7 @@ export function scanAgentConfig(text: string, kindHint?: ConfigKind): ConfigScan
     inject(findings, { rule: "injection:override-phrase", severity: "warning", team: "red", message: "instruction-override phrase present", match: m[0].slice(0, 60) });
   }
 
-  // BLUE TEAM — permission posture.
+  // BLUE TEAM, permission posture.
   for (const d of DANGER_TOKENS) {
     const m = text.match(d.re);
     if (m) inject(findings, { rule: d.rule, severity: "error", team: "blue", message: d.message, match: m[0].slice(0, 60) });
@@ -117,18 +117,18 @@ export function scanAgentConfig(text: string, kindHint?: ConfigKind): ConfigScan
     }
   }
 
-  // AUDITOR — credential leaks.
+  // AUDITOR, credential leaks.
   for (const s of SECRET_PATTERNS) {
     for (const m of text.matchAll(s.re)) {
-      inject(findings, { rule: s.rule, severity: "error", team: "auditor", message: "looks like a hardcoded credential — never ship secrets in a config", match: m[0].slice(0, 8) + "…" });
+      inject(findings, { rule: s.rule, severity: "error", team: "auditor", message: "looks like a hardcoded credential, never ship secrets in a config", match: m[0].slice(0, 8) + "…" });
     }
   }
-  // AUDITOR — remote skill/source references to review (supply chain).
+  // AUDITOR, remote skill/source references to review (supply chain).
   const remotes = new Set<string>();
   for (const m of text.matchAll(REMOTE_SOURCE)) remotes.add(m[1]);
   for (const r of [...remotes].slice(0, 20)) {
     if (/skill|agent|prompt|tool/i.test(r) || r.startsWith("github:"))
-      inject(findings, { rule: "supply-chain:remote-source", severity: "info", team: "auditor", message: "external source — audit before trusting", match: r.slice(0, 60) });
+      inject(findings, { rule: "supply-chain:remote-source", severity: "info", team: "auditor", message: "external source, audit before trusting", match: r.slice(0, 60) });
   }
 
   // Score + verdict.

@@ -1,7 +1,7 @@
 /**
- * The single visual engine for personaxis (plan/09-ascii-ux).
+ * The single visual engine for personaxis.
  *
- * One place for ALL terminal visuals — the animated wordmark, a persona's
+ * One place for ALL terminal visuals, the animated wordmark, a persona's
  * "awakening", its themed + animated sigil, the live aura, per-event flourishes,
  * and voice-styled output. Everything is driven by the persona's PersonaTheme, so
  * each persona looks AND behaves differently in the terminal. Reused by both the
@@ -65,7 +65,7 @@ const EMBLEM = [
 export const LOGO = renderWordmark("personaxis");
 
 // Monochrome: the terminal's DEFAULT foreground (bold) adapts to light/dark themes
-// automatically — dark on a light terminal, light on a dark one. No color.
+// automatically, dark on a light terminal, light on a dark one. No color.
 const TAGLINE = chalk.dim("  the home of living, governed AI personas · ") + chalk.bold("/help");
 const word = (l: string): string => chalk.bold(l);
 
@@ -138,7 +138,7 @@ export function sigilLines(theme: PersonaTheme, values: Record<string, number>, 
   return sig.grid.map((row) => "     " + paintGlyphRow(theme, row));
 }
 
-/** The persona materializing — sparse → full over a few frames. */
+/** The persona materializing, sparse → full over a few frames. */
 export async function awaken(fm: PersonaFrontmatter, state: StateFile): Promise<void> {
   const theme = personaTheme(fm);
   const name = displayName(fm);
@@ -236,7 +236,7 @@ export function sparkline(series: number[], min: number, max: number, width = 32
     .join("");
 }
 
-/** Per-event flourish — themed glyphs + color, distinct per event kind. */
+/** Per-event flourish, themed glyphs + color, distinct per event kind. */
 export function eventLine(theme: PersonaTheme, e: LoopEvent): string | null {
   const p = (n: number) => chalk.ansi256(n);
   const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);

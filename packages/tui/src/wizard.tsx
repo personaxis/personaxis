@@ -1,5 +1,5 @@
 /**
- * Genesis interview wizard (F6.7b) — the Ink front-end over the PURE interview
+ * Genesis interview wizard (F6.7b), the Ink front-end over the PURE interview
  * engine (`@personaxis/core` genesis/interview.ts owns every answer→number
  * mapping; this file owns ONLY the keys and the pixels). The wow is honesty
  * made visible: every answer immediately shows the exact field and named rule
@@ -74,7 +74,7 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
       if (recorded !== undefined) answers[item.id] = recorded;
       const line: TrailLine =
         recorded === undefined
-          ? { id: item.id, text: `${item.construct} — skipped (no evidence, default will be labeled)`, skipped: true }
+          ? { id: item.id, text: `${item.construct}, skipped (no evidence, default will be labeled)`, skipped: true }
           : { id: item.id, text: `${item.construct} ← ${preview(item, sel) || String(recorded)}  · rule ${item.rule}`, skipped: false };
       setTrail((t) => [...t.slice(-4), line]);
     }
@@ -143,7 +143,7 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
     const answered = Object.keys(answers).length;
     return (
       <Box flexDirection="column" paddingLeft={1} paddingTop={1}>
-        <Text bold>◉ personaxis · Genesis interview — done</Text>
+        <Text bold>◉ personaxis · Genesis interview, done</Text>
         <Text>
           {"  "}
           <Text color="green">{String(answered)}</Text> answered · <Text dimColor>{String(props.items.length - answered)} skipped (skips become LABELED defaults in the creation report)</Text>

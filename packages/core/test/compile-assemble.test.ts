@@ -1,5 +1,5 @@
 /**
- * F3.1 — the deterministic assembler + the faithfulness gate.
+ * F3.1, the deterministic assembler + the faithfulness gate.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
@@ -20,12 +20,12 @@ function cmoInput(): AssembleInput {
   const persona = matter(readFileSync(CMO, "utf-8")).data as Record<string, unknown>;
   return {
     persona,
-    resourceManifest: "- `./.personaxis/memory.md` — semantic memory\n- `./.personaxis/references/` — playbooks",
+    resourceManifest: "- `./.personaxis/memory.md`, semantic memory\n- `./.personaxis/references/`, playbooks",
     target: { name: "Mira", isSubagent: false, resourceBase: "./.personaxis/" },
   };
 }
 
-describe("F3.1 assemblePersonaDoc — deterministic stage 1", () => {
+describe("F3.1 assemblePersonaDoc, deterministic stage 1", () => {
   it("is deterministic: same spec ⇒ byte-identical output", () => {
     const persona = { identity: { display_name: "X" }, self_regulation: { hard_limits: ["No claim of subjective consciousness."] } };
     const input: AssembleInput = { persona, target: { name: "X", isSubagent: false, resourceBase: "./.personaxis/" } };
@@ -81,7 +81,7 @@ describe("F3.1 assemblePersonaDoc — deterministic stage 1", () => {
   });
 });
 
-describe("F3.1 checkFaithfulness — deterministic stage-2 gate", () => {
+describe("F3.1 checkFaithfulness, deterministic stage-2 gate", () => {
   it("passes when the polish only REPHRASES protected claims", () => {
     const assembled = [
       "## Hard limits (never overridden)",

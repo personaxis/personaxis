@@ -1,20 +1,20 @@
 /**
- * The persona Jacobian — external sensitivity of behavior to state coordinates
+ * The persona Jacobian, external sensitivity of behavior to state coordinates
  * (MATH_CORE.md Defs. 10–11; the external analogue of the Jacobian-lens reading).
  *
  * J_compile (this module, exact + offline): the deterministic compile stage is a
  * STEP FUNCTION of each coordinate's band, so its sensitivity is computable
- * exactly — compile the persona at each reachable band's representative value and
+ * exactly, compile the persona at each reachable band's representative value and
  * measure the normalized distance between adjacent bands' artifacts. Distance is
  * line-level edit distance (the artifact is line-structured markdown; the band
  * stage swaps whole lines), normalized by the larger document's line count.
  *
  * σ_i = 0 means the coordinate is DECORATIVE: no value it can take changes the
- * compiled artifact — the audit's F-21 "numbers are decorative" made detectable
+ * compiled artifact, the audit's F-21 "numbers are decorative" made detectable
  * (and lintable). σ ranks which coordinates actually matter.
  *
  * J_behavior (Def. 11) is the probe-based estimator over a live model (BYOK); it
- * lives with the experiment harness (packages/evals, RQ3) — this module supplies
+ * lives with the experiment harness (packages/evals, RQ3), this module supplies
  * the band patches it uses.
  */
 
@@ -71,7 +71,7 @@ export function reachableBands(e: Envelope): Band[] {
 
 /**
  * Compute J_compile for every envelope coordinate. `compile` is the deterministic
- * artifact function (state values → compiled document) — the caller binds the
+ * artifact function (state values → compiled document), the caller binds the
  * assembler with the persona/target; this module owns only the mathematics.
  */
 export function jacobianCompile(args: {
@@ -113,7 +113,7 @@ export function jacobianCompile(args: {
 }
 
 /**
- * Static decorativeness check (no compile needed) — the lint's cheap variant.
+ * Static decorativeness check (no compile needed), the lint's cheap variant.
  * A coordinate provably cannot change the compiled artifact when it declares no
  * expression, a plain-string expression (band-independent), or a band map whose
  * REACHABLE bands all resolve to the same prose (missing variants fall back to

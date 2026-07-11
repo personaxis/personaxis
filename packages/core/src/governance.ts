@@ -1,5 +1,5 @@
 /**
- * Governance gate — the spec's safety boundary over autonomous evolution.
+ * Governance gate, the spec's safety boundary over autonomous evolution.
  *
  * The model's appraisal signal is a *proposal*. Before anything is applied, the
  * gate decides which proposed mutations are admissible. Clamping handles range;
@@ -27,7 +27,7 @@ export interface GovernanceConfig {
   /**
    * True when the mutation is a deliberate human action (`state mutate
    * --actor human-operator`), not autonomous evolution. Human-directed mutations
-   * bypass the mode lock and the drift bound — that is this gate's documented
+   * bypass the mode lock and the drift bound, that is this gate's documented
    * intent ("in locked mode, only human-directed mutations pass"). Envelope
    * membership and hard-virtue immutability still apply to EVERY actor.
    */
@@ -104,7 +104,7 @@ function judge(
   env: EnvelopeLookup,
   cfg: GovernanceConfig,
 ): Verdict {
-  // Accept either key form (short ≤0.10 / full-dot-path 1.0) — resolve onto the
+  // Accept either key form (short ≤0.10 / full-dot-path 1.0), resolve onto the
   // persona's canonical envelope key before judging.
   const field = resolveField(p.field, env.envelopes);
 
@@ -113,7 +113,7 @@ function judge(
     return { field, admitted: false, delta: 0, reason: `not a mutable envelope field` };
   }
 
-  // A trait backing a hard-enforced virtue is immutable at runtime — for every
+  // A trait backing a hard-enforced virtue is immutable at runtime, for every
   // actor, human included (change the spec, not the state, to move it).
   // v1.0: protectedFields carries the exact keys (incl. refs-derived ones);
   // legacy lookups without it fall back to the name-match rule.
@@ -153,11 +153,11 @@ function judge(
 /**
  * Govern a QUALITATIVE self-edit (prose) by improvement_policy.mode. This is a SEPARATE
  * layer from `judge` (which governs numeric envelope mutations): qualitative edits to the
- * spec's character material are higher-stakes, so the mode means something different here —
+ * spec's character material are higher-stakes, so the mode means something different here, 
  *   locked      → block (no proposal at all);
  *   suggesting  → queue the proposal for human review (/review), never auto-apply;
  *   autonomous  → auto-apply, still gated by consensus verifiers + the protected-path list.
- * (Envelope mutations remain reversible/clamped, so suggesting==autonomous for them — see
+ * (Envelope mutations remain reversible/clamped, so suggesting==autonomous for them, see
  * `judge`. Decoupling avoids weakening the numeric drift guard while making prose evolution
  * actually respect the posture.)
  */
@@ -192,7 +192,7 @@ function readPolicyMode(personaPath: string): ImprovementMode | undefined {
 /**
  * Read the improvement mode. v1.0 precedence (SPEC.md §7.2): the INLINE
  * `improvement_policy.mode` in personaxis.md is authoritative; when a
- * `personaPath` is given, the sibling policy.yaml may only RESTRICT it — the
+ * `personaPath` is given, the sibling policy.yaml may only RESTRICT it, the
  * more conservative of the two wins (min-wins). Inline absent → policy.yaml
  * governs; both absent → locked.
  */
@@ -216,7 +216,7 @@ export function readMaxStepDelta(frontmatter: Record<string, unknown>): number {
   return typeof v === "number" && v > 0 && v <= 1 ? v : DEFAULT_GOVERNANCE.maxStepDelta;
 }
 
-// ─── Agent-loop budget & stop conditions (v0.9 — spec `agent_budget`) ─────────
+// ─── Agent-loop budget & stop conditions (v0.9, spec `agent_budget`) ─────────
 //
 // The loop-engineering failure mode (Ralph-Wiggum / money-pit) is a loop with no
 // hard stop. These are first-class, declarative caps the agent checks every step.

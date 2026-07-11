@@ -76,4 +76,4 @@ memory/episodic.jsonl            hash-chained memory (tamper-evident)
 Next: [`creating-personas.md`](./creating-personas.md) (which `create` door for which
 input) · [`production.md`](./production.md) (deploy + CI gates + troubleshooting) ·
 deeper: `docs/HOW_IT_WORKS.md` · spec: `personaxis spec` · guarantees:
-`docs/GUARANTEES.md` · math: `docs/MATH_CORE.md`.
+`../GUARANTEES.md` · math: `../architecture/math-core.md`.

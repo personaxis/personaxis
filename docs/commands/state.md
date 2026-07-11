@@ -1,6 +1,6 @@
 # `personaxis state`
 
-Inspect and mutate the runtime `state.json` (mood/affect dials) — **envelope-clamped** to the
+Inspect and mutate the runtime `state.json` (mood/affect dials), **envelope-clamped** to the
 ranges declared in the spec. Distinct from self-evolution (which edits the spec under
 governance); state is operational and changes regardless of `improvement_policy.mode`.
 

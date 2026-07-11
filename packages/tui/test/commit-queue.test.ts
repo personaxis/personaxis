@@ -1,6 +1,6 @@
 /**
  * The newline-gated markdown commit queue (FR.3): committed lines must never
- * change again — so open fences and growing tables are HELD in the live
+ * change again, so open fences and growing tables are HELD in the live
  * region until provably complete.
  */
 import { describe, it, expect } from "vitest";
@@ -46,7 +46,7 @@ describe("CommitQueue", () => {
     const q2 = new CommitQueue();
     q2.push("```\nabierto\n");
     expect(q2.flush()).toEqual(["```", "abierto"]);
-    // After flush, fence state resets — the queue is reusable.
+    // After flush, fence state resets, the queue is reusable.
     expect(q2.push("normal\n")).toEqual(["normal"]);
   });
 });

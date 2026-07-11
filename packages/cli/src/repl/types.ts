@@ -2,7 +2,7 @@
  * Shared REPL types (F3.6 split).
  *
  * This module holds ONLY the cross-module contracts (the session `Ctx`, the
- * command shape, options) and imports nothing from other repl modules — so
+ * command shape, options) and imports nothing from other repl modules, so
  * config/render/daemons/commands/turn/index can all depend on it without a cycle.
  */
 

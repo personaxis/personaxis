@@ -1,7 +1,7 @@
 # `personaxis compile`
 
 Compile a `personaxis.md` (quantitative spec + layer-10 `persona` prompting source) into the
-LLM-facing **PERSONA.md** — a persona-prompting artifact (see
+LLM-facing **PERSONA.md**: a persona-prompting artifact (see
 [../architecture/compile.md](../architecture/compile.md) and
 [../architecture/self-evolution.md](../architecture/self-evolution.md)).
 

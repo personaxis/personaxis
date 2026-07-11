@@ -1,7 +1,7 @@
 /**
- * Persona sigil — a deterministic, per-persona visual identity.
+ * Persona sigil, a deterministic, per-persona visual identity.
  *
- * Requirement (plan/09-ascii-ux): showing a persona must be *differentiated per
+ * Requirement: showing a persona must be *differentiated per
  * persona*, never generic. We derive a stable seed from the persona's identity
  * (canonical_id / display_name) and shape parameters from its quantitative
  * layers (personality, affect, values), then render a symmetric ASCII glyph plus
@@ -9,7 +9,7 @@
  * visibly different sigils.
  *
  * The sigil also "breathes": given the live state.json values (mood/affect) it
- * shifts density and character set, so a *living* persona looks alive — and looks
+ * shifts density and character set, so a *living* persona looks alive, and looks
  * alive in a way that is its own, not a shared spinner.
  *
  * Pure + dependency-free: returns data; the CLI applies ANSI color.

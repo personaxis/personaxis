@@ -1,5 +1,5 @@
 /**
- * `personaxis observe` — feed ONE observation to the living persona (Fase 3).
+ * `personaxis observe`, feed ONE observation to the living persona (Fase 3).
  *
  * This is the primitive that keeps a persona alive WITHOUT burning the host's tokens: a host hook
  * (Claude Code / Codex end-of-turn) or a serverless cron fires `personaxis observe --observation
@@ -98,7 +98,7 @@ function readStdin(): Promise<string> {
 /**
  * Turn a host hook payload into an observation. Claude Code's Stop hook sends JSON with a
  * `transcript_path` (a JSONL of the session); we extract the last user + assistant exchange. Falls
- * back to the raw text so any host that pipes the turn on stdin works. Best-effort — never throws.
+ * back to the raw text so any host that pipes the turn on stdin works. Best-effort, never throws.
  */
 export function observationFromHookPayload(stdinText: string): string | undefined {
   const raw = stdinText.trim();
@@ -139,7 +139,7 @@ export function observationFromHookPayload(stdinText: string): string | undefine
     const ctx = extractText(payload.context);
     if (ctx) return ctx.slice(0, 1200);
   } catch {
-    /* not JSON — treat as raw text */
+    /* not JSON, treat as raw text */
   }
   return raw.slice(0, 1200);
 }
@@ -170,7 +170,7 @@ export const observeCommand = new Command("observe")
     }
     const observation = opts.stdin ? observationFromHookPayload(await readStdin()) ?? opts.observation : opts.observation;
     if (!observation || !observation.trim()) {
-      // A hook that fires with no captured turn is a no-op, not an error — never break the host.
+      // A hook that fires with no captured turn is a no-op, not an error, never break the host.
       if (!opts.json) console.error(chalk.dim("· observe: nothing to observe (empty payload)"));
       process.exit(opts.strict ? 1 : 0);
     }

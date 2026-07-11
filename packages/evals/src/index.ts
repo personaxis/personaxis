@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `personaxis-evals` — run the governance/property eval suite.
+ * `personaxis-evals`, run the governance/property eval suite.
  *
  * Deterministic by default (no API key): exercises the real engine and asserts the
  * invariants that make Personaxis "governed". A regression (e.g. breaking the clamp)

@@ -1,11 +1,11 @@
 /**
- * F6.5 — the error-fed repair loop (the pattern Genesis, decompile, and every
+ * F6.5, the error-fed repair loop (the pattern Genesis, decompile, and every
  * future LLM→validated-artifact pipeline share).
  *
  * Before this, `decompile` was one-shot: a single validation error threw the
  * whole provider round away. The loop closes the lazo the Clio way: the exact
  * failing fields/rules go BACK to the model as a targeted instruction, for a
- * bounded number of rounds — never silent degradation, never an invalid write.
+ * bounded number of rounds, never silent degradation, never an invalid write.
  * On exhaustion the caller gets every critique for an honest failure report.
  */
 
@@ -40,7 +40,7 @@ function repairPrompt(original: string, candidate: string, critiqueText: string)
     original,
     "",
     "---",
-    "Your previous attempt FAILED validation. Do not apologize or explain — return the",
+    "Your previous attempt FAILED validation. Do not apologize or explain, return the",
     "corrected, complete document only. Fix EXACTLY these errors and change nothing else:",
     "",
     critiqueText,

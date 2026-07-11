@@ -7,7 +7,7 @@ export interface ProviderRunResult {
   source: ProviderSource;
 }
 
-/** F6.5 — result of a structured (schema-constrained) provider call. */
+/** F6.5, result of a structured (schema-constrained) provider call. */
 export interface ProviderStructuredResult {
   json: unknown;
   model: string;
@@ -19,7 +19,7 @@ export interface Provider {
   source: ProviderSource;
   run(prompt: string): Promise<ProviderRunResult>;
   /**
-   * F6.5 — schema-constrained call (the Genesis synthesizer's primitive).
+   * F6.5, schema-constrained call (the Genesis synthesizer's primitive).
    * Implementations use the backend's strongest mechanism (OpenAI json_schema,
    * Anthropic forced tool-use, json_object fallback) and MUST return parsed
    * JSON. Optional: `agent`/`remote` don't support it; callers must degrade

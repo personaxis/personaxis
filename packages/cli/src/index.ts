@@ -52,7 +52,7 @@ program
   // `personaxis` with no subcommand enters the living REPL.
   .option("--persona <path>", "Path to the persona (personaxis.md / PERSONA.md) for the REPL")
   .action(async (opts: { persona?: string }) => {
-    // Lazy: the REPL pulls in Ink/React (~1 s of import cost) — only the
+    // Lazy: the REPL pulls in Ink/React (~1 s of import cost), only the
     // no-subcommand path pays it, never `validate`/CI/hook invocations.
     const { startRepl } = await import("./repl/index.js");
     await startRepl({ persona: opts.persona });
@@ -97,7 +97,7 @@ program.addCommand(personasCommand);
 program.addCommand(traceCommand);
 program.addCommand(scanCommand);
 
-// FR.9 — fire-and-forget update hint (daily cache; PERSONAXIS_NO_UPDATE_CHECK=1 disables).
+// FR.9, fire-and-forget update hint (daily cache; PERSONAXIS_NO_UPDATE_CHECK=1 disables).
 void checkForUpdate("@personaxis/persona.md", version).then((latest) => {
   if (latest) {
     process.stderr.write(`\n  update available: ${version} → ${latest} · npm i -g @personaxis/persona.md\n`);

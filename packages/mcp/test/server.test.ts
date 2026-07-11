@@ -26,7 +26,7 @@ let savedHome: string | undefined;
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "pxs-mcp-"));
-  // Isolate from any real ~/.personaxis/config.json — otherwise a machine-local model config makes
+  // Isolate from any real ~/.personaxis/config.json, otherwise a machine-local model config makes
   // persona_observe take the LLM path (and fail without a key) instead of the offline heuristic.
   savedHome = process.env.PERSONAXIS_HOME;
   process.env.PERSONAXIS_HOME = join(dir, "home");

@@ -1,10 +1,10 @@
 /**
- * Genesis — creating an AI Persona from zero (docs/architecture/genesis.md).
+ * Genesis, creating an AI Persona from zero (docs/architecture/genesis.md).
  *
  * Every entry mode (prompt, interview, project, import, transcript) produces the
  * same two artifacts: a PersonaSeed (the structured intermediate the spec builder
  * renders into a valid 10-layer document) and an EvidenceLedger (WHY every
- * quantitative field has the value it has — C6, "every number earned").
+ * quantitative field has the value it has, C6, "every number earned").
  */
 
 export type EvidenceKind =
@@ -60,14 +60,14 @@ export interface PersonaSeed {
   warmth?: number;
   verbosity?: string;
 
-  /** personality.traits — model chosen by key count/names (big_five | hexaco | hybrid_traits). */
+  /** personality.traits, model chosen by key count/names (big_five | hexaco | hybrid_traits). */
   traits: Record<string, SeedTrait>;
-  /** values_and_drives.values — safety is injected by the builder regardless. */
+  /** values_and_drives.values, safety is injected by the builder regardless. */
   values: Record<string, { weight: number; type?: string }>;
-  /** character.virtues — honesty (hard) is injected by the builder regardless. */
+  /** character.virtues, honesty (hard) is injected by the builder regardless. */
   virtues: Record<string, { description: string; priority: number; enforcement: "hard" | "soft" }>;
 
-  /** self_regulation.hard_limits — the three universals are injected regardless. */
+  /** self_regulation.hard_limits, the three universals are injected regardless. */
   hardLimits: string[];
   prohibitedBehaviors: string[];
   goals: string[];

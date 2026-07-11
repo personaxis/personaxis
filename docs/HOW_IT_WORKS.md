@@ -1,299 +1,300 @@
-# Personaxis — qué es y cómo funciona
+# Personaxis: what it is and how it works
 
-> Documento de referencia funcional. Para el detalle de implementación por fase ver
-> [`plan/`](../plan/MASTER_CHECKLIST.md); para el fundamento académico ver
-> [`plan/14-apa-report/REPORT.md`](../plan/14-apa-report/REPORT.md).
+> Functional reference. For the theorem-to-code map see
+> [`architecture/math-core.md`](./architecture/math-core.md); for the evidence scoreboard see
+> [`GUARANTEES.md`](./GUARANTEES.md).
 
-## 1. Qué es (y cómo se llama)
+## 1. What it is (and what things are called)
 
-**Personaxis** es la *toolchain de personas de IA vivas y gobernadas*. No es un agente que
-compite con Claude Code, Codex o Hermes: es la capa de **identidad viva, portable y
-auditable** que se les puede dar — o que puede correr sola sobre un modelo local.
+**Personaxis** is the *toolchain for living, governed AI personas*. It is not an agent that
+competes with Claude Code, Codex, or Hermes: it is the layer of **living, portable, auditable
+identity** you can give them, or that can run on its own over a local model.
 
-Nombres:
-- **Producto / repo:** `personaxis` (la carpeta `cli` se renombrará a `personaxis`).
-- **Binario del CLI:** `personaxis`.
-- **Binario de la TUI:** `personaxis-dash`.
-- **Binario del servidor MCP:** `personaxis-mcp`.
-- **Paquetes npm (monorepo):** `@personaxis/core` (motor), `@personaxis/cli`,
-  `@personaxis/mcp`, `@personaxis/sdk` (embeber en un backend), `@personaxis/tui`.
+Names:
+- **Product / repo:** `personaxis`.
+- **CLI binary:** `personaxis`.
+- **TUI binary:** `personaxis-dash`.
+- **MCP server binary:** `personaxis-mcp`.
+- **npm packages (monorepo):** `@personaxis/core` (engine), `@personaxis/persona.md` (the CLI),
+  `@personaxis/mcp`, `@personaxis/sdk` (embed in a backend), `@personaxis/tui`, plus `@personaxis/spec`,
+  `@personaxis/protocol`, `@personaxis/evals`.
 
-> **¿Cómo se usa en la práctica?** Hay dos modos (compañero de desarrollo local vs persona en runtime
-> dentro de una app) y cuatro superficies (librería/SDK · HTTP `serve` · MCP · daemon `watch`). El
-> "siempre vivo" se logra con **hooks** del host que disparan `personaxis observe` en TU modelo por
-> turno (sin gastar tokens del host). Ver [architecture/deployment.md](./architecture/deployment.md),
-> [configuration.md](./configuration.md) y [CONCEPTS_FAQ.md](./CONCEPTS_FAQ.md).
+> **How is it used in practice?** There are two modes (local development companion vs a runtime
+> persona inside an app) and four surfaces (library/SDK, HTTP `serve`, MCP, `watch` daemon). The
+> "always alive" behavior comes from host **hooks** that fire `personaxis observe` on YOUR model
+> per turn (spending no host tokens). See [architecture/deployment.md](./architecture/deployment.md),
+> [guides/configuration.md](./guides/configuration.md), and [CONCEPTS_FAQ.md](./CONCEPTS_FAQ.md).
 
-La idea central: una persona puede **adaptarse** al usuario y al contexto sin dejar de ser
-segura, porque **toda evolución es clampeada, auditada y reversible**, y los **invariantes
-universales del spec son inviolables**. Esa gobernanza —no la auto-mejora cruda— es el
-diferenciador.
+The core idea: a persona can **adapt** to the user and the context without ceasing to be safe,
+because **every evolution is clamped, audited, and reversible**, and the **spec's universal
+invariants are inviolable**. That governance, not raw self-improvement, is the differentiator.
 
-## 2. El modelo de tres artefactos
+## 2. The three-artifact model
 
-Una persona se describe con tres archivos (spec `personaxis.md` v1.1):
+A persona is described by three files (spec `personaxis.md` v1.1):
 
-| Artefacto | Qué es | Mutabilidad |
+| Artifact | What it is | Mutability |
 |---|---|---|
-| `.personaxis/personaxis.md` | Identidad **cuantitativa**: 10 capas, *envelopes* `{mean, range}`, invariantes | Inmutable (salvo flujo gobernado) |
-| `PERSONA.md` / `.claude/agents/<slug>.md` | Identidad **cualitativa** compilada (prosa) — slot #1 del system prompt | Generada (`compile`); editable a mano (`decompile`) |
-| `state.json` | Estado **mutable** de runtime: valores actuales + `mutation_log` | Muta vía la herramienta `adjust_persona_state`, clampeado a los envelopes |
+| `.personaxis/personaxis.md` | **Quantitative** identity: 10 layers, *envelopes* `{mean, range}`, invariants | Immutable (except through a governed flow) |
+| `PERSONA.md` / `.claude/agents/<slug>.md` | **Qualitative** compiled identity (prose), the system prompt's slot #1 | Generated (`compile`); hand-editable (`decompile`) |
+| `state.json` | **Mutable** runtime state: current values + `mutation_log` | Mutates via the `adjust_persona_state` tool, clamped to the envelopes |
 
-Las 10 capas: identity, character, personality, values_and_drives, affect, cognition,
-memory, metacognition, self_regulation, persona. Cada campo mutable (traits,
-affect, mood) declara un *envelope* `mean + [min,max]`; el valor actual vive en `state.json`
-y **nunca** puede salir de su rango.
+The 10 layers: identity, character, personality, values_and_drives, affect, cognition, memory,
+metacognition, self_regulation, persona. Each mutable field (traits, affect, mood) declares an
+*envelope* `mean + [min,max]`; the current value lives in `state.json` and can **never** leave
+its range.
 
-## 3. El Living Loop (lo que la hace "viva")
+## 3. The Living Loop (what makes it "alive")
 
-Arrancas el REPL con solo `personaxis` (sin subcomando). Conversas en lenguaje natural o
-usas `/comandos`. Cada turno alimenta un **lazo gobernado**:
+You start the REPL with just `personaxis` (no subcommand). You chat in natural language or use
+`/commands`. Each turn feeds a **governed loop**:
 
 ```
-observe   → captura una señal (input del usuario, salida de tool, reflexión)  [con procedencia]
-   ↓        + escaneo de inyección (texto malicioso no dirige la evolución)
-appraise  → el modelo propone SOLO señales estructuradas (JSON-schema), no mutaciones crudas
+observe   → capture a signal (user input, tool output, reflection)  [with provenance]
+   ↓        + injection scan (malicious text does not drive evolution)
+appraise  → the model proposes ONLY structured signals (JSON-schema), not raw mutations
    ↓
-evolve    → el código del spec aplica el delta CLAMPEADO al envelope + gate de gobernanza
-   ↓        + entrada inmutable en mutation_log
-recompile → SOLO si una coordenada CRUZÓ de banda de comportamiento (lo normativo, spec §15):
-   ↓        movimiento dentro de banda = varianza de expresión, no recompila; el cruce
-   ↓        reescribe el doc compilado (live-sync) + marcador .live.json + evento `drift`
+evolve    → the spec's code applies the CLAMPED delta to the envelope + governance gate
+   ↓        + an immutable mutation_log entry
+recompile → ONLY if a coordinate CROSSED a behavior band (the normative event, spec §15):
+   ↓        within-band movement = expression variance, no recompile; the crossing
+   ↓        rewrites the compiled doc (live-sync) + .live.json marker + `drift` event
    ↓
-memory    → escribe a memoria episódica (append-only, encadenada por hash) tras verificar la cadena
+memory    → writes to episodic memory (append-only, hash-chained) after verifying the chain
 ```
 
-**División de seguridad:** el modelo (incluso uno pequeño ≤4B) solo *propone*; el código y el
-spec *imponen* la seguridad. Por eso es viable en modelos chicos y seguro a la vez.
+**Safety split:** the model (even a small one, 4B or less) only *proposes*; the code and the
+spec *enforce* safety. That is why it is viable on small models and safe at the same time.
 
-### El Agent Loop (ejecutar tareas, no solo evolucionar)
+### The Agent Loop (run tasks, not just evolve)
 
-Junto al Living Loop (que evoluciona la **identidad**) corre el **Agent Loop** (que ejecuta
-**tareas**). En el REPL no hay comando aparte: **al hablar en lenguaje natural**, la persona
-conversa Y usa herramientas en un solo lazo gobernado:
+Alongside the Living Loop (which evolves the **identity**) runs the **Agent Loop** (which
+executes **tasks**). In the REPL there is no separate command: **speaking in natural language**,
+the persona converses AND uses tools in a single governed loop:
 
 ```
-tarea → [ el modelo propone una tool (run_command / read_file / write_file / edit_file / list_dir)
-          → GATE del sandbox (allow | ask | deny) → (si ask) aprobación humana → ejecuta → observa ]*
-        → finish
+task → [ the model proposes a tool (run_command / read_file / write_file / edit_file / list_dir)
+         → sandbox GATE (allow | ask | deny) → (if ask) human approval → run → observe ]*
+       → finish
 ```
 
-El modelo **solo propone** la tool-call; el **sandbox decide** (un `deny` nunca corre), las acciones
-riesgosas **piden aprobación** (`shift+tab` cicla la postura: `read-only → workspace-write →
-danger-full-access`), y **toda salida de tool se escanea por inyección** antes de volver al modelo.
-Usa function-calling nativo del proveedor con fallback a JSON restringido (provider-agnostic). El mismo
-agente se expone por MCP (`agent_run`) y HTTP (`POST /persona/agent`).
+The model **only proposes** the tool call; the **sandbox decides** (a `deny` never runs), risky
+actions **ask for approval** (`shift+tab` cycles the posture: `read-only → workspace-write →
+danger-full-access`), and **every tool output is scanned for injection** before returning to the
+model. It uses the provider's native function-calling with a fallback to constrained JSON
+(provider-agnostic). The same agent is exposed over MCP (`agent_run`) and HTTP (`POST
+/persona/agent`).
 
-El modo de evolución lo decide `improvement_policy.mode` del spec:
-- `locked` (por defecto): el lazo aprecia y recuerda, pero las mutaciones de envelope son
-  solo dirigidas por humano.
-- `suggesting`: el actor propone auto-ediciones que entran a una cola de aprobación humana.
-- `autonomous` (solo sandbox): aplica directo, acotado por invariantes + verificadores.
+The evolution mode is decided by the spec's `improvement_policy.mode`:
+- `locked` (default): the loop appraises and remembers, but envelope mutations are human-directed only.
+- `suggesting`: the actor proposes self-edits that enter a human approval queue.
+- `autonomous` (sandbox only): applies directly, bounded by invariants + verifiers.
 
-## 4. Gobernanza y seguridad (el *moat*)
+## 4. Governance and security (the *moat*)
 
-- **Garantías matemáticas machine-checked (v1.1):** los envelopes forman una caja compacta B;
-  el clamp es la proyección Π_B. Teoremas T1–T6 ([`MATH_CORE.md`](./MATH_CORE.md)): ninguna
-  secuencia adversaria escapa de B (T1), paso acotado (T2), cruzar una banda de comportamiento
-  cuesta un mínimo demostrable de entradas de auditoría hash-encadenadas (T3), replay
-  determinista + tamper localizado (T4/T5), homeostasis opt-in con drift estacionario acotado
-  (T6). Verificado contra 2.3M de casos adversarios generados, 0 contraejemplos
-  ([`GUARANTEES.md`](./GUARANTEES.md)). `personaxis proof` lo muestra en vivo; `state drift`
-  computa dónde está la persona vs `governance.drift_thresholds` (gate de CI, exit 2).
-- **Envelopes + clamping:** ningún valor sale de su rango declarado.
-- **Invariantes universales (12):** el validador los enforce; un `personaxis.md` que falle no
-  compila. Salidas con 5 exit codes.
-- **Memoria gobernada:** episódica *append-only* con **procedencia** (user/tool/internal/
-  synthesis) y **cadena de hashes** (detecta manipulación). Borrado por petición vía *tombstone*
-  (no reescribe la historia; la cesura es auditable). El runtime **respeta `memory.types`** del spec:
-  con `episodic: false` no escribe nada; con `semantic: true` consolida a `memory.md`. Los **seis
-  tipos** están implementados y cada productor honra su flag (episodic, semantic, procedural,
-  autobiographical, user_preferences, evaluations).
-- **Defensas de inyección/envenenamiento:** escáner de inyección por capas (normalización
-  Unicode, zero-width, bidi, homóglifos; decodificación base64/hex; reglas ponderadas);
-  detección de anomalías con consenso multi-path; *gates de acción sensible* por procedencia.
-- **Auto-evolución gobernada:** `propose/apply/revert`, protección de campos invariantes, minteo
-  de versión, y **consenso multiagente** (quórum de verificadores) antes de aplicar.
-- **Sandbox de comandos:** motor de política de dos ejes (approval × sandbox) → `allow|ask|deny`,
-  con wrapper nativo best-effort (Seatbelt/bubblewrap). Un comando `deny` no corre.
+- **Machine-checked mathematical guarantees (v1.1):** the envelopes form a compact box B; the
+  clamp is the projection Π_B. Theorems T1–T6 (map in
+  [`architecture/math-core.md`](./architecture/math-core.md)): no adversarial sequence escapes B
+  (T1), bounded step (T2), crossing a behavior band costs a provable minimum of hash-chained
+  audit entries (T3), deterministic replay + located tampering (T4/T5), opt-in homeostasis with
+  bounded standing drift (T6). Verified against 2.3M generated adversarial cases, 0
+  counterexamples ([`GUARANTEES.md`](./GUARANTEES.md)). `personaxis proof` shows it live; `state
+  drift` computes where the persona sits vs `governance.drift_thresholds` (a CI gate, exit 2).
+- **Envelopes + clamping:** no value leaves its declared range.
+- **Universal invariants (12):** the validator enforces them; a `personaxis.md` that fails does
+  not compile. Output uses 5 exit codes.
+- **Governed memory:** episodic *append-only* with **provenance** (user/tool/internal/synthesis)
+  and a **hash chain** (detects tampering). Deletion on request via *tombstone* (does not rewrite
+  history; the redaction is auditable). The runtime **respects the spec's `memory.types`**: with
+  `episodic: false` it writes nothing; with `semantic: true` it consolidates to `memory.md`. The
+  **six types** are implemented and each producer honors its flag (episodic, semantic,
+  procedural, autobiographical, user_preferences, evaluations).
+- **Injection/poisoning defenses:** layered injection scanner (Unicode normalization, zero-width,
+  bidi, homoglyphs; base64/hex decoding; weighted rules); anomaly detection with multi-path
+  consensus; *sensitive-action gates* by provenance.
+- **Governed self-evolution:** `propose/apply/revert`, protection of invariant fields, version
+  minting, and **multi-agent consensus** (a quorum of verifiers) before applying.
+- **Command sandbox:** two-axis policy engine (approval × sandbox) → `allow|ask|deny`, with a
+  best-effort native wrapper (Seatbelt/bubblewrap). A `deny` command does not run.
 
-## 5. Comandos (referencia)
+## 5. Commands (reference)
 
-**El vivo:**
-- `personaxis` — abre el **REPL** (sesión viva). En un TTY es una **app de pantalla completa**
-  (alternate-screen, sin dejar historial de frames): menú `/` en vivo y `shift+tab` para ciclar la
-  postura del sandbox. Comandos: `/persona`, `/state`, `/improve`, `/review`, `/compile`, `/audit`,
-  `/memory`, `/sessions`, `/resume`, `/compact`, `/goal`, `/loop` (corre ticks gobernados), `/mode`,
-  `/model`, `/drift` (reporte u/banda/costo T3), `/arbitrate` (conflictos de valores),
-  `/replay` (historia animada + veredicto T4), `/overseer`, `/help`, `/exit` (el sigil está dentro de `/persona`; no hay `/do` ni
-  `/evolve` — hablar ya usa herramientas y evoluciona cada turno). (En pipe/CI cae a un lector simple.)
-- `personaxis sigil [--persona <path>]` — sigilo ascii único de la persona + panel de envelopes.
-- `personaxis-dash [--persona <path>]` — TUI viva que respira con el estado.
+**The live one:**
+- `personaxis` opens the **REPL** (a live session). In a TTY it is a **full-screen app**
+  (alternate-screen, no frame history left behind): a live `/` palette and `shift+tab` to cycle
+  the sandbox posture. Commands: `/persona`, `/state`, `/improve`, `/review`, `/compile`,
+  `/audit`, `/memory`, `/sessions`, `/resume`, `/compact`, `/goal`, `/loop` (runs governed
+  ticks), `/mode`, `/model`, `/drift` (u/band/T3-cost report), `/arbitrate` (value conflicts),
+  `/replay` (animated history + T4 verdict), `/dash`, `/proof`, `/create`, `/overseer`, `/help`,
+  `/exit` (the sigil is inside `/persona`; there is no `/do` or `/evolve`: talking already uses
+  tools and evolves every turn). In a pipe/CI it degrades to a plain reader.
+- `personaxis sigil [--persona <path>]`: the persona's unique ASCII sigil + envelope panel.
+- `personaxis-dash [--persona <path>]`: a live TUI that breathes with the state.
 
-**Orquestación / entorno:**
-- `personaxis overseer show|register|collection` — la vista maestra: todas las personas,
-  proyectos y colecciones (en `~/.personaxis`).
-- `personaxis orchestrate "<tarea>" [--run]` — enruta una tarea a la persona mejor calificada
-  (blackboard por capacidad); `--run` ejecuta un ciclo del lazo en la asignada.
-- `personaxis sync <other-state.json> --persona <path>` — reconcilia el `state.json` de otra
-  máquina sin clobber (merge auditado).
+**Orchestration / environment:**
+- `personaxis overseer show|register|collection`: the master view of all personas, projects, and
+  collections (in `~/.personaxis`).
+- `personaxis orchestrate "<task>" [--run]`: routes a task to the best-matched persona
+  (capability blackboard); `--run` runs one loop cycle on the assignee.
+- `personaxis sync <other-state.json> --persona <path>`: reconciles another machine's `state.json`
+  without clobber (audited merge).
 
 **Interop:**
-- `personaxis serve --persona <path>` — servidor HTTP + `agents.md` (para agentes que no hablan MCP).
-- `personaxis-mcp` — servidor MCP (stdio) con 16 herramientas de persona.
+- `personaxis serve --persona <path>`: HTTP server + `agents.md` (for agents that do not speak MCP).
+- `personaxis-mcp`: MCP server (stdio) with 16 persona tools.
 
-**Génesis y prueba (v1.1):**
-- `personaxis create [slug]` — crea una persona desde cero: entrevista psicométrica,
+**Genesis and proof (v1.1):**
+- `personaxis create [slug]`: build a persona from scratch: psychometric interview,
   `--from-prompt`, `--from-project`, `--from-import` (character cards V2/V3, system prompts),
-  `--from-transcript`. Válida por construcción + creation report con procedencia por número.
-- `personaxis proof [--quick]` — demo offline de las garantías (tormenta adversaria, tamper,
-  replay, costo de cruce certificado).
-- `personaxis state drift` · `personaxis jacobian` · `personaxis arbitrate` — reporte de drift
-  (gate CI), sensibilidad exacta del compile (números decorativos), arbitraje determinista.
+  `--from-transcript`. Valid by construction + a creation report with per-number provenance.
+- `personaxis proof [--quick]`: offline demo of the guarantees (adversarial storm, tamper,
+  replay, certified crossing cost).
+- `personaxis state drift` · `personaxis jacobian` · `personaxis arbitrate`: the drift report (CI
+  gate), exact compile sensitivity (decorative numbers), deterministic arbitration.
 
-**Spec (motor existente):** `init`, `validate`, `lint`, `compile`, `decompile`, `state`,
-`migrate`, `push`, `pull`, `skills`, `template`, `diff`, `export`, `spec`, `list`, `config`. (`use` y `templates` se eliminaron en FASE 7: `create` los reemplaza.)
+**Spec toolchain:** `init`, `validate`, `lint`, `compile`, `decompile`, `state`, `migrate`,
+`push`, `pull`, `skills`, `diff`, `export`, `spec`, `list`, `config`. (`create` replaces the older
+`use`/`templates` scaffolds.)
 
-## 6. Reuso de personas (global + overlay)
+## 6. Persona reuse (global + overlay)
 
-Una persona vive **global** en `~/.personaxis/personas/<slug>` (identidad + memoria acumulada).
-Cada proyecto monta un **overlay** con su propio `state.json` y memoria de proyecto. Así puedes:
-- **reusar** la misma persona con memoria acumulada entre proyectos, o
-- instanciarla **fresca** por proyecto.
+A persona lives **globally** in `~/.personaxis/personas/<slug>` (identity + accumulated memory).
+Each project mounts an **overlay** with its own `state.json` and project memory. So you can:
+- **reuse** the same persona with accumulated memory across projects, or
+- instantiate it **fresh** per project.
 
-**Teams/Collections** agrupan personas y proyectos. El **user-clone** (tu gemelo digital) es una
-persona versionada en git que puede vivir en Windows/Linux/macOS a la vez; el `sync` reconcilia
-estado por-máquina sin que una sobrescriba a otra (identidad inmutable, solo estado/memoria
-divergen y se mergean con auditoría).
+**Teams/Collections** group personas and projects. The **user-clone** (your digital twin) is a
+git-versioned persona that can live on Windows/Linux/macOS at once; `sync` reconciles per-machine
+state without one overwriting another (identity immutable, only state/memory diverge and merge
+with an audit trail).
 
-## 7. Interoperar con agentes grandes (3 vías)
+## 7. Interoperating with large agents (3 paths)
 
-1. **MCP** (`personaxis-mcp`): herramientas como `persona_compiled`, `persona_state`,
+1. **MCP** (`personaxis-mcp`): tools like `persona_compiled`, `persona_state`,
    `adjust_persona_state`, `persona_observe`, `persona_audit`, `persona_propose_edit`,
-   `skill_review`, `scan_text`, `evaluate_command`… El host (Claude Code/Codex) trae el modelo
-   potente; personaxis aporta la identidad viva.
-2. **`agents.md` + HTTP** (`personaxis serve`): contrato de bajo contexto para agentes que no
-   hablan MCP (patrón Hugging Face Spaces).
-3. **Subagente nativo**: `compile` a `.claude/agents/<slug>.md`, `.codex/agents/<slug>.toml`,
-   `SOUL.md`; **live-sync** actualiza el doc del host cuando la persona evoluciona.
+   `skill_review`, `scan_text`, `evaluate_command`. The host (Claude Code/Codex) brings the
+   powerful model; personaxis brings the living identity.
+2. **`agents.md` + HTTP** (`personaxis serve`): a low-context contract for agents that do not
+   speak MCP (Hugging Face Spaces pattern).
+3. **Native subagent**: `compile` to `.claude/agents/<slug>.md`, `.codex/agents/<slug>.toml`,
+   `SOUL.md`; **live-sync** updates the host's doc when the persona evolves.
 
-## 7b. Identidad visual (diferenciada por spec)
+## 7b. Visual identity (differentiated by spec)
 
-Cada persona **se ve y se comporta distinto en la terminal**, derivado determinísticamente de su
-`personaxis.md` (no es un spinner genérico). El `PersonaTheme` (`@personaxis/core`) mapea:
+Each persona **looks and behaves differently in the terminal**, derived deterministically from
+its `personaxis.md` (not a generic spinner). The `PersonaTheme` (`@personaxis/core`) maps:
 
-- **affect.valence → tono** de la paleta (frío ↔ cálido); **arousal → brillo**.
-- **extraversion → ritmo/amplitud** del "respirar"; **openness → drift** (cuánto explora el sigilo
-  entre frames); **emotionality → jitter**; **conscientiousness → simetría** (nítido ↔ orgánico).
-- identidad → **glifos** y semilla estable; **voz** → `terse | balanced | expansive` (estilo de salida).
+- **affect.valence → tone** of the palette (cool ↔ warm); **arousal → brightness**.
+- **extraversion → rhythm/amplitude** of the "breathing"; **openness → drift** (how much the sigil
+  explores between frames); **emotionality → jitter**; **conscientiousness → symmetry** (crisp ↔ organic).
+- identity → **glyphs** and a stable seed; **voice** → `terse | balanced | expansive` (output style).
 
-Toda la animación vive en **una sola sede**: `@personaxis/tui/visual` (logo animado, "despertar" de
-la persona, sigilo temático animado, aura viva, floreos por evento, estilo de voz). La usan el REPL,
-el comando `sigil` y el dashboard. Las animaciones solo corren en TTY; en pipe/CI hay fallback estático.
-Dos personas distintas → sigilo, paleta, glifos y voz visiblemente distintos.
+All animation lives in **one place**: `@personaxis/tui/visual` (animated logo, persona "wake-up",
+themed animated sigil, live aura, per-event flourishes, voice style). The REPL, the `sigil`
+command, and the dashboard all use it. Animations run only in a TTY; in a pipe/CI there is a
+static fallback. Two different personas → visibly different sigil, palette, glyphs, and voice.
 
-## 8. Arquitectura (monorepo)
+## 8. Architecture (monorepo)
 
 ```
-personaxis/                      ← UNA sola repo (hoy carpeta "cli")
+personaxis/                      ← one repo
 └── packages/
-    ├── core/  @personaxis/core  → motor: envelopes, state-engine, governance, memoria,
-    │                               Living Loop, appraisers, sigil, blackboard, sync,
-    │                               live-sync, skills, injection, sandbox, registry
-    ├── cli/   @personaxis/cli   → REPL + comandos (sobre core)
-    ├── mcp/   @personaxis/mcp   → servidor MCP (sobre core)
-    └── tui/   @personaxis/tui   → dashboard ascii (sobre core)
+    ├── core/  @personaxis/core        → engine: envelopes, state-engine, governance, memory,
+    │                                     Living Loop, appraisers, sigil, blackboard, sync,
+    │                                     live-sync, skills, injection, sandbox, registry
+    ├── cli/   @personaxis/persona.md  → REPL + commands (over core)
+    ├── mcp/   @personaxis/mcp         → MCP server (over core)
+    └── tui/   @personaxis/tui         → ASCII dashboard (over core)
 ```
 
-El **motor nunca imprime**: emite eventos; las UIs (REPL/TUI/MCP/HTTP) los renderizan. Esto
-permite reusar un solo core en cada punto de entrada (patrón submit/event de Codex).
+The **engine never prints**: it emits events; the UIs (REPL/TUI/MCP/HTTP) render them. This lets
+a single core be reused at every entry point (the Codex submit/event pattern).
 
-## 9. Empaquetado y plataformas
+## 9. Packaging and platforms
 
-TypeScript en todas partes. Dos canales de distribución:
-- **npm** (`npm i -g @personaxis/persona.md`) — requiere Node ≥20.
-- **Binario único** por plataforma vía `bun compile` (`pnpm run package`) — sin runtime; los
-  assets (schemas/templates/versión) se **embeben** en build, así el binario es autocontenido.
+TypeScript everywhere. Two distribution channels:
+- **npm** (`npm i -g @personaxis/persona.md`), requires Node 20 or newer.
+- **Single binary** per platform via `bun compile` (`pnpm run package`), no runtime; the assets
+  (schemas/templates/version) are **embedded** at build, so the binary is self-contained.
 
-## 10. Flujos de trabajo (end-to-end)
+## 10. Workflows (end-to-end)
 
-> **Idea clave:** Personaxis es el *alma + memoria + conciencia* de la persona. Puede operar de dos
-> formas: (a) **como capa** bajo un agente host (Claude Code, Codex) que trae el modelo potente, o
-> (b) **como agente independiente** que ejecuta tareas él mismo vía el Agent Loop (hablando en
-> lenguaje natural), gobernado por el sandbox. En ambos casos la identidad es persistente, la
-> evolución acotada y toda acción auditada.
+> **Key idea:** Personaxis is the *soul + memory + awareness* of the persona. It can operate two
+> ways: (a) **as a layer** under a host agent (Claude Code, Codex) that brings the powerful model,
+> or (b) **as a standalone agent** that runs tasks itself via the Agent Loop (by speaking in
+> natural language), governed by the sandbox. In both cases identity is persistent, evolution
+> bounded, and every action audited.
 
-### Flujo A — Solo (personaxis sin un agente grande)
+### Flow A: Solo (personaxis without a large agent)
 
-Útil cuando quieres una **identidad gobernada + memoria persistente + evolución acotada**, no un
-reemplazo de Claude Code.
+Useful when you want a **governed identity + persistent memory + bounded evolution**, not a
+replacement for Claude Code.
 
-1. **Autoría:** `personaxis init` (o `pull`) → `personaxis validate` (pasa los 12 invariantes) →
-   `personaxis compile` (genera `PERSONA.md`).
-2. **Vida:** `personaxis` abre el REPL. Con un modelo local/BYOK (`PERSONAXIS_ENDPOINT`+`MODEL`),
-   hablas con la persona: en cada turno **observa → aprecia → evoluciona (acotado) → recuerda**.
-   Sin modelo, usa el appraiser heurístico (modo demo/offline).
-3. **Auditoría y reuso:** `/audit` (ver el trail), `overseer show` (todo el entorno),
-   `sync` (reconciliar entre máquinas).
+1. **Authoring:** `personaxis create` (or `init`/`pull`) → `personaxis validate` (passes the 12
+   invariants) → `personaxis compile` (generates `PERSONA.md`).
+2. **Life:** `personaxis` opens the REPL. With a local/BYOK model
+   (`PERSONAXIS_ENDPOINT`+`MODEL`), you talk to the persona: each turn it **observes → appraises →
+   evolves (bounded) → remembers**. Without a model, it uses the heuristic appraiser (demo/offline).
+3. **Audit and reuse:** `/audit` (see the trail), `overseer show` (the whole environment), `sync`
+   (reconcile across machines).
 
-Lo que **sí** hace solo: define/valida/compila la persona, corre el lazo gobernado (reacciones +
-memoria + evolución acotada), sirve esa identidad, **y ejecuta tareas reales** al hablar — el
-**Agent Loop** corre comandos y edita archivos, cada acción gateada por el sandbox de la persona
-(`ask`/`deny`), con la salida escaneada y auditada. Necesita un modelo con tool-calling
-(`PERSONAXIS_ENDPOINT`+`MODEL`). En postura `read-only` solo lee; en `workspace-write` actúa dentro
-del proyecto pidiendo aprobación para lo riesgoso.
+What it **does** on its own: define/validate/compile the persona, run the governed loop
+(reactions + memory + bounded evolution), serve that identity, **and run real tasks** when you
+talk: the **Agent Loop** runs commands and edits files, each action gated by the persona's sandbox
+(`ask`/`deny`), with output scanned and audited. It needs a model with tool-calling
+(`PERSONAXIS_ENDPOINT`+`MODEL`). In `read-only` posture it only reads; in `workspace-write` it acts
+inside the project, asking approval for risky steps.
 
-### Flujo B — Como capa bajo un agente potente (caso principal)
+### Flow B: As a layer under a powerful agent (the main case)
 
-El host trae el modelo potente y el loop de tool-use; personaxis aporta identidad viva + gobernanza.
+The host brings the powerful model and the tool-use loop; personaxis brings living identity + governance.
 
-**B1 — Subagente nativo (sin MCP):**
+**B1: Native subagent (no MCP):**
 ```bash
-personaxis compile --platform claude-code   # escribe .claude/agents/<slug>.md + baseline en CLAUDE.md
+personaxis compile --platform claude-code   # writes .claude/agents/<slug>.md + a baseline in CLAUDE.md
 ```
-Claude Code adopta ese archivo como system-prompt del subagente → **el agente ES la persona**.
-Cuando la persona evoluciona, `live-sync` reescribe el bloque LIVE-STATE del archivo y el host lo ve.
+Claude Code adopts that file as the subagent's system prompt → **the agent IS the persona**. When
+the persona evolves, `live-sync` rewrites the file's LIVE-STATE block and the host sees it.
 
-**B2 — MCP (runtime, más rico):** registras `personaxis-mcp` en el host. Secuencia típica de sesión:
-1. **Inicio:** el host llama `persona_compiled` → carga la identidad (slot #1 del prompt).
-2. **Durante el trabajo, el host llama a personaxis como "conciencia":**
-   - `persona_observe` → un tick gobernado del lazo (la persona reacciona/evoluciona, acotada).
-   - `adjust_persona_state` → ajusta mood/affect (clampeado + auditado).
-   - `scan_text` → antes de confiar en contenido externo (defensa de inyección).
-   - `evaluate_command` → antes de correr un comando (política sandbox: allow/ask/deny).
-   - `skill_review` → antes de usar una skill (supply-chain).
-   - `persona_propose_edit` → proponer una auto-edición del spec (gobernada por consenso).
-3. **Cierre:** `persona_audit` (integridad de cadena + anomalías). **Estado y memoria persisten**;
-   la próxima sesión, `persona_state`/`persona_compiled` restauran quién es.
+**B2: MCP (runtime, richer):** you register `personaxis-mcp` with the host. Typical session:
+1. **Start:** the host calls `persona_compiled` → loads the identity (prompt slot #1).
+2. **During work, the host calls personaxis as a "conscience":**
+   - `persona_observe` → a governed loop tick (the persona reacts/evolves, bounded).
+   - `adjust_persona_state` → adjust mood/affect (clamped + audited).
+   - `scan_text` → before trusting external content (injection defense).
+   - `evaluate_command` → before running a command (sandbox policy: allow/ask/deny).
+   - `skill_review` → before using a skill (supply-chain).
+   - `persona_propose_edit` → propose a self-edit of the spec (governed by consensus).
+3. **Close:** `persona_audit` (chain integrity + anomalies). **State and memory persist**; next
+   session, `persona_state`/`persona_compiled` restore who it is.
 
-**B3 — agents.md/HTTP:** las mismas operaciones por `curl` (`personaxis serve`) para agentes que
-no hablan MCP.
+**B3: agents.md/HTTP:** the same operations over `curl` (`personaxis serve`) for agents that do
+not speak MCP.
 
-### ¿Por qué un agente potente la usaría?
-- **Identidad persistente y portable** entre sesiones, proyectos y máquinas (no re-explicas quién es).
-- **Evolución gobernada y auditable**: se adapta al usuario sin derivar de forma insegura (moat de
-  cumplimiento/seguridad).
-- **Memoria con procedencia** + defensas anti-envenenamiento (Zombie Agents).
-- **Segunda opinión de seguridad model-agnostic**: `scan_text`, `evaluate_command`, `skill_review`
-  funcionan igual sin importar qué modelo use el host.
+### Why a powerful agent would use it
+- **Persistent, portable identity** across sessions, projects, and machines (no re-explaining who it is).
+- **Governed, auditable evolution**: it adapts to the user without drifting unsafely (a compliance/security moat).
+- **Memory with provenance** + anti-poisoning defenses (Zombie Agents).
+- **A model-agnostic security second opinion**: `scan_text`, `evaluate_command`, `skill_review`
+  work the same regardless of the host's model.
 
 ### Multi-persona (overseer)
-`personaxis orchestrate "<tarea>"` enruta la tarea a la persona mejor calificada por capacidad
-(blackboard). En B2, un orquestador host puede pedir a personaxis el ranking y luego delegar el
-trabajo real a esa persona/subagente.
+`personaxis orchestrate "<task>"` routes the task to the best-matched persona by capability
+(blackboard). In B2, a host orchestrator can ask personaxis for the ranking and then delegate the
+real work to that persona/subagent.
 
-## 11. Cómo correrlo
+## 11. How to run it
 
 ```bash
 pnpm install && pnpm run build && pnpm run test
-node packages/cli/dist/index.js                 # REPL vivo (usa .personaxis/personaxis.md)
-node packages/cli/dist/index.js sigil            # sigilo + panel
-node packages/cli/dist/index.js overseer show    # vista maestra
+node packages/cli/dist/index.js                 # live REPL (uses .personaxis/personaxis.md)
+node packages/cli/dist/index.js sigil            # sigil + panel
+node packages/cli/dist/index.js overseer show    # master view
 node packages/cli/dist/index.js serve --persona .personaxis/personaxis.md   # HTTP + agents.md
 node packages/tui/dist/index.js --persona .personaxis/personaxis.md         # dashboard
 ```
 
-Modelo local para el paso de *appraise* (decodificación restringida mantiene seguro a un ≤4B):
+A local model for the *appraise* step (constrained decoding keeps a 4B-or-less model safe):
 
 ```bash
 export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama / llama.cpp

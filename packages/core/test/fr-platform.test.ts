@@ -1,5 +1,5 @@
 /**
- * FR.7 / FR.8 / FR.10 — the platform hardening trio:
+ * FR.7 / FR.8 / FR.10, the platform hardening trio:
  *   registry flags + schema arg validation, permissions v2 (writable roots,
  *   protected subpaths, granular approvals, profiles), the approval FSM, and
  *   tool-call repair.
@@ -50,7 +50,7 @@ describe("FR.7 tools registry v2", () => {
 describe("FR.8 permissions v2", () => {
   const base: Policy = { ...DEFAULT_POLICY, workspaceRoot: "C:/ws" };
 
-  it("protected subpaths deny even when otherwise writable — allow-list cannot override", () => {
+  it("protected subpaths deny even when otherwise writable, allow-list cannot override", () => {
     const policy: Policy = { ...base, allow: [".*"] };
     for (const p of [".git/hooks/pre-commit", ".personaxis/personaxis.md", ".personaxis/state.json"]) {
       const v = evaluateFileWrite(p, policy);
@@ -122,7 +122,7 @@ describe("FR.10 tool-call repair (OpenClaw port)", () => {
 
   it("strips code fences and surrounding prose", () => {
     expect(repairToolArgs('```json\n{"a": 1}\n```').value).toEqual({ a: 1 });
-    expect(repairToolArgs('Here are the args: {"a": 1} — done!').value).toEqual({ a: 1 });
+    expect(repairToolArgs('Here are the args: {"a": 1}, done!').value).toEqual({ a: 1 });
   });
 
   it("repairs quotes, keys and trailing commas", () => {

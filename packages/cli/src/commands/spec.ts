@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { specDoc } from "../generated/assets.js";
 
 // The spec document itself is the embedded, byte-identical copy of persona.md/docs/SPEC.md (current,
-// v0.10) — regenerated from the single source on every build, so `personaxis spec` can never go stale.
+// v0.10), regenerated from the single source on every build, so `personaxis spec` can never go stale.
 // Below are the CLI's own lint rules (mirroring src/linter/rules.ts), which are separate from the spec.
 
 const RULES_TEXT = `
@@ -43,11 +43,11 @@ const RULES_JSON = [
   { rule: "refusals-present",             severity: "warning", checks: "reflexive_self_regulation.principled_refusals is empty" },
   { rule: "drift-thresholds-present",     severity: "warning", checks: "governance.drift_thresholds missing per layer" },
   { rule: "todo-fields",                  severity: "warning", checks: "Any field value starts with 'TODO'" },
-  { rule: "layer-summary",                severity: "info",    checks: "Summary of defined layers — always emitted" },
+  { rule: "layer-summary",                severity: "info",    checks: "Summary of defined layers, always emitted" },
 ];
 
 export const specCommand = new Command("spec")
-  .description("Print the current personaxis.md spec (v1.1, from persona.md/docs/SPEC.md) + lint rules — inject into agent prompts")
+  .description("Print the current personaxis.md spec (v1.1, from persona.md/docs/SPEC.md) + lint rules, inject into agent prompts")
   .option("--rules", "Append the lint rules table")
   .option("--rules-only", "Output only the lint rules")
   .option("--format <format>", "Output format: text (default) or json", "text")

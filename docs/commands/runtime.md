@@ -1,7 +1,7 @@
 # `personaxis runtime`
 
 > ⚠️ **Requires a Personaxis backend account.** These subcommands call the hosted REST API at
-> `personaxis.com` (auth via `PERSONAXIS_API_KEY`). Without an account they won't work — the managed
+> `personaxis.com` (auth via `PERSONAXIS_API_KEY`). Without an account they won't work, the managed
 > backend is not built/published yet (see the managed-SaaS design). For **local** use, you don't need
 > this: `observe`/`watch`/`serve` + the [integrations](../integrations/README.md) cover the local flow.
 

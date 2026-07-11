@@ -1,5 +1,5 @@
 /**
- * Permission & sandbox policy (F3 / T9 — plan/11-security).
+ * Permission & sandbox policy (F3 / T9).
  *
  * Honest scope: real *kernel* sandboxing needs native primitives (macOS Seatbelt,
  * Linux Landlock/seccomp/bubblewrap, Windows job objects / restricted tokens).
@@ -7,14 +7,14 @@
  * agents rely on most:
  *
  *   1. A two-axis POLICY ENGINE (approval × sandbox, the Codex model) that DECIDES
- *      allow | ask | deny for a command — pure, deterministic, fully tested. This
+ *      allow | ask | deny for a command, pure, deterministic, fully tested. This
  *      is the load-bearing control: a denied command never runs.
  *   2. A best-effort NATIVE WRAPPER that, when the command is allowed, wraps it
  *      with the platform's available sandbox (sandbox-exec / bwrap) so writes and
  *      network are constrained at the OS level where possible.
  *
  * If no native sandbox is available, enforcement degrades to the policy decision
- * (deny-by-default for risky ops) — never a silent full-access fallback.
+ * (deny-by-default for risky ops), never a silent full-access fallback.
  */
 
 import { platform } from "node:os";
@@ -38,7 +38,7 @@ export interface Policy {
    */
   writableRoots?: string[];
   /**
-   * FR.8: per-category approval overrides — finer than the single global
+   * FR.8: per-category approval overrides, finer than the single global
    * `approval` knob (e.g. network commands always ask while plain writes flow).
    */
   approvals?: Partial<Record<"network" | "destructive" | "write", ApprovalMode>>;
@@ -56,13 +56,13 @@ export const DEFAULT_POLICY: Policy = {
  * FR.8 (Codex protocol.rs anti-escalation): subpaths that stay PROTECTED even
  * inside a writable root. `.git/hooks` = arbitrary-code-execution escalation
  * (a write there runs on the user's next git command); `.personaxis` = the
- * persona's identity artifacts — raw file writes would bypass the governance
+ * persona's identity artifacts, raw file writes would bypass the governance
  * ledger (self-edits are the sanctioned path). A deny here is NOT overridable
  * by the allow-list (deny precedence).
  */
 export const PROTECTED_SUBPATHS = [".git/hooks", ".personaxis"] as const;
 
-/** Named permission profiles (FR.8) — one word instead of four knobs. */
+/** Named permission profiles (FR.8), one word instead of four knobs. */
 export const PERMISSION_PROFILES = {
   strict: { sandbox: "read-only", approval: "untrusted" },
   standard: { sandbox: "workspace-write", approval: "on-request" },
@@ -216,7 +216,7 @@ export function evaluateCommand(cmd: string, policy: Policy = DEFAULT_POLICY): C
 
   // Approval mode governs the residual risk. FR.8: a per-category override
   // (approvals.network/destructive/write) takes precedence over the global
-  // knob for commands of that class — most-specific-first, strictest-wins
+  // knob for commands of that class, most-specific-first, strictest-wins
   // when a command falls in several categories.
   const risky = klass.writesFiles || klass.network || klass.destructive || klass.escapesWorkspace;
   const effective = effectiveApproval(policy, klass);
@@ -274,11 +274,11 @@ export function evaluateFileWrite(
     escapesWorkspace: roots.every((r) => pathEscapesWorkspace(targetPath, r)),
   };
 
-  // Anti-escalation guard FIRST — not even the allow-list overrides it.
+  // Anti-escalation guard FIRST, not even the allow-list overrides it.
   if (isProtectedPath(targetPath, policy)) {
     return {
       decision: "deny",
-      reason: "protected subpath (.git/hooks = code-execution escalation; .personaxis = governed identity artifacts — use the sanctioned edit tools)",
+      reason: "protected subpath (.git/hooks = code-execution escalation; .personaxis = governed identity artifacts, use the sanctioned edit tools)",
       class: klass,
     };
   }

@@ -1,5 +1,5 @@
 /**
- * @personaxis/tui/ink — the Ink 7 surface (FR.3).
+ * @personaxis/tui/ink, the Ink 7 surface (FR.3).
  *
  * Brand components wrap visual.ts verbatim (zero visual change); Transcript
  * implements the streaming architecture (<Static> + live region + CommitQueue);

@@ -1,5 +1,5 @@
 /**
- * Tool registry (G1) — the governed agent's action vocabulary.
+ * Tool registry (G1), the governed agent's action vocabulary.
  *
  * Each tool declares: a JSON-Schema for its args (used both for native
  * function-calling and the constrained-JSON fallback), a `gate` that returns a
@@ -28,11 +28,11 @@ import {
 export interface ToolSpec {
   name: string;
   description: string;
-  /** JSON Schema for the tool's arguments object — the SINGLE schema source
+  /** JSON Schema for the tool's arguments object, the SINGLE schema source
    * (native function-calling, constrained-JSON fallback, and validateToolArgs
    * all read it; FR.7 decision: no parallel Zod declaration). */
   parameters: Record<string, unknown>;
-  /** FR.7: true when the tool cannot change any state — read-only tools may run
+  /** FR.7: true when the tool cannot change any state, read-only tools may run
    * in PARALLEL; writers run serially (Claude Code's scheduling rule). */
   isReadOnly: boolean;
   /** FR.7: true when concurrent invocations of THIS tool cannot interfere. */
@@ -45,7 +45,7 @@ export interface ToolSpec {
 
 /**
  * FR.7: validate args against the tool's declared JSON Schema (required keys +
- * primitive types — the registry's schemas are flat by design). Returns the
+ * primitive types, the registry's schemas are flat by design). Returns the
  * problems found; empty = valid. Runs BEFORE the gate, so a malformed call is
  * an input error, never a policy question.
  */

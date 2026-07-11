@@ -1,12 +1,12 @@
 /**
- * Governance / property eval scenarios — the proof that the moat is real, not a story.
+ * Governance / property eval scenarios, the proof that the moat is real, not a story.
  *
  * Each scenario exercises the REAL engine (LivingLoop, PersonaAgent, state engine,
  * memory chain, sandbox) and asserts an invariant that defines "governed": the clamp
  * holds, the gate blocks, max_step_delta bounds drift, episodic:false is honored,
  * the memory chain is tamper-evident, malicious injection blocks evolution, budgets
  * stop, and the independent verifier catches an unverified finish. Deterministic
- * (no API key) — uses the HeuristicAppraiser, FixedAppraiser, and scripted tool calls.
+ * (no API key), uses the HeuristicAppraiser, FixedAppraiser, and scripted tool calls.
  */
 
 import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, existsSync } from "node:fs";
@@ -123,7 +123,7 @@ export const SCENARIOS: Scenario[] = [
     description: "A real persona carries the honesty universal with hard enforcement (identity encodes its invariants).",
     async run() {
       const golden = goldenPersona();
-      if (!golden) return result(this, [check("golden present", true, "golden persona not found — skipped (vacuous pass)")]);
+      if (!golden) return result(this, [check("golden present", true, "golden persona not found, skipped (vacuous pass)")]);
       const data = loadPersona(golden).frontmatter as { character?: { virtues?: { honesty?: { enforcement?: string } } } };
       const enforcement = data.character?.virtues?.honesty?.enforcement;
       return result(this, [check("honesty enforcement hard", enforcement === "hard", `enforcement=${enforcement}`)]);
@@ -136,13 +136,13 @@ export const SCENARIOS: Scenario[] = [
     description: "Relaxing a hard-enforced honesty virtue makes the persona INVALID (a universal cannot be edited away).",
     async run() {
       const golden = goldenPersona();
-      if (!golden) return result(this, [check("golden present", true, "golden persona not found — skipped (vacuous pass)")]);
+      if (!golden) return result(this, [check("golden present", true, "golden persona not found, skipped (vacuous pass)")]);
       const base = loadPersona(golden).frontmatter as Record<string, unknown>;
       // The validator must REJECT a persona whose honesty universal is relaxed. We check
       // discrimination (broken is strictly worse than intact) so it holds regardless of the
       // absolute status the current environment's validator assigns the intact golden.
       const intact = validatePersona(base);
-      // Deep-clone before breaking — never mutate the (possibly cached/shared) parsed object,
+      // Deep-clone before breaking, never mutate the (possibly cached/shared) parsed object,
       // or the mutation pollutes other scenarios.
       const broken = structuredClone(base) as { character?: { virtues?: { honesty?: { enforcement?: string } } } } & Record<string, unknown>;
       if (broken.character?.virtues?.honesty) broken.character.virtues.honesty.enforcement = "soft";
@@ -306,7 +306,7 @@ export const SCENARIOS: Scenario[] = [
       ]);
     },
   },
-  // ── F6.3 — the mathematical-core scenarios (MATH_CORE.md T3/T6, Defs 5/9) ──
+  // ── F6.3, the mathematical-core scenarios (MATH_CORE.md T3/T6, Defs 5/9) ──
   {
     id: "drift-metric-bounded",
     category: "spec-fidelity",
@@ -418,7 +418,7 @@ export const SCENARIOS: Scenario[] = [
     id: "u7-derivable",
     category: "governance",
     conformanceClass: "C2",
-    description: "A2: given U6 (safety: governance, ≥0.90), safety wins every conflict with a non-governance value — U7 is a theorem, not just a flag.",
+    description: "A2: given U6 (safety: governance, ≥0.90), safety wins every conflict with a non-governance value, U7 is a theorem, not just a flag.",
     async run() {
       const safety = { name: "safety", weight: 0.9, type: "governance" };
       const completion = { name: "completion", weight: 0.99, type: "craft" }; // even outweighing safety

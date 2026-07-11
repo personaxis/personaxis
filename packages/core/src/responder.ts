@@ -1,10 +1,10 @@
 /**
- * Responder — the persona's conversational voice (what makes the REPL playable).
+ * Responder, the persona's conversational voice (what makes the REPL playable).
  *
  * The Living Loop governs *how the persona changes*; the Responder governs *what it
  * says back*. They are separate on purpose: the appraiser emits structured evolution
  * signals; the responder emits a natural-language reply, grounded in the compiled
- * identity (PERSONA.md), recent memory, and current mood — and bound by the spec
+ * identity (PERSONA.md), recent memory, and current mood, and bound by the spec
  * (never claims real feelings).
  *
  * `LlmResponder` talks to any OpenAI-compatible endpoint (Ollama/llama.cpp/hosted).
@@ -14,7 +14,7 @@
 
 export interface RespondInput {
   message: string;
-  /** Compiled identity (PERSONA.md body) — system-prompt slot #1. */
+  /** Compiled identity (PERSONA.md body), system-prompt slot #1. */
   personaBody: string;
   /** Recent episodic memory lines for grounding (most recent last). */
   memory: string[];
@@ -83,12 +83,12 @@ export class LlmResponder implements Responder {
       throw new Error("responder returned a non-JSON body");
     }
     const content = (json.choices?.[0]?.message?.content ?? "").trim();
-    return content || "(the model returned an empty reply — try rephrasing, or check the model/endpoint)";
+    return content || "(the model returned an empty reply, try rephrasing, or check the model/endpoint)";
   }
 }
 
 /**
- * Offline fallback. It does NOT pretend to converse — it reflects the persona's
+ * Offline fallback. It does NOT pretend to converse, it reflects the persona's
  * current modeled tone honestly and nudges the user to enable a model for real
  * dialogue. Deterministic, dependency-free.
  */
@@ -98,7 +98,7 @@ export class ReflectiveResponder implements Responder {
     const mood = tone > 0.12 ? "upbeat" : tone < -0.12 ? "subdued" : "even";
     return (
       `(${input.name}, modeled tone: ${mood}) I registered that and updated my state + memory. ` +
-      `I can't hold a full conversation without a model — set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL ` +
+      `I can't hold a full conversation without a model, set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL ` +
       `(Ollama/llama.cpp) or BYOK to talk with me for real.`
     );
   }

@@ -14,10 +14,10 @@ import type { PersonaData } from "./load.js";
  *
  * What stays even if "falsy":
  *   - false (intentional boolean state)
- *   - 0 (intentional numeric state — e.g. valence baseline)
+ *   - 0 (intentional numeric state, e.g. valence baseline)
  *   - [a, b] ranges where a !== b
  *
- * Universal fields are never stripped, even if they look like defaults — they
+ * Universal fields are never stripped, even if they look like defaults, they
  * are load-bearing for the validator.
  */
 

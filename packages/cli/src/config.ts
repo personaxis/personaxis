@@ -13,9 +13,9 @@ export interface PersonaxisConfig {
     /** OpenAI-compatible chat-completions endpoint, e.g. http://localhost:11434/v1 */
     endpoint?: string;
     model?: string;
-    /** Optional bearer token for an authenticated endpoint (dev only — the file must be gitignored). */
+    /** Optional bearer token for an authenticated endpoint (dev only, the file must be gitignored). */
     apiKey?: string;
-    /** Name of the env var holding the key (preferred — the key never touches a file). */
+    /** Name of the env var holding the key (preferred, the key never touches a file). */
     apiKeyEnv?: string;
   };
   /** Per-persona model overrides, keyed by slug. */
@@ -54,13 +54,13 @@ export function saveConfig(config: PersonaxisConfig, scope: ConfigScope = "proje
   try {
     chmodSync(p, 0o600); // enforce perms on an already-existing file too
   } catch {
-    /* Windows / unsupported FS — home dir is already user-scoped */
+    /* Windows / unsupported FS, home dir is already user-scoped */
   }
 }
 
 /**
  * The effective config = global defaults overridden by the project, per section. This is what the
- * provider factory reads, so `config set --global provider/byok/remote/local …` reaches compile —
+ * provider factory reads, so `config set --global provider/byok/remote/local …` reaches compile, 
  * the same precedence the living loop's resolveModel uses (env > project > global).
  */
 export function loadMergedConfig(): PersonaxisConfig {

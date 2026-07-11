@@ -1,15 +1,15 @@
 /**
- * FR.4 — inbound hooks v2: the shell-out contract.
+ * FR.4, inbound hooks v2: the shell-out contract.
  *
  * Users extend the engine WITHOUT forking it: a hook is any executable that
- * receives the event payload as JSON on stdin and answers with its exit code —
+ * receives the event payload as JSON on stdin and answers with its exit code, 
  *   exit 0  → ok (stdout MAY carry a JSON decision, e.g. {"decision":"block"})
  *   exit 2  → BLOCK the action (blocking events only)
  *   other   → warning; never blocks
  * (Claude Code's contract; OpenClaw/Hermes use the same folder+manifest idea.)
  *
  * Six initial events. Only PreToolUse and UserPromptSubmit are BLOCKING-capable
- * (awaited, bounded by a timeout that fails OPEN to "continue with warning" —
+ * (awaited, bounded by a timeout that fails OPEN to "continue with warning", 
  * a hook must never hang the pipeline). The rest are fire-and-forget.
  *
  * Config: `.personaxis/hooks.json` beside the persona (project scope), same
@@ -49,7 +49,7 @@ export interface HooksConfig {
 
 export interface HookOutcome {
   command: string;
-  /** "ok" | "block" | "warn" — block only possible on blocking events. */
+  /** "ok" | "block" | "warn", block only possible on blocking events. */
   result: "ok" | "block" | "warn";
   exitCode: number | null;
   /** Parsed JSON stdout decision, when the hook emitted one. */

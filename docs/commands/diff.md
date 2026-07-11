@@ -1,6 +1,6 @@
 # `personaxis diff`
 
-Compare two `PERSONA.md` files **field by field** and report what changed — including **breaking
+Compare two `PERSONA.md` files **field by field** and report what changed, including **breaking
 changes** (e.g. a required layer removed). A good CI gate for persona edits.
 
 ```bash

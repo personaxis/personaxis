@@ -1,9 +1,9 @@
 /**
- * Approval broker (FR.10 — the minimal slice of Codex's approval state
+ * Approval broker (FR.10, the minimal slice of Codex's approval state
  * machine): request → deliver → await → gate.
  *
  * Why a broker instead of an inline prompt: an approval must OUTLIVE a single
- * prompt/render cycle — the agent keeps waiting while the question travels to
+ * prompt/render cycle, the agent keeps waiting while the question travels to
  * whichever front-end answers it (TUI, dashboard, another protocol client).
  * States are explicit and auditable; an undecided request can time out to a
  * DENY (never to an allow).
@@ -37,7 +37,7 @@ export class ApprovalBroker {
   /**
    * Open a request and await its decision. `onRequest` is the delivery
    * callback (broadcast to front-ends); when nobody decides within
-   * `timeoutMs` the request EXPIRES to a deny — fail-closed, always.
+   * `timeoutMs` the request EXPIRES to a deny, fail-closed, always.
    */
   request(
     tool: string,

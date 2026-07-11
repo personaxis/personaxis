@@ -10,7 +10,7 @@ const env: EnvelopeLookup = {
   hardEnforcedVirtues: ["honesty_humility"],
 };
 
-describe("governance gate — human-directed vs autonomous (F1.3)", () => {
+describe("governance gate, human-directed vs autonomous (F1.3)", () => {
   it("locked mode rejects a non-human mutation", () => {
     const d = governMutations(
       [{ field: "mood.tone", delta: 0.1, reason: "llm nudge" }],

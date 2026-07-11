@@ -10,7 +10,7 @@ export function compileCursor(data: PersonaData): string {
   const role = identity?.role ?? "";
 
   const description = role
-    ? `Behavioral baseline for ${name} — ${role}`
+    ? `Behavioral baseline for ${name}, ${role}`
     : `Behavioral baseline for ${name}`;
 
   const body: string[] = [];

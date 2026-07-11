@@ -1,5 +1,5 @@
 /**
- * Skill security review (F6 — plan/06-skills).
+ * Skill security review (F6).
  *
  * We don't maintain skills; we USE them from external sources (Anthropic, GitHub,
  * ClawHub). But ~26% of community skills carry vulnerabilities (Xu & Yan, 2026)

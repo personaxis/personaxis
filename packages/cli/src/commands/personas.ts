@@ -1,9 +1,9 @@
 /**
- * `personaxis personas …` — make the global + overlay reuse model usable (G5).
+ * `personaxis personas …`, make the global + overlay reuse model usable (G5).
  *
  * A persona lives GLOBALLY at ~/.personaxis/personas/<slug>/personaxis.md (identity
  * + accumulated memory). A project ADOPTS it as an overlay under
- * .personaxis/personas/<slug>/ with its own state.json — so the same persona can be
+ * .personaxis/personas/<slug>/ with its own state.json, so the same persona can be
  * reused across projects (with shared identity) while each project keeps its own
  * runtime state. The primitives lived in @personaxis/core/registry; this surfaces
  * them as discoverable commands.

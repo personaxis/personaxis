@@ -1,5 +1,5 @@
 /**
- * `personaxis team` — operational multi-agent units (distinct from collections).
+ * `personaxis team`, operational multi-agent units (distinct from collections).
  *
  * A Collection is taxonomy (a folder of personas). A TEAM is operational: personas
  * with ROLES, a shared GOAL, that collaborate (e.g. `orchestrate --team <name>`

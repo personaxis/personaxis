@@ -35,7 +35,7 @@ describe("agent conversation continuity (regression)", () => {
     const a2 = new PersonaAgent({ llm: stubLlm("AZUL"), priorMessages: prior });
     await a2.run("say AZUL");
     const convo = (a2.lastMessages ?? []).filter((m) => m.role !== "system");
-    // user ROJO, assistant ROJO, user AZUL, assistant AZUL — alternating, first exchange intact.
+    // user ROJO, assistant ROJO, user AZUL, assistant AZUL, alternating, first exchange intact.
     expect(convo.map((m) => m.role)).toEqual(["user", "assistant", "user", "assistant"]);
     expect(convo[1].content).toBe("ROJO");
     expect(convo[3].content).toBe("AZUL");

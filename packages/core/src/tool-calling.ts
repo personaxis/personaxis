@@ -1,5 +1,5 @@
 /**
- * Tool-calling client (G1) — provider-agnostic action proposals.
+ * Tool-calling client (G1), provider-agnostic action proposals.
  *
  * Primary path: OpenAI-style native function-calling (`tools` + `tool_choice`),
  * which Cohere/OpenAI/together/etc. expose on /chat/completions. Fallback path
@@ -84,7 +84,7 @@ function parseArgs(raw: string): Record<string, unknown> {
     const v = JSON.parse(raw || "{}");
     return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
   } catch {
-    // FR.10 (OpenClaw port): salvage almost-JSON before giving up — a repaired
+    // FR.10 (OpenClaw port): salvage almost-JSON before giving up, a repaired
     // call saves a full model round-trip on weaker tool-callers.
     const r = repairToolArgs(raw);
     return r.ok && r.value ? r.value : {};
@@ -129,7 +129,7 @@ export async function requestToolCall(
       }));
       return { text: (msg.content ?? "").trim(), toolCalls, usedFallback: false, usage: extractUsage(json) };
     }
-    // Auth/rate/server errors won't be fixed by the fallback — surface them.
+    // Auth/rate/server errors won't be fixed by the fallback, surface them.
     if (res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500) {
       throw new Error(`tool-calling HTTP ${res.status}: ${await safeText(res)}`);
     }

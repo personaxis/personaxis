@@ -16,11 +16,16 @@ packages/spec/src/generated/
 .personaxis/*
 !.personaxis/personaxis.md
 .recompile-pending.json
-# F3.2 — ephemeral derived compiler output (hot/cold consumer slices)
+# F3.2, ephemeral derived compiler output (hot/cold consumer slices)
 **/.dist/
 
-# Detailed SaaS build plan — intentionally NOT committed (fed to the SaaS repo session)
+# Detailed SaaS build plan, intentionally NOT committed (fed to the SaaS repo session)
 SAAS_BUILD_PLAN.md
+# Fable 5 open brief, internal only
+FABLE5_BRIEF.md
+# Internal working docs and research bundle, kept local (never public)
+plan/
+research/
 # Stray sandbox-test artifacts
 /SOUL.md
 /.hermes/

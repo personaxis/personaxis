@@ -1,6 +1,6 @@
 # `personaxis lint`
 
-Semantic, tier-aware findings against the layer/field contract — beyond schema validity. Reports
+Semantic, tier-aware findings against the layer/field contract, beyond schema validity. Reports
 `error` (exit 1), `warning`, and `info`.
 
 ## Usage

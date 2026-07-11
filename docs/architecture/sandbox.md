@@ -32,15 +32,15 @@ means a path that resolves outside it.
 
 ## Sandbox postures (exact behavior now)
 
-- **`read-only`** — **denies** any command classed write or network. Network under read-only is always
+- **`read-only`**: **denies** any command classed write or network. Network under read-only is always
   denied.
-- **`workspace-write`** — **denies** a write that escapes the workspace and **denies** destructive
+- **`workspace-write`**: **denies** a write that escapes the workspace and **denies** destructive
   commands; other risky ops fall through to the approval axis (typically `ask`). Writes *inside* the
   workspace are allowed by the sandbox and governed by approval.
-- **`danger-full-access`** — **allows everything except the deny-list** (explicit YOLO). It is checked
+- **`danger-full-access`**: **allows everything except the deny-list** (explicit YOLO). It is checked
   right after the deny-list, before the other hard limits and before approval, so there is **no**
   approval prompt. This was recently fixed so the posture is meaningfully different from
-  `workspace-write` (which still asks for risky ops) — matching `wrapCommand`'s "full access, no
+  `workspace-write` (which still asks for risky ops), matching `wrapCommand`'s "full access, no
   wrapping".
 
 ## Approval axis
@@ -59,22 +59,22 @@ own posture via the `permissions` block (`policyFromFrontmatter`), so it brings 
 any host. The REPL applies it fresh each turn (`buildPolicy`) and cycles the posture with
 **shift+tab** or `/mode`.
 
-## OS enforcement — honest limits
+## OS enforcement, honest limits
 
 The policy gate is the same everywhere; native kernel wrapping (`wrapCommand`) is best-effort on top,
 only for already-allowed commands:
 
-- **macOS** — Seatbelt via `sandbox-exec` (deny network, writes constrained to the workspace).
-- **Linux** — bubblewrap via `bwrap` (read-only bind of `/`, writable workspace, no network; requires
+- **macOS**: Seatbelt via `sandbox-exec` (deny network, writes constrained to the workspace).
+- **Linux**: bubblewrap via `bwrap` (read-only bind of `/`, writable workspace, no network; requires
   `bwrap` on PATH).
-- **Windows / other** — **no OS-level sandbox**: containment is the **policy gate alone**
+- **Windows / other**: **no OS-level sandbox**: containment is the **policy gate alone**
   (`classifyCommand` + deny-list + `pathEscapesWorkspace`), not kernel isolation. Where no native
-  wrapper exists, enforcement degrades to the policy decision (deny-by-default for risky ops) — never
+  wrapper exists, enforcement degrades to the policy decision (deny-by-default for risky ops), never
   a silent full-access fallback. This is stated rather than pretended.
 
 ## The "no difference" case
 
-A **read-only** command — e.g. getting the date — is classified as neither a write nor network, so it
+A **read-only** command, e.g. getting the date, is classified as neither a write nor network, so it
 returns `allow` under all three postures. That is why the postures can look identical for a harmless
 command. The difference shows on a **write**: a workspace write is `deny` under `read-only`, `ask`
 under `workspace-write` (approval axis), and `allow` under `danger-full-access`.

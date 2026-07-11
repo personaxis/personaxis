@@ -39,7 +39,7 @@ async function runAnthropic(prompt: string, model: string): Promise<ProviderRunR
   return { text, model: json.model ?? model, source: "cli-byok" };
 }
 
-/** Structured output via FORCED tool use — Anthropic's schema-constrained path. */
+/** Structured output via FORCED tool use, Anthropic's schema-constrained path. */
 async function runAnthropicStructured(
   prompt: string,
   schema: unknown,

@@ -38,7 +38,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe("@personaxis/sdk — Persona embed API", () => {
+describe("@personaxis/sdk, Persona embed API", () => {
   it("exposes the compiled identity (falls back to the spec body)", () => {
     const p = new Persona(personaPath);
     expect(p.compiledIdentity()).toContain("You are Sdk");

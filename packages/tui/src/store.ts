@@ -1,5 +1,5 @@
 /**
- * Engine store (FR.3): the core EventBus — via the protocol seam — stays the
+ * Engine store (FR.3): the core EventBus, via the protocol seam, stays the
  * SOURCE OF TRUTH; this thin zustand store only adapts events for React
  * consumption (frame-batched token deltas, committed transcript, dials).
  */
@@ -38,7 +38,7 @@ const initial: EngineUiState = {
 export function createEngineStore() {
   const queue = new CommitQueue();
   // Frame-batching: token deltas accumulate here and land in the store at most
-  // once per animation frame — a per-token setState would thrash the renderer.
+  // once per animation frame, a per-token setState would thrash the renderer.
   let pendingTokens = "";
   let scheduled = false;
 
@@ -92,7 +92,7 @@ export function createEngineStore() {
         return;
       case "engine.event":
       case "approval.requested":
-        // Rendered by dedicated consumers (activity feed, approval FSM — FR.10).
+        // Rendered by dedicated consumers (activity feed, approval FSM, FR.10).
         return;
     }
   };

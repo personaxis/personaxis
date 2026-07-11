@@ -1,4 +1,4 @@
-# Integrations — use personaxis with your coding agent
+# Integrations, use personaxis with your coding agent
 
 **Goal:** give your coding agent (Claude Code, Codex, openclaw, or Hermes) a *living, governed
 persona* that stays fresh, learns from each turn on **your own model** (e.g. Cohere), and never
@@ -22,14 +22,14 @@ You do **not** need MCP for this. MCP is optional (for on-demand tools). The cor
 
 ## Install personaxis (production)
 
-personaxis is an npm package with a `personaxis` binary — install it once, globally:
+personaxis is an npm package with a `personaxis` binary, install it once, globally:
 
 ```bash
 npm install -g @personaxis/persona.md      # provides the `personaxis` command on your PATH
 ```
 
 Everything below uses the `personaxis` command (no repo checkout, no hardcoded paths). The host hooks
-run `personaxis observe` — the binary on your PATH, so it works on any machine that installed the package.
+run `personaxis observe`, the binary on your PATH, so it works on any machine that installed the package.
 
 ## One-command onboarding (recommended)
 
@@ -44,7 +44,7 @@ step (put your API key in the env var). Re-runnable and idempotent. Prefer this 
 
 ## Manual quickstart (what onboarding does, step by step)
 
-### 1. Point personaxis at your model — once, globally
+### 1. Point personaxis at your model, once, globally
 
 ```bash
 personaxis config set --global local.endpoint https://api.cohere.ai/compatibility/v1
@@ -52,7 +52,7 @@ personaxis config set --global local.model    command-a-03-2025
 personaxis config set --global local.apiKeyEnv COHERE_API_KEY
 ```
 
-The key is **never written to a file** — `apiKeyEnv` names the env var that holds it. Put the key in
+The key is **never written to a file**: `apiKeyEnv` names the env var that holds it. Put the key in
 your environment (a gitignored `.env`, your shell profile, or the deploy's secret manager in prod):
 
 ```powershell
@@ -80,8 +80,8 @@ personaxis hooks install --host claude-code            # THIS project (.claude/s
 personaxis hooks install --host claude-code --global   # ALL projects (~/.claude/settings.json)
 ```
 
-Now every turn feeds one governed tick to your model and refreshes the identity on drift — no host
-tokens. The hook command is just `personaxis observe --stdin` (the binary on your PATH — no machine paths).
+Now every turn feeds one governed tick to your model and refreshes the identity on drift, no host
+tokens. The hook command is just `personaxis observe --stdin` (the binary on your PATH, no machine paths).
 
 > **Many projects?** Use **`--global`**: one hook in `~/.claude/settings.json` covers every project.
 > The hook's `observe` resolves the **current** project's `.personaxis/personaxis.md`; a project without
@@ -106,12 +106,12 @@ If `ok` is true and your model is reachable, the wiring is correct.
 | **Codex** | `AGENTS.md` → `@PERSONA.md` | `Stop` | [codex.md](./codex.md) |
 | **openclaw** | `SOUL.md` (workspace root) | `command:stop` | [openclaw.md](./openclaw.md) |
 | **Hermes** | `~/.hermes/SOUL.md` | `on_session_end` | [hermes.md](./hermes.md) |
-| Any (no MCP/agent) | HTTP | — | [http-agents.md](./http-agents.md) |
+| Any (no MCP/agent) | HTTP |, | [http-agents.md](./http-agents.md) |
 
 ## Use cases
 
 - **Living dev companion (most common).** Your Claude Code/Codex learns your project's conventions and
-  keeps a consistent persona across sessions — automatically, on your cheap/local model. → Quickstart above.
+  keeps a consistent persona across sessions, automatically, on your cheap/local model. → Quickstart above.
 - **On-demand persona tools.** Let the agent read/adjust the persona, run security scans, or propose a
   governed self-edit *when it decides to*. → MCP server: [claude-code.md](./claude-code.md) §2.
 - **A persona inside your own app** (not a coding agent). → embed [`@personaxis/sdk`](../../packages/sdk)
@@ -124,7 +124,7 @@ Each turn, personaxis appraises the conversation on your model and, **governed b
 
 - `locked` → observes + remembers, but never self-edits.
 - `suggesting` (safe default) → **queues** proposed self-edits (review them; the identity file is NOT
-  auto-changed) — no surprise drift.
+  auto-changed), no surprise drift.
 - `autonomous` → auto-applies (still gated by consensus + protected invariants) and recompiles the
   identity file.
 
@@ -133,6 +133,6 @@ self-edited in any mode. See [architecture/self-evolution.md](../architecture/se
 
 ## More
 
-- [configuration.md](../configuration.md) — model/key resolution (env > project > global, per-persona).
-- [architecture/deployment.md](../architecture/deployment.md) — the two use-modes and four surfaces.
+- [configuration.md](../guides/configuration.md), model/key resolution (env > project > global, per-persona).
+- [architecture/deployment.md](../architecture/deployment.md), the two use-modes and four surfaces.
 - [commands/hooks.md](../commands/hooks.md) · [commands/observe.md](../commands/observe.md) · [commands/watch.md](../commands/watch.md).

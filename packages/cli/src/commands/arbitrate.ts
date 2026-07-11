@@ -1,9 +1,9 @@
 /**
- * `personaxis arbitrate` — resolve a value conflict deterministically and explain it.
+ * `personaxis arbitrate`, resolve a value conflict deterministically and explain it.
  *
  * The algorithm (MATH_CORE.md Def. 9, spec v1.1 "Mathematical semantics"):
  * governance-typed values dominate; then weight; then lexicographic name. U7
- * (safety_over_completion) is an instance, not an extra rule — safety wins every
+ * (safety_over_completion) is an instance, not an extra rule, safety wins every
  * conflict with a non-governance value by U6. With no arguments, prints the
  * persona's full arbitration ranking.
  */
@@ -14,7 +14,7 @@ import { loadPersona, readArbitrationValues, arbitrate, rankValues } from "@pers
 import { resolvePersonaSourcePath } from "../load.js";
 
 export const arbitrateCommand = new Command("arbitrate")
-  .description("Resolve a conflict between two declared values (deterministic, explained) — or print the full ranking.")
+  .description("Resolve a conflict between two declared values (deterministic, explained), or print the full ranking.")
   .argument("[valueA]", "first value name (e.g. safety)")
   .argument("[valueB]", "second value name (e.g. completion)")
   .option("-f, --file <path>", "Path to the persona (default: resolved from cwd)")

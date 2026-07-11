@@ -1,5 +1,5 @@
 /**
- * Observability / causal trace (v0.9 — spec `observability`).
+ * Observability / causal trace (v0.9, spec `observability`).
  *
  * The engine already produces the raw material of a great trace: every step of
  * the governed loops is an auditable event on the EventBus, and every state change
@@ -129,7 +129,7 @@ export class Tracer {
     return this.spans.map((s) => JSON.stringify(s)).join("\n") + (this.spans.length ? "\n" : "");
   }
 
-  /** OpenTelemetry OTLP/JSON (trace) shape — point spans (start == end). */
+  /** OpenTelemetry OTLP/JSON (trace) shape, point spans (start == end). */
   toOTLP(): unknown {
     const toNano = (ms: number) => String((this.start + ms) * 1_000_000);
     return {

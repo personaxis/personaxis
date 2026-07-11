@@ -7,7 +7,7 @@ const root: CompileTargetInfo = { label: "root", outputPath: "PERSONA.md", isSub
 const sub: CompileTargetInfo = { label: "sub", outputPath: ".personaxis/personas/cmo/PERSONA.md", isSubagent: true, slug: "cmo" };
 const DOC = "---\nname: Cmo\ndescription: A CMO\n---\n# Cmo\n\nYou are Cmo, a marketing lead.";
 
-describe("compile targets — the four focus hosts", () => {
+describe("compile targets, the four focus hosts", () => {
   it("PLACEMENT_PLATFORMS includes the four focus hosts", () => {
     expect([...PLACEMENT_PLATFORMS]).toEqual(["claude-code", "codex", "openclaw", "hermes"]);
   });

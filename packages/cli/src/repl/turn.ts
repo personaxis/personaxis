@@ -37,7 +37,7 @@ import { shortName, replyLine, phaseFor, renderEvent } from "./render.js";
 import { recordTurn, makeCtx, ensureCtxSession } from "./session.js";
 
 /**
- * A turn: the persona CONVERSES and (when needed) USES TOOLS — one governed agent
+ * A turn: the persona CONVERSES and (when needed) USES TOOLS, one governed agent
  * loop, with persistent conversation + the session context meter. This unifies chat
  * and `/do`: natural language can now call tools. Offline (no model) → the honest
  * reflective responder. Identity evolution (the Living Loop) still runs each turn.
@@ -58,7 +58,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
   const bus = new EventBus();
   // Which memories were RECALLED to answer this turn (emitted by the agent's resumeContext
-  // before the loop listener below exists) — collected here for the concise per-turn summary.
+  // before the loop listener below exists), collected here for the concise per-turn summary.
   const recalls: string[] = [];
   bus.on((e) => {
     ctx.phase?.(phaseFor(e));
@@ -94,7 +94,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   ctx.out(replyLine(ctx, result.summary || "…"), "persona");
   await recordTurn(ctx, line, result.summary || "…");
   // Only surface the budget line when something noteworthy happened (a multi-step
-  // task or an early stop) — not on every one-shot chat reply.
+  // task or an early stop), not on every one-shot chat reply.
   if (result.budget.steps > 1 || (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met")) {
     ctx.out(chalk.dim(`  budget: ${result.budget.steps} steps · ${result.budget.tokens} tok · $${result.budget.costUsd}` + (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met" ? ` · stopped: ${result.budget.stoppedBy}` : "")));
   }
@@ -103,7 +103,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     tracer.stop();
     for (const p of paths) ctx.out(chalk.dim(`  trace → ${p}`));
   }
-  // Identity evolution runs without the observe/appraise/govern noise — but we DO
+  // Identity evolution runs without the observe/appraise/govern noise, but we DO
   // surface a concise, meaningful summary of what actually happened this turn:
   // which envelope changed, whether memory was written, whether PERSONA.md recompiled.
   const changed: string[] = [];
@@ -131,7 +131,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       // gauge and drift view consume it directly, no disk re-read.
       ctx.onDrift?.(e.report);
     } else if (e.type === "recompile" && e.crossings?.length) {
-      // FASE 7 P2: the theorem made visible — stage the band-crossing moment
+      // FASE 7 P2: the theorem made visible, stage the band-crossing moment
       // (field pulses, the new band's prose lands, then a committed summary).
       ctx.onMoment?.(e.crossings);
     }
@@ -156,11 +156,11 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     }
   }
 
-  // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline —
+  // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline, 
   // a full LLM compile would block every single turn (the "stuck thinking" hang). Just
   // surface it; recompile happens on /compile, on /review approve, or on exit.
   if (readRecompilePending(ctx.handle.personaPath).pending) {
-    ctx.out(chalk.dim("  · PERSONA.md stale (self-edits applied) — /compile to refresh"));
+    ctx.out(chalk.dim("  · PERSONA.md stale (self-edits applied), /compile to refresh"));
   }
 }
 
@@ -172,7 +172,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
 export async function maybeRecompile(ctx: Ctx): Promise<void> {
   if (!readRecompilePending(ctx.handle.personaPath).pending) return;
   if (!llmConfig(ctxModelArg(ctx))) {
-    ctx.out(chalk.dim("  · PERSONA.md is stale — run `personaxis compile` to refresh it"));
+    ctx.out(chalk.dim("  · PERSONA.md is stale, run `personaxis compile` to refresh it"));
     return;
   }
   try {
@@ -208,7 +208,7 @@ export function parseMentions(line: string, subs: SubPersonaRef[]): { targets: s
     } else if (byAddr.has(tok)) {
       targets.push(tok);
     } else {
-      break; // unknown — leave it in the message
+      break; // unknown, leave it in the message
     }
     rest = rest.slice(m[0].length);
   }
@@ -246,7 +246,7 @@ export function buildRoster(rootCtx: Ctx): Roster {
     return c;
   };
   // The sub-persona tree is surfaced to the LLM via the runtime awareness block
-  // (buildAwarenessBlock), which covers root AND every sub — so we no longer bake it
+  // (buildAwarenessBlock), which covers root AND every sub, so we no longer bake it
   // into personaDoc here.
   return { subs, color: (a) => subColor.get(a), getSub };
 }
@@ -272,7 +272,7 @@ export async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, s
     await handleTurn(msg, sub);
     // Record the delegation for provenance: a note in the ROOT's session (the sub logged
     // its own turn in its own session), and an episodic memory ONLY if the root's spec
-    // enables episodic memory (honors memory.types.episodic — fixes the prior leak).
+    // enables episodic memory (honors memory.types.episodic, fixes the prior leak).
     try {
       ensureCtxSession(rootCtx, msg);
       appendTurn(rootCtx.handle.personaPath, rootCtx.sessionId, {

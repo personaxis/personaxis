@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `personaxis-scan` — standalone bin for the cross-harness agent-config scanner.
+ * `personaxis-scan`, standalone bin for the cross-harness agent-config scanner.
  * The free top-of-funnel wedge: `npx @personaxis/persona.md` ships it, and it runs
  * without a persona, a model, or any setup. Same engine as `personaxis scan`.
  */

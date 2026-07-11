@@ -47,7 +47,7 @@ class FixedAppraiser implements Appraiser {
   }
 }
 
-describe("loop observability — evaluations surface their target/dimension/score (C)", () => {
+describe("loop observability, evaluations surface their target/dimension/score (C)", () => {
   it("emits a detailed `evaluation` event per score when a memory is written", async () => {
     writeFileSync(personaPath, persona());
     seed();

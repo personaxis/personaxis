@@ -1,9 +1,9 @@
 /**
- * FR.9 — `personaxis credential` : OS-secure-storage front-end.
+ * FR.9, `personaxis credential` : OS-secure-storage front-end.
  *
  * The value is NEVER taken as an argv token (argv leaks into shell history
  * and process listings): it is read from stdin (piped or typed) instead.
- * Resolution order stays env-first — see src/credentials.ts.
+ * Resolution order stays env-first, see src/credentials.ts.
  */
 
 import { Command } from "commander";
@@ -23,7 +23,7 @@ const setCommand = new Command("set")
     if (process.stdin.isTTY) console.log(chalk.dim(`Paste the value for ${name} and press Ctrl+${process.platform === "win32" ? "Z, Enter" : "D"}:`));
     const value = await readStdin();
     if (!value) {
-      console.error(chalk.red("Error:"), "empty value — pipe it in, e.g. `echo $KEY | personaxis credential set " + name + "`");
+      console.error(chalk.red("Error:"), "empty value, pipe it in, e.g. `echo $KEY | personaxis credential set " + name + "`");
       process.exit(1);
     }
     try {
@@ -42,7 +42,7 @@ const getCommand = new Command("get")
   .action((name: string) => {
     const v = resolveCredential(name);
     if (!v) {
-      console.log(chalk.dim(`(unset) — neither the env var ${name} nor the OS store has it`));
+      console.log(chalk.dim(`(unset), neither the env var ${name} nor the OS store has it`));
       process.exit(1);
     }
     const source = process.env[name] ? "environment" : "OS secure store";

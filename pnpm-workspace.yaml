@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "research"
 
 # ── Supply-chain hardening ────────────────────────────────────────────────────
 # A new dependency version must be at least 48h old before pnpm will install it

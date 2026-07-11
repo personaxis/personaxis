@@ -1,10 +1,10 @@
 /**
- * `personaxis jacobian` — J_compile: which coordinates actually matter.
+ * `personaxis jacobian`, J_compile: which coordinates actually matter.
  *
  * The deterministic compile stage is a step function of each coordinate's band,
  * so its sensitivity is EXACT (MATH_CORE.md Def. 10): compile at each reachable
  * band's representative, measure normalized line-edit distance between adjacent
- * bands. σ = 0 ⇒ the number is decorative — it provably cannot change the
+ * bands. σ = 0 ⇒ the number is decorative, it provably cannot change the
  * compiled artifact (the audit's F-21, made measurable). No LLM, offline.
  */
 
@@ -58,11 +58,11 @@ export const jacobianCommand = new Command("jacobian")
         return;
       }
 
-      console.log(chalk.bold("Persona Jacobian — J_compile") + chalk.dim(`  (${report.compiles} deterministic compiles, no LLM)`));
+      console.log(chalk.bold("Persona Jacobian, J_compile") + chalk.dim(`  (${report.compiles} deterministic compiles, no LLM)`));
       console.log(chalk.dim("σ = mean normalized line-edit distance between adjacent band artifacts\n"));
       for (const c of report.coordinates) {
         const bar = "█".repeat(Math.round(c.sigma * 24)).padEnd(24, "·");
-        const tag = c.decorative ? chalk.yellow("decorative — value cannot change the artifact") : chalk.dim(Object.entries(c.pairs).map(([k, v]) => `${k} ${v.toFixed(3)}`).join("  "));
+        const tag = c.decorative ? chalk.yellow("decorative, value cannot change the artifact") : chalk.dim(Object.entries(c.pairs).map(([k, v]) => `${k} ${v.toFixed(3)}`).join("  "));
         console.log(`  ${chalk.cyan(c.field.padEnd(38))} ${bar} σ ${c.sigma.toFixed(3)}  ${tag}`);
       }
       const dead = report.coordinates.filter((c) => c.decorative);
@@ -70,7 +70,7 @@ export const jacobianCommand = new Command("jacobian")
         console.log("");
         console.log(
           chalk.yellow(`! ${dead.length} decorative coordinate(s)`) +
-            chalk.dim(" — declare per-band `expression` prose to make these numbers load-bearing (SPEC §L3)."),
+            chalk.dim(", declare per-band `expression` prose to make these numbers load-bearing (SPEC §L3)."),
         );
         process.exitCode = 2;
       }

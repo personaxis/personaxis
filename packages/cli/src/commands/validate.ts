@@ -23,11 +23,11 @@ function printResult(personaPath: string, name: string, result: ValidationResult
   console.log(`${marker} ${chalk.bold(name)} ${chalk.dim(`(${personaPath})`)} ${badge}`);
 
   for (const err of result.errors) {
-    const field = err.field ? chalk.yellow(err.field) + " — " : "";
+    const field = err.field ? chalk.yellow(err.field) + ", " : "";
     console.error(`    ${chalk.red("✗")} ${field}${err.message}`);
   }
   for (const w of result.warnings) {
-    const field = w.field ? chalk.cyan(w.field) + " — " : "";
+    const field = w.field ? chalk.cyan(w.field) + ", " : "";
     console.log(`    ${chalk.yellow("!")} ${field}${w.message}`);
   }
 }
@@ -96,7 +96,7 @@ function validateFile(filePath?: string): ValidationResult {
       if (!policyResult.valid) {
         console.log(`${sub} ${chalk.red.bold("FAIL_SCHEMA")}`);
         for (const e of policyResult.errors) {
-          console.error(`     ${chalk.red("✗")} ${chalk.yellow(e.field)} — ${e.message}`);
+          console.error(`     ${chalk.red("✗")} ${chalk.yellow(e.field)}, ${e.message}`);
         }
         result.errors.push(...policyResult.errors.map((e) => ({ ...e, category: "FAIL_SCHEMA" as const })));
         result.status = "FAIL_SCHEMA";
@@ -105,7 +105,7 @@ function validateFile(filePath?: string): ValidationResult {
         const tag = policyResult.warnings.length > 0 ? chalk.yellow.bold("PASS_WITH_WARNINGS") : chalk.green.bold("PASS");
         console.log(`${sub} ${tag}`);
         for (const w of policyResult.warnings) {
-          console.log(`     ${chalk.yellow("!")} ${chalk.cyan(w.field)} — ${w.message}`);
+          console.log(`     ${chalk.yellow("!")} ${chalk.cyan(w.field)}, ${w.message}`);
         }
         if (policyResult.warnings.length > 0 && result.status === "PASS") {
           result.status = "PASS_WITH_WARNINGS";

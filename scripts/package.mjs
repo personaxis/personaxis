@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Single-file binary packaging (F0 — plan/00-foundations).
+ * Single-file binary packaging (F0, plan/00-foundations).
  *
  * Strategy (see plan/RESEARCH/02): keep TypeScript; ship `bun compile` single-file
  * binaries per platform AND publish to npm with a thin-shim + optionalDependencies.

@@ -1,4 +1,4 @@
-// Cross-repo spec mirror (F5.1) — replaces the manual `cp` steps in CLAUDE.md.
+// Cross-repo spec mirror (F5.1), replaces the manual `cp` steps in CLAUDE.md.
 //
 // The single source of truth for the schemas is `@personaxis/spec`
 // (`packages/spec/schema/`) and for the canonical templates is

@@ -1,5 +1,5 @@
 /**
- * Blackboard multi-persona orchestration (F7 — plan/07-orchestration).
+ * Blackboard multi-persona orchestration (F7).
  *
  * The overseer doesn't hard-wire which persona does what. It posts a task to a
  * shared blackboard; personas *volunteer* ranked by how well their declared

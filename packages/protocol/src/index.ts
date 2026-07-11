@@ -1,5 +1,5 @@
 /**
- * @personaxis/protocol — the UI↔engine seam (SQ/EQ over JSON-RPC 2.0).
+ * @personaxis/protocol, the UI↔engine seam (SQ/EQ over JSON-RPC 2.0).
  *
  * Codex's protocol pattern adapted to TypeScript: front-ends submit typed
  * operations and consume typed events; the engine never renders and a

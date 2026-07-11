@@ -1,10 +1,10 @@
 /**
- * FR.9 — credential resolution: env-first, OS secure storage as fallback.
+ * FR.9, credential resolution: env-first, OS secure storage as fallback.
  *
  * Precedence (first defined wins):
- *   1. the environment variable itself (fast path — no process spawn);
+ *   1. the environment variable itself (fast path, no process spawn);
  *   2. OS secure storage, shell-out only (keytar is FORBIDDEN: archived,
- *      native addon — incompatible with bun-compile):
+ *      native addon, incompatible with bun-compile):
  *        darwin → `security find-generic-password` (Keychain)
  *        linux  → `secret-tool lookup` (libsecret, when installed)
  *        win32  → NOT read (no built-in CLI reads Credential Manager
@@ -16,7 +16,7 @@
  * name as account, so `personaxis credential set ANTHROPIC_API_KEY` and
  * `export ANTHROPIC_API_KEY=…` are interchangeable spellings of one thing.
  *
- * OAuth (PKCE, Codex login pattern) is reserved for the SaaS — not here.
+ * OAuth (PKCE, Codex login pattern) is reserved for the SaaS, not here.
  */
 
 import { spawnSync } from "node:child_process";
@@ -45,7 +45,7 @@ function fromSecureStorage(name: string): string | undefined {
 
 /**
  * Resolve a credential by its env-var name. Returns undefined when neither
- * the environment nor the OS store has it — callers keep their own errors.
+ * the environment nor the OS store has it, callers keep their own errors.
  */
 export function resolveCredential(name: string): string | undefined {
   const env = process.env[name];
@@ -73,14 +73,14 @@ export function storeCredential(name: string, value: string): void {
     if (r.status !== 0) {
       throw new Error(
         r.error?.message.includes("ENOENT")
-          ? "secret-tool not found — install libsecret-tools, or use an environment variable"
+          ? "secret-tool not found, install libsecret-tools, or use an environment variable"
           : `secret-tool store failed (exit ${r.status})`,
       );
     }
     return;
   }
   throw new Error(
-    "OS secure storage is not supported on this platform yet — set the environment variable " +
+    "OS secure storage is not supported on this platform yet, set the environment variable " +
       `${name} instead (Windows support arrives with the signed binary distribution).`,
   );
 }

@@ -23,11 +23,12 @@ runtime with mathematical guarantees:
 
 Every claim above is **machine-verified**: a property-based suite hunts for
 counterexamples with thousands of adversarial cases on every CI build
-(`FC_NUM_RUNS=5000`; the recorded E3 run: 2.3M generated cases, 0 counterexamples,
-`packages/evals/experiments/results/e3-scale.json`), and a 15-scenario conformance
-suite (`personaxis-evals`) exercises the real engine. Formal statements and proofs:
-[`docs/MATH_CORE.md`](./MATH_CORE.md). Preregistered research protocol:
-[`docs/RESEARCH.md`](./RESEARCH.md).
+(`FC_NUM_RUNS=5000`; the recorded E3 run reached 2.3M generated cases with 0
+counterexamples), and a 15-scenario conformance suite (`personaxis-evals`)
+exercises the real engine. The theorem-to-code map is
+[`architecture/math-core.md`](./architecture/math-core.md); the full formal proofs,
+preregistered protocol, and recorded experiments are in a separate research report,
+published separately.
 
 ## Why this is horizontal
 
@@ -79,13 +80,13 @@ personaxis state drift                       # where is my persona right now, an
 
 | Claim | Status |
 |---|---|
-| Deterministic guarantees T1–T6 | ✅ proven + property-verified; E3 recorded: 28 properties, 2,306,140 generated adversarial cases (10⁵ per CPU-bound property), **0 counterexamples** (`e3-scale.json`) |
+| Deterministic guarantees T1–T6 | ✅ proven + property-verified; E3 recorded: 28 properties, 2,306,140 generated adversarial cases (10⁵ per CPU-bound property), **0 counterexamples** |
 | Conformance suite | ✅ 15/15 scenarios green (C0/C1/C2) |
 | Hot-path cost | ✅ E4: p99 0.06–0.12 ms per tick (n=8–64), negligible |
-| Behavioral drift reduction vs prompt-only (RQ2) | 🔬 first single-model run recorded (E1/E2 on command-a: direction favors the engine, δ below the preregistered 0.33 bar, same-model judges saturated near ceiling; `e1/e2-command-a.json`); headline needs ≥2 models with independent judges |
-| Genesis vs hand-written prompt (RQ5) | 🔬 single-model run recorded (E5: personaxis 8.25 vs card-style 5.42, δ 0.26; ties prompt-only; `e5-command-a.json`) |
-| Compile-sensitivity predicts behavior (RQ3/H3) | 🔬 run recorded: band prose moves behavior (σ_behavior mean 0.56 at temperature 0) but σ_compile had no rank spread on the test persona, so ρ is undefined in practice (`rq3-jbehavior-command-a.json`) |
+| Behavioral drift reduction vs prompt-only (RQ2) | 🔬 first single-model run recorded (E1/E2 on command-a: direction favors the engine, δ below the preregistered 0.33 bar, same-model judges saturated near ceiling); headline needs ≥2 models with independent judges |
+| Genesis vs hand-written prompt (RQ5) | 🔬 single-model run recorded (E5: personaxis 8.25 vs card-style 5.42, δ 0.26; ties prompt-only) |
+| Compile-sensitivity predicts behavior (RQ3/H3) | 🔬 run recorded: band prose moves behavior (σ_behavior mean 0.56 at temperature 0) but σ_compile had no rank spread on the test persona, so ρ is undefined in practice |
 | Cross-model portability measurement (RQ6) | 🔬 runner ready; needs ≥3 models |
 
 *Nothing on this page outruns the evidence: the 🔬 rows become ✅ only with
-published multi-model runs (protocol frozen in RESEARCH.md).*
+published multi-model runs (protocol frozen in the preregistered research report).*

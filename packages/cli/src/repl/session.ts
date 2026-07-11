@@ -3,7 +3,7 @@
  *
  * Building a per-persona `Ctx` (root or sub-persona), lazily creating the
  * on-disk session header, and recording each completed user/assistant exchange
- * (with a one-time LLM auto-name). All session logging is best-effort — it never
+ * (with a one-time LLM auto-name). All session logging is best-effort, it never
  * breaks a turn.
  */
 
@@ -51,7 +51,7 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
   const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
   const loop = new LivingLoop(personaPath, {
     appraiser: pickAppraiser(modelArg),
-    // F6.5: the inline recompile is REAL — on a band crossing the stage-1
+    // F6.5: the inline recompile is REAL, on a band crossing the stage-1
     // assembler rewrites the compiled doc deterministically (band-selected
     // expression from fresh state; F3.1's `assemble` seam, finally wired).
     recompile: makeRecompileHook({

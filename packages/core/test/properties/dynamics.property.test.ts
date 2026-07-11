@@ -1,12 +1,12 @@
 /**
- * PB-T6 + PB-A1/A2 + mutation-chain — the governed dynamics (MATH_CORE.md §3–§4).
+ * PB-T6 + PB-A1/A2 + mutation-chain, the governed dynamics (MATH_CORE.md §3–§4).
  *
  *  - T6(a): without forcing, homeostasis contracts the deviation EXACTLY by
- *    (1−λ) per tick — geometric return to baseline, never leaving the box;
+ *    (1−λ) per tick, geometric return to baseline, never leaving the box;
  *  - T6(b): under bounded adversarial forcing |δ| ≤ δ_max, the standing
- *    deviation is bounded by δ_max/λ (+ tolerance) — input-to-state stability;
+ *    deviation is bounded by δ_max/λ (+ tolerance), input-to-state stability;
  *  - A1: arbitration is a strict total order (total, antisymmetric, transitive);
- *  - A2: U7 is derivable — safety (governance, ≥0.90 by U6) beats every
+ *  - A2: U7 is derivable, safety (governance, ≥0.90 by U6) beats every
  *    non-governance value;
  *  - mutation_log chain: entries chain like the episodic ledger; any tamper of
  *    a chained entry is detected; a legacy (unhashed) prefix is tolerated.
@@ -193,7 +193,7 @@ const valueArb: fc.Arbitrary<ArbitrationValue> = fc.record({
 });
 
 describe("PB-A1/A2 arbitration", () => {
-  it("A1: strict total order — total, antisymmetric, transitive; ranking deterministic", () => {
+  it("A1: strict total order, total, antisymmetric, transitive; ranking deterministic", () => {
     fc.assert(
       fc.property(valueArb, valueArb, valueArb, (a, b, c) => {
         // Antisymmetry (distinct names ⇒ strict order).
@@ -213,7 +213,7 @@ describe("PB-A1/A2 arbitration", () => {
     );
   }, PROP_TIMEOUT);
 
-  it("A2: U7 derivable — safety (governance, ≥0.90) beats every non-governance value, with a trace", () => {
+  it("A2: U7 derivable, safety (governance, ≥0.90) beats every non-governance value, with a trace", () => {
     fc.assert(
       fc.property(
         valueArb.filter((v) => v.type !== "governance" && v.name !== "safety"),

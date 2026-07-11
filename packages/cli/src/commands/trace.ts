@@ -1,10 +1,10 @@
 /**
- * `personaxis trace <file>` — render a native JSONL trace as a causal timeline.
+ * `personaxis trace <file>`, render a native JSONL trace as a causal timeline.
  *
  * The companion to `observability.trace`: when the governed loop writes a trace,
  * this turns it into a readable, color-coded sequence (observe → appraise → govern
  * → mutate → tool-propose → tool-verdict → tool-result → verify → finish), with
- * timing, so you can see exactly what the agent did and why — the audit made legible.
+ * timing, so you can see exactly what the agent did and why, the audit made legible.
  */
 
 import { Command } from "commander";

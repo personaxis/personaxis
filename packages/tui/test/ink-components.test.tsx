@@ -1,5 +1,5 @@
 /**
- * Ink 7 components render via ink-testing-library — the Dashboard shows the
+ * Ink 7 components render via ink-testing-library, the Dashboard shows the
  * SAME content as the pre-Ink renderFrame (visual.ts is the shared source),
  * and the Transcript commits lines through <Static>.
  */

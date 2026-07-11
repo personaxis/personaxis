@@ -1,10 +1,10 @@
 /**
- * F3.2 — the host placement target registry (in core so the SaaS can place
+ * F3.2, the host placement target registry (in core so the SaaS can place
  * documents server-side, not only the CLI).
  *
  * A COMPILE TARGET adapts the canonical compiled document (produced by the
  * stage-1 assembler + optional polish) into a specific host's identity/subagent
- * convention — computing both the path and the content. Targets are registered
+ * convention, computing both the path and the content. Targets are registered
  * as plugins: `registerTarget()` adds one, `getTarget()`/`listTargets()` read
  * the registry, and the four built-ins (claude-code, codex, openclaw, hermes)
  * are registered on import.
@@ -15,7 +15,7 @@
  *   hermes       root → .hermes/SOUL.md             · sub → .hermes/agents/<slug>/SOUL.md
  *
  * SOUL.md hosts (openclaw, Hermes) read the file as the FIRST system-prompt
- * section and RE-READ it fresh at the start of every message/session — so a
+ * section and RE-READ it fresh at the start of every message/session, so a
  * recompile takes effect with no restart (hot reload). Claude Code / Codex read
  * the root document via an `@PERSONA.md` reference from CLAUDE.md / AGENTS.md,
  * so only a SUBAGENT compile places a new file for them.
@@ -26,7 +26,7 @@ import matter from "gray-matter";
 export interface PlacementContext {
   isSubagent: boolean;
   slug?: string;
-  /** Where the canonical root document lives (e.g. "PERSONA.md") — used by shared-root targets. */
+  /** Where the canonical root document lives (e.g. "PERSONA.md"), used by shared-root targets. */
   rootOutputPath: string;
 }
 
@@ -51,7 +51,7 @@ export function tomlString(value: string): string {
 }
 
 /**
- * SOUL.md placement — reuse the canonical compiled document (already a
+ * SOUL.md placement, reuse the canonical compiled document (already a
  * second-person qualitative identity doc), stripping only the subagent
  * `name`/`description` frontmatter that openclaw/Hermes don't use.
  */

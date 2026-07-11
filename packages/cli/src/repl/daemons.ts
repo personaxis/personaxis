@@ -10,7 +10,7 @@ import { execFileSync, spawn } from "node:child_process";
 import chalk from "chalk";
 import type { Ctx } from "./types.js";
 
-/** Kill any background daemons (serve/watch) started from `/` — called on exit. */
+/** Kill any background daemons (serve/watch) started from `/`, called on exit. */
 export function stopDaemons(ctx: Ctx): void {
   for (const child of Object.values(ctx.bg ?? {})) {
     try {
@@ -44,7 +44,7 @@ export function startStopDaemon(
     return void ctx.out(chalk.green(`  ✓ stopped ${name}`));
   }
   if (ctx.bg[name] && ctx.bg[name].exitCode === null) {
-    return void ctx.out(chalk.dim(`  /${name} is already running (pid ${ctx.bg[name].pid}) — /${name} stop to stop it.`));
+    return void ctx.out(chalk.dim(`  /${name} is already running (pid ${ctx.bg[name].pid}), /${name} stop to stop it.`));
   }
   const port = rest; // for serve
   const child = spawn(process.execPath, [process.argv[1], ...buildArgs(port)], {
@@ -55,11 +55,11 @@ export function startStopDaemon(
   });
   child.on("error", (e) => ctx.out(chalk.red(`  /${name} failed to start: ${e.message}`)));
   ctx.bg[name] = child;
-  ctx.out(chalk.green(`  ✓ ${name} running in the background`) + chalk.dim(` (pid ${child.pid}) — ${describe(port)}`));
+  ctx.out(chalk.green(`  ✓ ${name} running in the background`) + chalk.dim(` (pid ${child.pid}), ${describe(port)}`));
   ctx.out(chalk.dim(`  /${name} stop to stop it (it also stops when you /exit).`));
 }
 
-/** FASE 7 P2 — run `personaxis <name> <args>` on the RAW TTY (stdio inherited),
+/** FASE 7 P2, run `personaxis <name> <args>` on the RAW TTY (stdio inherited),
  *  for full-screen flows the app suspends into: proof scenes, the Genesis wizard.
  *  Cross-OS: process.execPath + argv[1], no shell. */
 export function runCliInteractive(name: string, arg: string): Promise<void> {
@@ -90,6 +90,6 @@ export function runCliPassthrough(name: string, arg: string, ctx: Ctx): void {
     const err = e as { stdout?: string; stderr?: string; status?: number };
     const text = ((err.stdout ?? "") + (err.stderr ?? "")).trim();
     if (text) for (const l of text.split("\n")) ctx.out("  " + l);
-    else ctx.out(chalk.yellow(`  /${name} failed (exit ${err.status ?? "?"}) — is it a valid command? try /help or \`personaxis --help\``));
+    else ctx.out(chalk.yellow(`  /${name} failed (exit ${err.status ?? "?"}), is it a valid command? try /help or \`personaxis --help\``));
   }
 }

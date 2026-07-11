@@ -1,5 +1,5 @@
 /**
- * PB-J — J_compile is exact and honest (MATH_CORE.md Def. 10).
+ * PB-J, J_compile is exact and honest (MATH_CORE.md Def. 10).
  *
  *  - the normalized line distance is a metric-like divergence: 0 ⟺ equal docs,
  *    symmetric, bounded by 1;
@@ -80,7 +80,7 @@ describe("PB-J J_compile against the real assembler", () => {
         const warmth = report.coordinates.find((c) => c.field.endsWith("warmth"))!;
         const silent = report.coordinates.find((c) => c.field.endsWith("silent"))!;
 
-        // The no-expression coordinate is decorative — statically AND measured.
+        // The no-expression coordinate is decorative, statically AND measured.
         expect(silent.decorative).toBe(true);
         expect(staticallyDecorative(env.envelopes[silent.field])).toBe(true);
 

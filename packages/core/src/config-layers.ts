@@ -1,5 +1,5 @@
 /**
- * FR.5 — explicit numeric configuration-layer precedence.
+ * FR.5, explicit numeric configuration-layer precedence.
  *
  * The Codex `config_layer_source` pattern (converging with Claude Code's
  * managed→user deny-wins): every configurable value belongs to a LAYER with a
@@ -9,12 +9,12 @@
  * Two tiers of keys:
  *   - ordinary keys  → highest layer wins (resolveLayered);
  *   - POLICY-TIER keys → a lower layer may only RESTRICT, never relax
- *     (resolvePolicyTier, strictest-wins) — the generalization of the
+ *     (resolvePolicyTier, strictest-wins), the generalization of the
  *     improvement-mode min-wins rule (SPEC.md §7.2).
  */
 
 export const CONFIG_LAYERS = {
-  /** Org-managed defaults (reserved — MDM/enterprise distribution). */
+  /** Org-managed defaults (reserved, MDM/enterprise distribution). */
   managed: 0,
   /** ~/.personaxis/config.json */
   global: 10,
@@ -51,7 +51,7 @@ export function resolveLayered<T>(
 
 /**
  * Policy-tier resolution: the value is ordered by `strictness` (index 0 =
- * most permissive) and the STRICTEST defined layer wins regardless of rank —
+ * most permissive) and the STRICTEST defined layer wins regardless of rank, 
  * a lower layer can tighten what a higher layer set, never loosen it.
  */
 export function resolvePolicyTier<T>(

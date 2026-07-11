@@ -1,11 +1,11 @@
 /**
- * PB-T3 + metric axioms — the denotational core (MATH_CORE.md Defs. 4–6, T3).
+ * PB-T3 + metric axioms, the denotational core (MATH_CORE.md Defs. 4–6, T3).
  *
  *  - u-space: u(mean)=0, u(max)=+1, u(min)=−1; per-side affine, order-preserving;
  *    fromU inverts toU on the box;
  *  - ρ(x,y) = ‖u(x)−u(y)‖_∞ is a metric (identity, symmetry, triangle);
  *  - bands partition the envelope; crossing ⟺ band(from) ≠ band(to);
- *  - T3: `minStepsToCross` is a CERTIFIED lower bound — an adversary pushing the
+ *  - T3: `minStepsToCross` is a CERTIFIED lower bound, an adversary pushing the
  *    maximum admitted delta every step, through the REAL mutation primitive,
  *    can never cross a band boundary in fewer audited steps.
  */

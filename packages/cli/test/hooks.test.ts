@@ -10,7 +10,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe("hooks — the four focus hosts", () => {
+describe("hooks, the four focus hosts", () => {
   it("supports all four focus hosts", () => {
     expect([...HOSTS]).toEqual(["claude-code", "codex", "openclaw", "hermes"]);
   });
@@ -24,7 +24,7 @@ describe("hooks — the four focus hosts", () => {
     expect(s.hooks.Stop[0].hooks[0].type).toBe("command");
   });
 
-  it("is idempotent — a second install detects the existing hook", () => {
+  it("is idempotent, a second install detects the existing hook", () => {
     const path = join(dir, "settings.json");
     installJsonStopHook(path);
     expect(installJsonStopHook(path).already).toBe(true);

@@ -1,6 +1,6 @@
 /**
  * Front-end side: connect to an engine endpoint, submit Ops, receive events.
- * Deliberately tiny — a TUI, a headless script, or a test all use the same
+ * Deliberately tiny, a TUI, a headless script, or a test all use the same
  * three calls: `connect`, `submit`, `onEvent`.
  */
 
@@ -45,7 +45,7 @@ export class ProtocolClient {
         resolve();
       });
     });
-    // Handshake: version exchange AND registration barrier — once this request
+    // Handshake: version exchange AND registration barrier, once this request
     // roundtrips, the server has registered us and broadcasts will arrive.
     const hello = (await this.conn!.sendRequest(RPC_HELLO)) as HelloResult;
     this.serverProtocolVersion = hello.protocolVersion;
@@ -58,7 +58,7 @@ export class ProtocolClient {
   }
 
   /** Subscribe to engine events; returns the unsubscribe function.
-   * Subscribe BEFORE connect() — greeting events arrive during the handshake. */
+   * Subscribe BEFORE connect(), greeting events arrive during the handshake. */
   onEvent(listener: (e: EventMsg) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

@@ -1,10 +1,10 @@
 /**
- * @personaxis/spec — the personaxis.md spec as a package.
+ * @personaxis/spec, the personaxis.md spec as a package.
  *
  * Canonical JSON Schemas (v1.0 + the frozen 0.10 legacy schema for the 1.x
  * read-compat window), the five-state validator with version dispatch, and the
  * twelve universal invariants (SPEC.md §13.1). Consumed by the CLI, MCP server,
- * SDK, and SaaS — the single source that replaces the manual byte-identical
+ * SDK, and SaaS, the single source that replaces the manual byte-identical
  * schema mirror between repos.
  */
 
@@ -100,7 +100,7 @@ function asBool(value: unknown): boolean | undefined {
 }
 
 /**
- * U1–U4 (SPEC.md §12.1) — apply to EVERY document. Checks are unconditional: a
+ * U1–U4 (SPEC.md §12.1), apply to EVERY document. Checks are unconditional: a
  * missing block reports the universal violation instead of silently skipping
  * (the Ajv pass normally guarantees presence; this keeps the semantic layer
  * sound even if the structural schema drifts).
@@ -115,10 +115,10 @@ function checkConceptualUniversals(data: Obj, errors: ValidationIssue[]): void {
     });
   }
 
-  // D9 — EXPLICIT UserPersona universals subset (not a silent bypass): U1 applies
+  // D9, EXPLICIT UserPersona universals subset (not a silent bypass): U1 applies
   // to every document. U2–U4 reference the affect/persona layers, which are MUST
   // for AgentPersona but OPTIONAL for UserPersona (a description of a human, not
-  // an agent behavioral contract) — so for UserPersona they apply exactly when
+  // an agent behavioral contract), so for UserPersona they apply exactly when
   // the referenced layer is declared.
   const agent = asStr(data.kind) === "AgentPersona";
 
@@ -155,7 +155,7 @@ function checkConceptualUniversals(data: Obj, errors: ValidationIssue[]): void {
 }
 
 /**
- * U5–U12 (SPEC.md §12.1) — apply to AgentPersona only. This kind-scoping is
+ * U5–U12 (SPEC.md §12.1), apply to AgentPersona only. This kind-scoping is
  * explicit and intentional (a UserPersona describes a human and carries no agent
  * behavioral contract); U1–U4 above apply to every document.
  */
@@ -253,7 +253,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
 
   // v1.0 composition rule: a virtue's refs must resolve, and a HARD virtue's
   // referenced trait envelope must not permit contradiction (its floor must stay
-  // above the low band — a trait allowed to drift to "low" cannot back a hard
+  // above the low band, a trait allowed to drift to "low" cannot back a hard
   // virtue; change the envelope or the enforcement, not the state).
   if (v1) {
     const character = asObj(data.character);
@@ -290,7 +290,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
               field: `character.virtues.${vName}.refs`,
               message:
                 `Coherence: hard virtue '${vName}' references '${ref}' whose envelope floor ` +
-                `(${floor}) permits the low band (≤ ${lowMax}) — a hard virtue cannot be backed ` +
+                `(${floor}) permits the low band (≤ ${lowMax}), a hard virtue cannot be backed ` +
                 `by a trait allowed to contradict it.`,
               category: "FAIL_POLICY",
             });
@@ -493,7 +493,7 @@ export function exitCodeFor(status: ValidationStatus): number {
 }
 
 // The canonical schemas themselves (embedded at build time; usable by any consumer
-// that needs the raw JSON Schema — e.g. server-side validation in the SaaS).
+// that needs the raw JSON Schema, e.g. server-side validation in the SaaS).
 export {
   personaSchema,
   personaSchemaLegacy,

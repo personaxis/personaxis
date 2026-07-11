@@ -2,7 +2,7 @@
  * Shared fast-check arbitraries for the property suite (F6.1, MATH_CORE.md §8).
  *
  * The generators deliberately include hostile shapes: degenerate envelopes
- * (lo = mean = hi), huge and tiny deltas, values seeded outside the box —
+ * (lo = mean = hi), huge and tiny deltas, values seeded outside the box, 
  * shrinking turns any surviving counterexample into the smallest falsifier
  * (the falsifiability instrument for H1, RESEARCH.md §4).
  *
@@ -13,14 +13,14 @@ import type { Envelope } from "../../src/index.js";
 import type { StateFile } from "../../src/index.js";
 
 export const NUM_RUNS = Number(process.env.FC_NUM_RUNS ?? 200);
-/** File-system-heavy properties (chain): 1/10 of FC_NUM_RUNS, capped — or set
+/** File-system-heavy properties (chain): 1/10 of FC_NUM_RUNS, capped, or set
  *  FC_FS_NUM_RUNS explicitly. Each case does real fs writes. */
 export const FS_NUM_RUNS = Number(
   process.env.FC_FS_NUM_RUNS ?? Math.min(Math.max(40, Math.ceil(NUM_RUNS / 10)), 1000),
 );
 /** Generous vitest timeout for fs-bound property tests (ms). */
 export const FS_TIMEOUT = 600_000;
-/** Timeout for CPU-bound properties — E3 runs them at FC_NUM_RUNS=100000. */
+/** Timeout for CPU-bound properties, E3 runs them at FC_NUM_RUNS=100000. */
 export const PROP_TIMEOUT = 600_000;
 
 const bounded = (min: number, max: number) =>

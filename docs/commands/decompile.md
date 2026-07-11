@@ -10,7 +10,7 @@ personaxis decompile [slug] [--root] [--provider <name>] [--from-file <path>]
 
 ## What it does
 1. Reads the current `personaxis.md` + the edited compiled doc.
-2. Asks the provider to map the prose edits back to spec fields — including persona-prompting:
+2. Asks the provider to map the prose edits back to spec fields, including persona-prompting:
    voice samples → `voice_exemplars`, situations → `scene_contracts`, Always/Never →
    `behavioral_anchors`, staying-in-character → `break_character_guardrails`,
    fixed/evolving/situational → `consistency`. It must never weaken a safety universal.

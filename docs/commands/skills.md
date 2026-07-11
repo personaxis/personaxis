@@ -1,7 +1,7 @@
 # `personaxis skills`
 
 Inspect and pull the **skills** a persona declares in `extensions.skills`. Every pulled skill is
-**security-reviewed** first (≈26% of community skills carry risky patterns — never run an unreviewed one).
+**security-reviewed** first (≈26% of community skills carry risky patterns, never run an unreviewed one).
 
 ```bash
 personaxis skills list                       # skills declared + their materialization status

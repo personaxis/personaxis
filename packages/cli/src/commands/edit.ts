@@ -1,18 +1,18 @@
 /**
- * `personaxis edit <dot-path> <value>` (F3.7) — a SURGICAL, governed edit of one
+ * `personaxis edit <dot-path> <value>` (F3.7), a SURGICAL, governed edit of one
  * value in the persona spec, without rewriting the file.
  *
  * The persona is atomic: its validity (cross-layer universals), its version (one
  * hash) and its readability are properties of the whole. So this command never
  * re-serializes the YAML (that would strip the author's comments); it edits the
- * one leaf line textually, then RE-VALIDATES the whole persona — an edit that
+ * one leaf line textually, then RE-VALIDATES the whole persona, an edit that
  * would break a universal (e.g. relaxing honesty enforcement) is REFUSED. Every
  * accepted edit is appended to the same self-edit ledger the actor uses, so
  * `/audit` shows human and actor changes on one timeline, and the compiled
  * PERSONA.md is marked stale for the next compile.
  *
  * Protected paths (identity, character, safety/honesty enforcement) require
- * `--force` — a human MAY edit them (they own the file) but not by accident.
+ * `--force`, a human MAY edit them (they own the file) but not by accident.
  */
 
 import { Command } from "commander";
@@ -76,7 +76,7 @@ export function runEdit(opts: RunEditOptions): void {
       chalk.yellow("Refused:"),
       `${chalk.cyan(opts.dotPath)} is ${protectedPath ? "a PROTECTED path" : `governance-controlled (${gate})`}.`,
     );
-    console.error(chalk.dim("  A human may edit it, but not by accident — re-run with --force if you intend to."));
+    console.error(chalk.dim("  A human may edit it, but not by accident, re-run with --force if you intend to."));
     process.exit(2);
   }
 
@@ -112,7 +112,7 @@ export function runEdit(opts: RunEditOptions): void {
   const preview = `${chalk.cyan(opts.dotPath)}: ${chalk.dim(JSON.stringify(edited.previous))} → ${chalk.bold(JSON.stringify(coerced))}`;
 
   if (opts.dryRun) {
-    console.log(chalk.dim("dry-run —"), preview);
+    console.log(chalk.dim("dry-run, "), preview);
     console.log(chalk.dim(`  would write ${rel}; validation: ${validation.status}`));
     return;
   }

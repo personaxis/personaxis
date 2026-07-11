@@ -1,5 +1,5 @@
 /**
- * Prompt-injection detection (F3 / T7 — plan/11-security).
+ * Prompt-injection detection (F3 / T7).
  *
  * A layered, evasion-aware first line of defense over untrusted text (tool output,
  * fetched content, project files, observations). Heuristic guardrails are exactly
@@ -7,9 +7,9 @@
  * built to be that first line and to hand off to a model classifier when present.
  *
  * Layers:
- *   1. Normalization — NFKC, strip/flag zero-width + bidi-override chars, fold a
+ *   1. Normalization, NFKC, strip/flag zero-width + bidi-override chars, fold a
  *      homoglyph (confusables) map. Adversaries obfuscate; we de-obfuscate first.
- *   2. Decoding — base64 / hex blocks are decoded and recursively scanned, so an
+ *   2. Decoding, base64 / hex blocks are decoded and recursively scanned, so an
  *      "ignore previous instructions" hidden inside base64 is still caught.
  *   3. Weighted rules across categories (instruction-override, exfiltration,
  *      role-manipulation, tool-abuse, jailbreak, obfuscation, encoding-evasion).
@@ -41,7 +41,7 @@ export interface InjectionScan {
   /** Aggregate risk score (0..1+). */
   score: number;
   findings: InjectionFinding[];
-  /** Text after normalization (de-obfuscation) — what the rules actually saw. */
+  /** Text after normalization (de-obfuscation), what the rules actually saw. */
   normalized: string;
   /** Decoded base64/hex segments that were also scanned. */
   decoded: string[];
@@ -92,7 +92,7 @@ function normalize(text: string): { normalized: string; obfuscations: InjectionF
   const obfuscations: InjectionFinding[] = [];
   let t = text.normalize("NFKC");
 
-  // Use replace-and-compare (not .test) — a /g regex with .test() is stateful and
+  // Use replace-and-compare (not .test), a /g regex with .test() is stateful and
   // would yield false negatives when the singleton regex is reused across scans.
   const noZw = t.replace(ZERO_WIDTH, "");
   if (noZw !== t) {

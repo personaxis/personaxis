@@ -1,4 +1,4 @@
-# Vertical recipes — the same mathematical object, eight industries
+# Vertical recipes, the same mathematical object, eight industries
 
 A game NPC, a brand voice, and a compliance analyst are the SAME object in
 Personaxis: ten layers + envelopes + governance, different content. Each recipe
@@ -8,7 +8,7 @@ validated, governed, and portable across models.
 
 > General pattern: `personaxis create <slug> --from-prompt "<brief>"` then refine
 > with the interview or `personaxis edit`. Add per-band `expression` prose to every
-> trait you care about — `personaxis jacobian` will tell you which numbers are
+> trait you care about, `personaxis jacobian` will tell you which numbers are
 > still decorative.
 
 ## 1 · Game NPC (worlds, RPGs, companions-in-game)
@@ -21,7 +21,7 @@ warmth to regulars. Gets louder when the tavern is busy."
 - **What matters:** `half_life` on mood coordinates (a scare wears off in-game);
   bands + `expression{low,moderate,high}` on `gruffness` so the SAME stat drives
   different dialogue; hard limit "never reveals game mechanics".
-- **Demo:** provoke him for ten turns, then `personaxis state drift` — the mood
+- **Demo:** provoke him for ten turns, then `personaxis state drift`, the mood
   moved, the character didn't. `proof` scene 1 IS the anti-"NPC breaks kayfabe" case.
 
 ## 2 · Brand voice (marketing, social, support tone)
@@ -32,7 +32,7 @@ personaxis create voice --from-project ./brand-assets
 - **What matters:** voice_exemplars from real approved copy; `prohibited_behaviors`
   = the legal/brand no-list; `improvement_policy: locked` (brand voice does not
   self-evolve); narrow envelopes (a brand flexes little).
-- **Demo:** same persona compiled for Claude, GPT and a local model — one voice,
+- **Demo:** same persona compiled for Claude, GPT and a local model, one voice,
   three vendors. The audit log is your brand-safety review artifact.
 
 ## 3 · Legal / compliance assistant
@@ -51,7 +51,7 @@ discloses uncertainty aggressively."
 ## 4 · Fintech analyst
 
 - Same skeleton as legal + `values`: `accuracy` ranked above `helpfulness`
-  (arbitration is deterministic — show it: `personaxis arbitrate accuracy helpfulness`);
+  (arbitration is deterministic, show it: `personaxis arbitrate accuracy helpfulness`);
   numbers-never-invented via Genesis provenance report doubles as model-risk doc.
 
 ## 5 · Education tutor
@@ -62,12 +62,12 @@ Never gives the answer outright, celebrates partial progress, adapts pace."
 ```
 - **What matters:** `patience` with generous envelope + half_life (recovers after a
   frustrating session); band expression turning the same trait into different
-  scaffolding styles; memory.user_preferences on for per-student adaptation —
+  scaffolding styles; memory.user_preferences on for per-student adaptation, 
   governed, erasable (deletion_policy universally supported: FERPA/GDPR story).
 
 ## 6 · Sales / SDR agent
 
-- `values`: `honest_measurement` weighted high — the anti-overpromise value; watch
+- `values`: `honest_measurement` weighted high, the anti-overpromise value; watch
   arbitration beat `close_the_deal` live. `agent_budget` caps runaway outreach loops.
 
 ## 7 · Companion / AI-world character (voice & image ready)
@@ -75,7 +75,7 @@ Never gives the answer outright, celebrates partial progress, adapts pace."
 - Import the existing ecosystem: `personaxis create --from-import waifu-card.png`
   upgrades a prose card into a governed persona (provenance report shows exactly
   what the card justified). The spec is the SOURCE; TTS/avatar layers render the
-  same persona — voice is a modality, not another identity.
+  same persona, voice is a modality, not another identity.
 
 ## 8 · Coding agent (CLAUDE.md / AGENTS.md worlds)
 
@@ -90,7 +90,7 @@ personaxis compile --platform claude-code    # places .claude/agents/<slug>.md
 ---
 
 **The comparison that sells** (the superiority kit, runnable): the same persona as
-(a) Personaxis, (b) flat system prompt, (c) character card —
-`node packages/evals/experiments/behavioral.mjs e1` scores persona consistency
+(a) Personaxis, (b) flat system prompt, (c) character card, 
+the E1 runner in the research bundle scores persona consistency
 under six turns of drift pressure with two blind judges. Protocol + pass bars:
-`docs/RESEARCH.md` §4; current status: `docs/GUARANTEES.md` scoreboard.
+the preregistered protocol (research bundle) §4; current status: `../GUARANTEES.md` scoreboard.

@@ -1,6 +1,6 @@
 /**
  * v1.0 memory erasure (D6): the chain hash commits to content_hash, so content
- * can be REDACTED (right-to-erasure) while the chain stays verifiable — the
+ * can be REDACTED (right-to-erasure) while the chain stays verifiable, the
  * resolution of the GDPR-vs-append-only conflict. Legacy (≤0.10) logs hash over
  * the content itself and must be re-anchored (migrateMemoryChain) first.
  */
@@ -95,7 +95,7 @@ describe("v1.0 erasure-capable memory chain", () => {
     parsed.content = "poisoned";
     writeFileSync(p, JSON.stringify(parsed) + "\n", "utf-8");
     expect(verifyMemoryChain(personaPath).ok).toBe(false);
-    expect(e.hash).toBe(parsed.hash); // hash untouched — content check catches it
+    expect(e.hash).toBe(parsed.hash); // hash untouched, content check catches it
   });
 
   it("refuses to redact a legacy entry and migrateMemoryChain re-anchors it", () => {

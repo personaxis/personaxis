@@ -1,5 +1,5 @@
 /**
- * F6.5 — pipeline hardening regression tests.
+ * F6.5, pipeline hardening regression tests.
  *
  *  - postJson: 429/5xx retried with backoff, non-retryable 4xx fails fast WITH
  *    the response-body excerpt (the part that says WHY), success passes through;

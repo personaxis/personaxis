@@ -207,7 +207,7 @@ function buildPersonaInstructions(data: PersonaData, heading: string, skillName?
 
   if (reflexive) {
     lines.push("## Reflexive Self-Regulation");
-    pushList(lines, "Hard limits (categorical — never crossed)", reflexive.hard_limits);
+    pushList(lines, "Hard limits (categorical, never crossed)", reflexive.hard_limits);
     pushList(lines, "Principled refusals", reflexive.principled_refusals);
     pushList(lines, "Out of scope", reflexive.out_of_scope);
     pushField(lines, "Escalation policy", reflexive.escalation_policy);

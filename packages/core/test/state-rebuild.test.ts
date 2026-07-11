@@ -1,5 +1,5 @@
 /**
- * F3.4 — state.json as a rebuildable checkpoint of the mutation_log.
+ * F3.4, state.json as a rebuildable checkpoint of the mutation_log.
  */
 import { describe, it, expect } from "vitest";
 import { rebuildStateValues, rebuildState, type Envelope, type StateFile, type MutationLogEntry } from "../src/index.js";

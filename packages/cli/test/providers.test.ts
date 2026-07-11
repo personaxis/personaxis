@@ -24,7 +24,7 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-describe("resolveProvider — smart default (no footgun)", () => {
+describe("resolveProvider, smart default (no footgun)", () => {
   it("defaults to `agent` when NO model is configured", () => {
     expect(resolveProvider().name).toBe("agent");
   });

@@ -1,5 +1,5 @@
 /**
- * F3.3 — storage ports: the engine routes persistence through the injected
+ * F3.3, storage ports: the engine routes persistence through the injected
  * Storage bundle, so a host (the SaaS) can swap fs for Postgres/S3 unchanged.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -61,7 +61,7 @@ describe("F3.3 storage ports", () => {
     writeFileSync(personaPath, persona());
     const statePath = loadPersona(personaPath).statePath;
 
-    // An in-memory state store — nothing hits disk.
+    // An in-memory state store, nothing hits disk.
     let mem: StateFile = {
       schema_version: "0.8.0",
       persona_id: "p",

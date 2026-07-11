@@ -1,8 +1,8 @@
 /**
- * Overseer registry + global/overlay persona model (F7 — plan/08-persona-model).
+ * Overseer registry + global/overlay persona model (F7).
  *
  * The "master" personaxis-system is a governed *runtime* that is aware of every
- * persona and project in the environment. It is NOT a feeling persona — it
+ * persona and project in the environment. It is NOT a feeling persona, it
  * orchestrates and audits. This module is its memory:
  *
  *   ~/.personaxis/ (override with PERSONAXIS_HOME)
@@ -34,7 +34,7 @@ export interface ProjectRecord {
   machine: string;
 }
 /**
- * A Collection is pure ORGANIZATION — a named group of personas/projects, like a
+ * A Collection is pure ORGANIZATION, a named group of personas/projects, like a
  * folder or tag. No runtime behavior. (Distinct from a Team, below.)
  */
 export interface Collection {
@@ -102,7 +102,7 @@ export function loadRegistry(): Registry {
 export function saveRegistry(reg: Registry): void {
   mkdirSync(personaxisHome(), { recursive: true });
   // Atomic write: a concurrent reader (another `personaxis` process on the same registry) must never
-  // observe a half-written file — otherwise loadRegistry's parse falls back to empty() and silently
+  // observe a half-written file, otherwise loadRegistry's parse falls back to empty() and silently
   // drops data. Write to a unique temp file, then rename (atomic on the same filesystem).
   const target = registryFile();
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;

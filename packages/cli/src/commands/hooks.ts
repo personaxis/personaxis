@@ -1,15 +1,15 @@
 /**
- * `personaxis hooks` — make a host feed the persona from every turn (Fase 3), for ALL four focus
+ * `personaxis hooks`, make a host feed the persona from every turn (Fase 3), for ALL four focus
  * hosts. The living engine can't see inside a host's process; the host must FEED it. Each host fires
  * an end-of-turn (or end-of-session) hook that pipes the turn to `personaxis observe --stdin`, which
- * runs one governed tick on YOUR model and recompiles the identity on drift — no host tokens.
+ * runs one governed tick on YOUR model and recompiles the identity on drift, no host tokens.
  *
  *   claude-code  → .claude/settings.json      Stop hook (project or ~/.claude with --global)
  *   codex        → .codex/hooks.json          Stop hook (project or ~/.codex with --global)
- *   hermes       → ~/.hermes/hooks/<name>/    HOOK.yaml (events: [agent:end]) + handler.py — Hermes'
+ *   hermes       → ~/.hermes/hooks/<name>/    HOOK.yaml (events: [agent:end]) + handler.py, Hermes'
  *                  real hook mechanism (gateway/hooks.py); agent:end fires PER TURN with the
  *                  message/response context. (Older installs wrote a hooks.on_session_end stanza
- *                  into ~/.hermes/config.yaml — that shape never existed in Hermes; install/uninstall
+ *                  into ~/.hermes/config.yaml, that shape never existed in Hermes; install/uninstall
  *                  clean it up.)
  *   openclaw     → ~/.openclaw/hooks/<name>/   HOOK.md + handler.ts (command:stop), then enable it
  *
@@ -80,7 +80,7 @@ function uninstallJsonStopHook(path: string): { path: string; removed: boolean }
 // `handler.py` exposing `async def handle(event_type, context)`. Events include
 // gateway:startup, session:start/end/reset, agent:start/step/end, command:*.
 // `agent:end` fires PER TURN and carries platform/user_id/session_id + the message and
-// response — the right feed for per-turn learning (session:end only fires on /new / /reset).
+// response, the right feed for per-turn learning (session:end only fires on /new / /reset).
 // Handler errors are caught by Hermes and never block its pipeline; our handler is
 // additionally fire-and-forget with a timeout.
 function hermesConfigPath(): string {
@@ -94,9 +94,9 @@ description: "Feed each turn to personaxis (governed tick on your own model; rec
 events:
   - agent:end
 `;
-const HERMES_HANDLER_PY = `# personaxis-observe — Hermes hook handler (installed by \`personaxis hooks install --host hermes\`).
+const HERMES_HANDLER_PY = `# personaxis-observe, Hermes hook handler (installed by \`personaxis hooks install --host hermes\`).
 # Pipes each turn (agent:end) to \`${OBSERVE_CMD}\`: one governed Living-Loop tick on YOUR
-# configured model — no Hermes tokens spent. Fire-and-forget: never blocks or raises into Hermes.
+# configured model, no Hermes tokens spent. Fire-and-forget: never blocks or raises into Hermes.
 import asyncio
 import json
 
@@ -164,7 +164,7 @@ metadata:
 
 # Personaxis observe
 
-On \`/stop\`, pipes the turn context to \`${OBSERVE_CMD}\` — one governed Living-Loop tick on your
+On \`/stop\`, pipes the turn context to \`${OBSERVE_CMD}\`, one governed Living-Loop tick on your
 configured model, recompiling SOUL.md when a governed self-edit drifts the spec. Never blocks the turn.
 `;
 const OPENCLAW_HANDLER_TS = `import { execFile } from "node:child_process";

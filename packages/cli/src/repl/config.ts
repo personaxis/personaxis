@@ -59,7 +59,7 @@ export function notePostureChange(ctx: { postureIndex: number; pendingEnvNote?: 
       : posture === "workspace-write"
         ? "You may now read/run commands AND write files within the workspace (network still restricted)."
         : "You now have full access: read, write, network, and destructive commands are permitted.";
-  ctx.pendingEnvNote = `[environment change] The sandbox posture is now "${posture}". ${permission} Re-evaluate — and if appropriate, retry — any request you previously declined due to a stricter posture.`;
+  ctx.pendingEnvNote = `[environment change] The sandbox posture is now "${posture}". ${permission} Re-evaluate, and if appropriate, retry, any request you previously declined due to a stricter posture.`;
 }
 
 /**

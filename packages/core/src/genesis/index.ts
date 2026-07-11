@@ -1,5 +1,5 @@
 /**
- * Genesis orchestrator — merge evidence from any combination of entry modes
+ * Genesis orchestrator, merge evidence from any combination of entry modes
  * into one seed, build the valid-by-construction document, and hand back the
  * full result (spec + document + seed + ledger) for the CLI's gates.
  *

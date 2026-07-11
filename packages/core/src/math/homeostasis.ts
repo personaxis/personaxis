@@ -1,5 +1,5 @@
 /**
- * Homeostasis — opt-in return-to-baseline dynamics (MATH_CORE.md T6).
+ * Homeostasis, opt-in return-to-baseline dynamics (MATH_CORE.md T6).
  *
  * A coordinate may declare `half_life: h` (turns, spec v1.1 MAY field). Each tick,
  * BEFORE the gate admits new deltas, the deviation from the mean decays by
@@ -9,10 +9,10 @@
  *
  * Theorem T6 (machine-checked in PB-T6): without forcing the state contracts
  * geometrically to μ; under bounded forcing |δ| ≤ δ_max the standing deviation is
- * bounded by δ_max/λ — input-to-state stability, a formula of two spec numbers.
+ * bounded by δ_max/λ, input-to-state stability, a formula of two spec numbers.
  *
  * Every decay is a REAL audited mutation (actor `runtime-decay`, an enum value the
- * log has reserved since v0.6) — homeostasis is visible history, not hidden math.
+ * log has reserved since v0.6), homeostasis is visible history, not hidden math.
  */
 
 import type { Envelope } from "../envelopes.js";
@@ -39,7 +39,7 @@ export function decayingFields(
 
 /**
  * Apply one homeostatic step to `state` in place (audited via applyMutation).
- * Deviations below `epsilon` are left untouched — the log stays free of
+ * Deviations below `epsilon` are left untouched, the log stays free of
  * microscopic decay entries once a coordinate has effectively returned home.
  */
 export function applyHomeostasis(

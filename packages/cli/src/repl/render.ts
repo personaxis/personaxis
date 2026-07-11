@@ -27,7 +27,7 @@ export function phaseFor(e: LoopEvent): string {
 /** Render any loop OR agent event into a single display line (or null to skip). */
 export function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
   switch (e.type) {
-    // Internal agent reasoning is NOT shown — the reply is printed once by the
+    // Internal agent reasoning is NOT shown, the reply is printed once by the
     // caller. Only real ACTIONS (tool calls) and errors surface as activity.
     case "abstain":
     case "agent-step":
@@ -96,7 +96,7 @@ export function fmtK(n: number): string {
 }
 
 export function firstRunModelHint(out: (s: string) => void): void {
-  out(chalk.yellow("  No model configured — running in offline heuristic mode (no real reasoning)."));
+  out(chalk.yellow("  No model configured, running in offline heuristic mode (no real reasoning)."));
   out(chalk.dim("  Configure ONCE (global, all projects):"));
   out(chalk.dim("    personaxis config set --global local.endpoint <openai-compatible-url>"));
   out(chalk.dim("    personaxis config set --global local.model <model-name>"));

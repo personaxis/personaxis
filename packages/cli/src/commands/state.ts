@@ -1,15 +1,15 @@
 /**
- * `personaxis state` — manage state.json runtime state (v0.6+).
+ * `personaxis state`, manage state.json runtime state (v0.6+).
  *
  * Subcommands:
- *   state init    — Create an empty state.json beside a PERSONA.md, seeded
+ *   state init, Create an empty state.json beside a PERSONA.md, seeded
  *                   from envelope means declared in PERSONA.md.
- *   state mutate  — Adjust a current value in state.json by a delta, clamped
+ *   state mutate, Adjust a current value in state.json by a delta, clamped
  *                   to the envelope declared in PERSONA.md. Mirrors the
  *                   runtime tool `adjust_persona_state(field, delta, reason)`.
- *   state show    — Pretty-print the current state.
+ *   state show, Pretty-print the current state.
  *
- * All engine logic lives in @personaxis/core — this file owns ONLY the CLI
+ * All engine logic lives in @personaxis/core, this file owns ONLY the CLI
  * surface. That means `state mutate` goes through the SAME governance gate,
  * clamp, audit trail, atomic write, and lock as the Living Loop, MCP, HTTP
  * and SDK: unknown fields are rejected, traits backing hard-enforced virtues
@@ -90,7 +90,7 @@ const initSubcommand = new Command("init")
 
 const mutateSubcommand = new Command("mutate")
   .description(
-    "Adjust a current value in state.json by a delta — governed, clamped to the " +
+    "Adjust a current value in state.json by a delta, governed, clamped to the " +
       "envelope declared in PERSONA.md, and audited. Mirrors adjust_persona_state.",
   )
   .requiredOption("--field <path>", "Dot-notation field path (e.g., 'mood.tone')")
@@ -168,7 +168,7 @@ const mutateSubcommand = new Command("mutate")
           // The refusal is itself in the audit trail (governance_blocked: true).
           console.error(
             chalk.red("✗ governance:"),
-            `mutation of ${chalk.bold(field)} rejected — ${rejected.reason}. ` +
+            `mutation of ${chalk.bold(field)} rejected, ${rejected.reason}. ` +
               `The blocked attempt was recorded in mutation_log.`,
           );
           process.exit(2);
@@ -261,7 +261,7 @@ const rebuildSubcommand = new Command("rebuild")
 
       console.log(chalk.dim(`Replayed ${result.entries} mutation(s) over ${Object.keys(envelopes).length} envelope(s).`));
       if (result.drift.length === 0) {
-        console.log(chalk.green("✓"), "state.values matches the mutation_log — no drift.");
+        console.log(chalk.green("✓"), "state.values matches the mutation_log, no drift.");
         return;
       }
       console.log(chalk.yellow(`! ${result.drift.length} field(s) drifted from the log:`));
@@ -272,7 +272,7 @@ const rebuildSubcommand = new Command("rebuild")
       if (result.wrote) {
         console.log(chalk.green("✓"), "state.json repaired from the mutation_log.");
       } else {
-        console.log(chalk.dim("  dry-run — re-run with --write to repair state.json from the log."));
+        console.log(chalk.dim("  dry-run, re-run with --write to repair state.json from the log."));
       }
     } catch (err) {
       console.error(chalk.red("Error:"), (err as Error).message);
@@ -309,7 +309,7 @@ const driftSubcommand = new Command("drift")
         return;
       }
 
-      console.log(chalk.bold(`Drift report — ${state.persona_id}@${state.persona_version}`));
+      console.log(chalk.bold(`Drift report, ${state.persona_id}@${state.persona_version}`));
       console.log(
         chalk.dim(
           `global D = max |u| = ${report.global.toFixed(3)} · δ_max = ${report.maxStepDelta} · ` +

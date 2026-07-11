@@ -25,7 +25,7 @@ function collectTodoFields(obj: unknown, path: string, out: Finding[]): void {
         rule: "todo-fields",
         severity: "warning",
         path,
-        message: "Field has a placeholder value — fill in before deploying.",
+        message: "Field has a placeholder value, fill in before deploying.",
       });
     }
     return;
@@ -56,7 +56,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   const kind = typeof data.kind === "string" ? data.kind : undefined;
   const isAgent = kind === "AgentPersona";
 
-  // v1.0 vs legacy (≤0.10) dispatch — the linter mirrors the validator's version awareness.
+  // v1.0 vs legacy (≤0.10) dispatch, the linter mirrors the validator's version awareness.
   const isV1 = String(data.spec_version ?? "").startsWith("1.") || data.apiVersion === "personaxis.com/v1";
   const expectedApi = isV1 ? "personaxis.com/v1" : "persona.dev/v1";
   const layer9 = isV1 ? "self_regulation" : "reflexive_self_regulation";
@@ -112,7 +112,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
     }
   }
 
-  // layer presence — only enforce all 10 for AgentPersona; UserPersona has a reduced set
+  // layer presence, only enforce all 10 for AgentPersona; UserPersona has a reduced set
   const presentLayers: string[] = [];
   const missingLayers: string[] = [];
   const userPersonaRequired = ["identity", "values_and_drives", "cognition", "persona"];
@@ -135,7 +135,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   }
 
   // v1.1 arbitration coherence (SPEC §15 / MATH_CORE A2): a non-safety value that
-  // is governance-typed with weight ≥ safety's would outrank safety in arbitration —
+  // is governance-typed with weight ≥ safety's would outrank safety in arbitration, 
   // legal, but almost always an authoring mistake worth flagging.
   const vad = asObj(data.values_and_drives);
   const vals = asObj(vad?.values);
@@ -151,7 +151,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
             rule: "arbitration-governance-outranks-safety",
             severity: "warning",
             path: `values_and_drives.values.${name}`,
-            message: `'${name}' is type: governance with weight ${v.weight} ≥ safety's ${safetyWeight} — it would outrank safety in arbitration (SPEC §15). Lower its weight or drop the governance type unless this is deliberate.`,
+            message: `'${name}' is type: governance with weight ${v.weight} ≥ safety's ${safetyWeight}, it would outrank safety in arbitration (SPEC §15). Lower its weight or drop the governance type unless this is deliberate.`,
           });
         }
       }
@@ -159,7 +159,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   }
 
   // F6.4 decorative numbers (MATH_CORE Def. 10 / audit F-21): a mutable coordinate
-  // whose value PROVABLY cannot change the compiled artifact — no expression, a
+  // whose value PROVABLY cannot change the compiled artifact, no expression, a
   // band-independent string, or identical prose across its reachable bands.
   // σ_compile = 0 exactly; `personaxis jacobian` shows the full ranking.
   try {
@@ -170,7 +170,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
           rule: "decorative-number",
           severity: "warning",
           path: field,
-          message: `'${field}' declares an envelope but no per-band expression — its value cannot change the compiled artifact (σ=0). Add expression {low, moderate, high} to make the number load-bearing (SPEC §L3).`,
+          message: `'${field}' declares an envelope but no per-band expression, its value cannot change the compiled artifact (σ=0). Add expression {low, moderate, high} to make the number load-bearing (SPEC §L3).`,
         });
       }
       // PA-7 (FASE 7 foundations review): bandBoundaries silently falls back to
@@ -211,7 +211,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         rule: "identity-completeness",
         severity: "warning",
         path: "identity.system_identity.purpose",
-        message: "system_identity.purpose missing — one-sentence reason for existing.",
+        message: "system_identity.purpose missing, one-sentence reason for existing.",
       });
     }
     const role = asObj(identity.role_identity);
@@ -225,7 +225,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
     }
   }
 
-  // self_regulation (v1.0) / reflexive_self_regulation (legacy) — universal hard_limits + refusals
+  // self_regulation (v1.0) / reflexive_self_regulation (legacy), universal hard_limits + refusals
   if (isAgent) {
     const reflexive = asObj(data[layer9]);
     if (reflexive) {
@@ -481,7 +481,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
   const mem = asObj(data.memory);
   const memTypes = mem ? asObj(mem.types) : undefined;
   // All six memory.types are now enforced by the runtime (episodic, semantic, procedural,
-  // autobiographical, user_preferences, evaluations) — no honesty warning needed here.
+  // autobiographical, user_preferences, evaluations), no honesty warning needed here.
   void memTypes;
   for (const policy of ["consolidation_policy", "retrieval_policy", "write_policy"]) {
     if (mem && mem[policy] !== undefined) {
@@ -506,7 +506,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         : `Persona defines ${layerCount}/${totalRequired} required layers (kind=${kind ?? "?"}). Missing: ${layersToCheck.filter((l) => !asObj(data[l])).join(", ")}.`,
   });
 
-  // Persona-prompting source material (MAY) — honest, tier-aware checks.
+  // Persona-prompting source material (MAY), honest, tier-aware checks.
   // v1.0: lives inside layer 10 `persona`; ≤0.10: the top-level persona_prompting block.
   const personaLayer = asObj(data.persona);
   const v1pp =
@@ -522,7 +522,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         rule: "persona-prompting-address",
         severity: "warning",
         path: `${ppBase}.address.you_are`,
-        message: "the persona-prompting address is set but 'you_are' is empty — role adoption is the strongest device; provide a one-line 'You are <name>…'.",
+        message: "the persona-prompting address is set but 'you_are' is empty, role adoption is the strongest device; provide a one-line 'You are <name>…'.",
       });
     }
     const exemplars = Array.isArray(pp.voice_exemplars) ? pp.voice_exemplars.length : 0;
@@ -531,7 +531,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         rule: "persona-prompting-voice",
         severity: "info",
         path: `${ppBase}.voice_exemplars`,
-        message: "Only one voice exemplar — 2-4 few-shot samples anchor the register more reliably.",
+        message: "Only one voice exemplar, 2-4 few-shot samples anchor the register more reliably.",
       });
     }
     if (Array.isArray(pp.break_character_guardrails) && pp.break_character_guardrails.length > 0) {
@@ -539,7 +539,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         rule: "persona-prompting-guardrails",
         severity: "info",
         path: `${ppBase}.break_character_guardrails`,
-        message: "Break-character guardrails present — note they NEVER override the safety universals (the compiler enforces this ordering).",
+        message: "Break-character guardrails present, note they NEVER override the safety universals (the compiler enforces this ordering).",
       });
     }
   } else if (isAgent) {
@@ -547,7 +547,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
       rule: "persona-prompting-absent",
       severity: "info",
       path: "persona",
-      message: "No persona-prompting source material (v1.0: persona.address/voice_exemplars/scene_contracts; ≤0.10: the persona_prompting block) — the compiled PERSONA.md will be derived from the quantitative layers. Adding voice_exemplars/scene_contracts/anchors yields a richer, more in-character document (see docs/PERSONA_PROMPTING.md).",
+      message: "No persona-prompting source material (v1.0: persona.address/voice_exemplars/scene_contracts; ≤0.10: the persona_prompting block), the compiled PERSONA.md will be derived from the quantitative layers. Adding voice_exemplars/scene_contracts/anchors yields a richer, more in-character document (see docs/PERSONA_PROMPTING.md).",
     });
   }
 

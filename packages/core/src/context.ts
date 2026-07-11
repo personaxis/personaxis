@@ -4,7 +4,7 @@
  * Every serious agent tracks how full the model's context window is and compacts
  * before it overflows (Claude Code auto-compacts ~80%; Hermes shows `model │
  * 14.4K/256K │ %`). Two hard parts handled here, model-agnostically:
- *   1. The window VARIES per model and we won't hardcode thousands — so we resolve
+ *   1. The window VARIES per model and we won't hardcode thousands, so we resolve
  *      it dynamically from the endpoint's `/models` (OpenRouter/Ollama expose
  *      `context_length`), cache it, and fall back to a small pattern table.
  *   2. Compaction must fire with HEADROOM (default 0.8): summarizing is itself a
@@ -75,7 +75,7 @@ export async function resolveContextWindow(cfg: ModelEndpoint, timeoutMs = 2500)
       }
     }
   } catch {
-    /* network/timeout — fall through to table */
+    /* network/timeout, fall through to table */
   }
   const t = tableContextWindow(cfg.model);
   cache.set(cfg.model, t);

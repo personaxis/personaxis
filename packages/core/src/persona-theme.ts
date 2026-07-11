@@ -1,9 +1,9 @@
 /**
- * PersonaTheme — a persona's whole visual + behavioral signature, derived
- * DETERMINISTICALLY from its spec (plan/09-ascii-ux).
+ * PersonaTheme, a persona's whole visual + behavioral signature, derived
+ * DETERMINISTICALLY from its spec.
  *
  * The requirement was explicit: showing a persona must be differentiated per
- * persona — its look AND its behavior in the terminal — never a generic spinner.
+ * persona, its look AND its behavior in the terminal, never a generic spinner.
  * So we map the quantitative layers to a theme:
  *
  *   affect.valence  -> palette hue (cold ↔ warm)

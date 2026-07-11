@@ -1,6 +1,6 @@
 /**
  * Ink 7 components (FR.3). `visual.ts` stays the single source of the brand
- * identity — its functions are pure `(theme, values, frame) → string`, so each
+ * identity, its functions are pure `(theme, values, frame) → string`, so each
  * component is a thin wrapper: ZERO visual change from the pre-Ink dashboard.
  */
 
@@ -42,14 +42,14 @@ export function EnvelopeBars(props: {
 // ── transcript (the streaming architecture) ─────────────────────────────────
 
 export interface TranscriptProps {
-  /** Committed lines — rendered ONCE into native scrollback via <Static>. */
+  /** Committed lines, rendered ONCE into native scrollback via <Static>. */
   committed: string[];
   /** The bounded live region (in-flight tokens, spinner line, dials). */
   live?: string;
 }
 
 /**
- * `<Static>` for the terminated transcript (never re-rendered — the Ink-
+ * `<Static>` for the terminated transcript (never re-rendered, the Ink-
  * documented mitigation for long histories) + a bounded live region below.
  * The CommitQueue decides WHEN a line moves from live to committed.
  */
@@ -169,7 +169,7 @@ export function CoordinateDetail(props: { frame: DashFrame; field: string }): Re
             <Text key={i} dimColor>
               {"  "}
               {(l.ts ?? "").slice(0, 19).replace("T", " ")} {(l.from ?? 0).toFixed(3)}→{(l.to ?? 0).toFixed(3)} [{l.actor ?? "?"}]{l.clamped ? " clamped" : ""}
-              {l.blocked ? " blocked" : ""} {l.reason ? `— ${l.reason.slice(0, 40)}` : ""}
+              {l.blocked ? " blocked" : ""} {l.reason ? `, ${l.reason.slice(0, 40)}` : ""}
             </Text>
           ))}
         </Box>
@@ -180,7 +180,7 @@ export function CoordinateDetail(props: { frame: DashFrame; field: string }): Re
 }
 
 /**
- * FASE 7 P2 — the drift drill-down as an EMBEDDABLE view (the REPL mounts it
+ * FASE 7 P2, the drift drill-down as an EMBEDDABLE view (the REPL mounts it
  * full-height; `personaxis dash` keeps its own Dashboard shell). Keys: ↑/↓
  * select a coordinate, Enter opens its detail, Esc walks detail -> list ->
  * `onBack()`. `report` (from the loop's drift event) supplies u/band/T3 rows
@@ -249,7 +249,7 @@ export function DriftView(props: {
       </Text>
       <Text> </Text>
       {coords.length === 0 ? (
-        <Text dimColor>{"  no drift data yet — say something and the loop will report after its tick"}</Text>
+        <Text dimColor>{"  no drift data yet, say something and the loop will report after its tick"}</Text>
       ) : (
         coords.map((c, i) => {
           const selected = i === Math.min(cursor, coords.length - 1);
@@ -315,7 +315,7 @@ export function Dashboard(props: DashboardProps): React.JSX.Element {
       try {
         setData(readFrame(props.personaPath));
       } catch {
-        /* a mid-write read races with another process — keep the last frame */
+        /* a mid-write read races with another process, keep the last frame */
       }
     }, props.intervalMs ?? 500);
     return () => clearTimeout(t);

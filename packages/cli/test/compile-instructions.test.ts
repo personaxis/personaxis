@@ -7,7 +7,7 @@ const target: CompileTargetInfo = {
   isSubagent: false,
 };
 
-describe("compile prompt — persona-prompting (v0.10)", () => {
+describe("compile prompt, persona-prompting (v0.10)", () => {
   const p = buildCompilePrompt({ personaxisMd: "---\nx: 1\n---\n", resourceManifest: "- ./memory.md", target });
 
   it("instructs second-person role adoption + the persona-prompting devices", () => {
@@ -36,7 +36,7 @@ describe("compile prompt — persona-prompting (v0.10)", () => {
   });
 });
 
-describe("decompile prompt — maps prose back to persona_prompting", () => {
+describe("decompile prompt, maps prose back to persona_prompting", () => {
   const p = buildDecompilePrompt({
     currentPersonaxisMd: "---\nx: 1\n---\n",
     editedCompiledMd: "# You are X\n",

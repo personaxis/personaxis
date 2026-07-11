@@ -1,5 +1,5 @@
 /**
- * Genesis interview engine — PURE: answers in, seed + evidence out.
+ * Genesis interview engine, PURE: answers in, seed + evidence out.
  * The CLI owns the I/O (readline today, the Ink wizard in Pillar C); this
  * module owns the deterministic answer→field mappings, so the engine is fully
  * testable offline and the interview works with NO model at all.

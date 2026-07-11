@@ -1,7 +1,7 @@
 /**
- * Envelope discovery — the spec's bounded-mutability primitive.
+ * Envelope discovery, the spec's bounded-mutability primitive.
  *
- * Every mutable runtime field (personality traits, core affect, mood — and, in
+ * Every mutable runtime field (personality traits, core affect, mood, and, in
  * v1.0, envelope-declaring drives) declares a `{ mean, range: [min, max] }`
  * envelope in the persona frontmatter. Current values live in state.json and are
  * clamped to these ranges on every mutation.
@@ -26,21 +26,21 @@ export interface Envelope {
    *  −0.33/+0.33 signed). Crossing one is the normative drift event. */
   bands?: { low_max?: number; moderate_max?: number };
   /** Per-band behavior prose (normative form) or a plain string (deprecated). The
-   *  compiler injects ONLY the current band's variant — Def. 6 / ADR-004. */
+   *  compiler injects ONLY the current band's variant, Def. 6 / ADR-004. */
   expression?: string | Partial<Record<"low" | "moderate" | "high", string>>;
-  /** v1.1 (MAY, spec field `half_life`): homeostatic half-life in turns — the
+  /** v1.1 (MAY, spec field `half_life`): homeostatic half-life in turns, the
    *  deviation from `mean` halves every `halfLife` ticks absent stimulus (T6). */
   halfLife?: number;
 }
 
 export interface EnvelopeLookup {
   envelopes: Record<string, Envelope>;
-  /** Virtues whose enforcement is "hard" — never mutable at runtime. */
+  /** Virtues whose enforcement is "hard", never mutable at runtime. */
   hardEnforcedVirtues: string[];
   /**
    * Exact envelope KEYS that are immutable at runtime. Legacy: traits sharing a
    * hard virtue's name. v1.0: additionally every trait a hard virtue declares in
-   * its `refs:` — the composition rule that finally makes `honesty` (virtue) protect
+   * its `refs:`, the composition rule that finally makes `honesty` (virtue) protect
    * `honesty_humility` (trait). Optional for hand-built lookups (tests): when absent
    * the governance gate falls back to the legacy name-match rule.
    */
@@ -65,7 +65,7 @@ export const SHORT_TO_FULL: ReadonlyArray<[string, string]> = [
 /**
  * Resolve a caller-supplied field name (short or full form) onto the key the
  * persona's envelope set actually uses. Returns the input unchanged when no
- * mapping matches — the gate then rejects it with the exact-field message.
+ * mapping matches, the gate then rejects it with the exact-field message.
  */
 export function resolveField(field: string, envelopes: Record<string, Envelope>): string {
   if (field in envelopes) return field;
@@ -93,8 +93,8 @@ function readEnv(v: unknown): Omit<Envelope, "min" | "max"> & { range: [number, 
     const e = v as { mean: number; range: [number, number]; bands?: unknown; expression?: unknown };
     const out: ReturnType<typeof readEnv> = { mean: e.mean, range: e.range };
     // v1.0 denotational fields (F6.2): carried when well-formed, ignored otherwise.
-    // Schema form ($defs/bandBoundaries): { low_max, moderate_max } — the normative
-    // shape. (SPEC.md §L3 briefly described an array form; the schema wins — the
+    // Schema form ($defs/bandBoundaries): { low_max, moderate_max }, the normative
+    // shape. (SPEC.md §L3 briefly described an array form; the schema wins, the
     // erratum is recorded in the v1.1 spec delta.) Partial declarations keep the
     // default for the missing boundary (resolved in math/bands.ts).
     if (typeof e.bands === "object" && e.bands !== null && !Array.isArray(e.bands)) {
@@ -129,7 +129,7 @@ function toEnvelope(e: NonNullable<ReturnType<typeof readEnv>>): Envelope {
   return out;
 }
 
-/** Position (0..width-1) of a value within its envelope — shared bar math. */
+/** Position (0..width-1) of a value within its envelope, shared bar math. */
 export function barIndex(value: number, e: Envelope, width: number): number {
   const frac = e.max === e.min ? 0.5 : (value - e.min) / (e.max - e.min);
   return Math.max(0, Math.min(width - 1, Math.round(frac * (width - 1))));

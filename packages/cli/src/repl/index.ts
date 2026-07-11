@@ -51,7 +51,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
       }
     }
     personaPath = writeStarterPersona(process.cwd(), name);
-    stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)} — ${chalk.bold(name)} is ready.\n`);
+    stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)}, ${chalk.bold(name)} is ready.\n`);
   }
 
   const meter = makeMeter();
@@ -114,7 +114,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     return chalk.dim("  " + seg.join("  ·  "));
   };
 
-  // FASE 7 P2 — the persistent header: compact wordmark · persona · posture.
+  // FASE 7 P2, the persistent header: compact wordmark · persona · posture.
   const header = (): string =>
     chalk.bold("◉ personaxis") +
     chalk.dim("  ·  ") +
@@ -127,7 +127,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     commands,
     header,
     personaPath: ctx.handle.personaPath,
-    // FASE 7 P2 — the live drift gauge, themed by the persona (gap G5).
+    // FASE 7 P2, the live drift gauge, themed by the persona (gap G5).
     driftSegment: (report) =>
       driftGauge(ctx.theme, report as Parameters<typeof driftGauge>[1]),
     onCycleMode: () => {
@@ -149,7 +149,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
         screen.print(""); // trailing gap before the next prompt
         return;
       }
-      // Chat/agent turn — route to the ROOT or to sub-personas via @mentions.
+      // Chat/agent turn, route to the ROOT or to sub-personas via @mentions.
       screen.print("");
       screen.print(chalk.bgAnsi256(238).whiteBright(`  › ${line}  `), "user");
       screen.setBusy(true, "thinking");
@@ -169,7 +169,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`)).trim().toLowerCase();
     return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
   };
-  // FASE 7 P2 — the app breathes the math: the loop's events drive the gauge,
+  // FASE 7 P2, the app breathes the math: the loop's events drive the gauge,
   // the crossing moment, the drift view, and full-screen suspensions.
   ctx.onDrift = (report) => screen.setDrift(report as never);
   ctx.onMoment = (crossings) => screen.playMoment(crossings);
@@ -177,7 +177,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   ctx.suspend = (fn) => screen.suspend(fn);
 
   screen.start();
-  screen.print(replyLine(ctx, "awake — talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");
+  screen.print(replyLine(ctx, "awake, talk naturally (it can use tools), /help for commands, ctrl+c to exit."), "persona");
   if (roster.subs.length) {
     const tags = roster.subs.map((s) => chalk.ansi256(roster.color(s.address) ?? 39).bold(`@${s.address}`)).join("  ");
     screen.print(chalk.dim(`  sub-personas: `) + tags + chalk.dim("  ·  @address · @all · @parent/all"));

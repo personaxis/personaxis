@@ -1,10 +1,10 @@
 /**
- * u-space — the denotational coordinate system of the persona state
+ * u-space, the denotational coordinate system of the persona state
  * (MATH_CORE.md Defs. 3–5).
  *
  * Every mutable value gets a meaning: u = the fraction of the allowed deviation
  * (on that side of the mean) currently consumed. u(mean)=0, u(max)=+1, u(min)=−1.
- * The normalization is ASYMMETRIC — envelopes need not be centered on their mean —
+ * The normalization is ASYMMETRIC, envelopes need not be centered on their mean, 
  * and per-side affine, so it is exact and order-preserving.
  *
  * `project` is the Euclidean projection Π_B onto the envelope box: idempotent,
@@ -15,7 +15,7 @@
 import type { Envelope } from "../envelopes.js";
 
 /** u(x) ∈ [−1, 1]: fraction of allowed deviation consumed (Def. 4). Values outside
- *  the box map beyond ±1 — useful for reporting a tampered state's true position. */
+ *  the box map beyond ±1, useful for reporting a tampered state's true position. */
 export function toU(value: number, e: Envelope): number {
   if (value >= e.mean) {
     const half = e.max - e.mean;

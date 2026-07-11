@@ -1,6 +1,6 @@
 # `personaxis scan`
 
-Cross-harness config scanner — inspect an agent config (Claude Code / Codex / generic) from a
+Cross-harness config scanner, inspect an agent config (Claude Code / Codex / generic) from a
 red-team, blue-team, or auditor lens for risky settings.
 
 ## Usage

@@ -1,5 +1,5 @@
 /**
- * Conversation sessions — persistent, per-persona chat history (F3).
+ * Conversation sessions, persistent, per-persona chat history (F3).
  *
  * The REPL keeps the live conversation in memory and re-sends it each turn; that is
  * correct for continuity but vanishes on exit. Sessions persist it so a user can leave
@@ -8,7 +8,7 @@
  * `.personaxis/personas/<slug>/sessions/`. One append-only `<id>.jsonl` per conversation:
  * a header line + one line per turn.
  *
- * Dependency-free (node:fs only), like memory.ts — sessions are a runtime artifact with
+ * Dependency-free (node:fs only), like memory.ts, sessions are a runtime artifact with
  * no schema (same status as episodic.jsonl / self-edits.jsonl).
  */
 
@@ -26,7 +26,7 @@ export interface SessionHeader {
   participants: string[];
   name: string;
   created: string;
-  /** Hierarchical address of the owning persona ("" = root) — provenance. */
+  /** Hierarchical address of the owning persona ("" = root), provenance. */
   persona: string;
 }
 
@@ -42,7 +42,7 @@ export interface SessionTurn {
   from?: string;
   /** FR.6 threading (Claude Code's transcript shape): this turn's stable id. */
   uuid?: string;
-  /** FR.6: the uuid this turn replies to — makes branches/regenerations explicit. */
+  /** FR.6: the uuid this turn replies to, makes branches/regenerations explicit. */
   parent_uuid?: string;
 }
 

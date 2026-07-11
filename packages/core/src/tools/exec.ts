@@ -1,11 +1,11 @@
 /**
- * Real action executors (G1) — the surface the governed agent loop acts through.
+ * Real action executors (G1), the surface the governed agent loop acts through.
  *
  * Gating happens BEFORE this module (the agent calls evaluateCommand /
  * evaluateFileWrite and only reaches here on an `allow`). These functions perform
  * the actual side effect, bounded: commands run with a timeout and truncated
  * output; file writes resolve against the workspace root. Output is returned, not
- * printed — the engine stays UI-agnostic.
+ * printed, the engine stays UI-agnostic.
  */
 
 import { spawn } from "node:child_process";

@@ -1,5 +1,5 @@
 /**
- * `personaxis sigil` — render a persona's living visual identity.
+ * `personaxis sigil`, render a persona's living visual identity.
  *
  * The sigil + palette + motion are derived deterministically from the persona's
  * own spec (so every persona looks AND moves uniquely) and breathe with its live

@@ -1,12 +1,12 @@
 /**
- * PB-T5 — episodic-ledger integrity with real erasure (MATH_CORE.md §3).
+ * PB-T5, episodic-ledger integrity with real erasure (MATH_CORE.md §3).
  *
  *  - a fresh chain always verifies;
  *  - ANY random tamper of an entry's committed fields (ts, content, content_hash,
  *    source, tags, prev_hash, hash) is detected;
  *  - reordering (adjacent swap) is detected;
  *  - deleting any INTERIOR entry is detected (tail truncation is the documented
- *    hash-chain limit — detectable only with an external head anchor);
+ *    hash-chain limit, detectable only with an external head anchor);
  *  - redaction (real erasure) of any entry PRESERVES verification.
  *
  * FS-backed, so runs fewer cases by default (FS_NUM_RUNS); crank FC_NUM_RUNS in CI.

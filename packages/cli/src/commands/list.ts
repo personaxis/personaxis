@@ -1,5 +1,5 @@
 /**
- * `personaxis list` — the personas installed in THIS project.
+ * `personaxis list`, the personas installed in THIS project.
  *
  * Reads each persona's quantitative spec (personaxis.md, the source of truth)
  * rather than the compiled document, and prints working next steps. Rebuilt in

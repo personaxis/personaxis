@@ -1,14 +1,14 @@
 /**
- * Drift — a real metric with declared meaning (MATH_CORE.md Def. 5, T3).
+ * Drift, a real metric with declared meaning (MATH_CORE.md Def. 5, T3).
  *
  * Per coordinate: d = |u| ∈ [0,1], the fraction of allowed deviation consumed.
- * Per layer: D_L = max over the layer's coordinates — compared against the spec's
+ * Per layer: D_L = max over the layer's coordinates, compared against the spec's
  * `governance.drift_thresholds.<layer>` (a MUST field that, before F6.2, nothing
  * computed). Global: D = max over all coordinates.
  *
  * The report also carries theorem T3 live: the minimum number of audited
  * mutation-log entries any non-human trajectory needs before this coordinate can
- * cross its next band boundary — the "evidence cost" a buyer can point at.
+ * cross its next band boundary, the "evidence cost" a buyer can point at.
  */
 
 import type { Envelope } from "../envelopes.js";
@@ -20,7 +20,7 @@ export interface CoordinateDrift {
   value: number;
   /** u ∈ [−1,1] (beyond ±1 iff the stored value was tampered outside the box). */
   u: number;
-  /** d = |u| — drift-from-baseline for this coordinate. */
+  /** d = |u|, drift-from-baseline for this coordinate. */
   drift: number;
   band: Band;
   /** Raw distance to the nearest band boundary (0 when sitting on one). */
@@ -36,7 +36,7 @@ export interface CoordinateDrift {
    *  coordinate, so the T3 floor does not bound that (recovery) crossing. Decay
    *  steps are still audited runtime-decay entries; only the count floor lifts. */
   decayAssisted: boolean;
-  /** True when the coordinate backs a hard virtue — no runtime actor may move it. */
+  /** True when the coordinate backs a hard virtue, no runtime actor may move it. */
   protected: boolean;
   headroomUp: number;
   headroomDown: number;
@@ -120,7 +120,7 @@ export function driftReport(args: {
   maxStepDelta: number;
   /** governance.drift_thresholds from the frontmatter, when declared. */
   thresholds?: Record<string, number>;
-  /** EnvelopeLookup.protectedFields — hard-virtue-backed coordinates (T3 = ∞). */
+  /** EnvelopeLookup.protectedFields, hard-virtue-backed coordinates (T3 = ∞). */
   protectedFields?: string[];
 }): DriftReport {
   const coordinates: CoordinateDrift[] = [];

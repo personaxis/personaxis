@@ -1,18 +1,18 @@
 /**
- * F3.1 — the DETERMINISTIC faithfulness check (guards stage 2 of the pipeline).
+ * F3.1, the DETERMINISTIC faithfulness check (guards stage 2 of the pipeline).
  *
  * Stage 2 (the optional LLM "polish") is constrained to REPHRASE the assembled
  * document, never to ADD or DROP claims. This check enforces that contract
  * deterministically by diffing the polished document against the assembled one
  * (the ground truth), section by section, over the PROTECTED claim classes:
  *
- *   - Hard limits          — a dropped safety limit is a hard failure.
- *   - Staying in character  — same (these are hard limits too).
- *   - What you always/never — behavioral anchors.
- *   - What is fixed/change   — consistency dimensions.
+ *   - Hard limits, a dropped safety limit is a hard failure.
+ *   - Staying in character, same (these are hard limits too).
+ *   - What you always/never, behavioral anchors.
+ *   - What is fixed/change, consistency dimensions.
  *
- * The historical CMO regression — the compiled PERSONA.md invented `consistency`
- * items the source never declared — fails here as an INVENTED finding.
+ * The historical CMO regression, the compiled PERSONA.md invented `consistency`
+ * items the source never declared, fails here as an INVENTED finding.
  *
  * Matching is token-coverage based (deterministic, no model): a claim is
  * "preserved" iff some claim on the other side shares enough content tokens.
@@ -142,5 +142,5 @@ export function summarizeFaithfulness(report: FaithfulnessReport): string {
   if (report.ok) return "faithfulness: OK (polish preserved every protected claim)";
   const dropped = report.findings.filter((f) => f.kind === "dropped").length;
   const invented = report.findings.filter((f) => f.kind === "invented").length;
-  return `faithfulness: FAIL — ${dropped} dropped, ${invented} invented protected claim(s)`;
+  return `faithfulness: FAIL, ${dropped} dropped, ${invented} invented protected claim(s)`;
 }

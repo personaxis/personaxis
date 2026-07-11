@@ -1,5 +1,5 @@
 /**
- * FR.9 — credentials (env-first resolution) + update check (version compare,
+ * FR.9, credentials (env-first resolution) + update check (version compare,
  * kill switches). OS-secure-storage shell-outs are platform-specific and NOT
  * exercised here; the env-first fast path and the pure logic are.
  */

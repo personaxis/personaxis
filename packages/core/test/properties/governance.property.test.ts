@@ -1,10 +1,10 @@
 /**
- * PB gate — the governance gate's policy invariants (MATH_CORE.md Def. 7).
+ * PB gate, the governance gate's policy invariants (MATH_CORE.md Def. 7).
  *
  *  - admitted non-human deltas never exceed max_step_delta (the T2 gate half);
  *  - protected fields (hard-virtue-backed) are inadmissible for EVERY actor;
  *  - locked mode admits nothing non-human; human-directed bypasses mode + cap
- *    (envelope clamp still applies downstream — PB-T1 covers that);
+ *    (envelope clamp still applies downstream, PB-T1 covers that);
  *  - unknown / non-envelope fields are always rejected;
  *  - verdict conservation: every proposal gets exactly one verdict.
  */

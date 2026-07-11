@@ -1,6 +1,6 @@
 /**
  * Every `personaxis init` scaffold must produce a VALID v1.0 document out of
- * the box (Clio rule: never silently pass — or silently ship — an invalid
+ * the box (Clio rule: never silently pass, or silently ship, an invalid
  * persona). Guards the builders against schema drift: if the spec tightens,
  * this fails before an adopter ever scaffolds a broken persona.
  */

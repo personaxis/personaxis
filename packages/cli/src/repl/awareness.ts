@@ -4,7 +4,7 @@
  * A persona must know, at runtime, WHERE it sits and WHAT it has: whether it is the
  * project ROOT or a SUB-persona, its own hierarchical address, the sub-personas it can
  * delegate to, and the supporting resources beside its spec. This is injected into the
- * agent's system prompt every turn — it is NOT baked into the compiled PERSONA.md (which
+ * agent's system prompt every turn, it is NOT baked into the compiled PERSONA.md (which
  * stays portable + purely qualitative).
  */
 
@@ -41,7 +41,7 @@ export function buildAwarenessBlock(personaPath: string): string {
       ...subs.map((s) => `${"  ".repeat(s.depth - 1)}- @${s.address}`),
     );
   } else {
-    lines.push("", "## Sub-personas", "(none — you have no sub-personas)");
+    lines.push("", "## Sub-personas", "(none, you have no sub-personas)");
   }
 
   // Resource inventory beside this persona's spec (.personaxis/ or .../personas/<slug>/).

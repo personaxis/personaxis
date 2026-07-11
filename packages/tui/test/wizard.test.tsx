@@ -1,5 +1,5 @@
 /**
- * Genesis interview wizard (F6.7b) — driven through ink-testing-library's
+ * Genesis interview wizard (F6.7b), driven through ink-testing-library's
  * stdin, so this covers the real key handling the TTY uses. The number
  * mappings themselves are core's (interview.property/unit tests); here we
  * assert the wizard COLLECTS the right answers and SHOWS the field→rule

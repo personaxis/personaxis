@@ -1,27 +1,27 @@
-# Managed SaaS (D) — design, not implemented in this repo
+# Managed SaaS (D), design, not implemented in this repo
 
 > **Status: design.** This document describes the managed offering ("D") we intend to build in a
-> **separate SaaS repo**. Nothing here ships in this CLI/monorepo. The self-hosted alternative — Modo 2
+> **separate SaaS repo**. Nothing here ships in this CLI/monorepo. The self-hosted alternative, Mode 2
 > (embed [`@personaxis/sdk`](./deployment.md) or run [`personaxis serve`](../integrations/http-agents.md))
-> — needs no SaaS and is available today. Read this as the target architecture, not current behavior.
+>, needs no SaaS and is available today. Read this as the target architecture, not current behavior.
 
 ## What it is
 
 In the managed offering, **we** host the living engine and provide **our** model (billed through our
-key), with per-tenant isolation. A client points at our API and we keep their `PERSONA.md` alive —
-governed ticks, memory, evolution, audit — without them running any infrastructure. It is the
+key), with per-tenant isolation. A client points at our API and we keep their `PERSONA.md` alive, 
+governed ticks, memory, evolution, audit, without them running any infrastructure. It is the
 zero-infra option: pick it when you want an evolving persona and don't want to operate the engine.
 
 ## Design principles
 
 - **All Node/TS, no always-on VMs.** The same `@personaxis/core` engine (`node:fs`/`node:crypto` only)
-  runs in stateless, short-lived functions — never a persistent per-tenant process. This is what keeps
+  runs in stateless, short-lived functions, never a persistent per-tenant process. This is what keeps
   it cheap and horizontally scalable.
 - **Pay per work.** Billing is per governed **tick / token**, not per provisioned server. Idle tenants
   cost nothing.
-- **Same governance everywhere.** The engine's existing guarantees — clamped/audited envelopes,
+- **Same governance everywhere.** The engine's existing guarantees, clamped/audited envelopes,
   hash-chained episodic memory, the governance gate (locked/suggesting/autonomous), protected paths,
-  and the prompt-injection scan on untrusted input — are the managed service's safety floor unchanged.
+  and the prompt-injection scan on untrusted input, are the managed service's safety floor unchanged.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ client (MCP-remote / HTTP)
 ## Security
 
 - **Secrets in a vault.** Our model key and per-tenant credentials live in a secrets manager, never in
-  code or config — the same `apiKeyEnv`-style indirection used in [configuration.md](../configuration.md),
+  code or config, the same `apiKeyEnv`-style indirection used in [configuration.md](../guides/configuration.md),
   sourced from the vault instead of a shell env.
 - **Rate-limiting** at the API edge, per tenant, to bound cost and blast radius.
 - **Injection scanning.** Untrusted observations are prompt-injection scanned before they can steer a
@@ -69,22 +69,22 @@ client (MCP-remote / HTTP)
 
 ## Scalability & performance
 
-- **Stateless workers scale horizontally** with queue depth — add workers to drain a backlog; scale to
+- **Stateless workers scale horizontally** with queue depth, add workers to drain a backlog; scale to
   zero when idle.
 - **The queue absorbs bursts**, so a spike in tenant traffic becomes latency (bounded by SLA), not
   dropped work or a melted server.
 - **Reads are cheap and cacheable** (state/audit/compiled doc); only ticks do real model work.
 - **Performance** is dominated by the model call inside a tick; the surrounding engine work is
-  file-free, in-memory, and O(observation) — negligible next to inference.
+  file-free, in-memory, and O(observation), negligible next to inference.
 
 ## Client-facing surface
 
 The managed API mirrors the surfaces clients already know, so adopting the SaaS is a config change,
 not a rewrite:
 
-- **MCP-remote** — the same persona tools as [`personaxis-mcp`](../integrations/claude-code.md), over a
+- **MCP-remote**: the same persona tools as [`personaxis-mcp`](../integrations/claude-code.md), over a
   remote transport instead of stdio.
-- **HTTP** — the same endpoints as [`personaxis serve`](../integrations/http-agents.md)
+- **HTTP**: the same endpoints as [`personaxis serve`](../integrations/http-agents.md)
   (`/persona/state`, `/persona/audit`, `/persona/observe`, `/persona/adjust`, `/persona/agent`,
   `/agents.md`), hosted by us.
 
@@ -95,6 +95,6 @@ tenants incur no compute cost.
 
 ## Not building the SaaS? Self-host instead
 
-Modo 2 gives you the same engine without a managed service: embed `@personaxis/sdk` in a Node/TS
+Mode 2 gives you the same engine without a managed service: embed `@personaxis/sdk` in a Node/TS
 backend, or run `personaxis serve` behind your own HTTP boundary, providing your own model key via
-[configuration.md](../configuration.md). See [deployment.md](./deployment.md) for the full mode map.
+[configuration.md](../guides/configuration.md). See [deployment.md](./deployment.md) for the full mode map.

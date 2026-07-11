@@ -12,4 +12,4 @@ personaxis personas use <slug>
 ```
 
 Distinct from project-local **sub-personas** (`.personaxis/personas/<slug>/`, addressed with
-`@slug` in the REPL — see [../architecture/multi-persona.md](../architecture/multi-persona.md)).
+`@slug` in the REPL, see [../architecture/multi-persona.md](../architecture/multi-persona.md)).

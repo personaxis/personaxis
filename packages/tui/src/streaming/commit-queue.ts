@@ -7,10 +7,10 @@
  *   - the line is complete (a newline followed it), AND
  *   - it is not inside an open ``` fence (the fence renders as one block), AND
  *   - it is not part of a markdown table that may still be growing
- *     (TABLE-HOLDBACK: a table is committed only when a non-table line — or
- *     flush() — proves it is finished; committing row-by-row breaks alignment).
+ *     (TABLE-HOLDBACK: a table is committed only when a non-table line, or
+ *     flush(), proves it is finished; committing row-by-row breaks alignment).
  *
- * Pure logic, no Ink dependency — unit-testable and reusable by any front-end.
+ * Pure logic, no Ink dependency, unit-testable and reusable by any front-end.
  */
 
 export class CommitQueue {
@@ -54,7 +54,7 @@ export class CommitQueue {
   private acceptLine(line: string): string[] {
     if (this.isFenceDelimiter(line)) {
       if (!this.inFence) {
-        // Fence OPENS: hold from here — the block renders atomically.
+        // Fence OPENS: hold from here, the block renders atomically.
         this.inFence = true;
         this.held.push(line);
         return [];
@@ -71,7 +71,7 @@ export class CommitQueue {
       return [];
     }
     if (this.isTableLine(line)) {
-      // Table row: hold — the next line may be another row.
+      // Table row: hold, the next line may be another row.
       this.held.push(line);
       return [];
     }

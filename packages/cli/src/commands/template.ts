@@ -15,7 +15,7 @@ const TEMPLATES: TemplateDescriptor[] = [
   {
     name: "agent",
     filename: "personaxis_template.md",
-    description: "Canonical pedagogical scaffold for .personaxis/personaxis.md — every field annotated with tier (MUST/SHOULD/MAY), type, and universal status. Use for authoring the quantitative spec, not for runtime.",
+    description: "Canonical pedagogical scaffold for .personaxis/personaxis.md, every field annotated with tier (MUST/SHOULD/MAY), type, and universal status. Use for authoring the quantitative spec, not for runtime.",
     kind: "AgentPersona",
   },
   {

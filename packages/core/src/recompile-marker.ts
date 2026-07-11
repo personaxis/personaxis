@@ -1,10 +1,10 @@
 /**
- * Recompile-pending marker — the "stale" signal that closes the self-evolution loop.
+ * Recompile-pending marker, the "stale" signal that closes the self-evolution loop.
  *
  * When a governed self-edit is APPLIED (overlay changes), the compiled PERSONA.md no longer
  * reflects the spec. Core cannot compile (that needs an LLM, which lives in the CLI/host), so
- * it drops a small sentinel next to personaxis.md. A consumer that CAN compile — the REPL
- * (with a provider) or the host driving MCP — recompiles and clears it. `personaxis compile`
+ * it drops a small sentinel next to personaxis.md. A consumer that CAN compile, the REPL
+ * (with a provider) or the host driving MCP, recompiles and clears it. `personaxis compile`
  * clears it automatically; `compile --if-pending` is a cheap no-op when nothing is stale.
  */
 

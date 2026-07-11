@@ -1,21 +1,21 @@
 /**
- * F3.3 — storage ports (the hexagonal seam, "only where it hurts": persistence).
+ * F3.3, storage ports (the hexagonal seam, "only where it hurts": persistence).
  *
- * The engine's spec-faithful logic — clamp+audit mutation, the governance gate,
- * the hash-chained ledger, the Living Loop — is pure and unchanged. What varies
+ * The engine's spec-faithful logic, clamp+audit mutation, the governance gate,
+ * the hash-chained ledger, the Living Loop, is pure and unchanged. What varies
  * between a local CLI and the managed SaaS is only WHERE bytes live: the local
  * default is a git-versionable persona folder (atomic writes + a per-persona
  * lock); the SaaS is Postgres/S3 over the SAME engine. These ports are that
  * boundary, and `defaultFsStorage()` is the reference (filesystem) adapter.
  *
  * Ports (each keyed by the persona's path/id so one engine can host many):
- *   - LockProvider  — serialize read→modify→write (same-machine default; a
+ *   - LockProvider, serialize read→modify→write (same-machine default; a
  *                     distributed lock in the SaaS);
- *   - StateStore    — state.json (the runtime checkpoint);
- *   - MemoryStore   — semantic memory (memory.md) + consolidation;
- *   - LedgerStore   — the append-only, hash-chained EPISODIC ledger
+ *   - StateStore, state.json (the runtime checkpoint);
+ *   - MemoryStore, semantic memory (memory.md) + consolidation;
+ *   - LedgerStore, the append-only, hash-chained EPISODIC ledger
  *                     (tamper-evident; append + read + verify + redact);
- *   - ModelClient   — the LLM call the compiler/appraiser makes (the SaaS
+ *   - ModelClient, the LLM call the compiler/appraiser makes (the SaaS
  *                     injects its hosted model; the loop's appraiser is the
  *                     existing model seam and stays injectable separately).
  */

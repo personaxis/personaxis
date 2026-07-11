@@ -1,5 +1,5 @@
 /**
- * F3.8 — the appraiser evolution view (grounded editable-surface projection).
+ * F3.8, the appraiser evolution view (grounded editable-surface projection).
  */
 import { describe, it, expect } from "vitest";
 import { buildEvolutionView, renderEvolutionView, LlmAppraiser, type Envelope } from "../src/index.js";

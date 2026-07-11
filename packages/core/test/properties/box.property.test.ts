@@ -1,7 +1,7 @@
 /**
- * PB-T1 / PB-T2 — the box is a deterministic safe set (MATH_CORE.md §3).
+ * PB-T1 / PB-T2, the box is a deterministic safe set (MATH_CORE.md §3).
  *
- * T1 Invariance: no sequence of mutations — adversarial deltas included — leaves
+ * T1 Invariance: no sequence of mutations, adversarial deltas included, leaves
  *    the envelope box; an out-of-box (hand-tampered) value re-enters in one step.
  * T2 Bounded step: |to − from| ≤ |delta_requested| whenever from is in the box
  *    (the clamp is nonexpansive along the step); with the gate's cap this yields
@@ -33,7 +33,7 @@ describe("PB-T1 invariance: the box is inescapable", () => {
             expect(r.to).toBeLessThanOrEqual(e.max);
             expect(state.values[field]).toBe(r.to);
           }
-          // Post-condition over the whole state: S ∈ B, exactly (no epsilon — min/max are FP-exact).
+          // Post-condition over the whole state: S ∈ B, exactly (no epsilon, min/max are FP-exact).
           for (const [field, v] of Object.entries(state.values)) {
             expect(v).toBeGreaterThanOrEqual(envs[field].min);
             expect(v).toBeLessThanOrEqual(envs[field].max);

@@ -1,5 +1,5 @@
 /**
- * `personaxis create` — Genesis: a governed AI Persona from zero, every entry
+ * `personaxis create`, Genesis: a governed AI Persona from zero, every entry
  * case covered (docs/architecture/genesis.md):
  *
  *   personaxis create                          # psychometric interview (TTY)
@@ -10,7 +10,7 @@
  *   personaxis create --from-transcript <file> # exemplar conversations
  *
  * Modes COMPOSE (later evidence wins per field; the report shows overrides).
- * Output is never a prose blob: personaxis.md (validated PASS — Genesis never
+ * Output is never a prose blob: personaxis.md (validated PASS, Genesis never
  * writes an invalid persona), state.json, compiled PERSONA.md (stage-1
  * assembler), and creation-report.md with per-number provenance.
  */
@@ -78,7 +78,7 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
 }
 
 async function runInterview(): Promise<SeedContribution> {
-  // F6.7b: the Ink wizard is the primary interview surface — progress, live
+  // F6.7b: the Ink wizard is the primary interview surface, progress, live
   // field→rule mapping per answer, arrow-key inputs. Lazy import (Ink costs ~1 s;
   // only the interview path pays it); readline below stays as the fallback for
   // odd terminals (PERSONAXIS_NO_WIZARD=1 forces it).
@@ -94,7 +94,7 @@ async function runInterview(): Promise<SeedContribution> {
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const answers: InterviewAnswers = {};
-  console.log(chalk.bold("\nGenesis interview") + chalk.dim(" — every answer becomes auditable evidence; Enter skips a question.\n"));
+  console.log(chalk.bold("\nGenesis interview") + chalk.dim(", every answer becomes auditable evidence; Enter skips a question.\n"));
   try {
     for (const item of pendingItems(answers)) {
       if (item.kind === "likert") {
@@ -166,7 +166,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     const material = isCard ? importCharacterCard(path) : importPrompt(path);
     contributions.push({ label: `import:${material.format}`, seed: material.seed, evidence: material.evidence });
     // Prose refinement is LLM-only: the deterministic import fields are already
-    // the trustworthy baseline — a no-model heuristic must never override them.
+    // the trustworthy baseline, a no-model heuristic must never override them.
     if (material.prose.trim() && call) {
       try {
         const { seed, evidence } = await extractSeed(material.prose, `import-prose:${material.format}`, call);
@@ -192,7 +192,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     }
     contributions.push(await runInterview());
   } else if (process.stdin.isTTY && !opts.yes && !opts.fromPrompt && contributions.every((c) => c.label.endsWith("heuristic"))) {
-    // Nothing but defaults collected — offer the interview so numbers get earned.
+    // Nothing but defaults collected, offer the interview so numbers get earned.
     contributions.push(await runInterview());
   }
 
@@ -208,7 +208,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   gates.push({ name: "validate", pass: validation.valid, detail: validation.status });
   if (!validation.valid) {
     // Valid-by-construction is property-tested; reaching here is a bug, not a user error.
-    console.error(chalk.red("✗ internal error:"), "Genesis produced an invalid spec — nothing was written. Please report this.");
+    console.error(chalk.red("✗ internal error:"), "Genesis produced an invalid spec, nothing was written. Please report this.");
     for (const e of validation.errors) console.error(`  ${chalk.red("✗")} ${e.field ?? ""} ${e.message}`);
     process.exit(exitCodeFor(validation.status));
   }
@@ -243,13 +243,13 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
       detail: decorative.length === 0 ? "0 decorative coordinates" : `${decorative.length} decorative: ${decorative.slice(0, 4).join(", ")}`,
     });
     if (decorative.length > 0) {
-      console.error(chalk.red("✗ internal error:"), "Genesis produced decorative coordinates — nothing was written. Please report this.");
+      console.error(chalk.red("✗ internal error:"), "Genesis produced decorative coordinates, nothing was written. Please report this.");
       for (const f of decorative) console.error(`  ${chalk.red("✗")} ${f} (σ=0: value cannot change the compiled artifact)`);
       process.exit(1);
     }
   } catch (e) {
     gates.push({ name: "load-bearing (jacobian)", pass: false, detail: (e as Error).message });
-    console.error(chalk.red("✗ internal error:"), "load-bearing gate crashed — nothing was written.", (e as Error).message);
+    console.error(chalk.red("✗ internal error:"), "load-bearing gate crashed, nothing was written.", (e as Error).message);
     process.exit(1);
   }
   for (const n of llmNotes) gates.push({ name: "provider", pass: true, detail: n });
@@ -281,19 +281,19 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
 
   if (!opts.json) {
     console.log("");
-    console.log(chalk.green("✓"), chalk.bold(slug), "created — a governed persona, not a prose blob:");
+    console.log(chalk.green("✓"), chalk.bold(slug), "created, a governed persona, not a prose blob:");
     console.log(`  ${chalk.cyan(relative(process.cwd(), personaPath))} ${chalk.dim("(validated " + validation.status + ")")}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), compiledPath))} ${chalk.dim("(compiled, stage-1)")}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), handle.statePath))} ${chalk.dim("(runtime state)")}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(provenance: ${summary.covered.length}/${summary.quantitativeFields.length} fields, ${summary.defaultsOnly.length} default(s) to review)`)}`);
     const warns = lint.filter((f) => f.severity === "warning").length;
-    if (warns) console.log(chalk.dim(`  ${warns} lint warning(s) — run \`personaxis lint\` for detail (decorative numbers are worth fixing).`));
+    if (warns) console.log(chalk.dim(`  ${warns} lint warning(s), run \`personaxis lint\` for detail (decorative numbers are worth fixing).`));
     console.log(chalk.dim(`\n  Next: personaxis compile ${opts.root ? "--root" : slug}  (LLM polish) · personaxis state drift -f ${relative(process.cwd(), personaPath)}`));
   }
 }
 
 export const createCommand = new Command("create")
-  .description("Genesis: create a governed AI Persona from zero — interview, natural language, project scan, character-card/system-prompt import, or transcripts. Always validated; provenance per number.")
+  .description("Genesis: create a governed AI Persona from zero, interview, natural language, project scan, character-card/system-prompt import, or transcripts. Always validated; provenance per number.")
   .argument("[slug]", "Persona slug (default: derived from its name; created under .personaxis/personas/<slug>/)")
   .option("--from-prompt <brief>", "Create from a natural-language brief")
   .option("--from-project [dir]", "Infer the persona from a project's own docs (README, CLAUDE.md, …)")

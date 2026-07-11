@@ -1,15 +1,15 @@
-# Claude Code integration — the complete guide
+# Claude Code integration, the complete guide
 
 Claude Code brings the powerful model and the tool-use loop. personaxis brings the **living,
 governed identity**: a fresh `PERSONA.md`, per-turn learning on *your* model, memory, and
-on-demand persona tools. There are three ways to wire the two together — you can use one or all.
+on-demand persona tools. There are three ways to wire the two together, you can use one or all.
 
 > This is the English, hooks-aware superset of the Spanish
 > [claude-code-mcp.md](./claude-code-mcp.md) (MCP-only walkthrough with a real session trace).
 
 | Path | What Claude Code gets | Token cost to the host |
 |---|---|---|
-| **1. Always-fresh baseline** (`compile` + `hooks install`) | `@PERSONA.md` in `CLAUDE.md`, kept alive by a per-turn tick | **Zero** — the tick runs on *your* configured model |
+| **1. Always-fresh baseline** (`compile` + `hooks install`) | `@PERSONA.md` in `CLAUDE.md`, kept alive by a per-turn tick | **Zero**: the tick runs on *your* configured model |
 | **2. On-demand tools** (`personaxis-mcp`) | Persona tools (state, observe, audit, self-edit, security scans) it can call | Only the tokens of the calls the agent chooses to make |
 | **3. Native subagent** (`compile --platform claude-code`) | A `.claude/agents/<slug>.md` subagent that *is* the persona | Normal subagent cost |
 
@@ -17,7 +17,7 @@ on-demand persona tools. There are three ways to wire the two together — you c
 
 ## 1. Always-fresh baseline (recommended)
 
-This is Modo 1 (dev companion) from [deployment.md](../architecture/deployment.md): personaxis runs
+This is Mode 1 (dev companion) from [deployment.md](../architecture/deployment.md): personaxis runs
 locally and keeps `PERSONA.md` current so Claude Code adopts a living persona every session.
 
 ### Wire the identity in once
@@ -59,9 +59,9 @@ This adds a `Stop` hook to `.claude/settings.json` that, at the end of every tur
 personaxis observe --stdin --source user
 ```
 
-`observe` runs **one governed Living-Loop tick on your configured model** — appraise the turn,
+`observe` runs **one governed Living-Loop tick on your configured model**: appraise the turn,
 apply any clamped/governed state nudge, write memory, and mark `PERSONA.md` stale on drift. Because
-the tick runs on *your* model (see [configuration.md](../configuration.md)), it spends **no host
+the tick runs on *your* model (see [configuration.md](../guides/configuration.md)), it spends **no host
 tokens**. Recompile when it reports staleness (`personaxis compile --root`, or `compile --if-pending`).
 
 Install is idempotent (it merges alongside existing hooks); `personaxis hooks uninstall` removes only
@@ -74,7 +74,7 @@ ours. Uninstall with `personaxis hooks uninstall --host claude-code`.
 
 ## 2. On-demand persona tools (MCP)
 
-Register the stdio MCP server so Claude Code can call persona tools **when it decides to** — not on
+Register the stdio MCP server so Claude Code can call persona tools **when it decides to**: not on
 every message. Unlike the hook, these calls run inside the host's turn and cost host tokens, but only
 for the tools actually invoked.
 
@@ -110,15 +110,15 @@ CLI equivalent: `claude mcp add personaxis -- personaxis-mcp`.
 ### The tools it exposes
 
 `personaxis-mcp` (`buildServer`, `packages/mcp/src/index.ts`) exposes **16 tools**. Most take a
-`persona` argument — the path to the persona's `personaxis.md`/`PERSONA.md` (its `state.json` and
+`persona` argument, the path to the persona's `personaxis.md`/`PERSONA.md` (its `state.json` and
 memory live alongside it).
 
 | Tool | What it does |
 |---|---|
-| `persona_compiled` | Return the compiled identity document — load as system-prompt slot #1. |
+| `persona_compiled` | Return the compiled identity document, load as system-prompt slot #1. |
 | `persona_state` | Current runtime state: live envelope values + the 5 most recent audited mutations. |
 | `persona_envelopes` | List mutable fields with their `[min,max]` envelopes + hard-enforced (never-mutable) virtues. |
-| `adjust_persona_state` | Apply one signed delta to an envelope field — **clamped** to the envelope, appended to the mutation log. |
+| `adjust_persona_state` | Apply one signed delta to an envelope field, **clamped** to the envelope, appended to the mutation log. |
 | `persona_observe` | Run one governed Living-Loop cycle (observe → appraise → evolve → memory) on an observation. |
 | `persona_audit` | Mutation log + episodic-memory chain integrity + detected anomalies. |
 | `persona_forget` | Honor a deletion request: tombstone a memory entry by hash (chain stays verifiable). |
@@ -134,7 +134,7 @@ memory live alongside it).
 
 Because MCP hosts can't run an LLM through the server, `persona_recompile_status` reports staleness
 and the host runs `personaxis compile` to refresh. `persona_observe` and `agent_run` use the
-persona's [configured model](../configuration.md).
+persona's [configured model](../guides/configuration.md).
 
 See [claude-code-mcp.md](./claude-code-mcp.md) for a full simulated session trace (load identity →
 scan external content → deny a destructive command → adjust affect → observe → audit).
@@ -154,7 +154,7 @@ This writes the canonical `.personaxis/personas/<slug>/PERSONA.md` **and** expor
 `.claude/agents/<slug>.md` (with `name`/`description` frontmatter) so Claude Code routes
 task-specific work to it via `/agents`. Local skills declared in `extensions.skills` are
 materialized to `.claude/skills/<name>/`. The `.claude/agents/<slug>.md` file is a generated export
-— edit `.personaxis/personas/<slug>/personaxis.md` and recompile, or edit the export and
+, edit `.personaxis/personas/<slug>/personaxis.md` and recompile, or edit the export and
 `personaxis push <slug>` to fold the change back.
 
 See [../architecture/agent-adoption.md](../architecture/agent-adoption.md) for the compile-target

@@ -1,6 +1,6 @@
 # Sessions: persistent, per-persona conversations
 
-The REPL keeps the live conversation in memory and re-sends it each turn — correct for
+The REPL keeps the live conversation in memory and re-sends it each turn, correct for
 continuity, but it vanishes on exit. Sessions persist it to disk so a user can leave and
 `/resume`, the way Claude Code does. Sessions are a runtime artifact with no schema (same
 status as `episodic.jsonl` / `self-edits.jsonl`).

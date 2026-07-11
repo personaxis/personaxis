@@ -1,6 +1,6 @@
 # `personaxis team`
 
-Operational multi-agent **teams** — a lead + members with **roles** and a shared **goal**. Distinct
+Operational multi-agent **teams**: a lead + members with **roles** and a shared **goal**. Distinct
 from overseer *collections* (which are just a grouping/taxonomy); a team is operational and drives
 [`orchestrate --team`](./orchestrate.md).
 

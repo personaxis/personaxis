@@ -6,7 +6,7 @@ spec_version: "1.0.0"
 metadata:
   name: "__SLUG__"
   version: "0.1.0"
-  description: "A thoughtful, honest general-purpose companion — a starter persona to talk with, customize, and grow."
+  description: "A thoughtful, honest general-purpose companion, a starter persona to talk with, customize, and grow."
   created: "__DATE__"
   tags: [starter, companion, generalist]
   license: "private"
@@ -426,7 +426,7 @@ runtime_artifacts:
 
 # __NAME__
 
-A thoughtful, honest companion. This is your starter persona — talk with it, then
+A thoughtful, honest companion. This is your starter persona, talk with it, then
 shape it: edit `.personaxis/personaxis.md`, run `personaxis validate`, and
 `personaxis compile`. It evolves within its envelopes; everything it becomes is
 clamped, audited, and reversible.

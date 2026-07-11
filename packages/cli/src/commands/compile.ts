@@ -76,7 +76,7 @@ function injectRootBaselines(): void {
 
   if (!claudeExists && !agentsExists) {
     writeFileSync(claudeMdPath, injectBaselineIntoClaude(""), "utf-8");
-    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created) — @PERSONA.md reference injected"));
+    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created), @PERSONA.md reference injected"));
     return;
   }
 
@@ -84,14 +84,14 @@ function injectRootBaselines(): void {
     const existing = readFileSync(claudeMdPath, "utf-8");
     writeFileSync(claudeMdPath, injectBaselineIntoClaude(existing), "utf-8");
     const action = existing.includes("PERSONA:BASELINE") ? "already up to date" : "updated";
-    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim(`(${action}) — @PERSONA.md reference injected`));
+    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim(`(${action}), @PERSONA.md reference injected`));
   }
 
   if (agentsExists) {
     const existing = readFileSync(agentsMdPath, "utf-8");
     writeFileSync(agentsMdPath, injectBaselineIntoAgents(existing), "utf-8");
     const action = existing.includes("PERSONA:BASELINE") || existing.includes("PERSONA:CODEX") ? "already up to date" : "updated";
-    console.log(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim(`(${action}) — @PERSONA.md reference injected`));
+    console.log(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim(`(${action}), @PERSONA.md reference injected`));
   }
 }
 
@@ -105,15 +105,15 @@ export interface RunCompileOptions {
   platform?: PlacementPlatform;
   /** Skip (no-op) unless the persona's compiled doc is marked stale by a self-edit. */
   ifPending?: boolean;
-  /** F3.1: skip the LLM polish stage — write the deterministic assembled document. */
+  /** F3.1: skip the LLM polish stage, write the deterministic assembled document. */
   noPolish?: boolean;
 }
 
 /**
- * F3.1 stage 2 — run the LLM polish over the assembled document and gate it
+ * F3.1 stage 2, run the LLM polish over the assembled document and gate it
  * with the deterministic faithfulness check. Returns the document to write and
  * how it was produced. On any failure (no real provider, provider error, or a
- * faithfulness violation) it falls back to the assembled document — compile
+ * faithfulness violation) it falls back to the assembled document, compile
  * ALWAYS produces a correct doc, provider or not.
  */
 async function polishOrFallback(
@@ -175,7 +175,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   }
 
   if (opts.ifPending && !readRecompilePending(sourcePath).pending) {
-    return; // nothing stale — cheap no-op
+    return; // nothing stale, cheap no-op
   }
 
   const baseDir = dirname(sourcePath);
@@ -214,7 +214,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   // Fold APPLIED governed self-edits so a recompile reflects what the persona evolved into.
   const appliedOverlay = activeOverlay(sourcePath);
 
-  // F3.1 — STAGE 1: the deterministic assembler always runs. It is the canonical,
+  // F3.1, STAGE 1: the deterministic assembler always runs. It is the canonical,
   // hashable artifact and the ground truth the optional polish is checked against.
   const assembleInput: AssembleInput = {
     persona: loaded.data as Record<string, unknown>,
@@ -232,7 +232,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   };
   const assembled = assemblePersonaDoc(assembleInput);
 
-  // F3.1 — STAGE 2: optional LLM polish, gated by the faithfulness check.
+  // F3.1, STAGE 2: optional LLM polish, gated by the faithfulness check.
   const stage2 = await polishOrFallback(assembled, raw, target, opts);
   const result = { source: stage2.source, via: stage2.via, model: stage2.model };
   const compiledText = stage2.content;
@@ -292,7 +292,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   console.log(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
   console.log(chalk.dim(`  via ${result.via} (${result.model})`));
 
-  // F3.2 — emit the derived `.dist/` consumer slices beside the spec: a HOT slice
+  // F3.2, emit the derived `.dist/` consumer slices beside the spec: a HOT slice
   // (opener + voice + anchors + hard limits, for the always-load hot path) and the
   // COLD full document. Deterministic + ephemeral (rebuilt every compile). Skipped
   // for --out / --stdout (custom sinks) and for subagents (root-identity optimization).
@@ -307,7 +307,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 
   // Optional host export: place the compiled document into the host's convention so it can adopt the
   // persona. Given when --platform is set (and we're not overriding the output path). Works for the
-  // root persona too — openclaw/Hermes read SOUL.md at the workspace/profile root, not PERSONA.md.
+  // root persona too, openclaw/Hermes read SOUL.md at the workspace/profile root, not PERSONA.md.
   if (opts.platform && !opts.out) {
     const placement = placeCompiledDocument(finalContent, target, opts.platform as PlacementPlatform);
     const placedPath = resolve(placement.path);

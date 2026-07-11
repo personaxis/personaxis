@@ -18,7 +18,7 @@ The canonical schemas live in **`packages/spec/schema/`** (`persona.schema.json`
 
 ## Validator contract
 
-`validate` returns one of five statuses with mapped exit codes: `PASS` (0), `PASS_WITH_WARNINGS` (0), `FAIL_SCHEMA` (1), `FAIL_POLICY` (2), `FAIL_CONCEPTUAL` (3). The five-state validator + 12 universal invariants live in **`@personaxis/spec`** (`packages/cli/src/schema.ts` re-exports them); they are the load-bearing semantic checks — do not weaken them. By default, `validate` targets `.personaxis/[personas/<slug>/]personaxis.md` and also checks `manifest.json` for drift against the compiled `PERSONA.md` / `<slug>.md`.
+`validate` returns one of five statuses with mapped exit codes: `PASS` (0), `PASS_WITH_WARNINGS` (0), `FAIL_SCHEMA` (1), `FAIL_POLICY` (2), `FAIL_CONCEPTUAL` (3). The five-state validator + 12 universal invariants live in **`@personaxis/spec`** (`packages/cli/src/schema.ts` re-exports them); they are the load-bearing semantic checks, do not weaken them. By default, `validate` targets `.personaxis/[personas/<slug>/]personaxis.md` and also checks `manifest.json` for drift against the compiled `PERSONA.md` / `<slug>.md`.
 
 ## Canonical commands (v1.0)
 
@@ -27,7 +27,7 @@ Beyond `validate`/`lint`/`init`:
 | Command | Purpose |
 |---|---|
 | `personaxis` (no subcommand) | Enter the living **REPL** (chat + `/commands`); first run scaffolds a valid starter persona |
-| `compile [slug] [--root] [--provider <name>] [--platform <platform>] [--no-polish]` | `personaxis.md` -> `PERSONA.md` / `<slug>.md` — deterministic assembler + optional faithfulness-gated LLM polish |
+| `compile [slug] [--root] [--provider <name>] [--platform <platform>] [--no-polish]` | `personaxis.md` -> `PERSONA.md` / `<slug>.md`, deterministic assembler + optional faithfulness-gated LLM polish |
 | `decompile [slug] [--root] [--provider <name>]` | Hand-edited compiled doc -> proposed `personaxis.md`, validated before writing |
 | `edit <dot-path> <value> [--force] [--dry-run]` | Surgical, governed single-leaf edit (re-validates; refuses universal-breaking edits) |
 | `state init\|show\|mutate\|rebuild` | `state.json` lifecycle; `mutate` clamps to envelopes + governance gate; `rebuild` replays the mutation_log |

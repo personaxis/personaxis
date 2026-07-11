@@ -1,6 +1,6 @@
 /**
  * EngineHost e2e: a protocol client drives the REAL governed engine over the
- * OS pipe — clamped mutations, audited state, loop events broadcast. This is
+ * OS pipe, clamped mutations, audited state, loop events broadcast. This is
  * the FR seam working end-to-end, not a mock.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

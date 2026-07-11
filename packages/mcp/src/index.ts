@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @personaxis/mcp — expose a living, governed persona as MCP tools.
+ * @personaxis/mcp, expose a living, governed persona as MCP tools.
  *
  * Any MCP host (Claude Code, Codex, Cursor, …) can `personaxis-mcp` and call:
  *   - persona_compiled       read the identity document (system-prompt slot #1)
@@ -13,7 +13,7 @@
  * The big host brings the powerful model; personaxis brings the *living identity*.
  * Every mutation is clamped + audited; nothing bypasses the governance gate.
  *
- * Tool descriptions are intentionally rich — research shows description quality is
+ * Tool descriptions are intentionally rich, research shows description quality is
  * the main driver of correct tool/argument selection by host models.
  */
 
@@ -173,7 +173,7 @@ export function buildServer(opts: ServerOptions = {}): McpServer {
 
   server.tool(
     "persona_recompile_status",
-    "Whether the persona's compiled PERSONA.md is STALE — a governed self-edit was applied since the last compile. MCP cannot run an LLM, so when recompile_pending is true the host should run `personaxis compile` (or `compile --if-pending`) to refresh PERSONA.md.",
+    "Whether the persona's compiled PERSONA.md is STALE, a governed self-edit was applied since the last compile. MCP cannot run an LLM, so when recompile_pending is true the host should run `personaxis compile` (or `compile --if-pending`) to refresh PERSONA.md.",
     { ...personaArg },
     async ({ persona }) => {
       try {
@@ -249,7 +249,7 @@ export function buildServer(opts: ServerOptions = {}): McpServer {
 
   server.tool(
     "skill_review",
-    "Security-review a skill directory (or SKILL.md) BEFORE using it. Scans for risky shell/network/eval/secret/credential patterns and returns findings, a verdict (ok|review|danger), and a content hash to pin/allowlist. ~26% of community skills carry vulnerabilities — never run an unreviewed skill.",
+    "Security-review a skill directory (or SKILL.md) BEFORE using it. Scans for risky shell/network/eval/secret/credential patterns and returns findings, a verdict (ok|review|danger), and a content hash to pin/allowlist. ~26% of community skills carry vulnerabilities, never run an unreviewed skill.",
     {
       skill_path: z.string().describe("Path to the skill directory or SKILL.md to review."),
     },

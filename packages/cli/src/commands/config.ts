@@ -34,7 +34,7 @@ function setPath(config: PersonaxisConfig, key: string, value: string): void {
     config.local = { ...config.local, [field]: value };
     return;
   }
-  // personas.<slug>.<field> — per-persona model overrides.
+  // personas.<slug>.<field>, per-persona model overrides.
   if (section === "personas") {
     const [, slug, pField] = key.split(".");
     if (slug && (pField === "endpoint" || pField === "model" || pField === "apiKey" || pField === "apiKeyEnv")) {
@@ -89,8 +89,8 @@ const setCommand = new Command("set")
     const shown = isSecret ? value.slice(0, 3) + "…" + value.slice(-2) : value; // never echo a full key
     console.log(chalk.green("✓"), `${key} = ${shown}`, chalk.dim(`(${configPath(scope)})`));
     if (isSecret) {
-      if (scope === "global") console.log(chalk.dim("  stored in your home config (user-only, 0600) — reused across all projects, like ~/.aws/credentials."));
-      else console.log(chalk.yellow("  ! inline key in the PROJECT config — ensure .personaxis/ is gitignored, or set it --global (recommended)."));
+      if (scope === "global") console.log(chalk.dim("  stored in your home config (user-only, 0600), reused across all projects, like ~/.aws/credentials."));
+      else console.log(chalk.yellow("  ! inline key in the PROJECT config, ensure .personaxis/ is gitignored, or set it --global (recommended)."));
     }
   });
 

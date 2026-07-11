@@ -89,7 +89,7 @@ jobs:
           fi
 
       # Byte-identity rule (CLAUDE.md): schemas AND templates must match persona.md.
-      # Blocking — drift is a spec-conformance regression. `check-mirror` owns the
+      # Blocking, drift is a spec-conformance regression. `check-mirror` owns the
       # file list (scripts/sync-spec-mirror.mjs) so this gate never drifts from the
       # `sync-mirror` command contributors run locally. A missing sibling is a skip.
       - name: Enforce schema + template byte-identity with persona.md

@@ -1,5 +1,5 @@
 /**
- * `personaxis sync` — reconcile this machine's persona state with another's.
+ * `personaxis sync`, reconcile this machine's persona state with another's.
  *
  * The portable user-clone lives on several machines (via git). This merges a
  * sibling machine's state.json into the local one without clobbering: union of

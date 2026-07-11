@@ -1,11 +1,11 @@
 /**
- * Genesis LLM extraction — free text (an NL brief, card prose, a project scan,
+ * Genesis LLM extraction, free text (an NL brief, card prose, a project scan,
  * a transcript) becomes a PersonaSeed patch through ONE constrained-decoding
  * call (the proven appraiser pattern: the model proposes a structured object,
  * the builder + validator impose everything that matters).
  *
  * Offline honesty: with no model, `heuristicSeed` still produces a labeled,
- * evidence-tracked baseline (kind: default) — Genesis never fakes inference.
+ * evidence-tracked baseline (kind: default), Genesis never fakes inference.
  */
 
 import type { EvidenceItem, PersonaSeed, StructuredCaller } from "./types.js";
@@ -82,12 +82,12 @@ export function buildExtractionPrompt(material: string, sourceLabel: string): st
     "You are the Personaxis Genesis extractor. From the SOURCE MATERIAL below, extract a",
     "structured persona seed. Rules:",
     "- Every trait/value MUST carry a short `evidence` quote or paraphrase FROM THE MATERIAL",
-    "  that justifies its number. If the material gives no evidence for a dimension, OMIT it —",
+    "  that justifies its number. If the material gives no evidence for a dimension, OMIT it, ",
     "  do not invent numbers.",
     "- trait `mean` reads as: 0.1 very low … 0.9 very high expression of that trait.",
     "- `flexibility` is how far the trait may drift (envelope half-width), default 0.2.",
     "- Per-band `expression{Low,Moderate,High}` prose: how the persona ACTS at that band,",
-    "  second person, one sentence each — include them whenever the material shows how the",
+    "  second person, one sentence each, include them whenever the material shows how the",
     "  persona behaves.",
     "- `halfLife` (turns, on a trait) and `moodHalfLife` (turns, top level): how fast a",
     "  displaced trait/mood returns to baseline. Include ONLY when the material shows it",
@@ -255,7 +255,7 @@ export async function extractSeed(
 }
 
 /**
- * No-model fallback: a labeled, minimal baseline from the brief itself —
+ * No-model fallback: a labeled, minimal baseline from the brief itself, 
  * displayName from a "called X"/first words heuristic, the brief as purpose.
  * Every field is evidence kind `default` so the report shows exactly what was
  * NOT earned from evidence.

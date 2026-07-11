@@ -1,16 +1,16 @@
 /**
- * F3.7 — surgical, comment-preserving dot-path edits of a persona spec.
+ * F3.7, surgical, comment-preserving dot-path edits of a persona spec.
  *
  * The persona spec (`personaxis.md` frontmatter) is authored YAML with dense
  * tier/consumer-tag comments. Editing it must NEVER parse→re-serialize (that
- * strips every author comment) — so, like the migrate codemods, this edits the
+ * strips every author comment), so, like the migrate codemods, this edits the
  * raw text: it locates the dot-path's leaf line by indentation and replaces only
  * the scalar value, keeping indentation and any trailing `# comment`.
  *
  * Supported leaves:
  *   - block scalars at any depth        (a.b.c: value)
  *   - one-level flow-map leaves          (parent: { key: value, … } → edit key)
- * A path that resolves to a block/array (not a scalar) is rejected — those are
+ * A path that resolves to a block/array (not a scalar) is rejected, those are
  * structural edits the author makes in the file (or via a codemod), not surgical
  * value changes.
  */
@@ -97,7 +97,7 @@ export function setScalarAtPath(
   const previous = getAtPath(parsed, dotPath);
   if (previous === undefined) throw new Error(`path not found: ${dotPath}`);
   if (previous !== null && typeof previous === "object") {
-    throw new Error(`${dotPath} is a ${Array.isArray(previous) ? "list" : "block"}, not a scalar — edit it in the file directly`);
+    throw new Error(`${dotPath} is a ${Array.isArray(previous) ? "list" : "block"}, not a scalar, edit it in the file directly`);
   }
 
   const lines = frontmatterYaml.split("\n");
@@ -126,7 +126,7 @@ export function setScalarAtPath(
   if (li === -1) throw new Error(`path not found: ${dotPath} (missing "${leaf}")`);
   const afterColon = lines[li].slice((indent + leaf + ":").length);
   if (afterColon.trim() === "" || afterColon.trim().startsWith("{") || afterColon.trim().startsWith("[")) {
-    throw new Error(`${dotPath} is not a block scalar — edit it in the file directly`);
+    throw new Error(`${dotPath} is not a block scalar, edit it in the file directly`);
   }
   const { comment } = splitValueComment(afterColon);
   lines[li] = `${indent}${leaf}: ${scalarToYaml(newValue)}${comment}`;
@@ -143,7 +143,7 @@ function editFlowMapLeaf(
   previous: unknown,
 ): SpecEditResult {
   if (remaining.length !== 1) {
-    throw new Error(`nested flow-map path too deep — edit "${keyPrefix.replace(/:$/, "")}" in the file directly`);
+    throw new Error(`nested flow-map path too deep, edit "${keyPrefix.replace(/:$/, "")}" in the file directly`);
   }
   const nested = remaining[0];
   const line = lines[lineIdx];

@@ -1,8 +1,8 @@
 /**
- * Genesis item bank — the psychometrically grounded interview
+ * Genesis item bank, the psychometrically grounded interview
  * (docs/architecture/genesis.md §3).
  *
- * Items are administered to the HUMAN author (never self-reported by a model —
+ * Items are administered to the HUMAN author (never self-reported by a model, 
  * RESEARCH.md §2.5 on why). Every mapping rule is deterministic and named, so
  * the creation report can print "warmth mean 0.75 ← likert 4/5 on item T-agr-1
  * (rule likert-to-mean)". Versioned: changing an item or rule is a spec-visible

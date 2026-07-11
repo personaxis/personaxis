@@ -1,11 +1,11 @@
 /**
- * `personaxis mode [locked|suggesting|autonomous]` — view or set a persona's
+ * `personaxis mode [locked|suggesting|autonomous]`, view or set a persona's
  * self-improvement posture (`improvement_policy.mode`), the single switch that
  * governs whether the spec can evolve itself:
  *
- *   locked      — the spec never self-edits; only humans change it.
- *   suggesting  — the persona PROPOSES edits; they queue for approval (consensus).
- *   autonomous  — proposals auto-apply, still gated (consensus + protected paths).
+ *   locked, the spec never self-edits; only humans change it.
+ *   suggesting, the persona PROPOSES edits; they queue for approval (consensus).
+ *   autonomous, proposals auto-apply, still gated (consensus + protected paths).
  *
  * Writing is done by TARGETED TEXT SURGERY on the YAML frontmatter so the spec's
  * extensive tier/consumer COMMENTS are preserved (a gray-matter round-trip would
@@ -65,7 +65,7 @@ export function runMode(target?: string, newMode?: ImprovementMode): ModeResult 
     return { path, previous, current: previous, changed: false };
   }
   writeFileSync(path, setModeInFrontmatter(raw, newMode), "utf-8");
-  // autobiographical — a change of self-improvement posture is an identity-level milestone.
+  // autobiographical, a change of self-improvement posture is an identity-level milestone.
   if (readMemoryTypes(matter(raw).data as Record<string, unknown>).autobiographical) {
     try {
       appendAutobiographical(path, { event: "improvement mode changed", detail: `${previous} → ${newMode}`, tags: ["mode"] });

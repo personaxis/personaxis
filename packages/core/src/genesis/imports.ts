@@ -1,9 +1,9 @@
 /**
- * Genesis import adapters — the ecosystem's folk formats become governed specs
+ * Genesis import adapters, the ecosystem's folk formats become governed specs
  * (docs/architecture/genesis.md §2, `--from-import`).
  *
  * Character cards (V2/V3; JSON or PNG-embedded) are prose blobs with zero
- * governance — the adapters map their fields to evidence deterministically
+ * governance, the adapters map their fields to evidence deterministically
  * (kind: imported-field), and the free prose flows to the LLM extractor when a
  * model is available. Numbers are NEVER copied from a card blindly; card text
  * only ever becomes evidence, and the builder's universals always win.
@@ -118,7 +118,7 @@ export function importCharacterCard(path: string): ImportedMaterial {
   let format: "card-v2" | "card-v3" = "card-v2";
   if (path.toLowerCase().endsWith(".png")) {
     const extracted = extractCardFromPng(buf);
-    if (!extracted) throw new Error(`${path}: no chara/ccv3 tEXt chunk found — not a character-card PNG.`);
+    if (!extracted) throw new Error(`${path}: no chara/ccv3 tEXt chunk found, not a character-card PNG.`);
     payload = extracted.json;
     format = extracted.spec;
   } else {

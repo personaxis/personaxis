@@ -65,10 +65,10 @@ export async function runDecompile(opts: RunDecompileOptions): Promise<void> {
 
   // Fence-strip + frontmatter-parse + five-state validation as the repair
   // critique: the exact failing fields go back to the model (bounded rounds,
-  // F6.5) — an invalid personaxis.md is NEVER written.
+  // F6.5), an invalid personaxis.md is NEVER written.
   const normalize = (raw: string): string => {
     let proposed = raw.trim();
-    // Some providers wrap the whole document in a ```fence``` despite instructions — strip it,
+    // Some providers wrap the whole document in a ```fence``` despite instructions, strip it,
     // otherwise gray-matter sees the fence as body and the frontmatter (all the spec) is lost.
     const fence = proposed.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
     if (fence) proposed = fence[1].trim();
@@ -92,7 +92,7 @@ export async function runDecompile(opts: RunDecompileOptions): Promise<void> {
     critique,
     fromFile: opts.fromFile,
     onRetry: (round, c) =>
-      console.log(chalk.yellow(`! validation failed — repair round ${round}:`) + chalk.dim(` ${c.split("\n")[0]}${c.includes("\n") ? " …" : ""}`)),
+      console.log(chalk.yellow(`! validation failed, repair round ${round}:`) + chalk.dim(` ${c.split("\n")[0]}${c.includes("\n") ? " …" : ""}`)),
   });
 
   if ("failed" in outcome) {
@@ -120,7 +120,7 @@ export async function runDecompile(opts: RunDecompileOptions): Promise<void> {
   console.log(chalk.dim(`  via ${result.source} (${result.model})`));
   if (validation.warnings.length > 0) {
     for (const w of validation.warnings) {
-      const field = w.field ? chalk.cyan(w.field) + " — " : "";
+      const field = w.field ? chalk.cyan(w.field) + ", " : "";
       console.log(`  ${chalk.yellow("!")} ${field}${w.message}`);
     }
   }

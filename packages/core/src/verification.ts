@@ -1,8 +1,8 @@
 /**
- * Objective verification (v0.9 — spec `verification`): the maker≠checker split.
+ * Objective verification (v0.9, spec `verification`): the maker≠checker split.
  *
  * The loop-engineering research is blunt: the #1 reason loops fail is "a second
- * agent asked to review without an objective gate — two optimists agreeing", and
+ * agent asked to review without an objective gate, two optimists agreeing", and
  * "the model that wrote the code is too nice grading its own homework". So the
  * agent that did the work NEVER decides done; an INDEPENDENT verifier does, and
  * where possible it is deterministic (a command's exit code, a predicate) rather

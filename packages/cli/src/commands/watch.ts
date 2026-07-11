@@ -1,5 +1,5 @@
 /**
- * `personaxis watch` — the OPTIONAL local daemon that keeps a persona's compiled PERSONA.md fresh
+ * `personaxis watch`, the OPTIONAL local daemon that keeps a persona's compiled PERSONA.md fresh
  * (Fase 3). It complements host hooks (`personaxis observe`), which do the per-turn learning; the
  * daemon handles the two things a hook doesn't:
  *
@@ -7,7 +7,7 @@
  *   2. a heartbeat that recompiles if a governed self-edit left PERSONA.md stale.
  *
  * Runs on our configured model (the compile provider), never the host's. Cross-OS (Node fs.watch).
- * `--once` does a single reconcile pass then exits — ideal for a serverless cron / CI step.
+ * `--once` does a single reconcile pass then exits, ideal for a serverless cron / CI step.
  */
 
 import { Command } from "commander";
@@ -31,7 +31,7 @@ async function recompile(personaPath: string, ifPending: boolean): Promise<boole
 /** One reconcile pass: recompile PERSONA.md if a self-edit marked it stale. Returns whether it ran. */
 export async function reconcileOnce(personaPath: string): Promise<boolean> {
   if (!readRecompilePending(personaPath).pending) return false;
-  console.log(chalk.dim("· drift pending — recompiling PERSONA.md…"));
+  console.log(chalk.dim("· drift pending, recompiling PERSONA.md…"));
   return recompile(personaPath, true);
 }
 
@@ -43,7 +43,7 @@ export const watchCommand = new Command("watch")
   .action(async (opts: { persona?: string; interval: string; once?: boolean }) => {
     const personaPath = resolveObservePersona(opts.persona);
     if (!personaPath) {
-      console.error(chalk.red("Error:"), "no persona found — pass --persona or run inside a project with .personaxis/personaxis.md");
+      console.error(chalk.red("Error:"), "no persona found, pass --persona or run inside a project with .personaxis/personaxis.md");
       process.exit(1);
     }
 
@@ -65,7 +65,7 @@ export const watchCommand = new Command("watch")
         lastMtime = m;
         clearTimeout(debounce);
         debounce = setTimeout(() => {
-          console.log(chalk.dim("· spec changed — recompiling PERSONA.md…"));
+          console.log(chalk.dim("· spec changed, recompiling PERSONA.md…"));
           void recompile(personaPath, false);
         }, 800);
       });

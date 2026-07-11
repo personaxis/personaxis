@@ -1,5 +1,5 @@
 /**
- * `personaxis scan <path...>` — audit agent config files for injection, dangerous
+ * `personaxis scan <path...>`, audit agent config files for injection, dangerous
  * permissions, and leaked credentials (cross-harness: personaxis.md, PERSONA.md,
  * CLAUDE.md, AGENTS.md, .cursorrules, .codex/*.toml, agents.json). The free wedge.
  *
@@ -37,14 +37,14 @@ function printResult(path: string, r: ConfigScanResult, json: boolean): void {
     return;
   }
   const color = VERDICT_COLOR[r.verdict];
-  console.log(`\n  ${color("●")} ${chalk.bold(basename(path))} ${chalk.dim(`(${r.kind})`)} — ${color(r.verdict.toUpperCase())} ${chalk.dim(`score ${r.score}`)}`);
+  console.log(`\n  ${color("●")} ${chalk.bold(basename(path))} ${chalk.dim(`(${r.kind})`)}, ${color(r.verdict.toUpperCase())} ${chalk.dim(`score ${r.score}`)}`);
   if (r.findings.length === 0) {
     console.log(chalk.dim("    no findings"));
     return;
   }
   for (const f of r.findings) {
     const sev = f.severity === "error" ? chalk.red("✗") : f.severity === "warning" ? chalk.yellow("!") : chalk.dim("·");
-    console.log(`    ${sev} ${chalk.dim(`[${f.team}]`)} ${f.rule.padEnd(26)} ${f.message}${f.match ? chalk.dim(` — ${f.match}`) : ""}`);
+    console.log(`    ${sev} ${chalk.dim(`[${f.team}]`)} ${f.rule.padEnd(26)} ${f.message}${f.match ? chalk.dim(`, ${f.match}`) : ""}`);
   }
 }
 

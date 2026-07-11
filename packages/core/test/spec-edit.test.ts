@@ -1,5 +1,5 @@
 /**
- * F3.7 — surgical, comment-preserving dot-path edits.
+ * F3.7, surgical, comment-preserving dot-path edits.
  */
 import { describe, it, expect } from "vitest";
 import { getAtPath, coerceLike, setScalarAtPath } from "../src/index.js";
@@ -22,7 +22,7 @@ affect:
 flag: true`;
 
 function parsed(): Record<string, unknown> {
-  // A tiny YAML-ish parse is unnecessary — hand-build the object the edit reads for type/current.
+  // A tiny YAML-ish parse is unnecessary, hand-build the object the edit reads for type/current.
   return {
     metadata: { name: "cmo", version: "2.0.0" },
     identity: { short_name: "Mira" },
@@ -48,7 +48,7 @@ describe("F3.7 getAtPath + coerceLike", () => {
   });
 });
 
-describe("F3.7 setScalarAtPath — comment-preserving textual set", () => {
+describe("F3.7 setScalarAtPath, comment-preserving textual set", () => {
   it("edits a nested block scalar and keeps the trailing comment", () => {
     const r = setScalarAtPath(YAML, parsed(), "improvement_policy.mode", "autonomous");
     expect(r.previous).toBe("suggesting");

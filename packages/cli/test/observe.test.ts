@@ -10,7 +10,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe("observationFromHookPayload — turning a host hook into an observation", () => {
+describe("observationFromHookPayload, turning a host hook into an observation", () => {
   it("extracts the last user+assistant exchange from a Claude Code transcript", () => {
     const transcript = join(dir, "t.jsonl");
     writeFileSync(

@@ -1,15 +1,15 @@
 /**
- * Repl — a NORMAL-buffer, minimalist interactive line editor.
+ * Repl, a NORMAL-buffer, minimalist interactive line editor.
  *
  * Deliberately NOT an alternate-screen app: taking over the screen (and capturing
- * the mouse) breaks the things a terminal already does well — native scrollback,
+ * the mouse) breaks the things a terminal already does well, native scrollback,
  * text selection, click. So this stays in the normal buffer: output is printed
  * normally (the terminal owns scrollback / wheel / selection), and only a small
  * prompt block is kept pinned at the bottom, redrawn in place. Raw mode is used
  * for key handling ONLY (no mouse reporting), so wheel/selection still work.
  *
  * Provides: a live `/` command palette navigable with ↑/↓ + Tab, an inline busy
- * spinner, and an approval prompt — all without leaving the normal buffer.
+ * spinner, and an approval prompt, all without leaving the normal buffer.
  */
 
 import readline from "node:readline";
@@ -31,19 +31,19 @@ export interface ReplHooks {
   onSubmit(line: string): Promise<void> | void;
   onCycleMode?(): void;
   onExit?(): void;
-  /** FASE 7 P2 — persistent app header (compact wordmark · persona · posture). */
+  /** FASE 7 P2, persistent app header (compact wordmark · persona · posture). */
   header?(): string;
-  /** FASE 7 P2 — render the live drift gauge segment (the CLI owns the theme).
+  /** FASE 7 P2, render the live drift gauge segment (the CLI owns the theme).
    *  Receives the DriftReport the loop emitted; appended to the status line. */
   driftSegment?(report: unknown): string;
-  /** FASE 7 P2 — lets the in-app drift view read sparkline/log detail. */
+  /** FASE 7 P2, lets the in-app drift view read sparkline/log detail. */
   personaPath?: string;
 }
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /**
- * @deprecated Superseded by `InkScreen` (`../ink-repl`) — the REPL renders through
+ * @deprecated Superseded by `InkScreen` (`../ink-repl`), the REPL renders through
  * Ink now (FR.3 adoption finished). This class is kept only as a zero-dep reference
  * and as the home of the shared `ReplHooks` / `SlashItem` / `LineRole` types that
  * `InkScreen` reuses. No code path constructs it.

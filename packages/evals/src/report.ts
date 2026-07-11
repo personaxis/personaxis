@@ -37,7 +37,7 @@ const C = {
 export function toConsole(report: EvalReport): string {
   const lines: string[] = [];
   lines.push("");
-  lines.push(C.bold(`  Personaxis conformance evals — ${report.passed}/${report.total} passed (${(report.passRate * 100).toFixed(0)}%)`));
+  lines.push(C.bold(`  Personaxis conformance evals, ${report.passed}/${report.total} passed (${(report.passRate * 100).toFixed(0)}%)`));
   const classLine = (["C0", "C1", "C2"] as const)
     .map((cls) => `${report.byClass[cls].met ? C.green(cls) : C.red(cls)} ${report.byClass[cls].passed}/${report.byClass[cls].total}`)
     .join("  ·  ");

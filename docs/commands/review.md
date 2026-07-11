@@ -1,4 +1,4 @@
-# `/review` — review queued qualitative self-edits
+# `/review`, review queued qualitative self-edits
 
 When a persona runs in `suggesting` mode, the appraiser's proposed **qualitative** self-edits
 (to `persona.*`) are queued in the append-only ledger `self-edits.jsonl` rather than
@@ -21,9 +21,9 @@ preview of the new value, and the rationale. Approving runs the full consensus v
 check; on success it mints a PersonaVersion, marks `PERSONA.md` stale, and the REPL recompiles.
 
 ## Modes
-- `locked` — nothing is ever proposed; `/review` stays empty.
-- `suggesting` — proposals queue here for you to approve in batch (the default for unattended
+- `locked`, nothing is ever proposed; `/review` stays empty.
+- `suggesting`, proposals queue here for you to approve in batch (the default for unattended
   hosts: they accumulate without interrupting the chat).
-- `autonomous` — proposals auto-apply (still gated); `/review` mainly shows history.
+- `autonomous`, proposals auto-apply (still gated); `/review` mainly shows history.
 
 See [self-evolution](../architecture/self-evolution.md) for the full governance model.

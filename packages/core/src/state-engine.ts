@@ -1,5 +1,5 @@
 /**
- * State engine — the canonical, programmatic mutation primitive.
+ * State engine, the canonical, programmatic mutation primitive.
  *
  * This is the same clamp + audit logic the CLI's `state mutate` command applies,
  * lifted to a pure function so the Living Loop (and the managed runtime) can call
@@ -51,7 +51,7 @@ function lastMutationHash(log: MutationLogEntry[] | undefined): string {
 
 /**
  * Verify the mutation_log hash chain (T3's forensic half, mirroring the episodic
- * ledger's T5). Pre-1.1 entries carry no hash — a LEGACY PREFIX is tolerated, but
+ * ledger's T5). Pre-1.1 entries carry no hash, a LEGACY PREFIX is tolerated, but
  * once an entry is chained every later entry must chain correctly; any edit,
  * reorder, insertion, or interior deletion of chained entries breaks verification.
  */

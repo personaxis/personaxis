@@ -1,17 +1,17 @@
 /**
- * `personaxis proof` — the live, reproducible demonstration of the guarantees
+ * `personaxis proof`, the live, reproducible demonstration of the guarantees
  * (F6.7; MATH_CORE.md T1–T5; the §7 "wow" the brief asked for).
  *
  * Five scenes, all against the REAL engine on a throwaway persona, offline,
  * deterministic under --seed:
- *   1. adversarial storm  — thousands of hostile mutations; the box holds (T1/T2)
- *   2. injection          — a poisoned observation cannot steer evolution
- *   3. evidence cost      — a band crossing leaves ≥⌈D/δ⌉ chained audit entries (T3)
- *   4. tamper             — flip one byte of history; verification names the spot (T5)
- *   5. replay             — state is a fold of the log; a forged value is exposed (T4)
+ *   1. adversarial storm, thousands of hostile mutations; the box holds (T1/T2)
+ *   2. injection, a poisoned observation cannot steer evolution
+ *   3. evidence cost, a band crossing leaves ≥⌈D/δ⌉ chained audit entries (T3)
+ *   4. tamper, flip one byte of history; verification names the spot (T5)
+ *   5. replay, state is a fold of the log; a forged value is exposed (T4)
  *
  * TTY: animated frames + step-through (Enter next scene, r replay, q quit).
- * Non-TTY / --auto: prints the full run — same checks, CI-friendly.
+ * Non-TTY / --auto: prints the full run, same checks, CI-friendly.
  * Honest exit: 0 only when every check passed.
  */
 
@@ -40,7 +40,7 @@ import {
   type MemoryEntry,
 } from "@personaxis/core";
 
-/** mulberry32 — tiny seeded PRNG: same seed ⇒ same storm, reproducible anywhere. */
+/** mulberry32, tiny seeded PRNG: same seed ⇒ same storm, reproducible anywhere. */
 function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -148,7 +148,7 @@ async function sceneStorm(steps: number, seed: number, frame: Frame, width: numb
     const chain = verifyMutationChain(state.mutation_log);
     return {
       checks: [
-        { pass: escapes === 0, line: `${steps} hostile steps, ${clamped} clamped — 0 escapes from the declared box (T1)` },
+        { pass: escapes === 0, line: `${steps} hostile steps, ${clamped} clamped, 0 escapes from the declared box (T1)` },
         { pass: overSteps === 0, line: `every admitted step ≤ max_step_delta 0.15 (T2)` },
         { pass: chain.ok && chain.chained === state.mutation_log.length, line: `all ${state.mutation_log.length} mutations hash-chained and verifiable` },
       ],
@@ -195,7 +195,7 @@ async function sceneEvidence(frame: Frame, width: number): Promise<SceneResult> 
     return {
       checks: [
         { pass: crossed, line: `the coordinate crossed ${startBand} → ${bandOf(state.values[field], e)}` },
-        { pass: crossed && steps >= bound, line: `crossing took ${steps} step(s) — certified minimum ⌈dist/δ_max⌉ = ${bound} (T3: no silent drift)` },
+        { pass: crossed && steps >= bound, line: `crossing took ${steps} step(s), certified minimum ⌈dist/δ_max⌉ = ${bound} (T3: no silent drift)` },
         { pass: chain.ok && chain.chained === steps, line: `each step is a chained, attributable audit entry (${chain.chained} verified)` },
       ],
     };
@@ -255,9 +255,9 @@ async function sceneReplay(frame: Frame): Promise<SceneResult> {
 }
 
 export const proofCommand = new Command("proof")
-  .description("The live proof: adversarial storm, injection, evidence cost, tamper, replay — the guarantees demonstrated on the real engine, offline, in under a minute.")
+  .description("The live proof: adversarial storm, injection, evidence cost, tamper, replay, the guarantees demonstrated on the real engine, offline, in under a minute.")
   .option("--quick", "Short storm (1,000 steps instead of 10,000)")
-  .option("--seed <n>", "PRNG seed for the storm (default 42) — same seed, same run", "42")
+  .option("--seed <n>", "PRNG seed for the storm (default 42), same seed, same run", "42")
   .option("--auto", "No pauses/animation (CI, piping); implied when not a TTY")
   .action(async (opts: { quick?: boolean; seed: string; auto?: boolean }) => {
     const tty = Boolean(process.stdout.isTTY) && !opts.auto;
@@ -279,11 +279,11 @@ export const proofCommand = new Command("proof")
     };
 
     const scenes: Array<{ title: string; run: () => Promise<SceneResult> }> = [
-      { title: `1 · Adversarial storm — ${steps.toLocaleString()} hostile mutations (seed ${seed})`, run: () => sceneStorm(steps, seed, frame, width) },
-      { title: "2 · Prompt injection — poisoned input cannot steer evolution", run: () => sceneInjection(frame) },
-      { title: "3 · Evidence cost — behavior change is never silent (T3)", run: () => sceneEvidence(frame, width) },
-      { title: "4 · Tamper — one forged byte of memory is caught and located (T5)", run: () => sceneTamper(frame) },
-      { title: "5 · Replay — state is a fold of its audit log (T4)", run: () => sceneReplay(frame) },
+      { title: `1 · Adversarial storm, ${steps.toLocaleString()} hostile mutations (seed ${seed})`, run: () => sceneStorm(steps, seed, frame, width) },
+      { title: "2 · Prompt injection, poisoned input cannot steer evolution", run: () => sceneInjection(frame) },
+      { title: "3 · Evidence cost, behavior change is never silent (T3)", run: () => sceneEvidence(frame, width) },
+      { title: "4 · Tamper, one forged byte of memory is caught and located (T5)", run: () => sceneTamper(frame) },
+      { title: "5 · Replay, state is a fold of its audit log (T4)", run: () => sceneReplay(frame) },
     ];
 
     console.log("");
@@ -322,7 +322,7 @@ export const proofCommand = new Command("proof")
       rl?.close();
     }
 
-    // The theorem card — every number above came from THIS run.
+    // The theorem card, every number above came from THIS run.
     const card = [
       "┌──────────────────────────────────────────────────────────────┐",
       "│  THE GUARANTEE                                               │",
@@ -333,13 +333,13 @@ export const proofCommand = new Command("proof")
       "│  minimum of chained audit entries (T3), history replays      │",
       "│  deterministically (T4), and tampering is detected and       │",
       "│  located (T5). Formal statements + machine-checked proofs:   │",
-      "│  docs/MATH_CORE.md · property suite runs at FC_NUM_RUNS=5000 │",
+      "│  docs/GUARANTEES.md · property suite at FC_NUM_RUNS=5000     │",
       "│  per CI build. Reproduce this run: personaxis proof --seed " + String(seed).padEnd(2) + " │",
       "└──────────────────────────────────────────────────────────────┘",
     ];
     const useAscii = process.env.NO_COLOR || !tty;
     console.log(card.map((l) => (useAscii ? l.replace(/[┌┐└┘│─]/g, (m) => ({ "┌": "+", "┐": "+", "└": "+", "┘": "+", "│": "|", "─": "-" })[m]!) : chalk.cyan(l))).join("\n"));
     console.log("");
-    console.log(allPass ? ok(chalk.bold(`all ${summary.length} checks passed`)) : bad(chalk.bold("A CHECK FAILED — this build does not honor the guarantee")));
+    console.log(allPass ? ok(chalk.bold(`all ${summary.length} checks passed`)) : bad(chalk.bold("A CHECK FAILED, this build does not honor the guarantee")));
     if (!allPass) process.exitCode = 1;
   });

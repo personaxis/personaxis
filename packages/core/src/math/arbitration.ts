@@ -1,16 +1,16 @@
 /**
- * Value arbitration — a deterministic total order over declared values
+ * Value arbitration, a deterministic total order over declared values
  * (MATH_CORE.md Defs. 9, A1–A2; fixes audit F-21 "weight promises arbitration
  * with no algorithm").
  *
  * The order ≻ compares the lexicographic key
  *     K(v) = ( type == "governance",  weight,  −lex(name) )
  * largest first. Every comparison is total, antisymmetric, and transitive, so
- * arbitration is reproducible and order-independent — and it EXPLAINS itself:
+ * arbitration is reproducible and order-independent, and it EXPLAINS itself:
  * the verdict names the component that decided.
  *
  * A2 (U7 as a theorem): universal U6 forces `safety` to be governance-typed with
- * weight ≥ 0.90, so safety beats every non-governance value by the first key —
+ * weight ≥ 0.90, so safety beats every non-governance value by the first key, 
  * `conflict_resolution.safety_over_completion` is derivable, not just declared.
  */
 
@@ -50,7 +50,7 @@ export function arbitrate(a: ArbitrationValue, b: ArbitrationValue): Arbitration
       winner: winner.name,
       loser: loser.name,
       rule: "governance-type",
-      trace: `${winner.name} is type: governance and ${loser.name} is not — governance dominates (first key).`,
+      trace: `${winner.name} is type: governance and ${loser.name} is not, governance dominates (first key).`,
     };
   }
   if (a.weight !== b.weight) {

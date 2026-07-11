@@ -11,7 +11,7 @@ describe("REPL slash-command registry", () => {
     }
   });
 
-  it("exposes the setup/action commands too (config, hooks, validate, lint) — the CLI depth from inside the app", () => {
+  it("exposes the setup/action commands too (config, hooks, validate, lint), the CLI depth from inside the app", () => {
     for (const n of ["config", "model", "hooks", "validate", "lint", "compile"]) {
       expect(names).toContain(n);
     }

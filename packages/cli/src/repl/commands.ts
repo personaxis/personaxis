@@ -105,7 +105,7 @@ export const COMMANDS: CommandDef[] = [
         return;
       }
       for (const line of renderFrame(ctx.handle.personaPath, 0).split("\n")) ctx.out(line);
-      ctx.out(chalk.dim(`  live view: `) + chalk.cyan(`personaxis dash -p ${relative(process.cwd(), ctx.handle.personaPath) || ctx.handle.personaPath}`) + chalk.dim(" (second terminal — animates as this session evolves)"));
+      ctx.out(chalk.dim(`  live view: `) + chalk.cyan(`personaxis dash -p ${relative(process.cwd(), ctx.handle.personaPath) || ctx.handle.personaPath}`) + chalk.dim(" (second terminal, animates as this session evolves)"));
     },
   },
   {
@@ -119,7 +119,7 @@ export const COMMANDS: CommandDef[] = [
         return;
       }
       await ctx.suspend(() => runCliInteractive("proof", arg));
-      ctx.out(chalk.dim("  proof finished — the scenes are in the scrollback above."));
+      ctx.out(chalk.dim("  proof finished, the scenes are in the scrollback above."));
     },
   },
   {
@@ -131,7 +131,7 @@ export const COMMANDS: CommandDef[] = [
         return;
       }
       await ctx.suspend(() => runCliInteractive("create", arg));
-      ctx.out(chalk.dim("  create finished — its output is in the scrollback above."));
+      ctx.out(chalk.dim("  create finished, its output is in the scrollback above."));
     },
   },
   {
@@ -141,20 +141,20 @@ export const COMMANDS: CommandDef[] = [
       const p = ctx.handle.personaPath;
       const st = readState(ctx.handle.statePath);
       const env = extractEnvelopes(ctx.handle.frontmatter);
-      // (1) quantitative — the numeric envelope state.
+      // (1) quantitative, the numeric envelope state.
       ctx.out(chalk.bold("  Envelope values") + chalk.dim("  (quantitative)"));
       ctx.out(envelopeBars(ctx.theme, st.values, env.envelopes));
       ctx.out(chalk.dim(`  mutation_log: ${st.mutation_log.length} entries`));
-      // (2) qualitative — self-edits already APPLIED to the spec (the overlay). This is the rest of
+      // (2) qualitative, self-edits already APPLIED to the spec (the overlay). This is the rest of
       // the mutable surface beyond the 9 numbers: any non-protected section may live here now.
       const overlay = activeOverlay(p);
       const keys = Object.keys(overlay);
       ctx.out(chalk.bold("  Applied self-edits") + chalk.dim("  (qualitative overlay)"));
-      if (!keys.length) ctx.out(chalk.dim("  (none) — no spec section has self-evolved yet"));
+      if (!keys.length) ctx.out(chalk.dim("  (none), no spec section has self-evolved yet"));
       else for (const k of keys) ctx.out(`  ${chalk.cyan(k)} ${chalk.dim("→ " + JSON.stringify(overlay[k]).slice(0, 72))}`);
-      // (3) governance queue — proposals awaiting /review.
+      // (3) governance queue, proposals awaiting /review.
       const pending = proposals(p).filter((x) => x.status === "pending");
-      if (pending.length) ctx.out(chalk.yellow(`  ${pending.length} pending proposal(s)`) + chalk.dim(" — /review"));
+      if (pending.length) ctx.out(chalk.yellow(`  ${pending.length} pending proposal(s)`) + chalk.dim(", /review"));
     },
   },
   {
@@ -208,7 +208,7 @@ export const COMMANDS: CommandDef[] = [
       const st = readState(ctx.handle.statePath);
       const env = extractEnvelopes(ctx.handle.frontmatter);
       const log = st.mutation_log;
-      if (!log.length) return void ctx.out(chalk.dim("  mutation_log is empty — nothing to replay"));
+      if (!log.length) return void ctx.out(chalk.dim("  mutation_log is empty, nothing to replay"));
       const last = Math.max(1, Math.min(log.length, Number(arg.trim()) || 30));
       const slice = log.slice(-last);
       const values: Record<string, number> = {};
@@ -240,13 +240,13 @@ export const COMMANDS: CommandDef[] = [
       ctx.out(
         rebuilt.drift.length === 0
           ? chalk.green("  ✓ replay reproduces the live state exactly (T4)")
-          : chalk.red(`  ✗ ${rebuilt.drift.length} field(s) diverge from the log — run \`personaxis state rebuild\``),
+          : chalk.red(`  ✗ ${rebuilt.drift.length} field(s) diverge from the log, run \`personaxis state rebuild\``),
       );
     },
   },
   {
     name: "arbitrate",
-    desc: "resolve a value conflict: /arbitrate <a> <b> — or no args for the full ranking",
+    desc: "resolve a value conflict: /arbitrate <a> <b>, or no args for the full ranking",
     run: (arg, ctx) => {
       const values = readArbitrationValues(ctx.handle.frontmatter as Record<string, unknown>);
       if (!values.length) return void ctx.out(chalk.dim("  no weighted values declared"));
@@ -263,7 +263,7 @@ export const COMMANDS: CommandDef[] = [
       const vb = values.find((v) => v.name === b);
       if (!va || !vb) {
         return void ctx.out(
-          chalk.red(`  unknown value '${!va ? a : b}'`) + chalk.dim(` — declared: ${values.map((v) => v.name).join(", ")}`),
+          chalk.red(`  unknown value '${!va ? a : b}'`) + chalk.dim(`, declared: ${values.map((v) => v.name).join(", ")}`),
         );
       }
       const verdict = arbitrate(va, vb);
@@ -314,7 +314,7 @@ export const COMMANDS: CommandDef[] = [
       if (verb !== "approve" && verb !== "reject") return void ctx.out(chalk.yellow("  usage: /review [approve|reject] <id|all>"));
       if (!which) return void ctx.out(chalk.yellow(`  usage: /review ${verb} <id|all>`));
       const targets = which === "all" ? pending : pending.filter((x) => x.id === which);
-      if (!targets.length) return void ctx.out(chalk.yellow(`  no pending proposal "${which}" — see /review`));
+      if (!targets.length) return void ctx.out(chalk.yellow(`  no pending proposal "${which}", see /review`));
       let approved = 0;
       for (const x of targets) {
         try {
@@ -335,12 +335,12 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "compile",
-    desc: "recompile PERSONA.md from the (evolved) spec — explicit, may take a moment",
+    desc: "recompile PERSONA.md from the (evolved) spec, explicit, may take a moment",
     run: async (_a, ctx) => {
       if (!readRecompilePending(ctx.handle.personaPath).pending) {
         return void ctx.out(chalk.dim("  PERSONA.md is already up to date."));
       }
-      if (!llmConfig(ctxModelArg(ctx))) return void ctx.out(chalk.dim("  needs a model — configure with /model or `personaxis config set --global local.endpoint/model`."));
+      if (!llmConfig(ctxModelArg(ctx))) return void ctx.out(chalk.dim("  needs a model, configure with /model or `personaxis config set --global local.endpoint/model`."));
       ctx.out(chalk.dim("  recompiling PERSONA.md from the evolved spec…"));
       await maybeRecompile(ctx);
     },
@@ -355,7 +355,7 @@ export const COMMANDS: CommandDef[] = [
       ctx.out(chalk.bold("  Mutation log (last 8)"));
       for (const m of st.mutation_log.slice(-8)) ctx.out(`  ${chalk.dim(m.ts)} ${m.field}: ${m.from} → ${m.to}${m.clamped ? chalk.yellow(" clamped") : ""}`);
       ctx.out("  memory chain: " + (chain.ok ? chalk.green("intact ✓") : chalk.red(`broken at #${chain.brokenAt}`)));
-      // self-edit ledger — what the persona changed about ITSELF, and the governance verdict.
+      // self-edit ledger, what the persona changed about ITSELF, and the governance verdict.
       const all = proposals(p);
       if (all.length) {
         ctx.out(chalk.bold("  Self-edit ledger (last 6)"));
@@ -364,7 +364,7 @@ export const COMMANDS: CommandDef[] = [
           ctx.out(`  ${chalk.dim(x.id)} ${c(x.status)} ${chalk.dim(x.targetPath)}`);
         }
       }
-      // evaluations — quality/utility scores, with the target + dimension + score that "+N eval(s)" hid.
+      // evaluations, quality/utility scores, with the target + dimension + score that "+N eval(s)" hid.
       const evals = readEvaluations(p);
       if (evals.length) {
         ctx.out(chalk.bold(`  Evaluations (${evals.length}, last 6)`));
@@ -409,7 +409,7 @@ export const COMMANDS: CommandDef[] = [
       ctx.out(`  personas ${v.personas} · projects ${v.projects} · collections ${v.collections}`);
       if (v.personas === 0 && v.projects === 0 && v.collections === 0) {
         ctx.out(chalk.dim("  (empty) the overseer is OPTIONAL infra for reusing a persona across machines/projects,"));
-        ctx.out(chalk.dim("  complementing git — not replacing it. Populate with: personaxis personas import <path> · personaxis overseer register <slug>"));
+        ctx.out(chalk.dim("  complementing git, not replacing it. Populate with: personaxis personas import <path> · personaxis overseer register <slug>"));
       }
     },
   },
@@ -434,7 +434,7 @@ export const COMMANDS: CommandDef[] = [
         setModelSetting(key, value, global);
         const shown = isSecret ? value.slice(0, 3) + "…" + value.slice(-2) : value;
         ctx.out(chalk.green(`  ✓ ${key} = ${shown}`) + chalk.dim(` (${global ? "global ~/.personaxis" : "project .personaxis"}/config.json)`));
-        if (isSecret) ctx.out(chalk.dim("  key stored user-only (0600), reused across all projects — no env var needed."));
+        if (isSecret) ctx.out(chalk.dim("  key stored user-only (0600), reused across all projects, no env var needed."));
         ctx.out(chalk.dim(`  now: ${appraiserLabel(ctxModelArg(ctx))}`));
       } catch (e) {
         ctx.out(chalk.red(`  ${(e as Error).message}`));
@@ -487,7 +487,7 @@ export const COMMANDS: CommandDef[] = [
       ctx.out(chalk.bold(`  ${report.summary.errors} error(s) · ${report.summary.warnings} warning(s) · ${report.summary.infos} info`));
       for (const f of report.findings.slice(0, 12)) {
         const c = f.severity === "error" ? chalk.red : f.severity === "warning" ? chalk.yellow : chalk.dim;
-        ctx.out(`  ${c(f.severity)} ${chalk.dim(f.rule)} — ${f.message}`);
+        ctx.out(`  ${c(f.severity)} ${chalk.dim(f.rule)}, ${f.message}`);
       }
     },
   },
@@ -522,12 +522,12 @@ export const COMMANDS: CommandDef[] = [
     desc: "summarize older turns to free context",
     run: async (_a, ctx) => {
       const llm = llmConfig(ctxModelArg(ctx));
-      if (!llm) return void ctx.out(chalk.dim("  /compact needs a model — configure with /model."));
+      if (!llm) return void ctx.out(chalk.dim("  /compact needs a model, configure with /model."));
       const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
       if (r.compacted) {
         ctx.conversation = r.messages.filter((m) => m.role !== "system");
         // PERSIST the checkpoint so leaving and /resume returns the COMPACTED conversation, not the
-        // raw bloat — the user shouldn't have to /compact again after re-entering the same session.
+        // raw bloat, the user shouldn't have to /compact again after re-entering the same session.
         if (r.summary) {
           ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
           recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
@@ -557,9 +557,9 @@ export const COMMANDS: CommandDef[] = [
     desc: "resume a saved conversation: /resume <id|name>",
     run: async (arg, ctx) => {
       const q = arg.trim();
-      if (!q) return void ctx.out(chalk.dim("  usage: /resume <id|name> — see /sessions"));
+      if (!q) return void ctx.out(chalk.dim("  usage: /resume <id|name>, see /sessions"));
       const s = findSession(ctx.handle.personaPath, q);
-      if (!s) return void ctx.out(chalk.yellow(`  no session matching "${q}" — see /sessions`));
+      if (!s) return void ctx.out(chalk.yellow(`  no session matching "${q}", see /sessions`));
       const conv = loadConversation(ctx.handle.personaPath, s.id);
       ctx.conversation = conv;
       ctx.sessionId = s.id;
@@ -611,7 +611,7 @@ export const COMMANDS: CommandDef[] = [
   { name: "quit", desc: "leave the session", run: () => true },
 ];
 
-/** The slash-command registry (names + descriptions) — single source of truth. */
+/** The slash-command registry (names + descriptions), single source of truth. */
 export function listCommands(): SlashItem[] {
   return COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
 }
@@ -622,13 +622,13 @@ function helpText(): string {
     if (c.name === "quit") continue;
     lines.push(`  ${chalk.cyan(`/${c.name}`).padEnd(22)} ${chalk.dim(c.desc)}`);
   }
-  lines.push("", chalk.dim("Type without a leading / to talk — natural language both converses AND uses tools (one governed agent loop)."));
+  lines.push("", chalk.dim("Type without a leading / to talk, natural language both converses AND uses tools (one governed agent loop)."));
   return lines.join("\n");
 }
 
 /** CLI subcommands handled specially in the REPL (native or background), so the passthrough skips them. */
 const REPL_UNAVAILABLE: Record<string, string> = {
-  observe: "the living loop already runs a governed tick every turn — feed a one-off with `personaxis observe --observation \"…\"`",
+  observe: "the living loop already runs a governed tick every turn, feed a one-off with `personaxis observe --observation \"…\"`",
 };
 
 export async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
@@ -637,7 +637,7 @@ export async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   const cmd = COMMANDS.find((c) => c.name === name);
   if (cmd) return (await cmd.run(arg, ctx)) === true;
 
-  // Not a native `/command` — fall through to the CLI so EVERY subcommand is reachable from the app
+  // Not a native `/command`, fall through to the CLI so EVERY subcommand is reachable from the app
   // (export, decompile, diff, spec, orchestrate, team, skills, scan, personas, migrate, push/pull, …).
   if (REPL_UNAVAILABLE[name]) {
     ctx.out(chalk.dim(`  /${name}: ${REPL_UNAVAILABLE[name]}.`));

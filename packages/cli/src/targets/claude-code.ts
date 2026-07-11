@@ -60,7 +60,7 @@ export function compileClaudeCode(data: PersonaData): string {
     if (prohibited?.length) lines.push(`**Prohibited domains:** ${prohibited.join(", ")}`);
   }
 
-  // Character — virtues + commitments + prohibited
+  // Character, virtues + commitments + prohibited
   if (character) {
     const virtues = asObj(character.virtues) as Record<string, VirtueEntry> | undefined;
     if (virtues) {
@@ -68,7 +68,7 @@ export function compileClaudeCode(data: PersonaData): string {
       for (const [name, v] of sortedMapKeys(virtues, "priority")) {
         const tag = v.enforcement === "hard" ? " *(hard)*" : "";
         const desc = v.description ?? "";
-        lines.push(`- **${name}**${tag} — ${desc}`);
+        lines.push(`- **${name}**${tag}, ${desc}`);
       }
     }
     const commitments = asArr(character.behavioral_commitments) as Array<{ id?: string; rule?: string; severity?: string }> | undefined;
@@ -106,7 +106,7 @@ export function compileClaudeCode(data: PersonaData): string {
       if (active.length) {
         lines.push("\n## Active drives");
         for (const [name, d] of active.sort((a, b) => (b[1].intensity ?? 0) - (a[1].intensity ?? 0))) {
-          const note = d.note ? ` — ${d.note}` : "";
+          const note = d.note ? `, ${d.note}` : "";
           lines.push(`- **${name}** (intensity ${d.intensity?.toFixed(2)})${note}`);
         }
       }
@@ -131,7 +131,7 @@ export function compileClaudeCode(data: PersonaData): string {
       lines.push(`\n## Personality (${model ?? "traits"})`);
       for (const [name, t] of Object.entries(traits)) {
         const meanStr = t.mean !== undefined ? ` (${t.mean.toFixed(2)})` : "";
-        const expr = t.expression ? ` — ${t.expression}` : "";
+        const expr = t.expression ? `, ${t.expression}` : "";
         lines.push(`- **${name}**${meanStr}${expr}`);
       }
     }
@@ -192,7 +192,7 @@ export function compileClaudeCode(data: PersonaData): string {
     }
   }
 
-  // Reflexive self-regulation — the most important block, surfaced explicitly
+  // Reflexive self-regulation, the most important block, surfaced explicitly
   if (reflexive) {
     lines.push("\n## Hard limits (never crossed)");
     const limits = asArr(reflexive.hard_limits);
@@ -216,7 +216,7 @@ export function compileClaudeCode(data: PersonaData): string {
     }
   }
 
-  // Persona — voice
+  // Persona, voice
   if (persona) {
     const voice = asObj(persona.voice);
     if (voice) {
@@ -274,7 +274,7 @@ export function compileClaudeCodeAgent(data: PersonaData, agentName: string, ski
   const role = asObj(data.identity)?.role_identity ? asStr(asObj(asObj(data.identity)!.role_identity)!.primary_role) : undefined;
 
   const body = compileClaudeCode(data);
-  const description = role ? `${displayName} — ${role}` : (metadata.description ?? String(displayName));
+  const description = role ? `${displayName}, ${role}` : (metadata.description ?? String(displayName));
   const skillBlock = skillName
     ? `\n\n## Supporting Skill\n\nUse the \`${skillName}\` skill when this task requires refs, samples, assets, scripts, templates, or workflows from the source persona package. Read only the supporting files relevant to the task.\n`
     : "";

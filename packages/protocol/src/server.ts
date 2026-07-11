@@ -2,7 +2,7 @@
  * Engine-side endpoint: accepts front-end connections, dispatches Ops to a
  * single handler (the engine), broadcasts EventMsg to every connected front.
  *
- * The server holds NO business logic — governance, clamping and memory live in
+ * The server holds NO business logic, governance, clamping and memory live in
  * @personaxis/core behind the handler. This file is only the seam.
  */
 
@@ -37,7 +37,7 @@ export class ProtocolServer {
       try {
         unlinkSync(pipePath);
       } catch {
-        /* raced with another cleanup — listen() will surface a real conflict */
+        /* raced with another cleanup, listen() will surface a real conflict */
       }
     }
     this.server = createServer((socket: Socket) => {
@@ -90,7 +90,7 @@ export class ProtocolServer {
   close(): Promise<void> {
     for (const conn of this.connections) conn.dispose();
     this.connections.clear();
-    // net.Server.close waits for every socket to END — destroy them so close()
+    // net.Server.close waits for every socket to END, destroy them so close()
     // resolves even when a front-end never disconnected (crash, test teardown).
     for (const socket of this.sockets) socket.destroy();
     this.sockets.clear();

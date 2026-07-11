@@ -1,7 +1,7 @@
 # `personaxis serve`
 
 Expose the living persona over **plain HTTP + `agents.md`** so an external app or agent (that doesn't
-speak MCP) can drive it over the network. A **long-running server** — it blocks until stopped.
+speak MCP) can drive it over the network. A **long-running server**: it blocks until stopped.
 
 ```bash
 personaxis serve --persona ./.personaxis/personaxis.md      # default port 7637
@@ -30,8 +30,8 @@ as the REPL/hooks.
 
 ## Not the MCP server
 
-`serve` is **HTTP** (this page). The **MCP** server is a separate binary — `personaxis-mcp` (package
-`@personaxis/mcp`) — for MCP hosts (Claude Code/Codex/Cursor). See
+`serve` is **HTTP** (this page). The **MCP** server is a separate binary, `personaxis-mcp` (package
+`@personaxis/mcp`), for MCP hosts (Claude Code/Codex/Cursor). See
 [integrations/claude-code.md](../integrations/claude-code.md) §2.
 
 ## serve vs watch vs observe (they are NOT the same)

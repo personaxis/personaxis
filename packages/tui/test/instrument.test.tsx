@@ -1,5 +1,5 @@
 /**
- * FASE 7 P2 — the living-instrument surfaces, driven through ink-testing-library:
+ * FASE 7 P2, the living-instrument surfaces, driven through ink-testing-library:
  * the persistent header, the drift gauge segment, the band-crossing moment
  * (NO_ANIM fast path commits the summary deterministically), and the embedded
  * drift view with its key handling. The math itself is core's; here we assert

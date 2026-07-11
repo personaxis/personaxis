@@ -85,7 +85,7 @@ export const pullCommand = new Command("pull")
 		const content = await res.text();
 		const personaVersion = res.headers.get("x-persona-version") ?? "unknown";
 
-		// Validate locally — write the file even on warning, but flag it.
+		// Validate locally, write the file even on warning, but flag it.
 		let validationStatus = "(skipped)";
 		try {
 			const { data } = matter(content);
@@ -100,7 +100,7 @@ export const pullCommand = new Command("pull")
 				}
 				console.warn(chalk.dim("  The file will be written anyway; review before using."));
 			} else if (result.warnings.length > 0) {
-				console.warn(chalk.dim("!"), `${result.warnings.length} warning(s) — run \`personaxis validate ${opts.out ?? "PERSONA.md"}\` to inspect.`);
+				console.warn(chalk.dim("!"), `${result.warnings.length} warning(s), run \`personaxis validate ${opts.out ?? "PERSONA.md"}\` to inspect.`);
 			}
 		} catch (err) {
 			console.warn(chalk.yellow("!"), "Could not parse YAML frontmatter:", (err as Error).message);

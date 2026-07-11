@@ -1,5 +1,5 @@
 /**
- * @personaxis/spec — the five-state validator with version dispatch.
+ * @personaxis/spec, the five-state validator with version dispatch.
  * (The full behavioral coverage lives in the CLI's test suite, which consumes
  * this package through its shim; this proves the package stands alone.)
  */

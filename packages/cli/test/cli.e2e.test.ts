@@ -71,7 +71,7 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
     expect(out).toContain("is awake");
     const created = join(cwd, ".personaxis", "personaxis.md");
     expect(existsSync(created)).toBe(true);
-    // The starter must always validate (regression guard) — throws on non-zero exit.
+    // The starter must always validate (regression guard), throws on non-zero exit.
     expect(() => run(["validate", created])).not.toThrow();
     rmSync(cwd, { recursive: true, force: true });
   });
@@ -90,7 +90,7 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
 if (!built) {
   // Surface clearly in local runs where dist isn't built yet.
   describe("cli e2e", () => {
-    it("skipped — run `pnpm --filter @personaxis/persona.md build` first", () => {
+    it("skipped, run `pnpm --filter @personaxis/persona.md build` first", () => {
       expect(built).toBe(false);
     });
   });

@@ -1,6 +1,6 @@
 # `personaxis export`
 
-Export a compiled `PERSONA.md` to a **clean, machine-readable format** — semantic content only, with
+Export a compiled `PERSONA.md` to a **clean, machine-readable format**: semantic content only, with
 the pedagogical comments and empty fields stripped. Useful for publishing, indexing, or feeding another
 tool.
 

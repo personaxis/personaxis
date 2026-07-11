@@ -1,8 +1,8 @@
 /**
- * F6.6 — Genesis: valid BY CONSTRUCTION, machine-checked.
+ * F6.6, Genesis: valid BY CONSTRUCTION, machine-checked.
  *
- *  - PB-G (the flagship property): ANY seed — hostile names, out-of-range
- *    numbers, inverted ranges, empty everything — builds a spec that the REAL
+ *  - PB-G (the flagship property): ANY seed, hostile names, out-of-range
+ *    numbers, inverted ranges, empty everything, builds a spec that the REAL
  *    five-state validator accepts (PASS or PASS_WITH_WARNINGS, never FAIL_*).
  *    Genesis cannot write an invalid persona because it cannot BUILD one.
  *  - Universals are builder-owned: a seed cannot demote honesty, outrank

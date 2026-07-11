@@ -1,8 +1,8 @@
 /**
- * `personaxis onboard --host <host>` — one command to wire a host end to end.
+ * `personaxis onboard --host <host>`, one command to wire a host end to end.
  *
  * Does the whole quickstart in one step so setup is turnkey, not a checklist:
- *   1. check a model is configured (resolveModel) — tell the user how if not,
+ *   1. check a model is configured (resolveModel), tell the user how if not,
  *   2. compile the identity for the host (PERSONA.md + @-injection, or SOUL.md for openclaw/Hermes),
  *   3. install the end-of-turn hook (per-turn learning on your model),
  *   4. print the remaining manual step (put the API key in the env named by apiKeyEnv).
@@ -47,7 +47,7 @@ export const onboardCommand = new Command("onboard")
     if (model) {
       console.log(chalk.green("  ✓ model:"), chalk.dim(describeModel({ cwd: process.cwd() })));
     } else {
-      console.log(chalk.yellow("  ! no model configured — set one (once, global):"));
+      console.log(chalk.yellow("  ! no model configured, set one (once, global):"));
       console.log(chalk.dim("      personaxis config set --global local.endpoint <openai-compatible-url>"));
       console.log(chalk.dim("      personaxis config set --global local.model <model-name>"));
       console.log(chalk.dim("      personaxis config set --global local.apiKeyEnv <ENV_VAR_WITH_YOUR_KEY>"));
@@ -61,7 +61,7 @@ export const onboardCommand = new Command("onboard")
       console.log(chalk.green("  ✓ compiled identity"), chalk.dim(SOUL_HOSTS.has(host) ? "(SOUL.md)" : "(PERSONA.md + @-reference)"));
     } catch (e) {
       console.log(chalk.yellow("  ! compile deferred:"), (e as Error).message);
-      console.log(chalk.dim("    (configure a model/provider, then re-run onboard — the hook still installs below.)"));
+      console.log(chalk.dim("    (configure a model/provider, then re-run onboard, the hook still installs below.)"));
     }
 
     // 3. Install the hook.

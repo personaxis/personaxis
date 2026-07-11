@@ -17,7 +17,7 @@ import { withStateLock } from "./lock.js";
 
 /**
  * Current state.json schema version (schema/state.schema.json's newest accepted
- * value — 0.9.0 added the optional agent_session block; 0.10 changed no state
+ * value, 0.9.0 added the optional agent_session block; 0.10 changed no state
  * fields). Single source for every seeder; keep in sync with the schema enum.
  */
 export const STATE_SCHEMA_VERSION = "1.0.0";
@@ -47,7 +47,7 @@ export interface MutationLogEntry {
   /** v0.8: runtime session id, for traceability. */
   session_id?: string;
   /** v1.1 (F6.3, T3 forensic upgrade): hash of the previous chained entry ("" for
-   *  the first). Same scheme as episodic memory — the audit trail is tamper-evident,
+   *  the first). Same scheme as episodic memory, the audit trail is tamper-evident,
    *  not merely append-only by convention. Absent on pre-1.1 entries (legacy prefix
    *  tolerated by verifyMutationChain). */
   prev_hash?: string;
@@ -120,7 +120,7 @@ export function readState(statePath: string): StateFile {
 
 /**
  * Atomic write: temp file + rename in the same directory, so concurrent readers
- * (dash polling, another CLI) always see a complete JSON document — never a torn
+ * (dash polling, another CLI) always see a complete JSON document, never a torn
  * partial write. Serialization of read→modify→write sequences is the caller's job
  * via withStateLock (see lock.ts).
  */
@@ -147,7 +147,7 @@ export function displayName(fm: PersonaFrontmatter): string {
  */
 export function ensureState(handle: PersonaHandle): StateFile {
   if (existsSync(handle.statePath)) return readState(handle.statePath);
-  // Seeding races with other processes seeding the same persona — take the lock and
+  // Seeding races with other processes seeding the same persona, take the lock and
   // re-check so exactly one seeder wins.
   return withStateLock(handle.statePath, () => {
     if (existsSync(handle.statePath)) return readState(handle.statePath);

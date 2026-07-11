@@ -1,16 +1,16 @@
 /**
- * FR.9 — update notification: zero-dependency npm registry check.
+ * FR.9, update notification: zero-dependency npm registry check.
  *
  * Explicit deviation from the TECH_STACK decision to use `update-notifier`:
  * after the 2026 npm supply-chain hardening (pnpm minimumReleaseAge etc.) a
  * single dist-tag fetch does not justify its transitive dependency tree. Same
- * contract, ~60 lines, no deps. Recorded in IMPLEMENTATION_CHECKLIST.md.
+ * contract, ~60 lines, no deps. 
  *
  * Behavior: at most one registry hit per CHECK_INTERVAL, cached under
  * ~/.personaxis/update-check.json; the check is fire-and-forget (never blocks
  * or fails a command); the caller prints the hint when an update exists.
  *
- * The binary self-updater (GitHub Releases, atomic replace + .old rollback —
+ * The binary self-updater (GitHub Releases, atomic replace + .old rollback, 
  * Claude Code pattern) and Windows code-signing are release-infrastructure:
  * they ship with the bun-compile binary distribution (FR.V/release), not here.
  */

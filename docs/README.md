@@ -1,32 +1,34 @@
-# personaxis CLI — documentation
+# personaxis CLI, documentation
 
 Feature-organized reference for **what is implemented** in this repo (the reference CLI
-for the personaxis.md spec). It exists so a human — or another AI working on the project —
+for the personaxis.md spec). It exists so a human, or another AI working on the project, 
 can see at a glance how each piece works and verify the implementation matches the design.
 
 The spec itself (normative field reference) lives in the sibling `persona.md` repo:
 [docs/SPEC.md](../../persona.md/docs/SPEC.md) and
 [docs/PERSONA_PROMPTING.md](../../persona.md/docs/PERSONA_PROMPTING.md).
 
-**New here? Start with [CONCEPTS_FAQ.md](CONCEPTS_FAQ.md)** — a single, navigable answer to the
+**New here? Start with [CONCEPTS_FAQ.md](CONCEPTS_FAQ.md)**, a single, navigable answer to the
 common conceptual questions (compile/decompile, sub-personas, what self-evolves and who decides,
 the modes, the six memory kinds, sessions, the sandbox, every REPL command), each linking to the
 deeper architecture doc below.
+
+**The evidence scoreboard** is [`GUARANTEES.md`](GUARANTEES.md) (product-facing: what is proven
+vs measured vs pending). The full **research report** (the paper, the formal proofs, the
+preregistered protocol, and the experiment runners) is published separately as a dedicated
+report.
 
 ## Map
 
 ```
 docs/
-  CONCEPTS_FAQ.md      START HERE — direct answers to the common conceptual questions
-  GUARANTEES.md        what is guaranteed (theorems) vs measured vs pending — the honest scoreboard
-  MATH_CORE.md         the formal core: definitions, T1–T6 with proofs, arbitration, Jacobians
-  RESEARCH.md          preregistered research protocol (RQ1–RQ6, hypotheses, metrics, lit review)
-  paper/bounded-persona-dynamics.md   the paper (APA 7, web edition; results trace to committed runs)
-  configuration.md     model/endpoint/API-key config (global+project+per-persona, dev & prod)
-  providers.md         the local | byok | agent | remote providers for compile/decompile
+  CONCEPTS_FAQ.md      START HERE: direct answers to the common conceptual questions
+  HOW_IT_WORKS.md      the overview: what personaxis is, the loop, the security model
   guides/              task-oriented entry points
     getting-started.md   by audience: developers / teams & enterprises / creators
     creating-personas.md which `create` door for which input, provenance review, iteration
+    configuration.md     model/endpoint/API-key config (global+project+per-persona, dev & prod)
+    providers.md         the local | byok | agent | remote providers for compile/decompile
     production.md        MCP / SDK / serve, the four production controls, troubleshooting
     recipes.md           8 vertical starting points (NPC, brand voice, legal, fintech, tutor, …)
   architecture/        how the system works, end to end
@@ -36,20 +38,20 @@ docs/
     self-evolution.md    how personaxis.md self-edits (whole spec), and how it compiles to PERSONA.md (the "living" loop)
     compile.md           compile / decompile, the artifact model, canonical output paths, purely-qualitative compiled doc
     multi-persona.md     root + sub-personas, @routing, isolation, per-persona colors
-    agent-adoption.md    how the four focus hosts adopt a persona — Claude Code, Codex, openclaw, Hermes (all live)
-    saas-managed.md      DESIGN (not built here) — the managed SaaS: serverless API + queue + workers + Postgres
+    agent-adoption.md    how the four focus hosts adopt a persona, Claude Code, Codex, openclaw, Hermes (all live)
+    saas-managed.md      DESIGN (not built here), the managed SaaS: serverless API + queue + workers + Postgres
     memory.md            the six memory.types (episodic, semantic, procedural, autobiographical, user_preferences, evaluations)
     sessions.md          persistent per-persona conversations, /sessions, /resume, /compact (persisted)
     awareness.md         runtime structural self-knowledge (root vs sub, address, sub-tree, resources)
     sandbox.md           two-axis permission policy, postures, the honest Windows limit
   integrations/        how each host uses personaxis
-    README.md            START HERE — mental model + 3-step quickstart + which host + use cases
+    README.md            START HERE, mental model + 3-step quickstart + which host + use cases
     claude-code.md       hooks (per-turn learning) + MCP (on-demand) + native subagent
     codex.md             AGENTS.md + Stop hook + subagent + MCP
     openclaw.md          SOUL.md + command:stop hook + MCP
     hermes.md            ~/.hermes/SOUL.md + on_session_end hook + MCP
-    claude-code-mcp.md   (español) MCP walkthrough
-    http-agents.md       personaxis serve — HTTP for non-MCP agents
+    claude-code-mcp.md   MCP walkthrough (register the server, tools, a real session trace)
+    http-agents.md       personaxis serve, HTTP for non-MCP agents
   commands/            one entry per CLI command (validate, compile, observe, watch, hooks, …)
     README.md            command index
 ```
@@ -63,11 +65,11 @@ docs/
 | `state.json` | Mutable **runtime** dials (mood/affect) | Runtime | the state engine |
 
 Resources (`memory.md`, `memory/`, `references/`, `examples/`, `skills/`, `assets/`,
-`policy.yaml`, `self-edits.jsonl`) live next to each `personaxis.md` — the root's in
+`policy.yaml`, `self-edits.jsonl`) live next to each `personaxis.md`, the root's in
 `.personaxis/`, a sub's in `.personaxis/personas/<slug>/`. The layout **recurses**.
 
 ## Status legend used in these docs
 
-- **Implemented** — code + tests in this repo.
-- **Best-effort** — works, with an honest limitation stated (e.g. native OS sandboxing).
-- **Planned** — designed, not yet wired (always called out explicitly).
+- **Implemented**: code + tests in this repo.
+- **Best-effort**: works, with an honest limitation stated (e.g. native OS sandboxing).
+- **Planned**: designed, not yet wired (always called out explicitly).

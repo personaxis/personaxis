@@ -1,4 +1,4 @@
-# `personaxis proof` — the live demonstration
+# `personaxis proof`, the live demonstration
 
 The guarantees, demonstrated on the real engine, offline, in under a minute:
 
@@ -19,5 +19,5 @@ personaxis proof --auto     # no pauses/animation (CI, piping); implied non-TTY
 
 TTY runs animate and step through scenes (Enter next · `r` replay · `q` quit).
 `NO_COLOR` renders ASCII. Exit code is honest: non-zero if ANY check fails.
-Formal statements + machine-checked proofs: `docs/MATH_CORE.md`; plain-language
-version: `docs/GUARANTEES.md`.
+Formal statements + machine-checked proofs: `../architecture/math-core.md`; plain-language
+version: `../GUARANTEES.md`.

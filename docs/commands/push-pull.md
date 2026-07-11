@@ -1,6 +1,6 @@
 # `personaxis push` / `personaxis pull`
 
-Publish or fetch a persona **version** — the spec (`personaxis.md`) + the compiled document +
+Publish or fetch a persona **version**: the spec (`personaxis.md`) + the compiled document +
 the resource bundle (`memory.md`, `references/`, `examples/`, `skills/`, `assets/`).
 
 ## Usage

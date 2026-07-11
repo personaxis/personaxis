@@ -131,7 +131,7 @@ describe("FR.6 session writer + threading + derived index", () => {
       persona: "",
     });
     const u1 = w.append({ role: "user", content: "hola" });
-    const u2 = w.append({ role: "assistant", content: "hola — soy h", from: "(root)" });
+    const u2 = w.append({ role: "assistant", content: "hola, soy h", from: "(root)" });
     await w.flush();
 
     const { turns } = readSession(personaPath, id);

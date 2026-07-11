@@ -1,6 +1,6 @@
 # `personaxis sigil`
 
-Render a persona's **deterministic, state-aware ASCII sigil** + envelope panel — its unique
+Render a persona's **deterministic, state-aware ASCII sigil** + envelope panel, its unique
 visual signature, derived from the spec (seed from identity + trait signature, color from the
 seed's hue, glyph set from a seed×trait fingerprint).
 

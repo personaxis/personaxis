@@ -10,7 +10,7 @@ const FORMATS = ["json", "md", "yaml"] as const;
 type ExportFormat = (typeof FORMATS)[number];
 
 function stripPedagogicalBody(body: string): string {
-  // Remove the long top HTML comment block ("MARKDOWN BODY — human-readable...") and
+  // Remove the long top HTML comment block ("MARKDOWN BODY, human-readable...") and
   // any standalone inline HTML comments. Keeps real prose under each ## heading.
   return body
     .replace(/<!--[\s\S]*?-->/g, "")
@@ -56,7 +56,7 @@ export const exportCommand = new Command("export")
       const body = serializeYaml(cleaned).trimStart();
       output = body + "\n";
     } else {
-      // md — frontmatter + body, both cleaned
+      // md, frontmatter + body, both cleaned
       const raw = readFileSync(loaded.path, "utf-8");
       const parsed = matter(raw);
       const cleanBody = stripPedagogicalBody(parsed.content);

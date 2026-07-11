@@ -7,7 +7,7 @@ const DEFAULT_ENDPOINT = "http://localhost:11434/v1";
 const DEFAULT_MODEL = "llama3.1";
 
 /**
- * Calls any OpenAI-compatible chat-completions endpoint — local (Ollama, llama.cpp,
+ * Calls any OpenAI-compatible chat-completions endpoint, local (Ollama, llama.cpp,
  * LM Studio) OR a hosted, authenticated one (Cohere/OpenRouter/Groq/...). Configure with:
  *
  *   personaxis config set provider local
@@ -16,7 +16,7 @@ const DEFAULT_MODEL = "llama3.1";
  *
  * Model resolution is the SAME layered config the living loop uses (`resolveModel`:
  * env > project > global, key via `apiKeyEnv`), so `personaxis config set --global local.*` drives
- * compile too — not just the REPL. Falls back to the passed project config, then localhost defaults.
+ * compile too, not just the REPL. Falls back to the passed project config, then localhost defaults.
  */
 export function createLocalProvider(config: PersonaxisConfig): Provider {
   const resolved = resolveModel({ cwd: process.cwd() });

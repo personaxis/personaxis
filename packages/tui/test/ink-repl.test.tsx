@@ -1,5 +1,5 @@
 /**
- * InkScreen / ReplApp — the Ink REPL front-end (drop-in for the pre-Ink Screen).
+ * InkScreen / ReplApp, the Ink REPL front-end (drop-in for the pre-Ink Screen).
  * Renders through ink-testing-library and is driven by the same store the
  * InkScreen methods (print/setBusy/ask) mutate, so this covers the real path the
  * CLI uses.

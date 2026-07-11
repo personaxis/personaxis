@@ -1,7 +1,7 @@
 /**
- * Appraisal signals — what the model proposes, NOT what gets applied.
+ * Appraisal signals, what the model proposes, NOT what gets applied.
  *
- * Feasibility-in-small-models design (see plan/04-small-models): the model never
+ * Feasibility-in-small-models design: the model never
  * emits a valid state mutation by hand. It emits a *structured appraisal signal*
  * under a JSON Schema (enforceable with GBNF / json-schema constrained decoding),
  * and the spec engine performs the clamp + governance. The model proposes
@@ -31,8 +31,8 @@ export interface ProposedMemory {
 
 /**
  * A proposed QUALITATIVE self-edit to the spec's prose material (governed downstream by
- * improvement_policy.mode + consensus verifiers + the protected-path list). The engine —
- * not the model — decides whether it is queued, applied, or rejected.
+ * improvement_policy.mode + consensus verifiers + the protected-path list). The engine, 
+ * not the model, decides whether it is queued, applied, or rejected.
  */
 export interface ProposedSelfEdit {
   /** Dot-path into the spec; only qualitative prefixes (persona_prompting.*) are honored. */
@@ -138,7 +138,7 @@ export const APPRAISAL_JSON_SCHEMA = {
 
 /**
  * Value-constraint keywords that hosted structured-output backends (Cohere, Groq,
- * some Azure deployments) reject — they accept only a structural subset of JSON
+ * some Azure deployments) reject, they accept only a structural subset of JSON
  * Schema. The spec engine re-imposes every one of these downstream (delta clamping
  * + `parseAppraisalSignal` coercion), so dropping them from the *wire* schema costs
  * no safety: the model still proposes, the code + spec still impose.

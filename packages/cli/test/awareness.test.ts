@@ -49,6 +49,6 @@ describe("buildAwarenessBlock (F2)", () => {
     const block = buildAwarenessBlock(root);
     expect(block).toContain("Your resources");
     expect(block).toContain("references/");
-    expect(block).toContain("(none — you have no sub-personas)");
+    expect(block).toContain("(none, you have no sub-personas)");
   });
 });

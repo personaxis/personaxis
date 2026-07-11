@@ -1,5 +1,5 @@
 /**
- * InkScreen — the REPL front-end on Ink 7 (FR.3 adoption; FASE 7 P2 upgrade).
+ * InkScreen, the REPL front-end on Ink 7 (FR.3 adoption; FASE 7 P2 upgrade).
  *
  * A DROP-IN replacement for the pre-Ink `Screen` class: identical public surface
  * (`start`/`stop`/`print`/`setBusy`/`setPhase`/`ask` + the same `ReplHooks`), so the
@@ -100,7 +100,7 @@ function paletteMatches(input: string, commands: SlashItem[]): SlashItem[] {
 
 /** One committed summary line per crossing (also the NO_ANIM fast path). */
 export function crossingSummary(c: CrossingDetail): string {
-  return `  ↻ band crossing — ${c.field}: ${c.fromBand} ▸ ${c.toBand}${c.prose ? `  «${c.prose}»` : ""}`;
+  return `  ↻ band crossing, ${c.field}: ${c.fromBand} ▸ ${c.toBand}${c.prose ? `  «${c.prose}»` : ""}`;
 }
 
 /** The staged crossing animation for the live region. Pure of side effects. */
@@ -129,7 +129,7 @@ function ReplApp({ store, hooks }: { store: StoreApi<ReplUiState>; hooks: ReplHo
   const [frame, setFrame] = useState(0);
   const [momentFrame, setMomentFrame] = useState(0);
 
-  // Spinner animation — only ticks while a turn is in flight.
+  // Spinner animation, only ticks while a turn is in flight.
   useEffect(() => {
     if (!busy) return;
     const t = setInterval(() => setFrame((f) => (f + 1) % SPINNER.length), 80);
@@ -293,24 +293,24 @@ export class InkScreen {
     return new Promise((resolve) => this.store.getState().setAsk({ prompt, resolve }));
   }
 
-  /** FASE 7 P2 — the loop's drift event feeds the gauge + the drift view. */
+  /** FASE 7 P2, the loop's drift event feeds the gauge + the drift view. */
   setDrift(report: DriftReport): void {
     this.store.getState().setDrift(report);
   }
 
-  /** FASE 7 P2 — stage the band-crossing moment (commits a summary after). */
+  /** FASE 7 P2, stage the band-crossing moment (commits a summary after). */
   playMoment(crossings: CrossingDetail[]): void {
     if (crossings.length === 0) return;
     this.store.getState().setMoment({ crossings });
   }
 
-  /** FASE 7 P2 — switch the app to a full-height view (Esc returns to chat). */
+  /** FASE 7 P2, switch the app to a full-height view (Esc returns to chat). */
   openView(view: "drift" | "chat"): void {
     this.store.getState().setView(view);
   }
 
   /**
-   * FASE 7 P2 — hand the raw TTY to a full-screen flow (proof scenes, the
+   * FASE 7 P2, hand the raw TTY to a full-screen flow (proof scenes, the
    * Genesis wizard), then re-mount. The transcript buffer is reset so <Static>
    * does not re-print history into scrollback; the old lines remain above.
    */

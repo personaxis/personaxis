@@ -95,20 +95,20 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
       `(self_regulation.hard_limits + persona.constraints), and "Staying in character" must ` +
       `explicitly state it NEVER overrides those limits. (2) The "Memory & resources" section must ` +
       `reproduce the resource manifest below verbatim (bullet list), with paths relative to ` +
-      `${target.outputPath} (e.g. "${target.isSubagent ? "./" : "./.personaxis/"}memory.md" — a sub-persona's ` +
+      `${target.outputPath} (e.g. "${target.isSubagent ? "./" : "./.personaxis/"}memory.md", a sub-persona's ` +
       `compiled PERSONA.md lives INSIDE its own folder, so its resources are "./"; the root PERSONA.md ` +
       `lives at the repo root, so its resources are "./.personaxis/").`,
     ``,
     input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0
       ? `Applied self-edits OVERRIDE the spec below: where a dot-path here conflicts with the spec, use THIS value (the persona has governed-evolved into it).`
       : "",
-    `Faithfulness & density (avoid the two failure modes — generic filler and redundancy):`,
+    `Faithfulness & density (avoid the two failure modes, generic filler and redundancy):`,
     `- ONE SOURCE PER FACT: state each fact, rule, trait, or limit in exactly ONE section. The only ` +
       `permitted restatement is a hard limit (it lives in "Hard limits" and is REFERENCED, not repeated, ` +
       `in "Staying in character"). Do not echo the same trait/value across multiple sections.`,
     `- CONCENTRATE the whole spec: every meaningful layer field (character virtues, values_and_drives, ` +
       `cognition/uncertainty policy, metacognition, affect tendencies, memory posture) must surface in ` +
-      `its natural section — do not drop fields, but do not pad. Prefer the persona's CONCRETE language ` +
+      `its natural section, do not drop fields, but do not pad. Prefer the persona's CONCRETE language ` +
       `over restating the YAML; never quote field names or YAML verbatim.`,
     `- NO NUMERIC STATE: never include runtime numbers, trait/affect tables, sigil seeds, or a ` +
       `"live state" block. The compiled document is purely qualitative; state lives in state.json.`,
@@ -126,7 +126,7 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
 }
 
 export interface PolishPromptInput {
-  /** The deterministic stage-1 artifact — the GROUND TRUTH to rephrase. */
+  /** The deterministic stage-1 artifact, the GROUND TRUTH to rephrase. */
   assembled: string;
   /** The quantitative spec, for register/voice reference only (not new facts). */
   personaxisMd: string;
@@ -134,10 +134,10 @@ export interface PolishPromptInput {
 }
 
 /**
- * F3.1 stage 2 — the LLM POLISH prompt. Unlike the from-scratch compile prompt,
+ * F3.1 stage 2, the LLM POLISH prompt. Unlike the from-scratch compile prompt,
  * polish receives the already-assembled canonical document and is constrained to
  * REPHRASE it for fluency and register: it may reorder within a section, merge
- * choppy bullets into prose, and tune voice — but it may NOT add, drop, or
+ * choppy bullets into prose, and tune voice, but it may NOT add, drop, or
  * change any claim (virtue, rule, limit, anchor, consistency dimension). The
  * deterministic faithfulness check (core `checkFaithfulness`) rejects a polish
  * that violates this, and the caller falls back to the assembled document.
@@ -148,7 +148,7 @@ export function buildPolishPrompt(input: PolishPromptInput): string {
     ``,
     `You are given an already-correct, deterministically-assembled persona document. Your ONLY job ` +
       `is to make it read fluently and in a consistent SECOND-PERSON voice ("You are…", "You always…") ` +
-      `— a persona-prompting artifact a language model adopts.`,
+      `, a persona-prompting artifact a language model adopts.`,
     ``,
     `HARD CONSTRAINTS (a downstream deterministic check enforces these and will REJECT your output):`,
     `- Do NOT add any fact, rule, virtue, limit, behavioral anchor, or consistency dimension that is ` +
@@ -164,8 +164,8 @@ export function buildPolishPrompt(input: PolishPromptInput): string {
       `and tighten wording. When in doubt, change less.`,
     ``,
     `Output ONLY the polished document. Do not wrap it in a code block.`,
-    section("Assembled document (GROUND TRUTH — rephrase, do not alter meaning)", input.assembled),
-    section("personaxis.md (register/voice reference only — introduces NO new facts)", input.personaxisMd),
+    section("Assembled document (GROUND TRUTH, rephrase, do not alter meaning)", input.assembled),
+    section("personaxis.md (register/voice reference only, introduces NO new facts)", input.personaxisMd),
   ]
     .filter((line) => line !== "")
     .join("\n");

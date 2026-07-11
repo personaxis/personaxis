@@ -1,8 +1,8 @@
 /**
- * @personaxis/sdk — the SINGLE engine façade (F3.5).
+ * @personaxis/sdk, the SINGLE engine façade (F3.5).
  *
- * Embed a living, governed persona in a Node/TS backend (Modo 2 self-host). The
- * engine (@personaxis/core) does the governance — clamp + audit + injection scan
+ * Embed a living, governed persona in a Node/TS backend (Mode 2 self-host). The
+ * engine (@personaxis/core) does the governance, clamp + audit + injection scan
  * + hash-chained memory + the agent loop; this SDK is the ONE ergonomic surface
  * that drives it, with full parity across state, evolution, memory, agent, and
  * safety operations. The MCP server, `serve`, and the REPL consume this façade

@@ -1,5 +1,5 @@
 /**
- * `migrate 0.10-to-1.0` — the STRUCTURAL v1.0 codemod (comment-preserving).
+ * `migrate 0.10-to-1.0`, the STRUCTURAL v1.0 codemod (comment-preserving).
  *
  * Exercises every transform on a synthetic 0.10 document shaped like the golden
  * examples, then asserts the RESULTING structure (via YAML parse) and that

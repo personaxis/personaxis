@@ -1,10 +1,10 @@
 /**
- * Heuristic appraiser — deterministic, offline Appraiser.
+ * Heuristic appraiser, deterministic, offline Appraiser.
  *
  * Lets the Living Loop run with zero model dependency (tests, demos, air-gapped
  * use, MCP hosts that don't pass a model). It proposes only small bounded nudges;
  * the governance gate + envelope clamp decide what actually applies. The
- * LLM-backed appraiser (constrained decoding, plan/04-small-models) implements
+ * LLM-backed appraiser (constrained decoding) implements
  * the same `Appraiser` interface, so the loop is unchanged.
  */
 

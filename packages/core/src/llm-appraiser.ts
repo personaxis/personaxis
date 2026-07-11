@@ -1,11 +1,11 @@
 /**
- * LLM appraiser — small-model feasibility via constrained decoding (F2).
+ * LLM appraiser, small-model feasibility via constrained decoding (F2).
  *
  * The model NEVER emits a state mutation by hand. It emits a structured appraisal
  * signal under APPRAISAL_JSON_SCHEMA, enforced by the server's constrained
  * decoding (llama.cpp / Ollama `response_format: json_schema`, or a GBNF grammar).
  * The spec engine then clamps + governs. The model proposes signals; the code +
- * the spec impose safety — viable on <=4B and safe at the same time.
+ * the spec impose safety, viable on <=4B and safe at the same time.
  *
  * Talks to any OpenAI-compatible /chat/completions endpoint (Ollama, llama.cpp
  * server, LM Studio, or a hosted model). Dependency-free (uses global fetch).
@@ -44,17 +44,17 @@ matches the provided schema:
 - "selfEdits": optional durable edits to the persona SPEC, by dot-path. Each item is
   { "targetPath": "<dot.path>", "toValue": <the full new value>, "rationale": "<why>" }.
   You may ONLY target the editable sections listed below; identity/character/hard_limits/safety
-  are protected and rejected. Propose these RARELY — only when the observation clearly warrants a
+  are protected and rejected. Propose these RARELY, only when the observation clearly warrants a
   lasting change. But when the user EXPLICITLY authorizes a durable change to an editable section,
-  you MUST express it as a selfEdit (the structured field) — never only in the "appraisal" prose.
+  you MUST express it as a selfEdit (the structured field), never only in the "appraisal" prose.
   The "toValue" is the replacement value, not a delta: for a scalar give the new number/string;
-  for an object give the whole new object. Worked example — user says "permanently lower your
+  for an object give the whole new object. Worked example, user says "permanently lower your
   uncertainty disclosure threshold to 0.10":
     "selfEdits": [{ "targetPath": "cognition.uncertainty_policy.disclose_when_above",
       "toValue": 0.10, "rationale": "user authorized a durable lower disclosure threshold" }]
 - "preferences": optional stable user preferences you inferred (key + value);
 - "confidence" in [0,1] (self-edits/preferences are only considered at confidence >= 0.6).
-Propose only minimal, well-justified changes. You are NOT applying anything — the runtime
+Propose only minimal, well-justified changes. You are NOT applying anything, the runtime
 clamps, governs (mode + consensus + protected paths), and may queue your proposal.`;
 
 export class LlmAppraiser implements Appraiser {
@@ -71,7 +71,7 @@ export class LlmAppraiser implements Appraiser {
           input.mutableFields.join(", ") || "(none)",
           ``,
           `# Editable spec sections you may propose self-edits to`,
-          (input.editableSections ?? []).join(", ") || "(none — do not propose selfEdits)",
+          (input.editableSections ?? []).join(", ") || "(none, do not propose selfEdits)",
         ].join("\n");
 
     const userMsg = [
@@ -152,7 +152,7 @@ export class LlmAppraiser implements Appraiser {
 
       lastErr = `HTTP ${res.status}: ${await safeText(res)}`;
       // Auth, rate-limit and server errors won't be fixed by relaxing the
-      // response_format — surface them immediately. Only 400/422 (unsupported
+      // response_format, surface them immediately. Only 400/422 (unsupported
       // response_format/schema) are worth retrying with a looser strategy.
       if (res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500) {
         break;

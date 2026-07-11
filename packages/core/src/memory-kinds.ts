@@ -1,8 +1,8 @@
 /**
- * The non-episodic memory kinds (F4) — procedural, autobiographical, user_preferences,
+ * The non-episodic memory kinds (F4), procedural, autobiographical, user_preferences,
  * evaluations. The spec's `memory.types` declares six flags; episodic + semantic live in
  * memory.ts. These four were previously declared-but-unenforced; here they become real,
- * each honoring its flag at the producer call site (the established pattern — see
+ * each honoring its flag at the producer call site (the established pattern, see
  * loop.ts / agent.ts gating episodic on `readMemoryTypes(...).episodic`).
  *
  * Storage mirrors episodic memory: append-only JSONL under `<personaDir>/memory/`, except

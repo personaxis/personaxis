@@ -5,7 +5,7 @@ project, collection, team, and machine in your environment. It lives at `~/.pers
 (override the dir with `PERSONAXIS_HOME`).
 
 > **Be honest about what this is.** It is **not** part of the default flow and is **empty until you
-> populate it manually**. Nothing writes to it automatically during a normal REPL session — you opt
+> populate it manually**. Nothing writes to it automatically during a normal REPL session, you opt
 > in. Its payoff is `personaxis orchestrate`, which routes a task across the personas you
 > registered here.
 
@@ -13,7 +13,7 @@ project, collection, team, and machine in your environment. It lives at `~/.pers
 
 This local registry is **separate** from the online one. [`push` / `pull`](./push-pull.md) publish and
 fetch persona **versions** to/from the hosted registry at personaxis.com; the overseer registry is a
-private, machine-local index of what you have. Different store, different purpose — don't conflate them.
+private, machine-local index of what you have. Different store, different purpose, don't conflate them.
 
 ## Subcommands
 
@@ -50,10 +50,10 @@ personaxis orchestrate "draft the launch positioning" --run
 
 `orchestrate` reads the **registered** personas' global specs, derives each one's capabilities, and
 assigns the task to the top match (capability-ranked, optionally scoped to a `--team`). With no
-registered personas it tells you to run `overseer register` first — which is exactly why the registry
+registered personas it tells you to run `overseer register` first, which is exactly why the registry
 is opt-in: it exists to power orchestration, not to track your day-to-day REPL use.
 
 ## See also
 
-- [personas.md](./personas.md) — the global-persona reuse model that seeds the registry.
-- [architecture/deployment.md](../architecture/deployment.md) — where the overseer sits relative to the engine.
+- [personas.md](./personas.md), the global-persona reuse model that seeds the registry.
+- [architecture/deployment.md](../architecture/deployment.md), where the overseer sits relative to the engine.

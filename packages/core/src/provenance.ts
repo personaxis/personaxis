@@ -1,11 +1,11 @@
 /**
- * Provenance & sensitive-action gates (F3 — plan/11-security).
+ * Provenance & sensitive-action gates (F3).
  *
  * The memory-poisoning literature shows that "internal state = trusted" is a
  * false assumption: untrusted content laundered through memory drives later
  * "trusted" actions (Yang et al., 2026; Dash et al., 2026). Defenses here:
  *   - rank every source by trust;
- *   - gate sensitive actions on the *provenance of their justification* — if the
+ *   - gate sensitive actions on the *provenance of their justification*, if the
  *     reasoning traces to an untrusted channel, the action is refused;
  *   - a lightweight consensus check flags contradictory memory (A-MemGuard-style).
  */

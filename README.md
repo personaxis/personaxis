@@ -12,7 +12,7 @@
 - **Change is forensic.** Pushing behavior away from its declared baseline costs a provable minimum of hash-chained audit entries (T3); history replays deterministically and tampering is located, not just detected (T4/T5).
 - **Created from anything, grounded in evidence.** `personaxis create` builds a valid-by-construction persona from an interview, a prompt, your repo, a character card, or transcripts, with a creation report giving the provenance of every number.
 
-Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md); guarantees: [`docs/GUARANTEES.md`](docs/GUARANTEES.md); the formal core: [`docs/MATH_CORE.md`](docs/MATH_CORE.md); guides: [`docs/guides/`](docs/guides/).
+Full documentation lives in the [PERSONA.md spec repository](https://github.com/personaxis/persona.md); guarantees: [`docs/GUARANTEES.md`](docs/GUARANTEES.md); the theorem-to-code map: [`docs/architecture/math-core.md`](docs/architecture/math-core.md); guides: [`docs/guides/`](docs/guides/).
 
 ---
 
@@ -127,7 +127,7 @@ memory evolve, within the spec's universal invariants. The model, any model, onl
 
 This repo is a **pnpm monorepo** of eight lockstep packages (`@personaxis/spec`, `core`, `protocol`, `persona.md` [the CLI], `mcp`, `sdk`, `evals`, `tui`).
 
-**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md): what personaxis is, the three-artifact model, the governed Living Loop, the security model, and the architecture. **The full per-command reference** (every flag, exit code, and example) is [`docs/commands/`](docs/commands/README.md). **📄 The paper:** [`docs/paper/bounded-persona-dynamics.md`](docs/paper/bounded-persona-dynamics.md), *Bounded Persona Dynamics* (theorems, preregistered experiments, recorded results). `plan/` is the historical research dossier.
+**📖 How it works:** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md): what personaxis is, the three-artifact model, the governed Living Loop, the security model, and the architecture. **The full per-command reference** (every flag, exit code, and example) is [`docs/commands/`](docs/commands/README.md). **📄 The paper** *Bounded Persona Dynamics* (theorems, preregistered protocol, and recorded experiments) is a dedicated research report, published separately.
 
 ---
 

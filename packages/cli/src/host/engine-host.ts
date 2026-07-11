@@ -1,9 +1,9 @@
 /**
- * EngineHost — binds the governed core engine to the protocol seam (FR.2).
+ * EngineHost, binds the governed core engine to the protocol seam (FR.2).
  *
  * One host per persona process: front-ends (TUI, dashboard, headless scripts)
  * connect to the persona's deterministic pipe and drive the SAME engine the
- * REPL/MCP/HTTP use — every mutation clamped + audited, every observation
+ * REPL/MCP/HTTP use, every mutation clamped + audited, every observation
  * injection-scanned, evolution visible in every connected surface at once.
  *
  * The host owns NO business logic: ops map 1:1 onto core functions; the core
@@ -80,7 +80,7 @@ export class EngineHost {
   }
 
   /**
-   * FR.10: open an approval — broadcast `approval.requested` to every front and
+   * FR.10: open an approval, broadcast `approval.requested` to every front and
    * await whichever answers (or the fail-closed timeout). The agent loop (F3)
    * passes this as its onApproval, replacing the non-interactive auto-deny.
    */
@@ -117,7 +117,7 @@ export class EngineHost {
     switch (op.op) {
       // FR scope: free-form input runs a governed observation tick. The full
       // conversational brain (responder + slash-router) moves behind this seam
-      // in F3.6 (REPL split) — recorded in IMPLEMENTATION_CHECKLIST.
+      // in F3.6 (REPL split)
       case "user_input":
         return this.observe(op.text, "user");
       case "observe":

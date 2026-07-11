@@ -1,9 +1,9 @@
 /**
- * Governed episodic memory — bounded, provenance-tagged, append-only, auditable.
+ * Governed episodic memory, bounded, provenance-tagged, append-only, auditable.
  *
- * The research is unambiguous (see plan/02-governed-memory, plan/11-security):
+ * The research is unambiguous:
  * once untrusted content reaches long-term memory it persists and is later
- * retrieved as "trusted" context — the Zombie-Agent / memory-poisoning failure
+ * retrieved as "trusted" context, the Zombie-Agent / memory-poisoning failure
  * mode. Defenses adopted here:
  *   - every entry carries a provenance source (user/tool/internal/synthesis);
  *   - entries form a hash chain (prev_hash -> hash): tamper-evident, time-travel
@@ -23,7 +23,7 @@ import type { ProvenanceSource } from "./appraisal.js";
  * The spec's `memory.types` map (MUST). The runtime now HONORS these instead of
  * always writing episodic. `episodic` defaults to true only when the persona
  * declares no `memory` block (backward compatibility); once declared, the flags
- * are authoritative — a persona with `episodic: false` writes nothing to the log.
+ * are authoritative, a persona with `episodic: false` writes nothing to the log.
  */
 export interface MemoryTypes {
   episodic: boolean;
@@ -58,7 +58,7 @@ export interface MemoryEntry {
   tags: string[];
   /**
    * v1.0: sha256 of `content`. The chain hash commits to THIS, not to the
-   * content bytes — so `content` can be REDACTED (real erasure, D6/GDPR) while
+   * content bytes, so `content` can be REDACTED (real erasure, D6/GDPR) while
    * the chain stays verifiable. Absent on legacy (≤0.10) entries, whose chain
    * hash commits to the content directly (redaction there breaks the chain;
    * re-anchor with migrateMemoryChain first).
@@ -114,7 +114,7 @@ function lastHash(personaPath: string): string {
   return entries.length > 0 ? entries[entries.length - 1].hash : "";
 }
 
-/** Build (but do not write) the next entry — the dry-run half of write-path audit.
+/** Build (but do not write) the next entry, the dry-run half of write-path audit.
  * New entries are always v1.0 format (content_hash-anchored: erasure-capable). */
 export function prepareMemoryEntry(
   personaPath: string,
@@ -142,7 +142,7 @@ export function commitMemoryEntry(personaPath: string, entry: MemoryEntry): void
  * Honor deletion_policy.user_request_supported WITHOUT breaking the append-only
  * chain: append a tombstone that supersedes a prior entry. The original line is
  * never rewritten (chain stays verifiable); live readers filter it out. The
- * deletion itself is thus auditable — you can prove what was removed and when.
+ * deletion itself is thus auditable, you can prove what was removed and when.
  */
 export function tombstoneMemory(
   personaPath: string,
@@ -172,7 +172,7 @@ export function readLiveMemory(personaPath: string): MemoryEntry[] {
 /**
  * Consolidate episodic memory into a semantic snapshot at <personaDir>/memory.md
  * (the spec's `memory.types.semantic`). Deterministic + dependency-free: groups
- * live (non-tombstoned) entries by provenance source into a digest. Idempotent —
+ * live (non-tombstoned) entries by provenance source into a digest. Idempotent, 
  * rewritten each call, so it always reflects the current live memory.
  */
 export function consolidateSemantic(personaPath: string, limit = 200): { ok: boolean; path: string; count: number } {
@@ -200,7 +200,7 @@ export function consolidateSemantic(personaPath: string, limit = 200): { ok: boo
 
 /**
  * Outcome label for an agent run. The run summary is recorded as an EPISODIC
- * memory entry (source: "synthesis", tag: "agent-run") — no separate STATE.md /
+ * memory entry (source: "synthesis", tag: "agent-run"), no separate STATE.md /
  * agent-state log: the spec's memory.md (consolidated) + episodic + state.json's
  * agent_session already cover task resumption.
  */
@@ -215,7 +215,7 @@ export function readSemanticMemory(personaPath: string): string {
 /**
  * Verify the hash chain is intact (tamper / poisoning detection). Each entry is
  * verified per its own format: v1.0 entries (content_hash present) recompute the
- * chain hash over content_hash AND — unless redacted — check the content still
+ * chain hash over content_hash AND, unless redacted, check the content still
  * matches its content_hash; legacy entries recompute over the content directly.
  */
 export function verifyMemoryChain(personaPath: string): { ok: boolean; brokenAt?: number } {
@@ -239,7 +239,7 @@ const REDACTION_MARKER = "[redacted]";
 
 /**
  * REAL erasure (v1.0, D6): remove the content bytes of a prior entry while the
- * chain stays verifiable — the chain hash commits to content_hash, which is
+ * chain stays verifiable, the chain hash commits to content_hash, which is
  * retained. This is the ONLY sanctioned rewrite of a prior line, it is
  * irreversible, and it is itself audited (a `redaction` record is appended).
  * Complements tombstoneMemory (which hides but retains bytes): tombstone for
@@ -271,7 +271,7 @@ export function redactMemory(
  * Re-anchor a legacy (≤0.10) episodic log to the v1.0 content_hash format so its
  * entries become redactable. Rewrites every line: adds content_hash, recomputes
  * each chain hash, re-links prev_hash, and remaps tombstone `target:` tags to
- * the new hashes. One-time, deliberate migration — the old hashes are replaced.
+ * the new hashes. One-time, deliberate migration, the old hashes are replaced.
  */
 export function migrateMemoryChain(personaPath: string): { migrated: number; remapped: Record<string, string> } {
   const p = memoryPath(personaPath);

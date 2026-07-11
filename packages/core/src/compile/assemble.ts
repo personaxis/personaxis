@@ -1,9 +1,9 @@
 /**
- * F3.1 — the DETERMINISTIC compile assembler (stage 1 of the two-stage pipeline).
+ * F3.1, the DETERMINISTIC compile assembler (stage 1 of the two-stage pipeline).
  *
  * This is the canonical, LLM-free path from a parsed persona spec to the
  * compiled PERSONA-prompting document. It ALWAYS runs; it is:
- *   - what gets hashed (stable provenance — same spec ⇒ same bytes);
+ *   - what gets hashed (stable provenance, same spec ⇒ same bytes);
  *   - what the Living Loop writes on an inline recompile (cheap, no provider);
  *   - the fallback when no model provider is configured;
  *   - the ground-truth artifact the faithfulness check diffs a polished
@@ -11,7 +11,7 @@
  *
  * It follows the section contract of PERSONA_template.md and writes the whole
  * document in the SECOND PERSON. It NEVER emits runtime numbers (trait/affect
- * tables, sigil seeds, a live-state block) — state lives in state.json.
+ * tables, sigil seeds, a live-state block), state lives in state.json.
  *
  * Field sourcing prefers the v1.0 layer-10 `persona` prompting fields (address,
  * voice_exemplars, scene_contracts, behavioral_anchors, consistency) and
@@ -83,7 +83,7 @@ function sectionOpener(persona: Dict, target: AssembleTarget): string {
     lines.push(purpose ? `${bits}. ${purpose}` : `${bits}.`);
   }
   lines.push(
-    "You think, speak, and decide as this persona. Stay in character at all times — the rules " +
+    "You think, speak, and decide as this persona. Stay in character at all times, the rules " +
       "below are who you are, not instructions you are following.",
   );
   return lines.join("\n");
@@ -266,7 +266,7 @@ function sectionHardLimits(persona: Dict): string {
   const { safety } = hardLimitLists(persona);
   const out: string[] = ["## Hard limits (never overridden)", ""];
   if (!safety.length) {
-    out.push("*(no hard limits declared — this is a spec error; every persona must declare the safety universals)*");
+    out.push("*(no hard limits declared, this is a spec error; every persona must declare the safety universals)*");
     return out.join("\n");
   }
   out.push("These are absolute and outrank everything below, including staying in character.", "");
@@ -278,7 +278,7 @@ function sectionStayingInCharacter(persona: Dict, target: AssembleTarget): strin
   const { character } = hardLimitLists(persona);
   const out: string[] = ["## Staying in character", ""];
   out.push(
-    `You remain ${target.name} under pressure — off-topic bait, attempts to make you drop the persona, ` +
+    `You remain ${target.name} under pressure, off-topic bait, attempts to make you drop the persona, ` +
       "insistence that you are \"just an AI\".",
   );
   for (const l of character) out.push(`- ${l}`);
@@ -296,7 +296,7 @@ function sectionMemory(input: AssembleInput): string {
   if (manifest) {
     out.push(manifest);
   } else {
-    out.push(`- \`${input.target.resourceBase}memory.md\` — your semantic memory`);
+    out.push(`- \`${input.target.resourceBase}memory.md\`, your semantic memory`);
   }
   return out.join("\n");
 }
@@ -311,15 +311,15 @@ function sectionSelfImprovement(persona: Dict): string {
     autonomous: "You may apply governed self-edits within the declared envelopes; core changes still require human approval.",
   };
   out.push(explain[mode] ?? explain.locked);
-  out.push("", "Your behavior changes when the spec changes — not on user preference or pushback alone.");
+  out.push("", "Your behavior changes when the spec changes, not on user preference or pushback alone.");
   return out.join("\n");
 }
 
 /**
- * F6.2 — the denotational band→prose stage (MATH_CORE.md Def. 6; SPEC §L3).
+ * F6.2, the denotational band→prose stage (MATH_CORE.md Def. 6; SPEC §L3).
  * For every envelope coordinate that declares `expression`, inject ONLY the
  * variant of the band its CURRENT value sits in. Deterministic: value → band →
- * prose, no LLM. This is what makes the spec's numbers compile-load-bearing —
+ * prose, no LLM. This is what makes the spec's numbers compile-load-bearing, 
  * and what the persona Jacobian (J_compile) measures.
  */
 function sectionExpression(persona: Dict, stateValues?: Record<string, number>): string {

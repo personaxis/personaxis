@@ -26,12 +26,12 @@ Two loops run until you stop it:
 1. **Debounced recompile on hand-edit.** It watches `personaxis.md` (`fs.watch`); when you edit the
    spec by hand it recompiles `PERSONA.md` (debounced ~800ms, ignoring duplicate fs events).
 2. **Drift heartbeat.** Every `--interval` seconds it recompiles **only if** a governed self-edit
-   marked `PERSONA.md` stale — a no-op otherwise.
+   marked `PERSONA.md` stale, a no-op otherwise.
 
 ## `--once` for serverless / CI
 
 `--once` does a single reconcile pass (recompile if drift is pending, else report up-to-date) and
-exits — the shape you want from a Vercel Cron / CI step where no long-lived process exists. On a
+exits, the shape you want from a Vercel Cron / CI step where no long-lived process exists. On a
 machine that *can* hold a process (VM, container), run the full daemon instead.
 
 ## watch vs observe vs serve (they are NOT the same)
@@ -49,6 +49,6 @@ Inside the REPL, `/watch` runs the daemon **in the background** (it doesn't bloc
 
 ## See also
 
-- [observe.md](./observe.md) — the per-turn learning tick.
-- [hooks.md](./hooks.md) — wire per-turn learning into a host.
-- [../architecture/deployment.md](../architecture/deployment.md) — daemon vs serverless shapes.
+- [observe.md](./observe.md), the per-turn learning tick.
+- [hooks.md](./hooks.md), wire per-turn learning into a host.
+- [../architecture/deployment.md](../architecture/deployment.md), daemon vs serverless shapes.

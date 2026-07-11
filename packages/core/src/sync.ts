@@ -1,5 +1,5 @@
 /**
- * Cross-OS state reconciliation (F7 — plan/08-persona-model).
+ * Cross-OS state reconciliation (F7).
  *
  * The portable user-clone persona can live on Windows, Linux and macOS at once,
  * versioned via git. Identity (personaxis.md) is immutable and shared; only
@@ -11,7 +11,7 @@
  *     conflicts rather than silently overwritten;
  *   - a merge marker is appended so the reconciliation itself is auditable.
  *
- * Deterministic, governed, reversible — never a blind overwrite.
+ * Deterministic, governed, reversible, never a blind overwrite.
  */
 
 import type { Envelope } from "./envelopes.js";

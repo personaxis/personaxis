@@ -1,5 +1,5 @@
 /**
- * F3.2 — the compile target plugin registry + `.dist/` consumer slices.
+ * F3.2, the compile target plugin registry + `.dist/` consumer slices.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -18,7 +18,7 @@ const DOC = "---\nname: Cmo\ndescription: A CMO\n---\n# Cmo\n\nYou are Cmo, a ma
 const root: PlacementContext = { isSubagent: false, rootOutputPath: "PERSONA.md" };
 const sub: PlacementContext = { isSubagent: true, slug: "cmo", rootOutputPath: "PERSONA.md" };
 
-describe("F3.2 target registry — built-ins", () => {
+describe("F3.2 target registry, built-ins", () => {
   it("registers the four focus hosts", () => {
     expect(listTargets()).toEqual([...BUILTIN_TARGETS]);
     for (const id of BUILTIN_TARGETS) expect(getTarget(id)).toBeDefined();

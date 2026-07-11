@@ -2,7 +2,7 @@
  * Configuration for the public Personaxis registry that this CLI talks to.
  *
  * The CLI is a public package on npm. The token below is "security through
- * inconvenience" — it filters casual scrapers but anyone who reads the package
+ * inconvenience", it filters casual scrapers but anyone who reads the package
  * source can copy it. Treat it as a versioned signal, not a secret. Rotate
  * it on each major CLI release.
  */

@@ -28,9 +28,9 @@ jobs:
       - run: pnpm run build
       - run: pnpm run test
       # Recursive publish resolves the workspace graph topologically (core → tui → cli, and
-      # includes sdk — the old hand-ordered loop omitted it and swallowed failures). pnpm
+      # includes sdk, the old hand-ordered loop omitted it and swallowed failures). pnpm
       # rewrites workspace:* to the concrete version on publish. --no-git-checks since CI is
-      # detached at the tag. A failed publish fails the job — no silent skips.
+      # detached at the tag. A failed publish fails the job, no silent skips.
       - name: Publish packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

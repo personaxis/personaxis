@@ -1,5 +1,5 @@
 /**
- * `personaxis orchestrate "<task>"` — the overseer routes a task across personas.
+ * `personaxis orchestrate "<task>"`, the overseer routes a task across personas.
  *
  * Reads the registered personas, derives each one's capabilities from its spec,
  * posts the task to a blackboard, and shows who volunteers (ranked) and who gets

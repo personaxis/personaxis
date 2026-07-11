@@ -1,5 +1,5 @@
 /**
- * Live-sync (F5 — plan/05-interop).
+ * Live-sync (F5).
  *
  * When a persona's runtime state drifts, a host watching the compiled doc must be
  * able to tell. The compiled `PERSONA.md` is a *purely qualitative* document, so we
@@ -81,9 +81,9 @@ export interface RecompileHookOptions {
   /** Path to the compiled doc to keep in sync (marker + live-block self-heal). */
   compiledPath?: string;
   /**
-   * F3.1 — optional DETERMINISTIC inline recompile. When provided, on drift the
+   * F3.1, optional DETERMINISTIC inline recompile. When provided, on drift the
    * hook also rewrites `compiledPath` with this freshly-assembled document (the
-   * stage-1 assembler, no provider — cheap, no tokens). This is what makes the
+   * stage-1 assembler, no provider, cheap, no tokens). This is what makes the
    * loop's `recompile` a real recompile rather than a marker: the compiled doc
    * reflects the evolved spec immediately. A later `personaxis compile` re-polishes.
    * Returns undefined to skip the rewrite for a given tick.
@@ -95,7 +95,7 @@ export interface RecompileHookOptions {
  * Build a `recompile` hook for the LivingLoop: on numeric drift it writes the `.live.json`
  * notify marker (and strips any residual live block from the compiled doc). When an
  * `assemble` function is supplied (F3.1) it ALSO rewrites the compiled doc deterministically
- * — a cheap, provider-free inline recompile. The qualitative LLM POLISH remains a separate,
+ *, a cheap, provider-free inline recompile. The qualitative LLM POLISH remains a separate,
  * provider-backed step (`personaxis compile`).
  */
 export function makeRecompileHook(

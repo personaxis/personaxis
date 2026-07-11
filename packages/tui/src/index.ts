@@ -1,5 +1,5 @@
 /**
- * @personaxis/tui — the living dashboard (`personaxis-dash`).
+ * @personaxis/tui, the living dashboard (`personaxis-dash`).
  *
  * A breathing, per-persona ASCII view: the persona's own sigil (seeded from its
  * personaxis.md identity) animating with its live state, envelope bars, mutation
@@ -65,7 +65,7 @@ export function renderFrame(personaPath: string, frame: number): string {
   lines.push("");
   lines.push(envelopeBars(theme, state.values, env.envelopes));
   lines.push("");
-  // F6.7 — the drift gauge: D = max |u| vs the declared layer thresholds, live.
+  // F6.7, the drift gauge: D = max |u| vs the declared layer thresholds, live.
   const report = driftReport({
     values: state.values,
     envelopes: env.envelopes,
@@ -118,7 +118,7 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
   }
 
   // Interactive: Ink 7 render (FR.3). Ink owns the diffing/redraw; the
-  // Dashboard component re-reads state.json each frame — same live contract
+  // Dashboard component re-reads state.json each frame, same live contract
   // as the pre-Ink loop, same visuals (components wrap visual.ts verbatim).
   const [{ render }, React, { Dashboard }] = await Promise.all([
     import("ink"),
@@ -134,7 +134,7 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
   console.log(chalk.dim("  dashboard closed.\n"));
 }
 
-// F6.7b: the Genesis interview wizard. Deliberately NOT a static re-export —
+// F6.7b: the Genesis interview wizard. Deliberately NOT a static re-export, 
 // wizard.tsx pulls Ink/React (~1 s of import cost) and this barrel loads on
 // EVERY CLI startup (via the dash command); only the interview path may pay.
 // The component itself is deep-importable ("@personaxis/tui/dist/wizard.js").
@@ -146,7 +146,7 @@ export async function runInterviewWizard(
 }
 
 /**
- * `personaxis-dash` standalone entry — used by bin.ts ONLY. The old
+ * `personaxis-dash` standalone entry, used by bin.ts ONLY. The old
  * `import.meta.url === argv[1]` main-module guard lived here and evaluated
  * TRUE for every module inside a bun-compiled binary (all modules share the
  * virtual root), spuriously launching the dashboard on EVERY CLI invocation.

@@ -2,7 +2,7 @@
 
 A persona must know, at runtime, WHERE it sits and WHAT it has: whether it is the project
 ROOT or a SUB-persona, its own hierarchical address, the sub-personas it can delegate to, and
-the resources beside its spec. This is injected into the agent's system prompt every turn —
+the resources beside its spec. This is injected into the agent's system prompt every turn, 
 it is NOT baked into the compiled `PERSONA.md`, which stays portable and purely qualitative.
 
 Source: `packages/cli/src/repl/awareness.ts`; consumed by `packages/cli/src/repl/agent.ts`
@@ -18,7 +18,7 @@ parts:
    independent persona with its own spec/state/memory/ledger that may READ other personas'
    files but only WRITE within its own folder; the root is told the inverse.
 2. **Sub-personas to delegate to.** `discoverTree(personaPath)` enumerates the delegable
-   tree — this works for **any** persona, not just the root, so a sub that has its own subs
+   tree, this works for **any** persona, not just the root, so a sub that has its own subs
    sees them too. Rendered as an indented `- @address` list (also `@all`, `@parent/all`).
 3. **Resource inventory.** `buildResourceManifest(dirname(personaPath))` lists the supporting
    resources beside the spec (`.personaxis/` for the root, `.../personas/<slug>/` for a sub).

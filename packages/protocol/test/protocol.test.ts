@@ -1,6 +1,6 @@
 /**
  * SQ/EQ roundtrip over the REAL transport (named pipe on win32, UDS on POSIX)
- * — not a mock: proves the seam works end-to-end on this OS.
+ *, not a mock: proves the seam works end-to-end on this OS.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { createHash } from "node:crypto";
@@ -26,7 +26,7 @@ function uniquePipe(name: string): string {
   return pipePathFor(`${name}-${process.pid}-${createHash("sha256").update(String(Math.random())).digest("hex")}`);
 }
 
-describe("@personaxis/protocol — SQ/EQ over JSON-RPC on node:net", () => {
+describe("@personaxis/protocol, SQ/EQ over JSON-RPC on node:net", () => {
   it("pipePathFor is deterministic and OS-appropriate", () => {
     const a = pipePathFor("C:/x/personaxis.md");
     expect(a).toBe(pipePathFor("C:/x/personaxis.md"));

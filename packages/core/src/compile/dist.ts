@@ -1,16 +1,16 @@
 /**
- * F3.2 — `.dist/` consumer slices (formalizes the plan's `.dist/` model).
+ * F3.2, `.dist/` consumer slices (formalizes the plan's `.dist/` model).
  *
  * The compiled PERSONA.md is the COLD, complete document. Hosts that inject an
  * identity ahead of EVERY turn pay for its full length on every call, but most
  * of that length (worked examples, audience adaptations, self-improvement prose)
  * is not needed on the hot path. So the deterministic compiler also emits a HOT
- * slice: the always-load essentials — the opener, how the persona speaks, the
+ * slice: the always-load essentials, the opener, how the persona speaks, the
  * always/never anchors, and the hard limits (safety must never be dropped from
  * a hot slice). Everything else stays in the cold document, loaded on demand.
  *
  * Slices are DETERMINISTIC and DERIVED (rebuildable from PERSONA.md); they are
- * ephemeral build output, never hand-edited — the same contract as the artifact
+ * ephemeral build output, never hand-edited, the same contract as the artifact
  * the assembler produces.
  */
 

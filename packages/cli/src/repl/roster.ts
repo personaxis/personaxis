@@ -1,5 +1,5 @@
 /**
- * Multi-persona roster — project-local sub-personas under
+ * Multi-persona roster, project-local sub-personas under
  * `.personaxis/personas/<slug>/`, addressable from the REPL with `@slug` / `@all`.
  *
  * The root persona is who you talk to by default; sub-personas are specialists you

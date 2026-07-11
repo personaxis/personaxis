@@ -1,5 +1,5 @@
 /**
- * Governed self-evolution (F4 — plan/03-self-evolution).
+ * Governed self-evolution (F4).
  *
  * Beyond runtime state (which only nudges envelope *values*), a persona may
  * propose edits to its own quantitative spec. This is the dangerous frontier
@@ -7,7 +7,7 @@
  *
  *   - PROTECTED paths (identity, character, safety/honesty enforcement, the
  *     affect universals, reflexive hard_limits, persona.constraints, apiVersion)
- *     can NEVER be self-edited — attempts are rejected, not clamped.
+ *     can NEVER be self-edited, attempts are rejected, not clamped.
  *   - improvement_policy.mode decides the flow: `locked` forbids proposals;
  *     `suggesting` queues them for human approval; `autonomous` (sandbox) may
  *     auto-approve, still bounded by the protected list + provenance gate.
@@ -27,7 +27,7 @@ import { sensitiveActionGate } from "./provenance.js";
 import { isV1Frontmatter } from "./envelopes.js";
 import { markRecompilePending } from "./recompile-marker.js";
 
-// The spec's PROTECTED MINIMUM (SPEC.md — declarative self-edit scope): these
+// The spec's PROTECTED MINIMUM (SPEC.md, declarative self-edit scope): these
 // dot-path prefixes can never be opened by any improvement mode or author
 // allowlist. Includes BOTH layer-9 names (v1.0 renamed reflexive_self_regulation
 // → self_regulation; either may appear during the 1.x read-compat window).
@@ -132,8 +132,8 @@ export const rationaleVerifier: SelfEditVerifier = {
       : { verifier: "rationale", pass: false, reason: "rationale too short" },
 };
 
-// Qualitative (prose) self-edits — e.g. to `persona_prompting` voice exemplars,
-// scene contracts, anchors, or guardrails — are governed too: text is harder to
+// Qualitative (prose) self-edits, e.g. to `persona_prompting` voice exemplars,
+// scene contracts, anchors, or guardrails, are governed too: text is harder to
 // verify than numbers, so a deterministic scan rejects any edit that would inject a
 // prohibited claim or try to weaken the safety rails. This is what makes evolving the
 // CHARACTER's qualitative material safe, not just its numbers.
@@ -190,11 +190,11 @@ export type EditAction = "block" | "queue" | "auto";
 
 /**
  * Decide how a proposed self-edit to `targetPath` is handled, composing THREE layers of control
- * so the whole spec can evolve while staying safe — and the persona AUTHOR stays in charge:
+ * so the whole spec can evolve while staying safe, and the persona AUTHOR stays in charge:
  *
- *   1. the hard SAFETY FLOOR (`isProtected`) — identity/character/safety/hard_limits/governance/
+ *   1. the hard SAFETY FLOOR (`isProtected`), identity/character/safety/hard_limits/governance/
  *      permissions are NEVER editable, regardless of anything below;
- *   2. the spec's DECLARED per-layer policy (`governance.per_layer_edit_policy`) — the author
+ *   2. the spec's DECLARED per-layer policy (`governance.per_layer_edit_policy`), the author
  *      marks each layer `locked` (never) / `human_approval_required` | `review_required` (always
  *      queue for /review, even in autonomous) / `governance_controlled` | `open` (follow the mode);
  *   3. the global `improvement_policy.mode` (locked | suggesting | autonomous).
@@ -294,7 +294,7 @@ export function readLedger(personaPath: string): LedgerEvent[] {
 /**
  * Record a ledger event directly (F3.7). Used by the authoritative human
  * `personaxis edit <dot-path>` command to audit a surgical spec edit in the same
- * append-only ledger the actor's self-edits use — so `/audit` shows human and
+ * append-only ledger the actor's self-edits use, so `/audit` shows human and
  * actor changes on one timeline.
  */
 export function recordLedgerEvent(personaPath: string, e: LedgerEvent): void {
@@ -352,7 +352,7 @@ export function proposeSelfEdit(
 }
 
 /**
- * Approve + apply a pending proposal, minting the next PersonaVersion — but ONLY
+ * Approve + apply a pending proposal, minting the next PersonaVersion, but ONLY
  * after a quorum of independent verifiers passes (multi-agent consensus). A failing
  * consensus records a rejection (auditable) and throws.
  */
@@ -381,7 +381,7 @@ export function applySelfEdit(
   const version = nextVersion(personaPath);
   append(personaPath, { id, op: "approve", ts: new Date().toISOString(), actor: approver });
   append(personaPath, { id, op: "apply", ts: new Date().toISOString(), actor: approver, version });
-  // The compiled PERSONA.md no longer reflects the spec — mark it stale for a recompile.
+  // The compiled PERSONA.md no longer reflects the spec, mark it stale for a recompile.
   markRecompilePending(personaPath, `self-edit ${id} applied (${view.targetPath})`);
   return { status: "applied", version, consensus };
 }

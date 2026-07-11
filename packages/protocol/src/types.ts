@@ -1,5 +1,5 @@
 /**
- * The SQ/EQ vocabulary — the ONLY types a front-end and the engine share.
+ * The SQ/EQ vocabulary, the ONLY types a front-end and the engine share.
  *
  * Pattern from Codex (codex-rs/core/src/protocol.rs), adapted to TypeScript
  * discriminated unions:
@@ -7,7 +7,7 @@
  *   - EventMsg  (event queue): everything the engine TELLS its front-ends.
  *
  * The engine's internal LoopEvent (core EventBus) is carried verbatim inside
- * `engine.event` — the protocol does not re-model the living loop, it
+ * `engine.event`, the protocol does not re-model the living loop, it
  * transports it. Type-only import: nothing from core lands in the wire bundle.
  */
 
@@ -64,7 +64,7 @@ export type EventMsg =
   | { event: "token.delta"; turnId: string; text: string }
   /** The turn finished; the transcript line can be committed to <Static>. */
   | { event: "turn.completed"; turnId: string }
-  /** A tool call needs a human decision — answer with op `approval`. */
+  /** A tool call needs a human decision, answer with op `approval`. */
   | {
       event: "approval.requested";
       requestId: string;
@@ -90,7 +90,7 @@ export const RPC_EVENT = "personaxis/event";
 /**
  * Connection handshake, answered by the transport itself (not the app handler).
  * Doubles as the registration barrier: when it resolves, the server side has
- * fully registered the connection — a subsequent broadcast WILL reach it.
+ * fully registered the connection, a subsequent broadcast WILL reach it.
  */
 export const RPC_HELLO = "personaxis/hello";
 

@@ -1,7 +1,7 @@
-# Configuration — model, endpoint, and API key (dev and prod)
+# Configuration, model, endpoint, and API key (dev and prod)
 
 **Configure personaxis once, reuse it in every project.** Your endpoint, model, and API key live in
-personaxis's own **global config** (`~/.personaxis/config.json`) — the same pattern as `~/.aws/credentials`
+personaxis's own **global config** (`~/.personaxis/config.json`), the same pattern as `~/.aws/credentials`
 or `~/.config/gh/hosts.yml`. Every project you use personaxis in reads it automatically. One resolution
 logic serves both dev and production.
 
@@ -13,13 +13,13 @@ personaxis config set --global local.apiKey   <your-key>     # stored user-only 
 
 The key is masked when printed and the file is written user-only (`0600`). Prefer `--global` (home dir,
 outside any repo). You can also keep the key OUT of the file with `local.apiKeyEnv <ENV_VAR>` (points at
-an env var) — recommended for CI/prod where the secret comes from the deploy's secret manager.
+an env var), recommended for CI/prod where the secret comes from the deploy's secret manager.
 
 ## Where settings live
 
 | Layer | File / source | Scope |
 |---|---|---|
-| **global** | `~/.personaxis/config.json` (override the dir with `PERSONAXIS_HOME`) | your machine — configure once, all projects |
+| **global** | `~/.personaxis/config.json` (override the dir with `PERSONAXIS_HOME`) | your machine, configure once, all projects |
 | **project** | `<cwd>/.personaxis/config.json` | this project (gitignored by default) |
 | **per-persona** | `personas.<slug>` in either config file, or `runtime` in the persona's `personaxis.md` | one persona/sub-persona |
 | **env** | `PERSONAXIS_ENDPOINT` / `PERSONAXIS_MODEL` / `PERSONAXIS_API_KEY` | top override (dev & prod) |
@@ -36,7 +36,7 @@ an env var) — recommended for CI/prod where the secret comes from the deploy's
 | Hermes hook | `C:\Users\<you>\.hermes\config.yaml` | `~/.hermes/config.yaml` |
 | openclaw hook | `C:\Users\<you>\.openclaw\hooks\personaxis-observe\` | `~/.openclaw/hooks/personaxis-observe/` |
 
-personaxis resolves `~` via the OS home dir, so **you don't configure paths** — the same
+personaxis resolves `~` via the OS home dir, so **you don't configure paths**: the same
 `personaxis hooks install --host <host>` writes to the right place on any OS. (Override the personaxis
 home with `PERSONAXIS_HOME` if you need to.)
 
@@ -51,13 +51,13 @@ global.local  <  project.local  <  global.personas[slug]  <  project.personas[sl
 A model resolves only when **both** an endpoint and a model are present; otherwise the runtime falls
 back to the offline heuristic (no real reasoning) and tells you how to configure one.
 
-## The API key — never required in a file
+## The API key, never required in a file
 
 Resolved in this order:
 
-1. the env var **named by `apiKeyEnv`** (preferred — the key never touches a file), else
+1. the env var **named by `apiKeyEnv`** (preferred, the key never touches a file), else
 2. `PERSONAXIS_API_KEY`, else
-3. an inline `apiKey` in a config file (**dev convenience only** — the file must be gitignored).
+3. an inline `apiKey` in a config file (**dev convenience only**: the file must be gitignored).
 
 - **Dev:** set it once, e.g. `config set --global local.apiKeyEnv COHERE_API_KEY` and put the key in
   your shell env / a gitignored `.env`.
@@ -65,7 +65,7 @@ Resolved in this order:
   Railway/Fly env, Kubernetes secret, …). Nothing changes in the config; only the source of the env var.
 
 `.personaxis/*` is gitignored (except `personaxis.md`), so a project config with an inline key is not
-committed — but prefer `apiKeyEnv` regardless.
+committed, but prefer `apiKeyEnv` regardless.
 
 ## Configure it
 

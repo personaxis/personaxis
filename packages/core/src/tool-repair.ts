@@ -1,7 +1,7 @@
 /**
- * Tool-call repair (FR.10 — ported from OpenClaw's self-contained module):
+ * Tool-call repair (FR.10, ported from OpenClaw's self-contained module):
  * salvage malformed / truncated LLM tool-call argument JSON before rejecting
- * it. Weaker models routinely emit almost-JSON — a code fence around it,
+ * it. Weaker models routinely emit almost-JSON, a code fence around it,
  * single quotes, a trailing comma, or a truncation mid-object. Rejecting those
  * costs a full round-trip; a deterministic repair pass recovers most of them.
  *
@@ -56,7 +56,7 @@ export function repairToolArgs(raw: string): RepairResult {
   }
 
   // 3. Normalize single-quoted strings/keys → double quotes (when no double
-  //    quotes are present at all — avoids corrupting embedded apostrophes).
+  //    quotes are present at all, avoids corrupting embedded apostrophes).
   if (!text.includes('"') && text.includes("'")) {
     text = text.replace(/'/g, '"');
     applied.push("single-to-double-quotes");
