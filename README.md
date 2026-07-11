@@ -44,6 +44,21 @@ After editing source: `pnpm run build` again (the global link picks the new buil
 automatically). Tests: `pnpm run test`. Without the link, every `personaxis <cmd>` below is
 `node packages/cli/dist/index.js <cmd>` (or `pnpm run cli -- <cmd>`).
 
+## Three version numbers, and what each one means
+
+They are independent on purpose, so read them separately:
+
+| Number | Example | What it versions | Where you see it |
+|---|---|---|---|
+| **Package / CLI version** | `0.12.0` | the software (all 8 npm packages move together, lockstep) | `personaxis --version`, `package.json` |
+| **Spec version** | `1.1.0` | the personaxis.md file format the software implements | `spec_version:` in every persona, `personaxis spec` |
+| **apiVersion** | `personaxis.com/v1` | the stable API namespace of the spec | `apiVersion:` in every persona |
+
+The software at `0.12.0` implements spec `1.1.0`. The CLI can keep releasing (`0.13`, `1.0`, …)
+while still targeting spec `1.1.0`; a persona written for spec `1.0.0` keeps validating because
+`1.1.0` only adds optional fields. So "what version am I on" has two answers: your **tool** is
+`0.12.0`, your **persona format** is `1.1.0`.
+
 ## Your first 10 minutes
 
 **1. Create a persona** (in any folder: your project, or an empty dir):

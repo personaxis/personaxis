@@ -47,7 +47,7 @@ program.enablePositionalOptions();
 
 program
   .name("personaxis")
-  .description("Living, governed AI agent personas — define, validate, compile, and live.")
+  .description("Living, governed AI agent personas: define, validate, compile, and live.")
   .version(version)
   // `personaxis` with no subcommand enters the living REPL.
   .option("--persona <path>", "Path to the persona (personaxis.md / PERSONA.md) for the REPL")
