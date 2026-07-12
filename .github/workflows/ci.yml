@@ -44,11 +44,12 @@ jobs:
       - name: Test
         run: pnpm run test
         env:
-          # Property-based suite (PB-T1..T6, math-core.md): elevated adversarial-case
-          # count in CI (5x the local default of 200). Kept at 1000 so the core suite
-          # stays well under vitest's worker-RPC ("onTaskUpdate") timeout; 5000 pushed
-          # a single run past ~280s and tripped that timeout even with all tests green.
-          FC_NUM_RUNS: "1000"
+          # Property-based suite (PB-T1..T6, math-core.md): a per-push regression gate,
+          # not the heavy proof (that lives in the research E3 runner, 2.3M cases). Kept
+          # modest so no single fast-check file blocks a worker long enough to trip
+          # vitest's worker-RPC ("onTaskUpdate") timeout on the slower CI runners; higher
+          # counts (1000, 5000) did so intermittently even with every test passing.
+          FC_NUM_RUNS: "300"
 
   golden:
     name: golden test (validate CMO = PASS)
