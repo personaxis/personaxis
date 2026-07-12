@@ -63,6 +63,6 @@ jobs:
       - name: Compile single-file binary
         run: bun build packages/cli/dist/index.js --compile --target ${{ matrix.target }} --outfile dist-bin/personaxis-${{ matrix.name }}
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist-bin/personaxis-${{ matrix.name }}*
