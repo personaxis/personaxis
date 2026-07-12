@@ -83,12 +83,32 @@ function matching(config: HooksConfig, event: HookEvent, matcherTarget: string):
   return out;
 }
 
+// A timed-out hook runs via a shell, so killing the child alone orphans the real
+// command (a shell grandchild) which keeps running. Kill the whole tree instead:
+// on POSIX the awaited child is its own process-group leader, so signal the group;
+// on Windows use taskkill /T.
+function killTree(child: ReturnType<typeof spawn>): void {
+  if (child.pid === undefined) return;
+  try {
+    if (process.platform === "win32") {
+      spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true });
+    } else {
+      process.kill(-child.pid, "SIGKILL");
+    }
+  } catch {
+    /* already exited */
+  }
+}
+
 function runOne(spec: HookSpec, payload: unknown, awaitResult: boolean): Promise<HookOutcome> {
   return new Promise((resolve) => {
     const child = spawn(spec.command, {
       shell: true,
       stdio: ["pipe", "pipe", "ignore"],
       windowsHide: true,
+      // Awaited hooks get their own process group (POSIX) so a timeout can kill the
+      // whole command tree, not just the shell. Fire-and-forget keeps prior behavior.
+      detached: awaitResult && process.platform !== "win32",
     });
     const outcome = (result: HookOutcome["result"], exitCode: number | null, stdout = ""): void => {
       let decision: Record<string, unknown> | undefined;
@@ -120,7 +140,7 @@ function runOne(spec: HookSpec, payload: unknown, awaitResult: boolean): Promise
     let stdout = "";
     child.stdout.on("data", (c) => (stdout += String(c)));
     const timer = setTimeout(() => {
-      child.kill();
+      killTree(child);
       outcome("warn", null, stdout); // timeout fails OPEN: warn, never hang
     }, spec.timeout ?? 5_000);
     child.on("error", () => {

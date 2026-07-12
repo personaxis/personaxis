@@ -48,7 +48,10 @@ describe("FR.7 tools registry v2", () => {
 // ── FR.8: permissions v2 ──────────────────────────────────────────────────────
 
 describe("FR.8 permissions v2", () => {
-  const base: Policy = { ...DEFAULT_POLICY, workspaceRoot: "C:/ws" };
+  // Absolute-path prefix that is a real absolute path on the running OS, so the
+  // "outside every writable root" checks behave the same on POSIX and Windows.
+  const ABS = process.platform === "win32" ? "C:/" : "/";
+  const base: Policy = { ...DEFAULT_POLICY, workspaceRoot: `${ABS}ws` };
 
   it("protected subpaths deny even when otherwise writable, allow-list cannot override", () => {
     const policy: Policy = { ...base, allow: [".*"] };
@@ -64,11 +67,11 @@ describe("FR.8 permissions v2", () => {
   });
 
   it("writableRoots extend workspace-write beyond the workspaceRoot", () => {
-    const policy: Policy = { ...base, writableRoots: ["C:/out"] };
-    expect(evaluateFileWrite("C:/out/bundle.js", policy).decision).not.toBe("deny");
-    expect(evaluateFileWrite("C:/elsewhere/x.txt", policy).decision).toBe("deny");
+    const policy: Policy = { ...base, writableRoots: [`${ABS}out`] };
+    expect(evaluateFileWrite(`${ABS}out/bundle.js`, policy).decision).not.toBe("deny");
+    expect(evaluateFileWrite(`${ABS}elsewhere/x.txt`, policy).decision).toBe("deny");
     // Protected subpaths hold inside EVERY root.
-    expect(evaluateFileWrite("C:/out/.git/hooks/x", policy).decision).toBe("deny");
+    expect(evaluateFileWrite(`${ABS}out/.git/hooks/x`, policy).decision).toBe("deny");
   });
 
   it("granular approvals: strictest matching category wins over the global knob", () => {
