@@ -33,11 +33,13 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm run lint
-
+      # Build first: each package's `tsc --noEmit` typecheck resolves its workspace
+      # deps through their emitted dist/*.d.ts, which only exist after a build.
       - name: Build
         run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run lint
 
       - name: Test
         run: pnpm run test
