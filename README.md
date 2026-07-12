@@ -25,9 +25,9 @@ npm i -g @personaxis/persona.md
 personaxis proof --quick     # 60 s, offline: watch the guarantees hold before trusting them
 ```
 
-> The published version lags this repo until the next lockstep release (0.12.0) ships;
-> `create`, `proof`, `state drift`, `jacobian`, and `arbitrate` need 0.12.0. Check with
-> `personaxis --version`; if npm still serves an older version, use Path 2 today.
+> The npm release is **0.12.0** (current): `create`, `proof`, `state drift`, `jacobian`, and
+> `arbitrate` are all available. Path 2 (from source) is only for the newest code before the
+> next lockstep release; check what you have with `personaxis --version`.
 
 **Path 2 · Developers (from source).** For hacking on personaxis, or for the newest
 features before they're published (Node 18+, pnpm):
