@@ -41,14 +41,34 @@ jobs:
       - name: Typecheck
         run: pnpm run lint
 
+  # The behavioral suite (unit + fast-check property + filesystem session tests)
+  # runs once on a single fast, stable runner. Spreading it across the OS matrix
+  # added no real signal but plenty of flake: Windows temp-dir cleanup races
+  # (ENOTEMPTY) and vitest worker-RPC ("onTaskUpdate") timeouts on slow runners.
+  # Cross-platform safety is still covered by build + typecheck across the full
+  # matrix above; the heavy adversarial proof lives in the research E3 runner.
+  test:
+    name: test suite (ubuntu / node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install & build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
       - name: Test
         run: pnpm run test
         env:
-          # Property-based suite (PB-T1..T6, math-core.md): a per-push regression gate,
-          # not the heavy proof (that lives in the research E3 runner, 2.3M cases). Kept
-          # modest so no single fast-check file blocks a worker long enough to trip
-          # vitest's worker-RPC ("onTaskUpdate") timeout on the slower CI runners; higher
-          # counts (1000, 5000) did so intermittently even with every test passing.
+          # Per-push regression gate (5x the local default of 200). The core suite
+          # uses the forks pool (packages/core/vitest.config.ts) so this stays clear
+          # of the worker-RPC timeout even under the property suites.
           FC_NUM_RUNS: "300"
 
   golden:
