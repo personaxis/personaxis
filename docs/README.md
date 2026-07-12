@@ -32,6 +32,7 @@ docs/
     production.md        MCP / SDK / serve, the four production controls, troubleshooting
     recipes.md           8 vertical starting points (NPC, brand voice, legal, fintech, tutor, …)
   architecture/        how the system works, end to end
+    runtime.md           START HERE for runtime: how input enters, one tick phase by phase, what persists, every case (the spine, code-referenced)
     math-core.md         theorem→code map (which module implements which definition/theorem)
     genesis.md           the persona-creation pipeline design (`personaxis create`)
     deployment.md        the two use-modes, the four surfaces, hooks, cross-OS, self-host vs SaaS

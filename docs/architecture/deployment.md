@@ -58,8 +58,9 @@ Two ways to run the engine in Mode 2:
 - A machine that can hold a **long-lived process** (a VM, a container on Railway/Fly/Render, a
   server) → run `watch`/`serve`, or embed the SDK in your long-running backend.
 - **Serverless (e.g. Vercel)** has no persistent process → don't run a daemon. Trigger learning
-  **on-demand**: call the SDK/`observe` from an API route per request, or run `personaxis observe
-  --once` from a scheduled function (Vercel Cron). `--once` is designed for exactly this.
+  **on-demand**: call the SDK/`observe` from an API route per request, or run `personaxis watch
+  --once` from a scheduled function (Vercel Cron). `watch --once` does a single reconcile pass and
+  exits, designed for exactly this.
 
 ## The four surfaces (pick by how the consumer talks)
 
