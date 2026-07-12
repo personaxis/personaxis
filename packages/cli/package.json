@@ -45,14 +45,14 @@
     "@personaxis/sdk": "workspace:*",
     "@personaxis/spec": "workspace:*",
     "@personaxis/tui": "workspace:*",
-    "@inquirer/prompts": "^7.10.1",
+    "@inquirer/prompts": "^8.5.2",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "chalk": "^5.4.1",
-    "commander": "^13.1.0",
+    "commander": "^15.0.0",
     "gray-matter": "^4.0.3",
-    "inquirer": "^12.5.2",
-    "js-yaml": "^4.1.0"
+    "inquirer": "^14.0.2",
+    "js-yaml": "^5.2.1"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
