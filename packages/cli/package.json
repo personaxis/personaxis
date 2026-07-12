@@ -14,7 +14,7 @@
   "homepage": "https://personaxis.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/personaxis/cli.git",
+    "url": "git+https://github.com/personaxis/personaxis.git",
     "directory": "packages/cli"
   },
   "license": "MIT",

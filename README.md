@@ -33,7 +33,7 @@ personaxis proof --quick     # 60 s, offline: watch the guarantees hold before t
 features before they're published (Node 18+, pnpm):
 
 ```bash
-git clone https://github.com/personaxis/cli && cd cli
+git clone https://github.com/personaxis/personaxis && cd personaxis
 pnpm install
 pnpm run build                        # builds the 8 packages
 cd packages/cli && npm link && cd ../..   # makes `personaxis` global, pointing at YOUR build
