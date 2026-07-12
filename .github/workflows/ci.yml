@@ -44,9 +44,11 @@ jobs:
       - name: Test
         run: pnpm run test
         env:
-          # Property-based suite (PB-T1..T6, MATH_CORE.md): high adversarial-case
-          # count in CI; local runs default to 200 for speed.
-          FC_NUM_RUNS: "5000"
+          # Property-based suite (PB-T1..T6, math-core.md): elevated adversarial-case
+          # count in CI (5x the local default of 200). Kept at 1000 so the core suite
+          # stays well under vitest's worker-RPC ("onTaskUpdate") timeout; 5000 pushed
+          # a single run past ~280s and tripped that timeout even with all tests green.
+          FC_NUM_RUNS: "1000"
 
   golden:
     name: golden test (validate CMO = PASS)
