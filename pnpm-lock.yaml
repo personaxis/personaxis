@@ -20,6 +20,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@inquirer/prompts':
+        specifier: ^7.10.1
+        version: 7.10.1(@types/node@22.19.19)
       '@personaxis/core':
         specifier: workspace:*
         version: link:../core

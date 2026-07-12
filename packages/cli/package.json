@@ -45,6 +45,7 @@
     "@personaxis/sdk": "workspace:*",
     "@personaxis/spec": "workspace:*",
     "@personaxis/tui": "workspace:*",
+    "@inquirer/prompts": "^7.10.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "chalk": "^5.4.1",
