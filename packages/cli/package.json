@@ -56,10 +56,10 @@
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.10.0",
-    "fast-check": "^4.8.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.0.0"
+    "@types/node": "^26.1.1",
+    "fast-check": "^4.9.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=18.0.0"
