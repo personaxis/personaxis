@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build": "node ./scripts/gen-schemas.mjs && tsc",
-    "lint": "tsc --noEmit",
+    "lint": "node ./scripts/gen-schemas.mjs && tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
