@@ -23,8 +23,8 @@
     "cli": "node packages/cli/dist/index.js"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^26.1.1",
     "react-devtools-core": "^7.0.1",
-    "typescript": "^5.8.3"
+    "typescript": "^7.0.2"
   }
 }

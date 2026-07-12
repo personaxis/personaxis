@@ -35,9 +35,9 @@
     "diff": "^7.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.0.0",
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
     "@types/react": "^19.0.0",
     "@types/diff": "^7.0.0",
     "ink-testing-library": "^4.0.0"
