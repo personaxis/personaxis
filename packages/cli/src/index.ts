@@ -98,9 +98,9 @@ program.addCommand(traceCommand);
 program.addCommand(scanCommand);
 
 // FR.9, fire-and-forget update hint (daily cache; PERSONAXIS_NO_UPDATE_CHECK=1 disables).
-void checkForUpdate("@personaxis/persona.md", version).then((latest) => {
+void checkForUpdate("personaxis", version).then((latest) => {
   if (latest) {
-    process.stderr.write(`\n  update available: ${version} → ${latest} · npm i -g @personaxis/persona.md\n`);
+    process.stderr.write(`\n  update available: ${version} → ${latest} · npm i -g personaxis\n`);
   }
 });
 

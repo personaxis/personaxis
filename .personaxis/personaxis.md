@@ -402,7 +402,7 @@ runtime:
 
 ## Overview
 
-Project-level behavioral baseline for the `@personaxis/persona.md` CLI.
+Project-level behavioral baseline for the `personaxis` CLI.
 
 This CLI is the reference implementation of the [PERSONA.md spec v0.7.0](https://github.com/personaxis/persona.md). It defines what a valid, well-structured AI agent persona looks like and provides the toolchain to create, validate, lint, compile, decompile, and push/pull personas across runtime targets (Claude Code, Codex).
 

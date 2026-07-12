@@ -9,7 +9,7 @@ no daemon, plain git-versionable files.
 # Until the next npm release, run from a clone (the repo is ahead of npm):
 #   pnpm install && pnpm run build
 #   alias personaxis="node $PWD/packages/cli/dist/index.js"
-# After the release: npm i -g @personaxis/persona.md
+# After the release: npm i -g personaxis
 
 personaxis proof --quick             # watch the guarantees hold before trusting them
 personaxis create dev-buddy          # the interview builds a governed persona

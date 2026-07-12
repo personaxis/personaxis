@@ -39,6 +39,6 @@ describe("FR.9 update check", () => {
     process.env.PERSONAXIS_NO_UPDATE_CHECK = "1";
     // No fetch mock installed: a network attempt would still resolve undefined,
     // but the kill switch returns before the cache/registry code path runs.
-    await expect(checkForUpdate("@personaxis/persona.md", "0.0.1")).resolves.toBeUndefined();
+    await expect(checkForUpdate("personaxis", "0.0.1")).resolves.toBeUndefined();
   });
 });

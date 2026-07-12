@@ -2,7 +2,7 @@
 
 > **Your AI persona is the same persona on every model, and it provably cannot
 > drift outside the self you declared.** Bounded, audited, reversible. Here is
-> the live proof: `npx @personaxis/persona.md proof` (60 seconds, offline).
+> the live proof: `npx personaxis proof` (60 seconds, offline).
 
 ## What you get, in plain language
 
@@ -70,8 +70,8 @@ once; every modality and every model renders it.
 ## For builders
 
 ```bash
-npx @personaxis/persona.md create            # a governed persona in minutes (interview)
-npx @personaxis/persona.md create --from-import your-card.png   # upgrade a character card
+npx personaxis create            # a governed persona in minutes (interview)
+npx personaxis create --from-import your-card.png   # upgrade a character card
 personaxis proof                             # watch the guarantees hold, live
 personaxis state drift                       # where is my persona right now, and what would it cost to move
 ```

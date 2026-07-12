@@ -90,7 +90,7 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
 if (!built) {
   // Surface clearly in local runs where dist isn't built yet.
   describe("cli e2e", () => {
-    it("skipped, run `pnpm --filter @personaxis/persona.md build` first", () => {
+    it("skipped, run `pnpm --filter personaxis build` first", () => {
       expect(built).toBe(false);
     });
   });

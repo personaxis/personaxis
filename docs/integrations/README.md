@@ -25,7 +25,7 @@ You do **not** need MCP for this. MCP is optional (for on-demand tools). The cor
 personaxis is an npm package with a `personaxis` binary, install it once, globally:
 
 ```bash
-npm install -g @personaxis/persona.md      # provides the `personaxis` command on your PATH
+npm install -g personaxis      # provides the `personaxis` command on your PATH
 ```
 
 Everything below uses the `personaxis` command (no repo checkout, no hardcoded paths). The host hooks

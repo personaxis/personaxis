@@ -40,7 +40,7 @@ The target architecture (ARCHITECTURE_REVIEW.md §14) is a **pnpm monorepo with 
 | `@personaxis/core` | governed engine (loop, clamp+audit, memory, sessions) | no |
 | `@personaxis/protocol` | Op/EventMsg types + JSON-RPC transport + client | **yes** |
 | `@personaxis/tui` | Ink 7 components (`<Sigil/>`, `<AuraBar/>`, transcript, dashboard) | replatformed |
-| `@personaxis/persona.md` (cli) | commander surface + REPL shell over protocol | replatformed |
+| `personaxis` (cli) | commander surface + REPL shell over protocol | replatformed |
 | `@personaxis/mcp`, `@personaxis/sdk`, `@personaxis/evals` | unchanged consumers | no |
 
 Rule: **no deep imports across packages** (already enforced); protocol types are the only

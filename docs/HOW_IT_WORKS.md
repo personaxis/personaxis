@@ -15,7 +15,7 @@ Names:
 - **CLI binary:** `personaxis`.
 - **TUI binary:** `personaxis-dash`.
 - **MCP server binary:** `personaxis-mcp`.
-- **npm packages (monorepo):** `@personaxis/core` (engine), `@personaxis/persona.md` (the CLI),
+- **npm packages (monorepo):** `@personaxis/core` (engine), `personaxis` (the CLI),
   `@personaxis/mcp`, `@personaxis/sdk` (embed in a backend), `@personaxis/tui`, plus `@personaxis/spec`,
   `@personaxis/protocol`, `@personaxis/evals`.
 
@@ -202,7 +202,7 @@ personaxis/                      ← one repo
     ├── core/  @personaxis/core        → engine: envelopes, state-engine, governance, memory,
     │                                     Living Loop, appraisers, sigil, blackboard, sync,
     │                                     live-sync, skills, injection, sandbox, registry
-    ├── cli/   @personaxis/persona.md  → REPL + commands (over core)
+    ├── cli/   personaxis  → REPL + commands (over core)
     ├── mcp/   @personaxis/mcp         → MCP server (over core)
     └── tui/   @personaxis/tui         → ASCII dashboard (over core)
 ```
@@ -213,7 +213,7 @@ a single core be reused at every entry point (the Codex submit/event pattern).
 ## 9. Packaging and platforms
 
 TypeScript everywhere. Two distribution channels:
-- **npm** (`npm i -g @personaxis/persona.md`), requires Node 20 or newer.
+- **npm** (`npm i -g personaxis`), requires Node 20 or newer.
 - **Single binary** per platform via `bun compile` (`pnpm run package`), no runtime; the assets
   (schemas/templates/version) are **embedded** at build, so the binary is self-contained.
 

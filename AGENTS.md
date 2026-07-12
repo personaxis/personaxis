@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Instructions for AI agents working on the `@personaxis/persona.md` CLI repository.
+Instructions for AI agents working on the `personaxis` CLI repository.
 
 ## What this repo is
 
-The reference CLI implementation of the [personaxis.md spec v1.0.0](https://github.com/personaxis/persona.md) (`spec_version 1.0.0`, `apiVersion personaxis.com/v1`). Published to npm as `@personaxis/persona.md`; it is one of eight lockstep packages in this pnpm monorepo. See `CLAUDE.md` for the full package map and the v1.0 layer model.
+The reference CLI implementation of the [personaxis.md spec v1.0.0](https://github.com/personaxis/persona.md) (`spec_version 1.0.0`, `apiVersion personaxis.com/v1`). Published to npm as `personaxis`; it is one of eight lockstep packages in this pnpm monorepo. See `CLAUDE.md` for the full package map and the v1.0 layer model.
 
 The quantitative 10-layer spec lives at `.personaxis/[personas/<slug>/]personaxis.md`, and the repo-root `PERSONA.md` (or `.claude/agents/<slug>.md` / `.codex/agents/<slug>.toml` in subagent mode) is a separate, LLM-compiled qualitative document generated via `personaxis compile`. Personas at 0.3.0–0.10.0 still validate unchanged (the validator dispatches by `spec_version` to a frozen legacy schema).
 

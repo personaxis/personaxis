@@ -64,7 +64,7 @@ export const pullCommand = new Command("pull")
 			const code = body?.error?.code as string | undefined;
 			if (code === "INVALID_CLIENT_TOKEN") {
 				console.error(chalk.red("✗"), "Client token rejected by server.");
-				console.error(chalk.dim("Upgrade the CLI:"), chalk.cyan("npm i -g @personaxis/persona.md"));
+				console.error(chalk.dim("Upgrade the CLI:"), chalk.cyan("npm i -g personaxis"));
 			} else {
 				console.error(chalk.red("✗"), "Forbidden:", body?.error?.message ?? res.statusText);
 			}

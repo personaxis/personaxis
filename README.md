@@ -2,13 +2,13 @@
 
 > **Living, governed AI agent personas.** Define who an agent is once, run it unchanged on any model, and get mathematical guarantees it cannot drift outside what you declared.
 
-[![npm](https://img.shields.io/npm/v/@personaxis%2Fpersona.md?label=%40personaxis%2Fpersona.md)](https://www.npmjs.com/package/@personaxis/persona.md)
+[![npm](https://img.shields.io/npm/v/personaxis)](https://www.npmjs.com/package/personaxis)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Spec](https://img.shields.io/badge/spec-1.1.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
 
 This is the **personaxis monorepo**: eight lockstep packages that implement the
 [personaxis.md spec](https://github.com/personaxis/persona.md). The command-line tool ships to
-npm as **`@personaxis/persona.md`** and installs the `personaxis` command.
+npm as **`personaxis`** and installs the `personaxis` command.
 
 Define an AI persona once (all ten layers, not just a name and a vibe) in plain, git-versionable
 files; run it unchanged on Claude, GPT, Gemini, or a local model; and get **mathematical
@@ -40,7 +40,7 @@ repository.
 **Users (npm).** Install the published CLI, no clone needed:
 
 ```bash
-npm i -g @personaxis/persona.md
+npm i -g personaxis
 personaxis proof --quick     # 60 s, offline: watch the guarantees hold before trusting them
 ```
 
@@ -126,7 +126,7 @@ and the spec *enforce*.
 
 The eight lockstep packages: **`@personaxis/spec`** (schemas, validator, universals),
 **`core`** (the engine, math core, Living Loop, Genesis), **`protocol`** (the op/event transport),
-**`persona.md`** (the CLI), **`mcp`** (the MCP server), **`sdk`** (the in-process façade),
+**`personaxis`** (the CLI), **`mcp`** (the MCP server), **`sdk`** (the in-process façade),
 **`evals`** (the conformance harness), and **`tui`** (the ASCII dashboard).
 
 ## The three version numbers
