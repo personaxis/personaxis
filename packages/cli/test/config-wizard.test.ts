@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Interface as ReadlineInterface } from "node:readline/promises";
 import {
-  buildSettingsFromAnswers,
+  buildProfileFromAnswers,
   upsertProfile,
   setDefaultProfile,
   assignProfileToPersona,
@@ -22,20 +22,34 @@ function fakeRl(answers: string[]): ReadlineInterface {
 }
 const noop = (): void => {};
 
-describe("buildSettingsFromAnswers", () => {
-  it("cloud + env var key stores apiKeyEnv, never the key", () => {
-    const s = buildSettingsFromAnswers({ kind: "cloud", endpoint: "https://api.openai.com/v1", model: "gpt-4o-mini", keyMode: "env", keyEnv: "OPENAI_API_KEY" });
-    expect(s).toEqual({ endpoint: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKeyEnv: "OPENAI_API_KEY" });
+describe("buildProfileFromAnswers (all provider kinds)", () => {
+  it("local + no key stores provider + endpoint + model", () => {
+    const p = buildProfileFromAnswers({ kind: "local", endpoint: "http://localhost:11434/v1", model: "llama3.1", keyMode: "none" });
+    expect(p).toEqual({ provider: "local", endpoint: "http://localhost:11434/v1", model: "llama3.1" });
   });
 
-  it("local + no key stores just endpoint + model", () => {
-    const s = buildSettingsFromAnswers({ kind: "local", endpoint: "http://localhost:11434/v1", model: "llama3.1", keyMode: "none" });
-    expect(s).toEqual({ endpoint: "http://localhost:11434/v1", model: "llama3.1" });
+  it("local inline key stores apiKey and trims whitespace", () => {
+    const p = buildProfileFromAnswers({ kind: "local", endpoint: " https://x ", model: " m ", keyMode: "inline", keyInline: " sk-123 " });
+    expect(p).toEqual({ provider: "local", endpoint: "https://x", model: "m", apiKey: "sk-123" });
   });
 
-  it("inline key stores apiKey and trims whitespace", () => {
-    const s = buildSettingsFromAnswers({ kind: "cloud", endpoint: " https://x ", model: " m ", keyMode: "inline", keyInline: " sk-123 " });
-    expect(s).toEqual({ endpoint: "https://x", model: "m", apiKey: "sk-123" });
+  it("openai → byok + an OpenAI-compatible endpoint (so the live REPL can use it too)", () => {
+    const p = buildProfileFromAnswers({ kind: "openai", model: "gpt-4o-mini", keyEnv: "OPENAI_API_KEY" });
+    expect(p).toEqual({ provider: "byok", apiProvider: "openai", model: "gpt-4o-mini", endpoint: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" });
+  });
+
+  it("anthropic → byok, no endpoint, key via env", () => {
+    const p = buildProfileFromAnswers({ kind: "anthropic", model: "claude-sonnet-4-6" });
+    expect(p).toEqual({ provider: "byok", apiProvider: "anthropic", model: "claude-sonnet-4-6", apiKeyEnv: "ANTHROPIC_API_KEY" });
+  });
+
+  it("remote → provider remote + apiBase default", () => {
+    const p = buildProfileFromAnswers({ kind: "remote" });
+    expect(p).toEqual({ provider: "remote", apiBase: "https://api.personaxis.com" });
+  });
+
+  it("agent → provider agent only", () => {
+    expect(buildProfileFromAnswers({ kind: "agent" })).toEqual({ provider: "agent" });
   });
 });
 
@@ -85,14 +99,23 @@ describe("interactive flows (driven by a fake readline)", () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  it("runModelSetup: cloud + env key → a saved, defaulted profile", async () => {
-    // answers: kind=cloud, endpoint, model, key via env, env name, profile name, make default
-    const rl = fakeRl(["2", "https://api.test/v1", "gpt-4o-mini", "1", "OPENAI_API_KEY", "openai", "y"]);
+  it("runModelSetup: OpenAI provider → a saved, defaulted byok profile with an endpoint", async () => {
+    // answers: provider=[2]OpenAI, model, env var name, profile name, make default
+    const rl = fakeRl(["2", "gpt-4o-mini", "OPENAI_API_KEY", "openai", "y"]);
     const res = await runModelSetup(rl, { scope: "global", out: noop });
     expect(res.name).toBe("openai");
     const cfg = loadConfig("global");
-    expect(cfg.profiles?.openai).toEqual({ endpoint: "https://api.test/v1", model: "gpt-4o-mini", apiKeyEnv: "OPENAI_API_KEY" });
+    expect(cfg.profiles?.openai).toEqual({ provider: "byok", apiProvider: "openai", model: "gpt-4o-mini", endpoint: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" });
     expect(cfg.defaultProfile).toBe("openai");
+  });
+
+  it("runModelSetup: local provider, no key → a local profile", async () => {
+    // answers: provider=[1]local, endpoint, model, key=[3]none, profile name, make default
+    const rl = fakeRl(["1", "http://localhost:11434/v1", "llama3.1", "3", "local", "y"]);
+    await runModelSetup(rl, { scope: "global", out: noop });
+    const cfg = loadConfig("global");
+    expect(cfg.profiles?.local).toEqual({ provider: "local", endpoint: "http://localhost:11434/v1", model: "llama3.1" });
+    expect(cfg.defaultProfile).toBe("local");
   });
 
   it("runConfigMenu: option 2 sets the default from the profile list", async () => {

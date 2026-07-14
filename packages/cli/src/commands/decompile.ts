@@ -61,7 +61,7 @@ export async function runDecompile(opts: RunDecompileOptions): Promise<void> {
 
   const prompt = buildDecompilePrompt({ currentPersonaxisMd, editedCompiledMd, policyYaml, stateJson, resourceManifest, target });
 
-  const provider = resolveProvider(opts.provider);
+  const provider = resolveProvider(opts.provider, { personaPath: sourcePath });
 
   // Fence-strip + frontmatter-parse + five-state validation as the repair
   // critique: the exact failing fields go back to the model (bounded rounds,

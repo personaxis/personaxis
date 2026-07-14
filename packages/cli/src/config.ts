@@ -10,8 +10,8 @@ export interface PersonaxisConfig {
   /** Default provider for compile/decompile. Defaults to "agent" if unset. */
   provider?: ProviderName;
   local?: ModelSettings;
-  /** A named library of reusable model settings, referenced by defaultProfile / personas[].profile. */
-  profiles?: Record<string, ModelSettings>;
+  /** A named library of reusable model profiles, referenced by defaultProfile / personas[].profile. */
+  profiles?: Record<string, ModelProfile>;
   /** Name of the profile used as the default (an inline `local` still overrides it). */
   defaultProfile?: string;
   /** Per-persona model overrides, keyed by slug: a `profile` reference and/or inline fields. */
@@ -25,6 +25,24 @@ export interface PersonaxisConfig {
     apiBase?: string;
     model?: string;
   };
+}
+
+/**
+ * A named, reusable model profile. Covers every provider kind so one profile can drive both
+ * compile/decompile (via `resolveProvider`) and the live REPL reasoning (via `resolveModel`, which
+ * reads the OpenAI-compatible `endpoint`/`model`/key subset). Provider-specific fields:
+ *   local  (default) → endpoint, model, apiKey/apiKeyEnv
+ *   byok             → apiProvider (anthropic|openai), model; key from ANTHROPIC_API_KEY/OPENAI_API_KEY
+ *                      (a byok-openai profile also sets endpoint so the live REPL can use it)
+ *   remote           → apiBase, model; token from PERSONAXIS_API_TOKEN
+ *   agent            → no fields (hands the prompt to the active coding agent)
+ */
+export interface ModelProfile extends ModelSettings {
+  provider?: ProviderName;
+  /** For provider "byok": which vendor the key belongs to. */
+  apiProvider?: "anthropic" | "openai";
+  /** For provider "remote": the Personaxis-hosted API base. */
+  apiBase?: string;
 }
 
 export function configPath(scope: ConfigScope = "project"): string {

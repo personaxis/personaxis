@@ -15,30 +15,52 @@
 import type { Interface as ReadlineInterface } from "node:readline/promises";
 import { stdout } from "node:process";
 import chalk from "chalk";
-import { describeModel, type ModelSettings } from "@personaxis/core";
-import { loadConfig, saveConfig, configPath, type ConfigScope, type PersonaxisConfig } from "./config.js";
+import { describeModel } from "@personaxis/core";
+import { loadConfig, saveConfig, configPath, type ConfigScope, type PersonaxisConfig, type ModelProfile } from "./config.js";
 
 // ── Pure builders (no IO, unit-tested) ───────────────────────────────────────
 
+/** What the user picks in the wizard; maps to a provider + its fields. */
+export type ProviderKind = "local" | "openai" | "anthropic" | "remote" | "agent";
+
 export interface ProfileAnswers {
-  kind: "local" | "cloud";
-  endpoint: string;
-  model: string;
-  keyMode: "env" | "inline" | "none";
+  kind: ProviderKind;
+  endpoint?: string;
+  model?: string;
+  apiBase?: string;
+  keyMode?: "env" | "inline" | "none";
   keyEnv?: string;
   keyInline?: string;
 }
 
-/** Turn wizard answers into the ModelSettings stored in a profile. */
-export function buildSettingsFromAnswers(a: ProfileAnswers): ModelSettings {
-  const s: ModelSettings = { endpoint: a.endpoint.trim(), model: a.model.trim() };
-  if (a.keyMode === "env" && a.keyEnv?.trim()) s.apiKeyEnv = a.keyEnv.trim();
-  if (a.keyMode === "inline" && a.keyInline?.trim()) s.apiKey = a.keyInline.trim();
-  return s;
+const trimmed = (s?: string): string | undefined => (s?.trim() ? s.trim() : undefined);
+
+/** Turn wizard answers into a full ModelProfile (provider + the fields that provider needs). */
+export function buildProfileFromAnswers(a: ProfileAnswers): ModelProfile {
+  switch (a.kind) {
+    case "openai":
+      // byok for compile (native structured output) AND an OpenAI-compatible endpoint so the live
+      // REPL reasoning can use the same key/model. One profile, both paths.
+      return { provider: "byok", apiProvider: "openai", model: trimmed(a.model), endpoint: "https://api.openai.com/v1", apiKeyEnv: trimmed(a.keyEnv) ?? "OPENAI_API_KEY" };
+    case "anthropic":
+      // byok for compile; no OpenAI-compatible endpoint, so the live REPL stays heuristic for this one.
+      return { provider: "byok", apiProvider: "anthropic", model: trimmed(a.model), apiKeyEnv: trimmed(a.keyEnv) ?? "ANTHROPIC_API_KEY" };
+    case "remote":
+      return { provider: "remote", apiBase: trimmed(a.apiBase) ?? "https://api.personaxis.com", ...(trimmed(a.model) ? { model: trimmed(a.model) } : {}) };
+    case "agent":
+      return { provider: "agent" };
+    case "local":
+    default: {
+      const p: ModelProfile = { provider: "local", endpoint: trimmed(a.endpoint), model: trimmed(a.model) };
+      if (a.keyMode === "env" && trimmed(a.keyEnv)) p.apiKeyEnv = trimmed(a.keyEnv);
+      if (a.keyMode === "inline" && trimmed(a.keyInline)) p.apiKey = trimmed(a.keyInline);
+      return p;
+    }
+  }
 }
 
-export function upsertProfile(cfg: PersonaxisConfig, name: string, settings: ModelSettings): PersonaxisConfig {
-  return { ...cfg, profiles: { ...cfg.profiles, [name]: settings } };
+export function upsertProfile(cfg: PersonaxisConfig, name: string, profile: ModelProfile): PersonaxisConfig {
+  return { ...cfg, profiles: { ...cfg.profiles, [name]: profile } };
 }
 
 export function setDefaultProfile(cfg: PersonaxisConfig, name: string): PersonaxisConfig {
@@ -102,31 +124,45 @@ export async function runModelSetup(
   const scope: ConfigScope = opts.scope ?? "global";
   const where = scope === "global" ? "~/.personaxis" : ".personaxis";
   out(chalk.bold("\n  Configure a model") + chalk.dim(`  (saved in ${where}/config.json, reused everywhere)`));
+  out(chalk.dim("  Provider:"));
+  out(chalk.dim("    [1] Local / OpenAI-compatible (Ollama, LM Studio, any OpenAI-compatible URL)"));
+  out(chalk.dim("    [2] OpenAI (your OpenAI key)"));
+  out(chalk.dim("    [3] Anthropic (your Anthropic key)"));
+  out(chalk.dim("    [4] Personaxis hosted (remote)"));
+  out(chalk.dim("    [5] Coding agent (no key; hands off to Claude Code / Codex)"));
+  const provRaw = await ask(rl, "  Choose", "1");
+  const kind: ProviderKind =
+    provRaw === "2" ? "openai" : provRaw === "3" ? "anthropic" : provRaw === "4" ? "remote" : provRaw === "5" ? "agent" : "local";
 
-  const kindRaw = await ask(rl, "  Runs  [1] locally (Ollama / LM Studio)  [2] in the cloud (OpenAI-compatible)?", "1");
-  const kind: "local" | "cloud" = kindRaw === "2" ? "cloud" : "local";
-
-  const endpoint = await ask(rl, "  Endpoint URL", kind === "local" ? "http://localhost:11434/v1" : "https://api.openai.com/v1");
-  const model = await ask(rl, "  Model name", kind === "local" ? "llama3.1" : "gpt-4o-mini");
-
-  let keyMode: ProfileAnswers["keyMode"] = "none";
+  const answers: ProfileAnswers = { kind };
   let keyEnv: string | undefined;
-  let keyInline: string | undefined;
-  if (kind === "cloud") {
-    const km = await ask(rl, "  API key via  [1] env var (recommended)  [2] paste inline  [3] none?", "1");
-    if (km === "2") {
-      keyMode = "inline";
-      keyInline = (await rl.question("  Paste the API key: ")).trim();
-    } else if (km === "3") {
-      keyMode = "none";
+  if (kind === "local") {
+    answers.endpoint = await ask(rl, "  Endpoint URL", "http://localhost:11434/v1");
+    answers.model = await ask(rl, "  Model name", "llama3.1");
+    const km = await ask(rl, "  API key via  [1] env var  [2] paste inline  [3] none?", "3");
+    if (km === "1") {
+      answers.keyMode = "env";
+      answers.keyEnv = keyEnv = await ask(rl, "  Name of the env var holding the key", "OPENAI_API_KEY");
+    } else if (km === "2") {
+      answers.keyMode = "inline";
+      answers.keyInline = (await rl.question("  Paste the API key: ")).trim();
     } else {
-      keyMode = "env";
-      keyEnv = await ask(rl, "  Name of the env var holding the key", "OPENAI_API_KEY");
+      answers.keyMode = "none";
     }
+  } else if (kind === "openai") {
+    answers.model = await ask(rl, "  Model name", "gpt-4o-mini");
+    answers.keyEnv = keyEnv = await ask(rl, "  Env var holding your OpenAI key", "OPENAI_API_KEY");
+  } else if (kind === "anthropic") {
+    answers.model = await ask(rl, "  Model name", "claude-sonnet-4-6");
+    answers.keyEnv = keyEnv = await ask(rl, "  Env var holding your Anthropic key", "ANTHROPIC_API_KEY");
+  } else if (kind === "remote") {
+    answers.apiBase = await ask(rl, "  Personaxis API base", "https://api.personaxis.com");
+    answers.model = await ask(rl, "  Model (optional, blank for the server default)", "");
+    keyEnv = "PERSONAXIS_API_TOKEN";
   }
 
-  const settings = buildSettingsFromAnswers({ kind, endpoint, model, keyMode, keyEnv, keyInline });
-  const suggested = kind === "local" ? "local" : model || "cloud";
+  const profile = buildProfileFromAnswers(answers);
+  const suggested = kind === "remote" ? "personaxis" : kind;
   const name = await ask(rl, "  Name this profile", suggested);
   if (!name) {
     out(chalk.yellow("  no name given, nothing saved."));
@@ -134,13 +170,14 @@ export async function runModelSetup(
   }
 
   let cfg = loadConfig(scope);
-  cfg = upsertProfile(cfg, name, settings);
+  cfg = upsertProfile(cfg, name, profile);
   if (isYes(await ask(rl, `  Use "${name}" as the default model?`, "Y"))) cfg = setDefaultProfile(cfg, name);
   saveConfig(cfg, scope);
 
-  out(chalk.green(`  ✓ saved profile "${name}"`) + chalk.dim(`  (${configPath(scope)})`));
-  if (keyMode === "env") out(chalk.dim(`  ! put your key in the env var: export ${keyEnv}=...   (never stored in a file)`));
-  if (keyMode === "inline") out(chalk.dim("  ! inline key stored user-only (0600); prefer an env var next time."));
+  out(chalk.green(`  ✓ saved profile "${name}"`) + chalk.dim(`  (${profile.provider}, ${configPath(scope)})`));
+  if (keyEnv) out(chalk.dim(`  ! put your key in the env var: export ${keyEnv}=...   (never stored in a file)`));
+  if (answers.keyMode === "inline") out(chalk.dim("  ! inline key stored user-only (0600); prefer an env var next time."));
+  if (kind === "anthropic") out(chalk.dim("  note: byok-anthropic drives compile; the live REPL reasoning needs an OpenAI-compatible endpoint."));
   return { name, keyEnv };
 }
 
@@ -153,8 +190,10 @@ function showProfiles(cfg: PersonaxisConfig, out: Out): string[] {
   }
   names.forEach((n, i) => {
     const p = cfg.profiles?.[n];
+    const prov = p?.provider ?? "local";
+    const where = p?.endpoint ?? p?.apiBase ?? (prov === "byok" ? p?.apiProvider : undefined);
     const mark = cfg.defaultProfile === n ? chalk.green(" (default)") : "";
-    out(`    ${i + 1}. ${chalk.bold(n)}${mark}  ${chalk.dim(`${p?.model ?? "?"} @ ${p?.endpoint ?? "?"}`)}`);
+    out(`    ${i + 1}. ${chalk.bold(n)}${mark}  ${chalk.dim(`${prov} · ${p?.model ?? "(server default)"}${where ? ` @ ${where}` : ""}`)}`);
   });
   return names;
 }

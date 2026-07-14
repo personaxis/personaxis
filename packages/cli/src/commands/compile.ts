@@ -122,7 +122,7 @@ async function polishOrFallback(
   target: CompileTargetInfo,
   opts: RunCompileOptions,
 ): Promise<{ content: string; polished: boolean; via: string; source: ProviderRunResult["source"] | "manual"; model: string }> {
-  const provider = resolveProvider(opts.provider);
+  const provider = resolveProvider(opts.provider, { personaPath: personaxisMd });
   // Smart-default `agent` handoff with no explicit choice and no --from-file:
   // there is no model to polish with, so write the deterministic doc directly.
   const agentByDefault = provider.source === "cli-agent" && !opts.provider && !opts.fromFile;

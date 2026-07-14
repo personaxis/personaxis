@@ -8,10 +8,13 @@ const KNOWN_KEYS = [
   "local.model",
   "local.apiKey",
   "local.apiKeyEnv",
+  "profiles.<name>.provider",
   "profiles.<name>.endpoint",
   "profiles.<name>.model",
   "profiles.<name>.apiKey",
   "profiles.<name>.apiKeyEnv",
+  "profiles.<name>.apiProvider",
+  "profiles.<name>.apiBase",
   "defaultProfile",
   "personas.<slug>.endpoint",
   "personas.<slug>.model",
@@ -44,14 +47,21 @@ function setPath(config: PersonaxisConfig, key: string, value: string): void {
     config.defaultProfile = value;
     return;
   }
-  // profiles.<name>.<field>, a named library of reusable model settings.
+  // profiles.<name>.<field>, a named library of reusable model profiles (any provider kind).
   if (section === "profiles") {
     const [, name, pField] = key.split(".");
-    if (name && (pField === "endpoint" || pField === "model" || pField === "apiKey" || pField === "apiKeyEnv")) {
+    if (name && pField === "provider" && !(PROVIDER_VALUES as readonly string[]).includes(value)) {
+      throw new Error(`Invalid profiles.${name}.provider "${value}". Expected one of: ${PROVIDER_VALUES.join(", ")}`);
+    }
+    if (name && pField === "apiProvider" && !(BYOK_API_PROVIDER_VALUES as readonly string[]).includes(value)) {
+      throw new Error(`Invalid profiles.${name}.apiProvider "${value}". Expected one of: ${BYOK_API_PROVIDER_VALUES.join(", ")}`);
+    }
+    const PROFILE_FIELDS = ["provider", "endpoint", "model", "apiKey", "apiKeyEnv", "apiProvider", "apiBase"];
+    if (name && PROFILE_FIELDS.includes(pField)) {
       config.profiles = { ...config.profiles, [name]: { ...config.profiles?.[name], [pField]: value } };
       return;
     }
-    throw new Error(`Invalid profiles key "${key}". Use profiles.<name>.{endpoint|model|apiKey|apiKeyEnv}`);
+    throw new Error(`Invalid profiles key "${key}". Use profiles.<name>.{${PROFILE_FIELDS.join("|")}}`);
   }
   // personas.<slug>.<field>, per-persona model overrides (a profile ref or inline fields).
   if (section === "personas") {

@@ -96,26 +96,39 @@ personaxis config get local.model
 
 ## Named profiles and the guided setup
 
-Instead of a single default, keep a **library of named profiles** (each an endpoint + model + key
-strategy) and point the default, or any persona, at one. Editing a profile updates every reference.
+Instead of a single default, keep a **library of named profiles** and point the default, or any
+persona, at one. Editing a profile updates every reference. A profile can be **any provider kind**,
+so one profile configures both compile/decompile and (where applicable) the live REPL:
+
+| Profile provider | Fields | Drives compile? | Drives the live REPL reasoning? |
+|---|---|---|---|
+| `local` | endpoint, model, apiKey/apiKeyEnv | yes | yes (OpenAI-compatible) |
+| `byok` (openai) | model, apiKeyEnv; endpoint set to OpenAI | yes | yes (uses the OpenAI endpoint) |
+| `byok` (anthropic) | model; key from `ANTHROPIC_API_KEY` | yes | no (needs an OpenAI-compatible endpoint) |
+| `remote` | apiBase, model; token `PERSONAXIS_API_TOKEN` | yes | no |
+| `agent` | none (hands off to Claude Code / Codex) | yes | n/a |
 
 The friendliest path is interactive:
 
 - **First run:** launching `personaxis` in a folder with no model offers a step-by-step setup
-  (local or cloud, endpoint, model, key), or `skip` (configure it later).
+  (pick the provider, then its fields), or `skip` (configure it later).
 - **Anytime:** `/config` in the REPL opens a menu to add/edit profiles, set the default, assign a
   profile to a persona, or show the resolved config.
 
 The same is scriptable and CI-friendly:
 
 ```bash
+# a local OpenAI-compatible profile
 personaxis config set profiles.local.endpoint http://localhost:11434/v1
 personaxis config set profiles.local.model    llama3.1
-personaxis config set profiles.big.endpoint   https://api.openai.com/v1
-personaxis config set profiles.big.model      gpt-4o-mini
-personaxis config set profiles.big.apiKeyEnv  OPENAI_API_KEY
-personaxis config use  local                  # make it the machine default
-personaxis config use  big --persona cmo      # assign a profile to one persona
+# an OpenAI (byok) profile; the endpoint lets the live REPL use it too
+personaxis config set profiles.oai.provider    byok
+personaxis config set profiles.oai.apiProvider openai
+personaxis config set profiles.oai.model       gpt-4o-mini
+personaxis config set profiles.oai.endpoint    https://api.openai.com/v1
+personaxis config set profiles.oai.apiKeyEnv   OPENAI_API_KEY
+personaxis config use  local                   # make it the machine default
+personaxis config use  oai --persona cmo       # assign a profile to one persona
 ```
 
 A project profile of the same name overrides a global one. A config with only `local` (no profiles)

@@ -18,8 +18,8 @@ const DEFAULT_MODEL = "llama3.1";
  * env > project > global, key via `apiKeyEnv`), so `personaxis config set --global local.*` drives
  * compile too, not just the REPL. Falls back to the passed project config, then localhost defaults.
  */
-export function createLocalProvider(config: PersonaxisConfig): Provider {
-  const resolved = resolveModel({ cwd: process.cwd() });
+export function createLocalProvider(config: PersonaxisConfig, personaPath?: string): Provider {
+  const resolved = resolveModel({ cwd: process.cwd(), ...(personaPath ? { personaPath } : {}) });
   const endpoint = resolved?.endpoint ?? config.local?.endpoint ?? DEFAULT_ENDPOINT;
   const model = resolved?.model ?? config.local?.model ?? DEFAULT_MODEL;
   const apiKey = resolved?.apiKey ?? config.local?.apiKey;

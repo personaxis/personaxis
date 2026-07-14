@@ -45,3 +45,32 @@ describe("resolveProvider, smart default (no footgun)", () => {
     expect(resolveProvider("agent").name).toBe("agent");
   });
 });
+
+describe("resolveProvider, profile-aware (a profile can be any provider kind)", () => {
+  const writeGlobal = (cfg: unknown): void => writeFileSync(join(home, "config.json"), JSON.stringify(cfg));
+
+  it("a default byok profile selects the byok provider", () => {
+    writeGlobal({ profiles: { a: { provider: "byok", apiProvider: "anthropic", model: "claude" } }, defaultProfile: "a" });
+    expect(resolveProvider().name).toBe("byok");
+  });
+
+  it("a default remote profile selects the remote provider", () => {
+    writeGlobal({ profiles: { a: { provider: "remote", apiBase: "https://api.personaxis.com" } }, defaultProfile: "a" });
+    expect(resolveProvider().name).toBe("remote");
+  });
+
+  it("a default local profile selects the local provider", () => {
+    writeGlobal({ profiles: { a: { provider: "local", endpoint: "https://x", model: "m" } }, defaultProfile: "a" });
+    expect(resolveProvider().name).toBe("local");
+  });
+
+  it("a default agent profile selects agent even if a model resolves elsewhere", () => {
+    writeGlobal({ profiles: { a: { provider: "agent" } }, defaultProfile: "a", local: { endpoint: "https://x", model: "m" } });
+    expect(resolveProvider().name).toBe("agent");
+  });
+
+  it("an explicit override still wins over the profile", () => {
+    writeGlobal({ profiles: { a: { provider: "byok", apiProvider: "openai", model: "m" } }, defaultProfile: "a" });
+    expect(resolveProvider("agent").name).toBe("agent");
+  });
+});
