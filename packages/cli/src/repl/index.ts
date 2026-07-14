@@ -19,6 +19,7 @@ import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
 import { writeStarterPersona } from "../starter.js";
 import { runModelSetup } from "../config-wizard.js";
+import { runModelSetupInk } from "../config-ui.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
 import { replyLine, fmtK, firstRunModelHint } from "./render.js";
@@ -60,8 +61,19 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     const rl = readline.createInterface({ input: stdin, output: stdout });
     try {
       const yn = ((await rl.question(`\n  ${chalk.yellow("No model configured.")} Set one up now? ${chalk.dim("[Y/skip]")} `)) || "y").trim().toLowerCase();
+      rl.close();
       if (yn === "y" || yn === "yes") {
-        await runModelSetup(rl, { scope: "global", out: (s) => stdout.write(s + "\n") });
+        // Ink card wizard by default; readline fallback under PERSONAXIS_NO_INK.
+        if (!process.env.PERSONAXIS_NO_INK) {
+          await runModelSetupInk("global");
+        } else {
+          const rl2 = readline.createInterface({ input: stdin, output: stdout });
+          try {
+            await runModelSetup(rl2, { scope: "global", out: (s) => stdout.write(s + "\n") });
+          } finally {
+            rl2.close();
+          }
+        }
       } else {
         stdout.write(chalk.dim("  Skipped, running offline (heuristic). Configure anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
       }

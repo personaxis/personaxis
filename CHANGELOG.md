@@ -21,6 +21,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `/config` for later, instead of only printing a one-line hint.
 - **`/config` is now interactive** on a TTY: a menu to add/edit profiles, set the default, assign a
   profile to a persona, or show the resolved config. In a pipe it degrades to the read-only view.
+- **Rendered as a real TUI (Ink).** The provider picker, the config menu, and the first-run setup
+  are arrow-navigable cards (one description per option), consistent with the REPL's `/drift`
+  `/dash` views, via a new generic `@personaxis/tui/prompt` kit (`selectCards` / `promptText`). A
+  plain-readline fallback stays for `PERSONAXIS_NO_INK` and non-TTY callers. `/config` launches as a
+  subprocess so it never fights the app's stdin (the earlier readline-in-app crash).
 - **First-run wizard covers every provider:** pick local / OpenAI / Anthropic / HuggingFace /
   Personaxis-hosted / coding-agent, then only that provider's fields. Every cloud preset also stores
   an OpenAI-compatible endpoint (OpenAI, HuggingFace's router, and Anthropic's OpenAI-compatibility

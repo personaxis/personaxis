@@ -9,7 +9,8 @@
     ".": "./dist/index.js",
     "./visual": "./dist/visual.js",
     "./screen": "./dist/screen.js",
-    "./ink": "./dist/ink.js"
+    "./ink": "./dist/ink.js",
+    "./prompt": "./dist/prompt.js"
   },
   "bin": {
     "personaxis-dash": "dist/bin.js"
