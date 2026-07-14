@@ -37,12 +37,25 @@ repository.
 
 ## Install
 
-**Users (npm).** Install the published CLI, no clone needed:
+**Try it without installing (npx).** Runs the published CLI straight from the registry, nothing
+lands on your PATH:
+
+```bash
+npx personaxis proof --quick   # 60 s, offline: watch the guarantees hold
+npx personaxis create dev-buddy
+```
+
+**Install it (npm).** Once you use it regularly, put the `personaxis` command on your PATH:
 
 ```bash
 npm i -g personaxis
 personaxis proof --quick     # 60 s, offline: watch the guarantees hold before trusting them
 ```
+
+> **Windows / PowerShell.** If a global command prints `running scripts is disabled on this
+> system`, PowerShell is blocking npm's `.ps1` launcher. It does this for every npm-installed CLI,
+> not just personaxis. Fix it once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or
+> call `personaxis.cmd ...` (or `npx personaxis ...`) instead.
 
 **Developers (from source).** For hacking on personaxis, or the newest code before it is
 published (Node 18+, pnpm):
@@ -51,13 +64,13 @@ published (Node 18+, pnpm):
 git clone https://github.com/personaxis/personaxis && cd personaxis
 pnpm install
 pnpm run build                            # builds the eight packages
-cd packages/cli && npm link && cd ../..   # makes `personaxis` global, pointing at YOUR build
-personaxis proof --quick
+node packages/cli/dist/index.js proof --quick
 ```
 
-After editing source, run `pnpm run build` again (the global link picks up the new build). Run
-the suite with `pnpm run test`. Without the link, every `personaxis <cmd>` below is
-`node packages/cli/dist/index.js <cmd>`.
+After editing source, run `pnpm run build` again, then re-run `node packages/cli/dist/index.js
+<cmd>`. Run the suite with `pnpm run test`. Invoking your checkout directly keeps it distinct from a
+published `npm i -g personaxis`, so there is never any doubt about which build answers. Every
+`personaxis <cmd>` shown below is `node packages/cli/dist/index.js <cmd>` from a source checkout.
 
 ## Your first 10 minutes
 

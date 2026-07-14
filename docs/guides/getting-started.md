@@ -6,15 +6,20 @@ no daemon, plain git-versionable files.
 ## Developers (5 minutes)
 
 ```bash
-# Until the next npm release, run from a clone (the repo is ahead of npm):
+# No install, run it now:   npx personaxis proof --quick
+# Install it:               npm i -g personaxis
+# From source (newest, ahead of npm):
 #   pnpm install && pnpm run build
-#   alias personaxis="node $PWD/packages/cli/dist/index.js"
-# After the release: npm i -g personaxis
+#   run it as: node packages/cli/dist/index.js <cmd>
 
 personaxis proof --quick             # watch the guarantees hold before trusting them
 personaxis create dev-buddy          # the interview builds a governed persona
 personaxis --persona .personaxis/personas/dev-buddy/personaxis.md   # live REPL
 ```
+
+> **Windows / PowerShell.** `running scripts is disabled on this system` is PowerShell blocking
+> npm's `.ps1` launcher (it does this for every npm CLI). Run
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or use `personaxis.cmd` / `npx personaxis`.
 
 In the REPL: `/state` (envelope values), `/drift` (where you are + what a change
 costs), `/replay` (history as animation), `/arbitrate` (value conflicts),

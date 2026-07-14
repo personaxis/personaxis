@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Docs: install paths clarified (npx + Windows/PowerShell)
+- **README and getting-started** now present `npx personaxis` (run without installing) alongside
+  `npm i -g personaxis` (install on PATH), and add a Windows/PowerShell note: the
+  `running scripts is disabled on this system` error is PowerShell blocking npm's generated `.ps1`
+  launcher for any global CLI, resolved with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+  or by calling `personaxis.cmd` / `npx personaxis`.
+- **From-source path drops `npm link` / shell alias.** The developer instructions now invoke the
+  checkout directly (`node packages/cli/dist/index.js <cmd>`), so a local build stays distinct from a
+  published `npm i -g personaxis` and there is no ambiguity about which build answers a bare
+  `personaxis`.
+
 ### Docs: FASE 7 surfaces documented + final audit (P5)
 - **Command and guide docs** now describe the FASE 7 surfaces: `create` and the persona
   guides say the numbers are born load-bearing (Genesis synthesizes per-band prose and
