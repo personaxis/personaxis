@@ -100,13 +100,17 @@ Instead of a single default, keep a **library of named profiles** and point the 
 persona, at one. Editing a profile updates every reference. A profile can be **any provider kind**,
 so one profile configures both compile/decompile and (where applicable) the live REPL:
 
-| Profile provider | Fields | Drives compile? | Drives the live REPL reasoning? |
+Every cloud preset also stores an OpenAI-compatible `endpoint`, so the same profile drives both
+compile and the live REPL reasoning:
+
+| Wizard choice | Provider | Drives compile? | Drives the live REPL reasoning? |
 |---|---|---|---|
-| `local` | endpoint, model, apiKey/apiKeyEnv | yes | yes (OpenAI-compatible) |
-| `byok` (openai) | model, apiKeyEnv; endpoint set to OpenAI | yes | yes (uses the OpenAI endpoint) |
-| `byok` (anthropic) | model; key from `ANTHROPIC_API_KEY` | yes | no (needs an OpenAI-compatible endpoint) |
-| `remote` | apiBase, model; token `PERSONAXIS_API_TOKEN` | yes | no |
-| `agent` | none (hands off to Claude Code / Codex) | yes | n/a |
+| Local / OpenAI-compatible | `local` | yes | yes (Ollama, LM Studio, any OpenAI-compatible URL) |
+| OpenAI | `byok` openai | yes | yes (`api.openai.com/v1`) |
+| Anthropic | `byok` anthropic | yes | yes (Anthropic's OpenAI-compatibility endpoint) |
+| HuggingFace | `local` | yes | yes (HF Inference router, `router.huggingface.co/v1`) |
+| Personaxis hosted | `remote` | yes | when the hosted OpenAI-compatible endpoint is set |
+| Coding agent | `agent` | yes | n/a (no model; hands off to Claude Code / Codex) |
 
 The friendliest path is interactive:
 

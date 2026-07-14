@@ -38,9 +38,14 @@ describe("buildProfileFromAnswers (all provider kinds)", () => {
     expect(p).toEqual({ provider: "byok", apiProvider: "openai", model: "gpt-4o-mini", endpoint: "https://api.openai.com/v1", apiKeyEnv: "OPENAI_API_KEY" });
   });
 
-  it("anthropic → byok, no endpoint, key via env", () => {
+  it("anthropic → byok + Anthropic's OpenAI-compatible endpoint (so it reasons live too)", () => {
     const p = buildProfileFromAnswers({ kind: "anthropic", model: "claude-sonnet-4-6" });
-    expect(p).toEqual({ provider: "byok", apiProvider: "anthropic", model: "claude-sonnet-4-6", apiKeyEnv: "ANTHROPIC_API_KEY" });
+    expect(p).toEqual({ provider: "byok", apiProvider: "anthropic", model: "claude-sonnet-4-6", endpoint: "https://api.anthropic.com/v1", apiKeyEnv: "ANTHROPIC_API_KEY" });
+  });
+
+  it("huggingface → local provider pointed at the HF OpenAI-compatible router", () => {
+    const p = buildProfileFromAnswers({ kind: "huggingface", model: "meta-llama/Llama-3.1-8B-Instruct" });
+    expect(p).toEqual({ provider: "local", endpoint: "https://router.huggingface.co/v1", model: "meta-llama/Llama-3.1-8B-Instruct", apiKeyEnv: "HF_TOKEN" });
   });
 
   it("remote → provider remote + apiBase default", () => {

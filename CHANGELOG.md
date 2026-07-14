@@ -21,9 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `/config` for later, instead of only printing a one-line hint.
 - **`/config` is now interactive** on a TTY: a menu to add/edit profiles, set the default, assign a
   profile to a persona, or show the resolved config. In a pipe it degrades to the read-only view.
-- **First-run wizard covers every provider:** pick local / OpenAI / Anthropic / Personaxis-hosted /
-  coding-agent, then only that provider's fields (an OpenAI profile also gets an endpoint so the live
-  REPL can use it).
+- **First-run wizard covers every provider:** pick local / OpenAI / Anthropic / HuggingFace /
+  Personaxis-hosted / coding-agent, then only that provider's fields. Every cloud preset also stores
+  an OpenAI-compatible endpoint (OpenAI, HuggingFace's router, and Anthropic's OpenAI-compatibility
+  endpoint), so the same profile reasons in the live REPL, not just compile.
 - **CLI parity (scriptable):** `config set profiles.<name>.{provider|endpoint|model|apiKey|apiKeyEnv|apiProvider|apiBase}`,
   `config set defaultProfile <name>`, `config set personas.<slug>.profile <name>`, and
   `config use <profile> [--persona <slug>]`.

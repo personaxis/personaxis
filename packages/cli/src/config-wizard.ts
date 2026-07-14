@@ -21,7 +21,7 @@ import { loadConfig, saveConfig, configPath, type ConfigScope, type PersonaxisCo
 // ── Pure builders (no IO, unit-tested) ───────────────────────────────────────
 
 /** What the user picks in the wizard; maps to a provider + its fields. */
-export type ProviderKind = "local" | "openai" | "anthropic" | "remote" | "agent";
+export type ProviderKind = "local" | "openai" | "anthropic" | "huggingface" | "remote" | "agent";
 
 export interface ProfileAnswers {
   kind: ProviderKind;
@@ -35,16 +35,24 @@ export interface ProfileAnswers {
 
 const trimmed = (s?: string): string | undefined => (s?.trim() ? s.trim() : undefined);
 
-/** Turn wizard answers into a full ModelProfile (provider + the fields that provider needs). */
+/**
+ * Turn wizard answers into a full ModelProfile (provider + the fields that provider needs). Every
+ * cloud preset also stores an OpenAI-compatible `endpoint`, so the SAME profile drives both compile
+ * and the live REPL reasoning: OpenAI, HuggingFace (its OpenAI-compatible router), and Anthropic (its
+ * OpenAI-compatibility endpoint) all reason live.
+ */
 export function buildProfileFromAnswers(a: ProfileAnswers): ModelProfile {
   switch (a.kind) {
     case "openai":
-      // byok for compile (native structured output) AND an OpenAI-compatible endpoint so the live
-      // REPL reasoning can use the same key/model. One profile, both paths.
       return { provider: "byok", apiProvider: "openai", model: trimmed(a.model), endpoint: "https://api.openai.com/v1", apiKeyEnv: trimmed(a.keyEnv) ?? "OPENAI_API_KEY" };
     case "anthropic":
-      // byok for compile; no OpenAI-compatible endpoint, so the live REPL stays heuristic for this one.
-      return { provider: "byok", apiProvider: "anthropic", model: trimmed(a.model), apiKeyEnv: trimmed(a.keyEnv) ?? "ANTHROPIC_API_KEY" };
+      // byok drives compile (native forced-tool structured output); the endpoint is Anthropic's
+      // OpenAI-compatibility base, so the live REPL reasons with the same key/model too.
+      return { provider: "byok", apiProvider: "anthropic", model: trimmed(a.model), endpoint: "https://api.anthropic.com/v1", apiKeyEnv: trimmed(a.keyEnv) ?? "ANTHROPIC_API_KEY" };
+    case "huggingface":
+      // HuggingFace's Inference Providers router is OpenAI-compatible, so a plain local provider
+      // pointed at it serves both compile and the live REPL.
+      return { provider: "local", endpoint: "https://router.huggingface.co/v1", model: trimmed(a.model), apiKeyEnv: trimmed(a.keyEnv) ?? "HF_TOKEN" };
     case "remote":
       return { provider: "remote", apiBase: trimmed(a.apiBase) ?? "https://api.personaxis.com", ...(trimmed(a.model) ? { model: trimmed(a.model) } : {}) };
     case "agent":
@@ -128,11 +136,17 @@ export async function runModelSetup(
   out(chalk.dim("    [1] Local / OpenAI-compatible (Ollama, LM Studio, any OpenAI-compatible URL)"));
   out(chalk.dim("    [2] OpenAI (your OpenAI key)"));
   out(chalk.dim("    [3] Anthropic (your Anthropic key)"));
-  out(chalk.dim("    [4] Personaxis hosted (remote)"));
-  out(chalk.dim("    [5] Coding agent (no key; hands off to Claude Code / Codex)"));
+  out(chalk.dim("    [4] HuggingFace (your HF token)"));
+  out(chalk.dim("    [5] Personaxis hosted (remote)"));
+  out(chalk.dim("    [6] Coding agent (no key; hands off to Claude Code / Codex)"));
   const provRaw = await ask(rl, "  Choose", "1");
   const kind: ProviderKind =
-    provRaw === "2" ? "openai" : provRaw === "3" ? "anthropic" : provRaw === "4" ? "remote" : provRaw === "5" ? "agent" : "local";
+    provRaw === "2" ? "openai"
+      : provRaw === "3" ? "anthropic"
+      : provRaw === "4" ? "huggingface"
+      : provRaw === "5" ? "remote"
+      : provRaw === "6" ? "agent"
+      : "local";
 
   const answers: ProfileAnswers = { kind };
   let keyEnv: string | undefined;
@@ -155,6 +169,9 @@ export async function runModelSetup(
   } else if (kind === "anthropic") {
     answers.model = await ask(rl, "  Model name", "claude-sonnet-4-6");
     answers.keyEnv = keyEnv = await ask(rl, "  Env var holding your Anthropic key", "ANTHROPIC_API_KEY");
+  } else if (kind === "huggingface") {
+    answers.model = await ask(rl, "  Model id (e.g. meta-llama/Llama-3.1-8B-Instruct)", "meta-llama/Llama-3.1-8B-Instruct");
+    answers.keyEnv = keyEnv = await ask(rl, "  Env var holding your HF token", "HF_TOKEN");
   } else if (kind === "remote") {
     answers.apiBase = await ask(rl, "  Personaxis API base", "https://api.personaxis.com");
     answers.model = await ask(rl, "  Model (optional, blank for the server default)", "");
@@ -177,7 +194,7 @@ export async function runModelSetup(
   out(chalk.green(`  ✓ saved profile "${name}"`) + chalk.dim(`  (${profile.provider}, ${configPath(scope)})`));
   if (keyEnv) out(chalk.dim(`  ! put your key in the env var: export ${keyEnv}=...   (never stored in a file)`));
   if (answers.keyMode === "inline") out(chalk.dim("  ! inline key stored user-only (0600); prefer an env var next time."));
-  if (kind === "anthropic") out(chalk.dim("  note: byok-anthropic drives compile; the live REPL reasoning needs an OpenAI-compatible endpoint."));
+  if (kind === "remote") out(chalk.dim("  note: the Personaxis-hosted provider drives compile; live REPL reasoning needs an OpenAI-compatible endpoint."));
   return { name, keyEnv };
 }
 
