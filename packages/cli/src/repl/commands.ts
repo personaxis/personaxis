@@ -8,10 +8,8 @@
  */
 
 import chalk from "chalk";
-import * as readline from "node:readline/promises";
-import { stdin, stdout } from "node:process";
 import { relative, dirname, join } from "node:path";
-import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import {
   readState,
   extractEnvelopes,
@@ -63,19 +61,7 @@ import type { Ctx, CommandDef } from "./types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, readGoalText } from "./config.js";
 import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
 import { ensureCtxSession } from "./session.js";
-import { runConfigMenu } from "../config-wizard.js";
 import { maybeRecompile } from "./turn.js";
-
-/** Sub-persona slugs under `.personaxis/personas/` (for /config's per-persona assignment). */
-function personaSlugs(cwd: string): string[] {
-  const dir = join(cwd, ".personaxis", "personas");
-  if (!existsSync(dir)) return [];
-  try {
-    return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
-  } catch {
-    return [];
-  }
-}
 
 // ── Commands (single source for /help and the live `/` menu) ─────────────────
 export const COMMANDS: CommandDef[] = [
@@ -459,17 +445,10 @@ export const COMMANDS: CommandDef[] = [
     name: "config",
     desc: "configure the model interactively: profiles, default, per-persona (or show it in a pipe)",
     run: async (_a, ctx) => {
-      // On a TTY the app suspends and hands the raw terminal to the menu; in a pipe it degrades
-      // to the read-only view (no interaction possible).
+      // Launch the interactive menu as a subprocess on the raw TTY (same pattern as /proof, /create),
+      // so it never fights the app's own stdin. In a pipe it degrades to the read-only view.
       if (ctx.suspend) {
-        await ctx.suspend(async () => {
-          const rl = readline.createInterface({ input: stdin, output: stdout });
-          try {
-            await runConfigMenu(rl, { cwd: process.cwd(), personas: personaSlugs(process.cwd()) });
-          } finally {
-            rl.close();
-          }
-        });
+        await ctx.suspend(() => runCliInteractive("config", ""));
         ctx.out(chalk.dim("  config menu closed. /config to reopen, /model to see the active model."));
         return;
       }

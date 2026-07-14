@@ -1,6 +1,22 @@
 import { Command } from "commander";
+import * as readline from "node:readline/promises";
+import { stdin, stdout } from "node:process";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import chalk from "chalk";
 import { loadConfig, saveConfig, configPath, type PersonaxisConfig, type ConfigScope } from "../config.js";
+import { runConfigMenu } from "../config-wizard.js";
+
+/** Sub-persona slugs under `.personaxis/personas/` (for the interactive per-persona assignment). */
+function personaSlugs(cwd: string): string[] {
+  const dir = join(cwd, ".personaxis", "personas");
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
 
 const KNOWN_KEYS = [
   "provider",
@@ -182,4 +198,21 @@ export const configCommand = new Command("config")
   .addCommand(setCommand)
   .addCommand(getCommand)
   .addCommand(showCommand)
-  .addCommand(useCommand);
+  .addCommand(useCommand)
+  // Bare `personaxis config` (no subcommand): the interactive menu on a TTY, else the read-only show.
+  // The REPL's /config launches this as a subprocess so it never fights the app's stdin.
+  .action(async () => {
+    if (!stdin.isTTY) {
+      console.log(chalk.bold("project"), chalk.dim(configPath("project")));
+      console.log(JSON.stringify(redact(loadConfig("project")), null, 2));
+      console.log(chalk.bold("\nglobal"), chalk.dim(configPath("global")));
+      console.log(JSON.stringify(redact(loadConfig("global")), null, 2));
+      return;
+    }
+    const rl = readline.createInterface({ input: stdin, output: stdout });
+    try {
+      await runConfigMenu(rl, { cwd: process.cwd(), personas: personaSlugs(process.cwd()) });
+    } finally {
+      rl.close();
+    }
+  });
