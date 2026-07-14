@@ -165,9 +165,10 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     onExit: () => screen.stop(),
     onSubmit: async (line) => {
       if (line.startsWith("/")) {
-        // Separate a command + its output from the previous content so it doesn't blend in.
+        // A distinct command chip (blue), visibly different from a chat message (grey) and from
+        // the output below it, so the transcript reads as "you ran X → here is its result".
         screen.print("");
-        screen.print(chalk.dim(`  ${chalk.cyan(line)}`), "user");
+        screen.print(chalk.bgAnsi256(24).whiteBright(`  ⌘ ${line}  `), "user");
         const done = await runCommand(line, ctx);
         if (done) {
           screen.stop();

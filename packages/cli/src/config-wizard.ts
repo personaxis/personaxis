@@ -21,7 +21,7 @@ import { loadConfig, saveConfig, configPath, type ConfigScope, type PersonaxisCo
 // ── Pure builders (no IO, unit-tested) ───────────────────────────────────────
 
 /** What the user picks in the wizard; maps to a provider + its fields. */
-export type ProviderKind = "local" | "openai" | "anthropic" | "huggingface" | "remote" | "agent";
+export type ProviderKind = "local" | "openai" | "anthropic" | "huggingface" | "cohere" | "remote" | "agent";
 
 export interface ProfileAnswers {
   kind: ProviderKind;
@@ -53,6 +53,10 @@ export function buildProfileFromAnswers(a: ProfileAnswers): ModelProfile {
       // HuggingFace's Inference Providers router is OpenAI-compatible, so a plain local provider
       // pointed at it serves both compile and the live REPL.
       return { provider: "local", endpoint: "https://router.huggingface.co/v1", model: trimmed(a.model), apiKeyEnv: trimmed(a.keyEnv) ?? "HF_TOKEN" };
+    case "cohere":
+      // Cohere's compatibility API is OpenAI-compatible; a local provider pointed at it works for
+      // both compile and the live REPL.
+      return { provider: "local", endpoint: "https://api.cohere.ai/compatibility/v1", model: trimmed(a.model), apiKeyEnv: trimmed(a.keyEnv) ?? "COHERE_API_KEY" };
     case "remote":
       return { provider: "remote", apiBase: trimmed(a.apiBase) ?? "https://api.personaxis.com", ...(trimmed(a.model) ? { model: trimmed(a.model) } : {}) };
     case "agent":
@@ -137,15 +141,17 @@ export async function runModelSetup(
   out(chalk.dim("    [2] OpenAI (your OpenAI key)"));
   out(chalk.dim("    [3] Anthropic (your Anthropic key)"));
   out(chalk.dim("    [4] HuggingFace (your HF token)"));
-  out(chalk.dim("    [5] Personaxis hosted (remote)"));
-  out(chalk.dim("    [6] Coding agent (no key; hands off to Claude Code / Codex)"));
+  out(chalk.dim("    [5] Cohere (your Cohere key)"));
+  out(chalk.dim("    [6] Personaxis hosted (remote)"));
+  out(chalk.dim("    [7] Coding agent (no key; hands off to Claude Code / Codex)"));
   const provRaw = await ask(rl, "  Choose", "1");
   const kind: ProviderKind =
     provRaw === "2" ? "openai"
       : provRaw === "3" ? "anthropic"
       : provRaw === "4" ? "huggingface"
-      : provRaw === "5" ? "remote"
-      : provRaw === "6" ? "agent"
+      : provRaw === "5" ? "cohere"
+      : provRaw === "6" ? "remote"
+      : provRaw === "7" ? "agent"
       : "local";
 
   const answers: ProfileAnswers = { kind };
@@ -172,6 +178,9 @@ export async function runModelSetup(
   } else if (kind === "huggingface") {
     answers.model = await ask(rl, "  Model id (e.g. meta-llama/Llama-3.1-8B-Instruct)", "meta-llama/Llama-3.1-8B-Instruct");
     answers.keyEnv = keyEnv = await ask(rl, "  Env var holding your HF token", "HF_TOKEN");
+  } else if (kind === "cohere") {
+    answers.model = await ask(rl, "  Model name", "command-r-plus");
+    answers.keyEnv = keyEnv = await ask(rl, "  Env var holding your Cohere key", "COHERE_API_KEY");
   } else if (kind === "remote") {
     answers.apiBase = await ask(rl, "  Personaxis API base", "https://api.personaxis.com");
     answers.model = await ask(rl, "  Model (optional, blank for the server default)", "");

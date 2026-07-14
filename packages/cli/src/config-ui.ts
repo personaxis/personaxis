@@ -27,6 +27,7 @@ const PROVIDER_CARDS: Card[] = [
   { value: "openai", title: "OpenAI", desc: "Your OpenAI account. Uses OPENAI_API_KEY." },
   { value: "anthropic", title: "Anthropic", desc: "Your Claude account. Reasons live + compiles." },
   { value: "huggingface", title: "HuggingFace", desc: "Inference router. Uses HF_TOKEN." },
+  { value: "cohere", title: "Cohere", desc: "Cohere's compatibility API. Uses COHERE_API_KEY." },
   { value: "remote", title: "Personaxis hosted", desc: "Our managed models (paid)." },
   { value: "agent", title: "Coding agent", desc: "No key; hands prompts to Claude Code / Codex." },
 ];
@@ -55,22 +56,25 @@ export async function runModelSetupInk(scope: ConfigScope = "global"): Promise<{
   const answers: ProfileAnswers = { kind };
   let keyEnv: string | undefined;
   if (kind === "local") {
-    answers.endpoint = await promptText("Endpoint URL", "http://localhost:11434/v1");
+    answers.endpoint = await promptText("Endpoint URL (blank = the default shown, an Ollama server)", "http://localhost:11434/v1");
     answers.model = await promptText("Model name", "llama3.1");
-    const km = await selectCards("API key", [
-      { value: "none", title: "No key", desc: "a local server with no auth" },
-      { value: "env", title: "From an env var", desc: "recommended; the key never touches a file" },
-      { value: "inline", title: "Paste inline", desc: "stored user-only (0600)" },
+    const km = await selectCards("How should personaxis get the API key?", [
+      { value: "none", title: "No key", desc: "a local server with no auth (Ollama, LM Studio)" },
+      { value: "inline", title: "Paste it now", desc: "you paste the key; it is saved in your private ~/.personaxis/config.json (user-only)" },
+      { value: "env", title: "From an environment variable", desc: "you set e.g. COHERE_API_KEY in your shell; the key is never written to a file (best for repos, CI, prod)" },
     ]);
     if (km === "env") {
       answers.keyMode = "env";
-      answers.keyEnv = keyEnv = await promptText("Env var holding the key", "OPENAI_API_KEY");
+      answers.keyEnv = keyEnv = await promptText("Name of the env var that holds your key", "COHERE_API_KEY");
     } else if (km === "inline") {
       answers.keyMode = "inline";
-      answers.keyInline = await promptText("Paste the API key");
+      answers.keyInline = await promptText("Paste your API key");
     } else {
       answers.keyMode = "none";
     }
+  } else if (kind === "cohere") {
+    answers.model = await promptText("Model name", "command-r-plus");
+    answers.keyEnv = keyEnv = await promptText("Env var holding your Cohere key", "COHERE_API_KEY");
   } else if (kind === "openai") {
     answers.model = await promptText("Model name", "gpt-4o-mini");
     answers.keyEnv = keyEnv = await promptText("Env var holding your OpenAI key", "OPENAI_API_KEY");

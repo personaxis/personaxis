@@ -48,6 +48,11 @@ describe("buildProfileFromAnswers (all provider kinds)", () => {
     expect(p).toEqual({ provider: "local", endpoint: "https://router.huggingface.co/v1", model: "meta-llama/Llama-3.1-8B-Instruct", apiKeyEnv: "HF_TOKEN" });
   });
 
+  it("cohere → local provider pointed at Cohere's compatibility API", () => {
+    const p = buildProfileFromAnswers({ kind: "cohere", model: "command-r-plus" });
+    expect(p).toEqual({ provider: "local", endpoint: "https://api.cohere.ai/compatibility/v1", model: "command-r-plus", apiKeyEnv: "COHERE_API_KEY" });
+  });
+
   it("remote → provider remote + apiBase default", () => {
     const p = buildProfileFromAnswers({ kind: "remote" });
     expect(p).toEqual({ provider: "remote", apiBase: "https://api.personaxis.com" });
