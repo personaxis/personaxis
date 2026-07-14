@@ -101,5 +101,5 @@ export function firstRunModelHint(out: (s: string) => void): void {
   out(chalk.dim("    personaxis config set --global local.endpoint <openai-compatible-url>"));
   out(chalk.dim("    personaxis config set --global local.model <model-name>"));
   out(chalk.dim("    personaxis config set --global local.apiKeyEnv <ENV_VAR_WITH_YOUR_KEY>"));
-  out(chalk.dim("  …or in-session: /model set endpoint <url> · /model set model <name> · /model set key-env <ENV> global"));
+  out(chalk.dim("  …or in-session: /config (guided) · /model set endpoint <url> · /model set model <name> · /model set key-env <ENV>"));
 }

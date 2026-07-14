@@ -8,9 +8,15 @@ const KNOWN_KEYS = [
   "local.model",
   "local.apiKey",
   "local.apiKeyEnv",
+  "profiles.<name>.endpoint",
+  "profiles.<name>.model",
+  "profiles.<name>.apiKey",
+  "profiles.<name>.apiKeyEnv",
+  "defaultProfile",
   "personas.<slug>.endpoint",
   "personas.<slug>.model",
   "personas.<slug>.apiKeyEnv",
+  "personas.<slug>.profile",
   "byok.apiProvider",
   "byok.model",
   "remote.apiBase",
@@ -34,14 +40,27 @@ function setPath(config: PersonaxisConfig, key: string, value: string): void {
     config.local = { ...config.local, [field]: value };
     return;
   }
-  // personas.<slug>.<field>, per-persona model overrides.
+  if (key === "defaultProfile") {
+    config.defaultProfile = value;
+    return;
+  }
+  // profiles.<name>.<field>, a named library of reusable model settings.
+  if (section === "profiles") {
+    const [, name, pField] = key.split(".");
+    if (name && (pField === "endpoint" || pField === "model" || pField === "apiKey" || pField === "apiKeyEnv")) {
+      config.profiles = { ...config.profiles, [name]: { ...config.profiles?.[name], [pField]: value } };
+      return;
+    }
+    throw new Error(`Invalid profiles key "${key}". Use profiles.<name>.{endpoint|model|apiKey|apiKeyEnv}`);
+  }
+  // personas.<slug>.<field>, per-persona model overrides (a profile ref or inline fields).
   if (section === "personas") {
     const [, slug, pField] = key.split(".");
-    if (slug && (pField === "endpoint" || pField === "model" || pField === "apiKey" || pField === "apiKeyEnv")) {
+    if (slug && (pField === "endpoint" || pField === "model" || pField === "apiKey" || pField === "apiKeyEnv" || pField === "profile")) {
       config.personas = { ...config.personas, [slug]: { ...config.personas?.[slug], [pField]: value } };
       return;
     }
-    throw new Error(`Invalid personas key "${key}". Use personas.<slug>.{endpoint|model|apiKey|apiKeyEnv}`);
+    throw new Error(`Invalid personas key "${key}". Use personas.<slug>.{endpoint|model|apiKey|apiKeyEnv|profile}`);
   }
   if (section === "byok" && field === "apiProvider") {
     if (!(BYOK_API_PROVIDER_VALUES as readonly string[]).includes(value)) {
@@ -125,8 +144,32 @@ const showCommand = new Command("show")
     console.log(chalk.dim(`GLOBAL config (~/.personaxis, user-only 0600) is fine and reused across all projects.`));
   });
 
+const useCommand = new Command("use")
+  .description("Set a named profile as the default, or assign it to a persona")
+  .argument("<profile>", "Profile name (must exist under `profiles`)")
+  .option("--persona <slug>", "Assign to this persona instead of the scope default")
+  .option("-g, --global", "Write to the global config (~/.personaxis/config.json)", false)
+  .action((profile: string, opts: { persona?: string; global?: boolean }) => {
+    const scope: ConfigScope = opts.global ? "global" : "project";
+    const config = loadConfig(scope);
+    const known = config.profiles?.[profile] ?? loadConfig("global").profiles?.[profile];
+    if (!known) {
+      console.error(chalk.red("Error:"), `no profile "${profile}". Add it first: personaxis config set profiles.${profile}.endpoint <url> (and .model).`);
+      process.exit(1);
+    }
+    if (opts.persona) {
+      config.personas = { ...config.personas, [opts.persona]: { ...config.personas?.[opts.persona], profile } };
+    } else {
+      config.defaultProfile = profile;
+    }
+    saveConfig(config, scope);
+    const target = opts.persona ? `persona ${opts.persona}` : "default";
+    console.log(chalk.green("✓"), `${target} → ${profile}`, chalk.dim(`(${configPath(scope)})`));
+  });
+
 export const configCommand = new Command("config")
-  .description("Configure the provider used by compile/decompile (local | byok | agent | remote)")
+  .description("Configure the model + provider (profiles, default, per-persona; local | byok | agent | remote)")
   .addCommand(setCommand)
   .addCommand(getCommand)
-  .addCommand(showCommand);
+  .addCommand(showCommand)
+  .addCommand(useCommand);

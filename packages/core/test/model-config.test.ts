@@ -87,6 +87,44 @@ describe("resolveModel, API key resolution (never required in a file)", () => {
   });
 });
 
+describe("resolveModel, named profiles + references (additive over `local`)", () => {
+  it("uses a global defaultProfile as the default", () => {
+    writeGlobal({ profiles: { openai: { endpoint: "https://oai", model: "gpt-x" } }, defaultProfile: "openai" });
+    expect(resolveModel({ cwd: project })).toMatchObject({ endpoint: "https://oai", model: "gpt-x" });
+  });
+
+  it("an inline `local` still overrides the defaultProfile (back-compat)", () => {
+    writeGlobal({ profiles: { openai: { endpoint: "https://oai", model: "gpt-x" } }, defaultProfile: "openai", local: { model: "override" } });
+    expect(resolveModel({ cwd: project })).toMatchObject({ endpoint: "https://oai", model: "override" });
+  });
+
+  it("a persona references a profile by name; inline persona fields override it", () => {
+    writeGlobal({
+      profiles: { local: { endpoint: "http://localhost:11434/v1", model: "llama" }, big: { endpoint: "https://oai", model: "gpt-x" } },
+      defaultProfile: "local",
+      personas: { cmo: { profile: "big", model: "gpt-x-mini" } },
+    });
+    const personaPath = join(project, ".personaxis", "personas", "cmo", "personaxis.md");
+    // the default persona-less resolution uses the "local" profile
+    expect(resolveModel({ cwd: project })).toMatchObject({ endpoint: "http://localhost:11434/v1", model: "llama" });
+    // cmo uses the "big" profile's endpoint but its own inline model override
+    expect(resolveModel({ cwd: project, personaPath })).toMatchObject({ endpoint: "https://oai", model: "gpt-x-mini" });
+  });
+
+  it("a project profile overrides a global profile of the same name", () => {
+    writeGlobal({ profiles: { p1: { endpoint: "https://g", model: "g" } }, defaultProfile: "p1" });
+    writeProject({ profiles: { p1: { endpoint: "https://p", model: "p" } }, defaultProfile: "p1" });
+    expect(resolveModel({ cwd: project })).toMatchObject({ endpoint: "https://p", model: "p" });
+  });
+
+  it("a persona in the project can reference a profile defined globally", () => {
+    writeGlobal({ profiles: { big: { endpoint: "https://oai", model: "gpt-x" } } });
+    writeProject({ local: { endpoint: "https://p", model: "p" }, personas: { cmo: { profile: "big" } } });
+    const personaPath = join(project, ".personaxis", "personas", "cmo", "personaxis.md");
+    expect(resolveModel({ cwd: project, personaPath })).toMatchObject({ endpoint: "https://oai", model: "gpt-x" });
+  });
+});
+
 describe("slugFromPersonaPath", () => {
   it("extracts the last persona slug from a nested path", () => {
     expect(slugFromPersonaPath("/x/.personaxis/personas/cmo/personaxis.md")).toBe("cmo");

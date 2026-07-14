@@ -13,11 +13,12 @@ import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { join } from "node:path";
 import chalk from "chalk";
-import { readState } from "@personaxis/core";
+import { readState, resolveModel } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
 import { writeStarterPersona } from "../starter.js";
+import { runModelSetup } from "../config-wizard.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
 import { replyLine, fmtK, firstRunModelHint } from "./render.js";
@@ -52,6 +53,21 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     }
     personaPath = writeStarterPersona(process.cwd(), name);
     stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)}, ${chalk.bold(name)} is ready.\n`);
+  }
+
+  // First-run model setup: if no model resolves, offer an interactive setup (skippable).
+  if (stdin.isTTY && !resolveModel({ cwd: process.cwd(), personaPath })) {
+    const rl = readline.createInterface({ input: stdin, output: stdout });
+    try {
+      const yn = ((await rl.question(`\n  ${chalk.yellow("No model configured.")} Set one up now? ${chalk.dim("[Y/skip]")} `)) || "y").trim().toLowerCase();
+      if (yn === "y" || yn === "yes") {
+        await runModelSetup(rl, { scope: "global", out: (s) => stdout.write(s + "\n") });
+      } else {
+        stdout.write(chalk.dim("  Skipped, running offline (heuristic). Configure anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
+      }
+    } finally {
+      rl.close();
+    }
   }
 
   const meter = makeMeter();

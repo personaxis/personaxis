@@ -80,9 +80,10 @@ personaxis config set --global local.apiKeyEnv YOUR_API_KEY_ENV_VAR
 From inside the REPL:
 
 ```
+/config                             # guided menu: add/edit profiles, set default, assign to a persona
 /model                              # show the resolved model
-/model set endpoint <url>           # writes project config
-/model set model <name> global      # append `global` to write the global config
+/model set endpoint <url>           # writes the GLOBAL config (reused everywhere)
+/model set model <name> project     # append `project` to write THIS project's config instead
 /model set key-env <ENV_VAR>
 ```
 
@@ -92,6 +93,33 @@ Inspect and verify:
 personaxis config show     # prints project + global + the precedence rule
 personaxis config get local.model
 ```
+
+## Named profiles and the guided setup
+
+Instead of a single default, keep a **library of named profiles** (each an endpoint + model + key
+strategy) and point the default, or any persona, at one. Editing a profile updates every reference.
+
+The friendliest path is interactive:
+
+- **First run:** launching `personaxis` in a folder with no model offers a step-by-step setup
+  (local or cloud, endpoint, model, key), or `skip` (configure it later).
+- **Anytime:** `/config` in the REPL opens a menu to add/edit profiles, set the default, assign a
+  profile to a persona, or show the resolved config.
+
+The same is scriptable and CI-friendly:
+
+```bash
+personaxis config set profiles.local.endpoint http://localhost:11434/v1
+personaxis config set profiles.local.model    llama3.1
+personaxis config set profiles.big.endpoint   https://api.openai.com/v1
+personaxis config set profiles.big.model      gpt-4o-mini
+personaxis config set profiles.big.apiKeyEnv  OPENAI_API_KEY
+personaxis config use  local                  # make it the machine default
+personaxis config use  big --persona cmo      # assign a profile to one persona
+```
+
+A project profile of the same name overrides a global one. A config with only `local` (no profiles)
+resolves exactly as before, so profiles are additive.
 
 ## Per-persona / per-sub-persona models
 

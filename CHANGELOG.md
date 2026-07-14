@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Feat: interactive model configuration (profiles + first-run wizard + /config)
+- **Named model profiles.** `config.json` gains a `profiles` library (endpoint/model/key each), a
+  `defaultProfile`, and a per-persona `profile` reference. `resolveModel` resolves the references (a
+  project profile overrides a global one of the same name; editing a profile updates every
+  reference). A config with only `local` resolves unchanged, so the layer is additive.
+- **First-run wizard.** Launching the REPL in a folder with no model configured offers a
+  step-by-step setup (local or cloud, endpoint, model, key strategy), or `skip` with a pointer to
+  `/config` for later, instead of only printing a one-line hint.
+- **`/config` is now interactive** on a TTY: a menu to add/edit profiles, set the default, assign a
+  profile to a persona, or show the resolved config. In a pipe it degrades to the read-only view.
+- **CLI parity (scriptable):** `config set profiles.<name>.<field>`, `config set defaultProfile
+  <name>`, `config set personas.<slug>.profile <name>`, and `config use <profile> [--persona <slug>]`.
+- **Fixes** the `/model` help text: `<endpoint|model|key|key-env>` (was missing `key`) and `[project]`
+  (the optional scope; global is already the default), matching the actual behavior.
+
 ### Docs: install paths clarified (npx + Windows/PowerShell)
 - **README and getting-started** now present `npx personaxis` (run without installing) alongside
   `npm i -g personaxis` (install on PATH), and add a Windows/PowerShell note: the

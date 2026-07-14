@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "fs";
 import { dirname, resolve } from "path";
-import { globalConfigPath as coreGlobalConfigPath, projectConfigPath as coreProjectConfigPath } from "@personaxis/core";
+import { globalConfigPath as coreGlobalConfigPath, projectConfigPath as coreProjectConfigPath, type ModelSettings } from "@personaxis/core";
 import type { ProviderName } from "./providers/types.js";
 
 /** "project" → <cwd>/.personaxis/config.json · "global" → ~/.personaxis/config.json (PERSONAXIS_HOME). */
@@ -9,17 +9,13 @@ export type ConfigScope = "project" | "global";
 export interface PersonaxisConfig {
   /** Default provider for compile/decompile. Defaults to "agent" if unset. */
   provider?: ProviderName;
-  local?: {
-    /** OpenAI-compatible chat-completions endpoint, e.g. http://localhost:11434/v1 */
-    endpoint?: string;
-    model?: string;
-    /** Optional bearer token for an authenticated endpoint (dev only, the file must be gitignored). */
-    apiKey?: string;
-    /** Name of the env var holding the key (preferred, the key never touches a file). */
-    apiKeyEnv?: string;
-  };
-  /** Per-persona model overrides, keyed by slug. */
-  personas?: Record<string, { endpoint?: string; model?: string; apiKey?: string; apiKeyEnv?: string }>;
+  local?: ModelSettings;
+  /** A named library of reusable model settings, referenced by defaultProfile / personas[].profile. */
+  profiles?: Record<string, ModelSettings>;
+  /** Name of the profile used as the default (an inline `local` still overrides it). */
+  defaultProfile?: string;
+  /** Per-persona model overrides, keyed by slug: a `profile` reference and/or inline fields. */
+  personas?: Record<string, ModelSettings & { profile?: string }>;
   byok?: {
     /** Which API the key in ANTHROPIC_API_KEY / OPENAI_API_KEY belongs to. */
     apiProvider?: "anthropic" | "openai";

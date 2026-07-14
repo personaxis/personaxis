@@ -2,14 +2,19 @@
  * Model resolution (Fase 2), one config logic for dev AND prod, so nobody has to export env
  * vars before every launch.
  *
- * A model can be configured in four layers; higher layers override lower ones:
+ * A model can be configured in layers; higher layers override lower ones:
  *
- *   global.local            ~/.personaxis/config.json           (machine default; PERSONAXIS_HOME aware)
- *   project.local           <cwd>/.personaxis/config.json        (this project's default)
- *   global.personas[slug]   ~/.personaxis/config.json            (per-persona, machine-wide)
+ *   global.default          ~/.personaxis/config.json           (defaultProfile + local; PERSONAXIS_HOME aware)
+ *   project.default         <cwd>/.personaxis/config.json        (this project's defaultProfile + local)
+ *   global.personas[slug]   ~/.personaxis/config.json            (per-persona: a profile ref and/or inline)
  *   project.personas[slug]  <cwd>/.personaxis/config.json        (per-persona, this project)
  *   frontmatter.runtime     the persona's own personaxis.md      (the persona declares its model)
  *   ENV                     PERSONAXIS_ENDPOINT/MODEL/API_KEY     (top override, dev & prod secrets)
+ *
+ * `profiles` is a named library of reusable settings (endpoint/model/key); `defaultProfile` and a
+ * persona's `profile` field reference it by name. A profile edited once updates every reference.
+ * Project profiles override global profiles of the same name. A config with only `local` (no
+ * profiles) resolves exactly as before, so this layer is additive.
  *
  * SECRETS: the API key is NEVER required to live in a file. Preferred: name the env var holding it
  * with `apiKeyEnv` (e.g. "COHERE_API_KEY"); resolveModel reads that env var. Fallbacks: the
@@ -33,11 +38,21 @@ export interface ModelSettings {
   apiKeyEnv?: string;
 }
 
+/** Per-persona settings: an optional reference to a named `profile` plus inline overrides. */
+export interface PersonaSettings extends ModelSettings {
+  /** Name of a profile in `profiles`; its fields are the base, the inline fields above override it. */
+  profile?: string;
+}
+
 /** The slice of `config.json` this module reads. Other keys (provider/byok/remote) are ignored here. */
 export interface ModelConfigFile {
   local?: ModelSettings;
-  /** Per-persona overrides, keyed by slug. */
-  personas?: Record<string, ModelSettings>;
+  /** A named library of reusable model settings (endpoints/models/keys). */
+  profiles?: Record<string, ModelSettings>;
+  /** Name of the profile this scope uses as its default (an inline `local` still overrides it). */
+  defaultProfile?: string;
+  /** Per-persona overrides, keyed by slug: a `profile` reference and/or inline fields. */
+  personas?: Record<string, PersonaSettings>;
 }
 
 export interface ResolvedModel {
@@ -112,11 +127,23 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
   const slug = slugFromPersonaPath(opts.personaPath);
   const runtime = opts.frontmatter?.runtime as ModelSettings | undefined;
 
+  // The profile library is shared across scopes; a project profile overrides a global one by name.
+  const profiles = { ...global.profiles, ...project.profiles };
+  const byName = (name?: string): ModelSettings | undefined => (name ? profiles[name] : undefined);
+
+  // A scope's default = its named default profile as the base, with an explicit `local` on top.
+  const defaultLayer = (cfg: ModelConfigFile): ModelSettings => mergeSettings([byName(cfg.defaultProfile), cfg.local]);
+  // A persona layer = its referenced profile as the base, with the persona's inline fields on top.
+  const personaLayer = (cfg: ModelConfigFile): ModelSettings | undefined => {
+    const p = slug ? cfg.personas?.[slug] : undefined;
+    return p ? mergeSettings([byName(p.profile), p]) : undefined;
+  };
+
   const merged = mergeSettings([
-    global.local,
-    project.local,
-    slug ? global.personas?.[slug] : undefined,
-    slug ? project.personas?.[slug] : undefined,
+    defaultLayer(global),
+    defaultLayer(project),
+    personaLayer(global),
+    personaLayer(project),
     runtime,
     envSettings(),
   ]);

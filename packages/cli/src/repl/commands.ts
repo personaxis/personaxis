@@ -8,8 +8,10 @@
  */
 
 import chalk from "chalk";
+import * as readline from "node:readline/promises";
+import { stdin, stdout } from "node:process";
 import { relative, dirname, join } from "node:path";
-import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
 import {
   readState,
   extractEnvelopes,
@@ -61,7 +63,19 @@ import type { Ctx, CommandDef } from "./types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, readGoalText } from "./config.js";
 import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
 import { ensureCtxSession } from "./session.js";
+import { runConfigMenu } from "../config-wizard.js";
 import { maybeRecompile } from "./turn.js";
+
+/** Sub-persona slugs under `.personaxis/personas/` (for /config's per-persona assignment). */
+function personaSlugs(cwd: string): string[] {
+  const dir = join(cwd, ".personaxis", "personas");
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
 
 // ── Commands (single source for /help and the live `/` menu) ─────────────────
 export const COMMANDS: CommandDef[] = [
@@ -415,7 +429,7 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "model",
-    desc: "show the model, or set it: /model set <endpoint|model|key-env> <value> [global]",
+    desc: "show the model, or set it: /model set <endpoint|model|key|key-env> <value> [project]",
     run: (arg, ctx) => {
       const parts = arg.trim().split(/\s+/).filter(Boolean);
       if (parts[0] !== "set") {
@@ -443,9 +457,23 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "config",
-    desc: "show the resolved model config + where it lives (set with /model set)",
-    run: (_a, ctx) => {
-      ctx.out(chalk.bold("  Model config") + chalk.dim("  (env > project > global; per-persona via the spec's runtime block)"));
+    desc: "configure the model interactively: profiles, default, per-persona (or show it in a pipe)",
+    run: async (_a, ctx) => {
+      // On a TTY the app suspends and hands the raw terminal to the menu; in a pipe it degrades
+      // to the read-only view (no interaction possible).
+      if (ctx.suspend) {
+        await ctx.suspend(async () => {
+          const rl = readline.createInterface({ input: stdin, output: stdout });
+          try {
+            await runConfigMenu(rl, { cwd: process.cwd(), personas: personaSlugs(process.cwd()) });
+          } finally {
+            rl.close();
+          }
+        });
+        ctx.out(chalk.dim("  config menu closed. /config to reopen, /model to see the active model."));
+        return;
+      }
+      ctx.out(chalk.bold("  Model config") + chalk.dim("  (env > project > global; per-persona via a profile ref or the spec's runtime block)"));
       ctx.out(`  ${chalk.cyan("resolved")}  ${appraiserLabel(ctxModelArg(ctx))}`);
       ctx.out(chalk.dim(`  global   ~/.personaxis/config.json   ·   project   .personaxis/config.json`));
       ctx.out(chalk.dim(`  set from here: /model set <endpoint|model|key|key-env> <value> [project]`));
