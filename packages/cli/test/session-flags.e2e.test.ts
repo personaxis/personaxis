@@ -64,4 +64,22 @@ describe.runIf(built)("session flags + observability (V2-F3)", () => {
     // No model configured in the sandbox → the offline warning, not a crash.
     expect(out).toMatch(/offline|no model/i);
   });
+
+  it("/cost and /context report gracefully with no model", { timeout: 120_000 }, () => {
+    const cost = repl("/cost\n/exit\n");
+    expect(cost).toMatch(/no model turns|Session cost/i);
+    const context = repl("/context\n/exit\n");
+    expect(context).toMatch(/offline|Context window/i);
+  });
+
+  it("/help groups commands by category and filters by query", { timeout: 120_000 }, () => {
+    const all = repl("/help\n/exit\n");
+    expect(all).toContain("Session & context");
+    expect(all).toContain("Menus & config");
+    expect(all).toContain("/doctor");
+    const filtered = repl("/help drift\n/exit\n");
+    expect(filtered).toMatch(/matching "drift"/i);
+    expect(filtered).toContain("/drift");
+    expect(filtered).not.toContain("/doctor");
+  });
 });

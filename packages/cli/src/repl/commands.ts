@@ -71,7 +71,7 @@ import { maybeRecompile } from "./turn.js";
 
 // ── Commands (single source for /help and the live `/` menu) ─────────────────
 export const COMMANDS: CommandDef[] = [
-  { name: "help", desc: "show commands", run: (_a, ctx) => void ctx.out(helpText()) },
+  { name: "help", desc: "show commands by category; /help <query> to filter", run: (arg, ctx) => void ctx.out(helpText(arg)) },
   {
     name: "persona",
     desc: "identity, role, sub-personas, resources + sigil",
@@ -645,6 +645,47 @@ export const COMMANDS: CommandDef[] = [
     },
   },
   {
+    name: "cost",
+    desc: "session spend so far: turns, tokens, and estimated cost",
+    run: (_a, ctx) => {
+      const u = ctx.usage;
+      if (u.turns === 0) return void ctx.out(chalk.dim("  no model turns yet this session (offline turns cost nothing)."));
+      ctx.out(chalk.bold("  Session cost"));
+      ctx.out(`  ${chalk.cyan("turns")}    ${u.turns}  ${chalk.dim(`(${u.steps} agent step(s))`)}`);
+      ctx.out(`  ${chalk.cyan("tokens")}   ${u.tokens.toLocaleString()}`);
+      ctx.out(`  ${chalk.cyan("cost")}     $${u.costUsd.toFixed(4)}  ${chalk.dim(u.turns ? `· ~$${(u.costUsd / u.turns).toFixed(4)}/turn` : "")}`);
+      ctx.out(chalk.dim(`  elapsed ${ctx.meter.elapsedSeconds.toFixed(0)}s · pricing per the active model profile`));
+    },
+  },
+  {
+    name: "usage",
+    desc: "context window + cumulative session usage (alias-friendly view of /cost + /context)",
+    run: (_a, ctx) => {
+      const m = ctx.meter;
+      const u = ctx.usage;
+      ctx.out(chalk.bold("  Context window"));
+      ctx.out(m.limit ? `  ${fmtK(m.used)}/${fmtK(m.limit)}  ${Math.round(m.pct * 100)}%  ${bar(m.pct)}` : chalk.dim("  offline (no model configured)"));
+      ctx.out(chalk.bold("  Session"));
+      ctx.out(`  ${u.turns} turn(s) · ${u.tokens.toLocaleString()} tok · $${u.costUsd.toFixed(4)} · ${m.elapsedSeconds.toFixed(0)}s`);
+    },
+  },
+  {
+    name: "context",
+    desc: "context-window usage: how full the model's window is, and when /compact will help",
+    run: (_a, ctx) => {
+      const m = ctx.meter;
+      if (!m.limit) return void ctx.out(chalk.dim("  offline (no model), the context window applies once a model is configured."));
+      const pct = Math.round(m.pct * 100);
+      ctx.out(chalk.bold("  Context window") + chalk.dim(`  (${ctx.conversation.length} message(s) in play)`));
+      ctx.out(`  ${bar(m.pct)}  ${fmtK(m.used)}/${fmtK(m.limit)}  ${pct}%`);
+      ctx.out(
+        m.pct >= 0.8
+          ? chalk.yellow("  ⚠ near the limit, /compact summarizes older turns to free room")
+          : chalk.dim("  headroom is fine; /compact any time to summarize older turns"),
+      );
+    },
+  },
+  {
     name: "status",
     desc: "a compact snapshot: model, persona, posture, drift, memory loaded, session, context usage",
     run: (_a, ctx) => {
@@ -759,13 +800,47 @@ export function listCommands(): SlashItem[] {
   return COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
 }
 
-function helpText(): string {
-  const lines = [chalk.bold("Commands")];
-  for (const c of COMMANDS) {
-    if (c.name === "quit") continue;
-    lines.push(`  ${chalk.cyan(`/${c.name}`).padEnd(22)} ${chalk.dim(c.desc)}`);
+/** A tiny 12-cell meter bar for /context and /usage. */
+function bar(pct: number): string {
+  const w = 16;
+  const filled = Math.round(Math.max(0, Math.min(1, pct)) * w);
+  const color = pct >= 0.8 ? chalk.yellow : chalk.cyan;
+  return color("▰".repeat(filled)) + chalk.dim("▱".repeat(w - filled));
+}
+
+/** /help categories: each command's name → its group. Anything unlisted falls in "More". */
+const HELP_GROUPS: Array<{ title: string; names: string[] }> = [
+  { title: "Session & context", names: ["sessions", "resume", "compact", "context", "usage", "cost", "status", "doctor"] },
+  { title: "Identity & evolution", names: ["persona", "state", "drift", "replay", "arbitrate", "improve", "review", "compile", "audit", "memory"] },
+  { title: "Menus & config", names: ["menu", "config", "model", "dash", "proof"] },
+  { title: "Build & extend", names: ["create", "init", "validate", "lint", "hooks", "serve", "watch"] },
+  { title: "Multi-persona", names: ["overseer", "goal", "loop", "mode"] },
+];
+
+/** Categorized help; `/help <query>` filters by name/description substring. */
+function helpText(query = ""): string {
+  const q = query.trim().toLowerCase();
+  const visible = COMMANDS.filter((c) => c.name !== "quit" && (!q || c.name.includes(q) || c.desc.toLowerCase().includes(q)));
+  if (q && !visible.length) return chalk.dim(`  no command matches "${q}".`);
+  const shown = new Set(visible.map((c) => c.name));
+  const row = (c: CommandDef): string => `  ${chalk.cyan(`/${c.name}`).padEnd(22)} ${chalk.dim(c.desc)}`;
+  const lines = [chalk.bold(q ? `Commands matching "${q}"` : "Commands")];
+  const placed = new Set<string>();
+  for (const g of HELP_GROUPS) {
+    const rows = g.names.filter((n) => shown.has(n)).map((n) => COMMANDS.find((c) => c.name === n)!);
+    if (!rows.length) continue;
+    lines.push("", chalk.bold.dim(`  ${g.title}`));
+    for (const c of rows) {
+      lines.push(row(c));
+      placed.add(c.name);
+    }
   }
-  lines.push("", chalk.dim("Type without a leading / to talk, natural language both converses AND uses tools (one governed agent loop)."));
+  const rest = visible.filter((c) => !placed.has(c.name));
+  if (rest.length) {
+    lines.push("", chalk.bold.dim("  More"));
+    for (const c of rest) lines.push(row(c));
+  }
+  if (!q) lines.push("", chalk.dim("Type without a leading / to talk, natural language both converses AND uses tools (one governed agent loop)."), chalk.dim("Ctrl+K opens the Command Center · /help <query> to filter."));
   return lines.join("\n");
 }
 

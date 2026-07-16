@@ -57,6 +57,8 @@ export interface Ctx {
   sessionClosed?: boolean;
   /** Session-level context-window meter (persists across turns). */
   meter: ContextMeter;
+  /** Cumulative token/cost accounting for this session (F3.D16: /cost, /usage). */
+  usage: { turns: number; tokens: number; costUsd: number; steps: number };
   /** Update the spinner phase label (Screen mode only). */
   phase?: (label: string) => void;
   /** A one-shot environment note (e.g. "sandbox posture changed") to prepend to the NEXT

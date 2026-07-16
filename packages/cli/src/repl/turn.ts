@@ -104,6 +104,11 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const result = await agent.run(taskLine);
   ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
   ctx.out(replyLine(ctx, result.summary || "…"), "persona");
+  // Cumulative session accounting (F3.D16: /cost, /usage).
+  ctx.usage.turns += 1;
+  ctx.usage.tokens += result.budget.tokens;
+  ctx.usage.costUsd += result.budget.costUsd;
+  ctx.usage.steps += result.budget.steps;
   await recordTurn(ctx, line, result.summary || "…");
   // Only surface the budget line when something noteworthy happened (a multi-step
   // task or an early stop), not on every one-shot chat reply.

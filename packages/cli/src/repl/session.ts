@@ -101,6 +101,7 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
     sessionStarted: false,
     sessionNamed: false,
     meter,
+    usage: { turns: 0, tokens: 0, costUsd: 0, steps: 0 },
     replyColor,
   };
 }

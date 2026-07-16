@@ -15,6 +15,7 @@ roadmap (`plan/IMPLEMENTATION_CHECKLIST.md`, section V2-F3).
 | `--continue` / `--resume [id]` startup flags | done | `packages/cli/src/index.ts`, `repl/session.ts` (`resumeSessionInto`) |
 | `/compact` (summarize older turns, persisted) | done | `repl/commands.ts`, `core/src/context.ts` |
 | `/status` (model · posture · drift · memory · session · context) | done | `repl/commands.ts` |
+| `/context` (window usage + compact hint) | done | `repl/commands.ts` |
 | `@file` mentions with fuzzy completion | planned | |
 | Headless `-p` with `--output-format json` | partial (line mode exists) | `repl/index.ts` |
 | Input queue while responding · Esc to interrupt | planned | |
@@ -43,9 +44,10 @@ roadmap (`plan/IMPLEMENTATION_CHECKLIST.md`, section V2-F3).
 
 | Capability | Status | Where |
 |---|---|---|
-| `/context` (usage by category) | partial (status shows totals) | |
+| `/context` (window usage + compact hint) | done | `repl/commands.ts` |
 | `/doctor` (config · provider ping · persona · memory chain · version) | done | `repl/commands.ts` |
-| `/cost` / `/usage` (per-session tokens + cost) | planned | (meter tracks tokens today) |
+| `/cost` / `/usage` (per-session tokens + cost) | done | `repl/commands.ts`, `repl/turn.ts` (cumulative accounting) |
+| `/help` by category with `/help <query>` filter | done | `repl/commands.ts` |
 | `/rewind` (per-turn checkpoint restore) | planned | (mutation_log is the basis) |
 | Configurable keybindings / statusline | planned | |
 

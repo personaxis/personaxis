@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Feat: /cost, /usage, /context, and categorized /help (V2-F3, second batch)
+- **`/cost` + `/usage`**: cumulative per-session accounting (turns, agent steps, tokens, estimated
+  cost, elapsed), accumulated on the ctx after every model turn from the agent's budget report.
+- **`/context`**: a context-window meter with a fill bar and a hint for when `/compact` will help.
+- **`/help` is categorized** (Session & context · Identity & evolution · Menus & config · Build &
+  extend · Multi-persona · More) and takes a query: `/help drift` filters by name/description.
+
 ### Feat: session continuity flags + /status + /doctor (V2-F3, first batch)
 - **`personaxis --continue` / `--resume [id]`**: rehydrate a saved conversation before the REPL
   starts (the flag form of the in-app `/resume`), sharing one `resumeSessionInto` helper.
