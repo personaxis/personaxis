@@ -27,6 +27,7 @@ import { replyLine, fmtK, firstRunModelHint } from "./render.js";
 import { makeCtx, closeSession, resumeSessionInto } from "./session.js";
 import { dispatchTurn, buildRoster } from "./turn.js";
 import { COMMANDS, listCommands, runCommand } from "./commands.js";
+import { loadCustomCommands } from "./custom-commands.js";
 
 // Re-exported for the REPL's public surface (tests + the CLI entry import these). The whole
 // REPL was split into modules (F3.6): types, config, render, daemons, session, turn, commands.
@@ -154,7 +155,11 @@ async function runLineMode(ctx: Ctx): Promise<void> {
 
 // ── TTY: minimalist interactive REPL in the NORMAL buffer ────────────────────
 async function runScreenMode(ctx: Ctx): Promise<void> {
-  const commands: SlashItem[] = COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
+  const commands: SlashItem[] = [
+    ...COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc })),
+    // User-defined commands (.personaxis/commands/*.md) show in the palette too.
+    ...loadCustomCommands(ctx.handle.personaPath).map((c) => ({ name: c.name, desc: `${c.description} (custom)` })),
+  ];
   let screen: InkScreen;
   let lastMs = 0;
 

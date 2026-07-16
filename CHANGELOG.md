@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Feat: custom slash commands (V2-F3.C12)
+- A persona can ship reusable prompt templates as `.personaxis/commands/<name>.md` (optional
+  frontmatter `description` + `argument-hint`, a markdown body). Typing `/<name> args` expands the
+  body (`$ARGUMENTS`, `$1`..`$9`, or appends the args) and runs it as a turn to the current persona.
+  Discovered fresh each turn (edit a file, it takes effect live), listed in `/help` and the `/`
+  palette, project `.personaxis/commands/` and the persona's own folder both contribute.
+
 ### Feat: /cost, /usage, /context, and categorized /help (V2-F3, second batch)
 - **`/cost` + `/usage`**: cumulative per-session accounting (turns, agent steps, tokens, estimated
   cost, elapsed), accumulated on the ctx after every model turn from the agent's budget report.

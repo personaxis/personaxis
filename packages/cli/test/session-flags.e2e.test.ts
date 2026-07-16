@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,5 +81,21 @@ describe.runIf(built)("session flags + observability (V2-F3)", () => {
     expect(filtered).toMatch(/matching "drift"/i);
     expect(filtered).toContain("/drift");
     expect(filtered).not.toContain("/doctor");
+  });
+
+  it("custom slash commands are listed in /help and run as a turn", { timeout: 120_000 }, () => {
+    // The starter persona already exists from the earlier turns; drop a command file.
+    const cmdDir = join(cwd, ".personaxis", "commands");
+    mkdirSync(cmdDir, { recursive: true });
+    writeFileSync(join(cmdDir, "standup.md"), "---\ndescription: Daily standup\n---\nGive me a standup summary of: $ARGUMENTS");
+
+    const help = repl("/help\n/exit\n");
+    expect(help).toContain("Custom commands");
+    expect(help).toContain("/standup");
+    expect(help).toContain("Daily standup");
+
+    // Running it dispatches a turn (offline responder acknowledges), no crash.
+    const run = repl("/standup the deploy pipeline\n/exit\n");
+    expect(run).toMatch(/custom.*Daily standup/i);
   });
 });

@@ -67,11 +67,25 @@ import { fmtK } from "./render.js";
 import { version } from "../generated/assets.js";
 import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
 import { ensureCtxSession, resumeSessionInto } from "./session.js";
-import { maybeRecompile } from "./turn.js";
+import { maybeRecompile, handleTurn } from "./turn.js";
+import { loadCustomCommands, findCustomCommand, expandCommand } from "./custom-commands.js";
 
 // ── Commands (single source for /help and the live `/` menu) ─────────────────
 export const COMMANDS: CommandDef[] = [
-  { name: "help", desc: "show commands by category; /help <query> to filter", run: (arg, ctx) => void ctx.out(helpText(arg)) },
+  {
+    name: "help",
+    desc: "show commands by category; /help <query> to filter",
+    run: (arg, ctx) => {
+      ctx.out(helpText(arg));
+      const custom = loadCustomCommands(ctx.handle.personaPath);
+      const q = arg.trim().toLowerCase();
+      const shown = q ? custom.filter((c) => c.name.includes(q) || c.description.toLowerCase().includes(q)) : custom;
+      if (shown.length) {
+        ctx.out("\n" + chalk.bold.dim("  Custom commands") + chalk.dim("  (.personaxis/commands/)"));
+        for (const c of shown) ctx.out(`  ${chalk.cyan(`/${c.name}`).padEnd(22)} ${chalk.dim(c.description)}${c.argumentHint ? chalk.dim(`  ${c.argumentHint}`) : ""}`);
+      }
+    },
+  },
   {
     name: "persona",
     desc: "identity, role, sub-personas, resources + sigil",
@@ -854,6 +868,15 @@ export async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   const arg = line.slice(1 + name.length).trim();
   const cmd = COMMANDS.find((c) => c.name === name);
   if (cmd) return (await cmd.run(arg, ctx)) === true;
+
+  // A user-defined custom command (.personaxis/commands/<name>.md): expand its
+  // template with the args and run it as a turn to the current persona (F3.C12).
+  const custom = findCustomCommand(ctx.handle.personaPath, name);
+  if (custom) {
+    ctx.out(chalk.dim(`  /${name} (custom): ${custom.description}`));
+    await handleTurn(expandCommand(custom, arg), ctx);
+    return false;
+  }
 
   // Not a native `/command`, fall through to the CLI so EVERY subcommand is reachable from the app
   // (export, decompile, diff, spec, orchestrate, team, skills, scan, personas, migrate, push/pull, …).

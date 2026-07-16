@@ -36,7 +36,7 @@ roadmap (`plan/IMPLEMENTATION_CHECKLIST.md`, section V2-F3).
 | Capability | Status | Where |
 |---|---|---|
 | Skills (`extensions.skills`, materialized on compile) | done | `cli/src/targets/skills.ts` |
-| Custom slash commands (`.personaxis/commands/*.md`) | planned | |
+| Custom slash commands (`.personaxis/commands/*.md`) | done | `cli/src/repl/custom-commands.ts` |
 | User lifecycle hooks (session-start/pre-tool/post-tool) | partial (host hooks exist) | `core/src/hooks.ts` |
 | Sub-persona delegation with a budget | partial (@mention routing) | `repl/turn.ts` |
 
