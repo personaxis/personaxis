@@ -47,7 +47,7 @@ import {
 import { sigilLines, envelopeBars } from "@personaxis/tui/visual";
 import { renderFrame } from "@personaxis/tui";
 import type { SlashItem } from "@personaxis/tui/screen";
-import { isSubagentPath, slugAddressFromPath, loadPersonaFile } from "../load.js";
+import { isSubagentPath, slugAddressFromPath, loadPersonaFile, compiledPathFor } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/improve.js";
 import { runCompile } from "../commands/compile.js";
 import { setModelSetting } from "../config.js";
@@ -335,14 +335,39 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "compile",
-    desc: "recompile PERSONA.md from the (evolved) spec, explicit, may take a moment",
+    desc: "compile PERSONA.md from the (evolved) spec; the first compile works without a model",
     run: async (_a, ctx) => {
-      if (!readRecompilePending(ctx.handle.personaPath).pending) {
-        return void ctx.out(chalk.dim("  PERSONA.md is already up to date."));
+      const compiledPath = compiledPathFor(ctx.handle.personaPath);
+      const firstCompile = !existsSync(compiledPath);
+      if (!firstCompile && !readRecompilePending(ctx.handle.personaPath).pending) {
+        return void ctx.out(chalk.dim(`  PERSONA.md is already up to date: ${compiledPath}`));
       }
-      if (!llmConfig(ctxModelArg(ctx))) return void ctx.out(chalk.dim("  needs a model, configure with /model or `personaxis config set --global local.endpoint/model`."));
-      ctx.out(chalk.dim("  recompiling PERSONA.md from the evolved spec…"));
-      await maybeRecompile(ctx);
+      const llm = llmConfig(ctxModelArg(ctx));
+      ctx.out(
+        chalk.dim(
+          firstCompile
+            ? `  compiling PERSONA.md${llm ? "" : " (deterministic assembler, no model configured)"}…`
+            : "  recompiling PERSONA.md from the evolved spec…",
+        ),
+      );
+      const address = slugAddressFromPath(ctx.handle.personaPath);
+      try {
+        // Without a model, skip the polish stage: the stage-1 assembler still produces
+        // the full, correct document (compile NEVER silently no-ops).
+        await runCompile({
+          ...(address ? { slug: address } : { root: true }),
+          ...(llm ? { provider: "local" as const } : { noPolish: true }),
+        });
+      } catch (e) {
+        return void ctx.out(chalk.red(`  ✗ compile failed: ${(e as Error).message}`));
+      }
+      // Never report success on faith: verify the artifact exists where it must.
+      if (existsSync(compiledPath)) {
+        ctx.out(chalk.green("  ✓ ") + `PERSONA.md written: ${compiledPath}`);
+        ctx.personaDoc = readFileSync(compiledPath, "utf-8"); // the live identity follows the doc
+      } else {
+        ctx.out(chalk.red(`  ✗ compile finished but nothing exists at ${compiledPath}, this is a bug; run \`personaxis compile\` for details.`));
+      }
     },
   },
   {

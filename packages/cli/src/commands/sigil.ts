@@ -8,17 +8,17 @@
 
 import { Command } from "commander";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import chalk from "chalk";
 import { loadPersona, ensureState, extractEnvelopes, personaTheme, displayName } from "@personaxis/core";
 import { sigilLines, envelopeBars, auraBar } from "@personaxis/tui/visual";
+import { resolvePersonaOption } from "../load.js";
 
 export const sigilCommand = new Command("sigil")
   .description("Render a persona's deterministic, state-aware ASCII sigil + envelope panel.")
   .option("-p, --persona <path>", "Path to personaxis.md / PERSONA.md", ".personaxis/personaxis.md")
   .option("--frames <n>", "Number of breathing frames to print", "1")
   .action((opts: { persona: string; frames: string }) => {
-    const path = resolve(opts.persona);
+    const path = resolvePersonaOption(opts.persona);
     if (!existsSync(path)) {
       console.error(chalk.red("Error:"), `persona not found at ${path}`);
       process.exit(1);

@@ -30,7 +30,7 @@ import {
   readState,
   type ContextMeter,
 } from "@personaxis/core";
-import { isSubagentPath, slugAddressFromPath } from "../load.js";
+import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
 import type { Ctx } from "./types.js";
 import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "./config.js";
 
@@ -44,9 +44,7 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
   const handle = loadPersona(personaPath);
   ensureState(handle);
   const isSub = isSubagentPath(personaPath);
-  const compiled = isSub
-    ? join(dirname(personaPath), "PERSONA.md")
-    : resolve(dirname(dirname(personaPath)), "PERSONA.md");
+  const compiled = compiledPathFor(personaPath);
   const personaDoc = existsSync(compiled) ? readFileSync(compiled, "utf-8") : handle.body;
   const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
   const loop = new LivingLoop(personaPath, {
@@ -55,7 +53,9 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
     // assembler rewrites the compiled doc deterministically (band-selected
     // expression from fresh state; F3.1's `assemble` seam, finally wired).
     recompile: makeRecompileHook({
-      compiledPath: existsSync(compiled) ? compiled : undefined,
+      // Always pass the canonical path: the hook itself no-ops while the file does not
+      // exist, and starts keeping it fresh the moment the first /compile creates it.
+      compiledPath: compiled,
       assemble: (h) =>
         assemblePersonaDoc({
           persona: h.frontmatter as Record<string, unknown>,

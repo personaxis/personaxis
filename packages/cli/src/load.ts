@@ -1,8 +1,32 @@
 import { readFileSync, existsSync } from "fs";
-import { resolve, relative, dirname, basename } from "path";
+import { resolve, relative, dirname, basename, join } from "path";
+import { homedir } from "os";
 import matter from "gray-matter";
 
 const PERSONAXIS_DIR = ".personaxis";
+
+/** Case-insensitive on Windows (drive letters and user dirs vary in case). */
+function sameDir(a: string, b: string): boolean {
+  const ra = resolve(a);
+  const rb = resolve(b);
+  return process.platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+}
+
+/**
+ * Walk up from `startDir` looking for `<dir>/.personaxis/personaxis.md` (like git
+ * resolves its repo root). Stops at the filesystem root. Returns the spec path or
+ * undefined. SPEC assumption (documented): the nearest ancestor wins.
+ */
+function findRootSpecUpwards(startDir: string): string | undefined {
+  let dir = resolve(startDir);
+  for (;;) {
+    const candidate = join(dir, PERSONAXIS_DIR, "personaxis.md");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
 
 export interface PersonaMetadata {
   name?: string;
@@ -96,11 +120,49 @@ export function resolvePersonaSourcePath(target?: string): string {
   ].find((p) => existsSync(p));
   if (legacy) return legacy;
 
+  // Nothing at the cwd: walk up ancestors (like git), so a persona initialized at the
+  // repo root (or the user's home) is found from any subdirectory.
+  const inherited = findRootSpecUpwards(dirname(process.cwd()));
+  if (inherited) return inherited;
+
   throw new Error(
     `No personaxis.md found. Expected:\n  ${rootSpec}\n` +
+      `(also searched every ancestor directory of ${process.cwd()})\n` +
       `If this project uses the legacy v0.6 layout (root PERSONA.md with 10-layer frontmatter), ` +
       `run "personaxis migrate 0.6-to-0.7".`
   );
+}
+
+/**
+ * Canonical location of the COMPILED document for a given quantitative spec:
+ *   sub-persona -> `.personaxis/personas/<slug>/PERSONA.md` (inside its folder)
+ *   root persona -> `<repo>/PERSONA.md` (one level ABOVE `.personaxis/`)
+ *   root persona in the user's HOME -> `~/.personaxis/PERSONA.md`
+ * The HOME exception is a documented assumption (SPEC is silent): the home directory is
+ * not a project root, so a loose `~/PERSONA.md` would be litter the user never finds.
+ * Single owner of this rule; compile (write) and the REPL (read) both use it.
+ */
+/**
+ * Resolve a `-p/--persona` OPTION with a cwd-literal default: an explicit path wins
+ * untouched; when the caller left the default and it does not exist at the cwd, fall
+ * back to the walked-up root spec (same discovery `personaxis` itself uses).
+ */
+export function resolvePersonaOption(optPath: string, def = ".personaxis/personaxis.md"): string {
+  const resolved = resolve(optPath);
+  if (existsSync(resolved) || optPath !== def) return resolved;
+  try {
+    return resolvePersonaSourcePath();
+  } catch {
+    return resolved; // let the caller report "not found" at the literal location
+  }
+}
+
+export function compiledPathFor(personaPath: string): string {
+  const baseDir = dirname(personaPath);
+  if (isSubagentPath(personaPath)) return join(baseDir, "PERSONA.md");
+  const parent = dirname(baseDir);
+  if (sameDir(parent, homedir())) return join(baseDir, "PERSONA.md");
+  return join(parent, "PERSONA.md");
 }
 
 /** True if `filePath` belongs to a subagent persona under `.personaxis/personas/<slug>/`. */

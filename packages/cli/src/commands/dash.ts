@@ -8,7 +8,7 @@
  */
 
 import { Command } from "commander";
-import { resolve } from "node:path";
+import { resolvePersonaOption } from "../load.js";
 
 export const dashCommand = new Command("dash")
   .description("Live ASCII dashboard: sigil + envelopes + memory-chain, refreshed from state.json each frame.")
@@ -21,7 +21,7 @@ export const dashCommand = new Command("dash")
     // at the CLI entry (PB startup-budget review, FASE 7).
     const { runDashboard } = await import("@personaxis/tui");
     await runDashboard({
-      persona: resolve(opts.persona),
+      persona: resolvePersonaOption(opts.persona),
       once: Boolean(opts.once),
       frames: opts.frames,
       interval: opts.interval,

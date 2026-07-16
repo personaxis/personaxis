@@ -8,6 +8,7 @@
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { markRecompilePending } from "@personaxis/core";
 import { templates } from "./generated/assets.js";
 
 export function slugify(name: string): string {
@@ -33,5 +34,8 @@ export function writeStarterPersona(baseDir: string, name: string, subSlug?: str
     .replace(/__NAME__/g, name)
     .replace(/__DATE__/g, new Date().toISOString().slice(0, 10));
   writeFileSync(path, content, "utf-8");
+  // A fresh spec has no compiled document yet: say so honestly, so /compile and
+  // `compile --if-pending` treat "never compiled" as work to do, not as up-to-date.
+  markRecompilePending(path, "initial compile pending");
   return path;
 }

@@ -3,6 +3,7 @@ import { existsSync, writeFileSync, mkdirSync } from "fs";
 import { resolve, sep } from "path";
 import chalk from "chalk";
 import { input, select, confirm } from "@inquirer/prompts";
+import { markRecompilePending } from "@personaxis/core";
 
 const TEMPLATE_ROLES = [
   "marketing-guru",
@@ -1230,6 +1231,7 @@ export const initCommand = new Command("init")
       writeFileSync(outPath, buildProjectBaseline(projectName, projectSlug), "utf-8");
       const baselinePolicyPath = resolve(personaxisDir, "policy.yaml");
       writeFileSync(baselinePolicyPath, buildPolicyYaml(`${projectSlug}-baseline`), "utf-8");
+      markRecompilePending(outPath, "initial compile pending");
 
       console.log("");
       console.log(chalk.green("✓"), chalk.bold(".personaxis/personaxis.md + policy.yaml created"), chalk.dim("(project baseline, spec_version 1.0.0)"));
@@ -1254,6 +1256,7 @@ export const initCommand = new Command("init")
       mkdirSync(dir, { recursive: true });
       writeFileSync(outPath, buildUserPersonaTemplate(displayName, slug), "utf-8");
       writeFileSync(resolve(dir, "policy.yaml"), buildPolicyYaml(slug, false), "utf-8");
+      markRecompilePending(outPath, "initial compile pending");
 
       console.log("");
       console.log(chalk.green("✓"), chalk.bold(displayName), chalk.dim(`→ .personaxis/user-personas/${slug}/{personaxis.md, policy.yaml}`));
@@ -1313,6 +1316,7 @@ export const initCommand = new Command("init")
       : buildCustomAgentTemplate(displayName, metaSlug, customInputs?.role ?? "", customInputs?.purpose ?? "", customInputs?.tone ?? "Direct", customInputs?.mission ?? "");
     writeFileSync(outPath, content, "utf-8");
     writeFileSync(resolve(dir, "policy.yaml"), buildPolicyYaml(metaSlug), "utf-8");
+    markRecompilePending(outPath, "initial compile pending");
 
     const isFilled = template === "marketing-guru";
     console.log("");

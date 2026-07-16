@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname, relative, join } from "path";
 import chalk from "chalk";
-import { loadPersonaFile, resolvePersonaSourcePath } from "../load.js";
+import { loadPersonaFile, resolvePersonaSourcePath, compiledPathFor } from "../load.js";
 import { validatePersona } from "../schema.js";
 import { injectBaselineIntoClaude } from "../targets/claude-code.js";
 import { injectBaselineIntoAgents } from "../targets/codex.js";
@@ -199,17 +199,18 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   const stateJson = readSibling(baseDir, "state.json");
   const resourceManifest = buildResourceManifest(baseDir);
 
-  // Canonical compiled-document location:
+  // Canonical compiled-document location (single owner: compiledPathFor in load.ts):
   //   root persona  -> <repo>/PERSONA.md           (one level ABOVE .personaxis/)
-  //   sub-persona   -> .personaxis/personas/<slug>/persona.md  (INSIDE its own folder)
+  //   root in HOME  -> ~/.personaxis/PERSONA.md    (the home dir is not a project root)
+  //   sub-persona   -> .personaxis/personas/<slug>/PERSONA.md  (INSIDE its own folder)
   // This mirrors the resource layout (a sub's files live in its folder) and lets the
   // structure recurse (a sub can itself have .personaxis/personas/<sub2>/).
-  const canonicalOutPath = isSubagent ? join(baseDir, "PERSONA.md") : resolve(baseDir, "..", "PERSONA.md");
+  const canonicalOutPath = compiledPathFor(sourcePath);
   const canonicalRel = relative(process.cwd(), canonicalOutPath).replace(/\\/g, "/");
 
   const target: CompileTargetInfo = isSubagent
     ? { label: `sub-persona "${slug}" (.personaxis/personas/${slug}/PERSONA.md)`, outputPath: canonicalRel, isSubagent: true, slug }
-    : { label: "root persona (repo-root PERSONA.md)", outputPath: canonicalRel, isSubagent: false };
+    : { label: `root persona (${canonicalRel || "PERSONA.md"})`, outputPath: canonicalRel, isSubagent: false };
 
   // Fold APPLIED governed self-edits so a recompile reflects what the persona evolved into.
   const appliedOverlay = activeOverlay(sourcePath);
@@ -320,8 +321,10 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   }
 
   // Root baseline injection (@PERSONA.md into CLAUDE.md/AGENTS.md) only makes sense for the hosts that
-  // read those files. openclaw/Hermes auto-load SOUL.md, so skip it for them.
-  if (!isSubagent && !isSoulPlatform(opts.platform as PlacementPlatform | undefined)) {
+  // read those files. openclaw/Hermes auto-load SOUL.md, so skip it for them. Also skipped for a
+  // HOME-root persona: no host reads a loose ~/CLAUDE.md or ~/AGENTS.md, it would be litter.
+  const homeRoot = !isSubagent && canonicalOutPath.replace(/\\/g, "/").includes("/.personaxis/");
+  if (!isSubagent && !homeRoot && !isSoulPlatform(opts.platform as PlacementPlatform | undefined)) {
     injectRootBaselines();
   }
 
