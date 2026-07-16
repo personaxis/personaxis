@@ -178,8 +178,13 @@ function ReplApp({ store, hooks }: { store: StoreApi<ReplUiState>; hooks: ReplHo
   // Palette navigation + posture cycle + view escape. TextInput owns character
   // keys; we claim ↑/↓ (highlight), Tab (complete), Shift+Tab (posture), and Esc
   // (leave a view). Inside a view, DriftView owns ↑/↓/Enter via its own useInput.
-  useInput((_ch, key) => {
+  useInput((ch, key) => {
     if (ask) return;
+    // Ctrl+K opens the Command Center from anywhere (command-palette convention).
+    if (key.ctrl && (ch === "k" || ch === "")) {
+      void hooks.onOpenMenu?.();
+      return;
+    }
     // Inside a view, the view component owns every key (incl. Esc, which walks
     // detail -> list -> chat via onBack); claiming Esc here too would double-fire.
     if (view !== "chat") return;

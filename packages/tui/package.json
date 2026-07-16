@@ -11,7 +11,9 @@
     "./screen": "./dist/screen.js",
     "./ink": "./dist/ink.js",
     "./prompt": "./dist/prompt.js",
-    "./viewport": "./dist/viewport.js"
+    "./viewport": "./dist/viewport.js",
+    "./fullscreen": "./dist/fullscreen.js",
+    "./ui": "./dist/ui.js"
   },
   "bin": {
     "personaxis-dash": "dist/bin.js"

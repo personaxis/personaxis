@@ -6,7 +6,8 @@ import { join } from "node:path";
 import chalk from "chalk";
 import { loadConfig, saveConfig, configPath, type PersonaxisConfig, type ConfigScope } from "../config.js";
 import { runConfigMenu } from "../config-wizard.js";
-import { runConfigMenuInk } from "../config-ui.js";
+import { runCommandCenter } from "../command-center.js";
+import { resolvePersonaSourcePath } from "../load.js";
 
 /** Sub-persona slugs under `.personaxis/personas/` (for the interactive per-persona assignment). */
 function personaSlugs(cwd: string): string[] {
@@ -200,8 +201,8 @@ export const configCommand = new Command("config")
   .addCommand(getCommand)
   .addCommand(showCommand)
   .addCommand(useCommand)
-  // Bare `personaxis config` (no subcommand): the interactive menu on a TTY, else the read-only show.
-  // The REPL's /config launches this as a subprocess so it never fights the app's stdin.
+  // Bare `personaxis config` (no subcommand): the Command Center's Model section on
+  // a TTY (a stable alt-screen modal, no residue), else the read-only show / readline.
   .action(async () => {
     if (!stdin.isTTY) {
       console.log(chalk.bold("project"), chalk.dim(configPath("project")));
@@ -210,9 +211,14 @@ export const configCommand = new Command("config")
       console.log(JSON.stringify(redact(loadConfig("global")), null, 2));
       return;
     }
-    // The Ink card UI by default; PERSONAXIS_NO_INK falls back to the plain readline menu.
     if (!process.env.PERSONAXIS_NO_INK) {
-      await runConfigMenuInk({ cwd: process.cwd(), personas: personaSlugs(process.cwd()) });
+      let personaPath: string | undefined;
+      try {
+        personaPath = resolvePersonaSourcePath();
+      } catch {
+        personaPath = undefined;
+      }
+      await runCommandCenter({ personaPath, personas: personaSlugs(process.cwd()), cwd: process.cwd(), section: "model" });
       return;
     }
     const rl = readline.createInterface({ input: stdin, output: stdout });

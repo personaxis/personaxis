@@ -492,14 +492,27 @@ export const COMMANDS: CommandDef[] = [
     },
   },
   {
-    name: "config",
-    desc: "configure the model interactively: profiles, default, per-persona (or show it in a pipe)",
+    name: "menu",
+    desc: "open the Command Center: a stable fullscreen hub for model, state, drift, audit, memory, proposals, fleet",
     run: async (_a, ctx) => {
-      // Launch the interactive menu as a subprocess on the raw TTY (same pattern as /proof, /create),
-      // so it never fights the app's own stdin. In a pipe it degrades to the read-only view.
       if (ctx.suspend) {
-        await ctx.suspend(() => runCliInteractive("config", ""));
-        ctx.out(chalk.dim("  config menu closed. /config to reopen, /model to see the active model."));
+        // Alt-screen modal: the app suspends, the Center takes the raw TTY, and on
+        // exit the transcript is restored with ZERO residue (the k9s/lazygit standard).
+        await ctx.suspend(() => runCliInteractive("menu", ""));
+        return;
+      }
+      ctx.out(chalk.dim("  the Command Center needs an interactive terminal; here, use /model /state /drift /audit /memory."));
+    },
+  },
+  {
+    name: "config",
+    desc: "configure the model in the Command Center (stable menu: providers, profiles, default, per-persona)",
+    run: async (_a, ctx) => {
+      // Open the Command Center directly on the Model section, a stable alt-screen
+      // modal (no double-enter, no history residue, unlike the old sequential UI).
+      if (ctx.suspend) {
+        await ctx.suspend(() => runCliInteractive("menu", "--section model"));
+        ctx.out(chalk.dim(`  model now: ${appraiserLabel(ctxModelArg(ctx))}`));
         return;
       }
       ctx.out(chalk.bold("  Model config") + chalk.dim("  (env > project > global; per-persona via a profile ref or the spec's runtime block)"));

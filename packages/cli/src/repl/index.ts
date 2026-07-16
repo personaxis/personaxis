@@ -20,7 +20,7 @@ import { InkScreen } from "@personaxis/tui/ink";
 import { writeStarterPersona } from "../starter.js";
 import { runCompile } from "../commands/compile.js";
 import { runModelSetup } from "../config-wizard.js";
-import { runModelSetupInk } from "../config-ui.js";
+import { runCommandCenter } from "../command-center.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
 import { replyLine, fmtK, firstRunModelHint } from "./render.js";
@@ -75,26 +75,28 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   // First-run model setup: if no model resolves, offer an interactive setup (skippable).
   if (stdin.isTTY && !resolveModel({ cwd: process.cwd(), personaPath })) {
     const rl = readline.createInterface({ input: stdin, output: stdout });
+    let yn = "y";
     try {
-      const yn = ((await rl.question(`\n  ${chalk.yellow("No model configured.")} Set one up now? ${chalk.dim("[Y/skip]")} `)) || "y").trim().toLowerCase();
-      rl.close();
-      if (yn === "y" || yn === "yes") {
-        // Ink card wizard by default; readline fallback under PERSONAXIS_NO_INK.
-        if (!process.env.PERSONAXIS_NO_INK) {
-          await runModelSetupInk("global");
-        } else {
-          const rl2 = readline.createInterface({ input: stdin, output: stdout });
-          try {
-            await runModelSetup(rl2, { scope: "global", out: (s) => stdout.write(s + "\n") });
-          } finally {
-            rl2.close();
-          }
-        }
-      } else {
-        stdout.write(chalk.dim("  Skipped, running offline (heuristic). Configure anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
-      }
+      yn = ((await rl.question(`\n  ${chalk.yellow("No model configured.")} Set one up now? ${chalk.dim("[Y/skip]")} `)) || "y").trim().toLowerCase();
     } finally {
       rl.close();
+    }
+    if (yn === "y" || yn === "yes") {
+      if (!process.env.PERSONAXIS_NO_INK && stdout.isTTY) {
+        // The Command Center's Model section, the SAME stable alt-screen config
+        // the REPL's /config opens (one config UX, first-run and later alike).
+        await runCommandCenter({ personaPath, cwd: process.cwd(), section: "model" });
+      } else {
+        // Headless / NO_INK fallback: the readline wizard.
+        const rl2 = readline.createInterface({ input: stdin, output: stdout });
+        try {
+          await runModelSetup(rl2, { scope: "global", out: (s) => stdout.write(s + "\n") });
+        } finally {
+          rl2.close();
+        }
+      }
+    } else {
+      stdout.write(chalk.dim("  Skipped, running offline (heuristic). Configure anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
     }
   }
 
@@ -178,6 +180,10 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
     onCycleMode: () => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
       notePostureChange(ctx);
+    },
+    // V2-F2, Ctrl+K = the Command Center, same stable modal /menu opens.
+    onOpenMenu: async () => {
+      await runCommand("/menu", ctx);
     },
     onExit: () => screen.stop(),
     onSubmit: async (line) => {

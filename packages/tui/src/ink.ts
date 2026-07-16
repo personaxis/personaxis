@@ -7,7 +7,7 @@
  * line editor) remains exported until F3.6 rewires the REPL behind the seam.
  */
 
-export { Sigil, AuraBar, EnvelopeBars, Transcript, Dashboard } from "./components.js";
+export { Sigil, AuraBar, EnvelopeBars, Transcript, Dashboard, DriftView } from "./components.js";
 export type { TranscriptProps, DashboardProps } from "./components.js";
 export { CommitQueue } from "./streaming/commit-queue.js";
 export { renderMarkdown, highlightCode, renderDiff } from "./markdown.js";

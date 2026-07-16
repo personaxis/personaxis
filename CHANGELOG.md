@@ -8,6 +8,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Feat: the Command Center, one stable fullscreen hub for every menu (V2-F2)
+- **Alt-screen modals, zero residue.** A new `@personaxis/tui/fullscreen` harness enters the
+  terminal's ALTERNATE SCREEN buffer (the k9s / lazygit / btop standard) and restores the primary
+  buffer exactly as it was on exit, even on Ctrl+C or a crash. Nothing an interactive menu draws
+  ever leaks into the scrollback. (Before this, nothing in the codebase used the alt buffer, which
+  is why every menu polluted the chat history.)
+- **The Command Center** (`personaxis menu`, `/menu`, and Ctrl+K in the REPL): ONE stateful Ink app
+  with a persistent frame (wordmark header · breadcrumb · keybar footer) hosting Model, State,
+  Drift, Audit, Memory, Proposals, and Fleet as navigable sections. A single root key handler owns
+  navigation, which kills the double-enter the old sequential-render config UI had.
+- **Model config is now a stable modal.** `/config` and `personaxis config` open the Center's Model
+  section: provider picker → a single stateful form with a LIVE preview of answered steps and
+  per-field help (the default is labeled "enter = default: …", answering David's "is the bracketed
+  value a default or an example?"), → confirm → the profiles list. It reuses the pure, tested
+  config builders (`config-wizard.ts`); the sequential-render `config-ui.ts` is removed, and the
+  first-run onboarding opens the same Center Model section, so there is one config UX everywhere.
+- **Responsive by construction.** Every list (sections, providers, profiles, memory kinds) windows
+  to the terminal height via the shared `viewport.ts`, and the frame fills the screen, so the TUI
+  composes cleanly at any size.
+- **New shared chrome kit** `@personaxis/tui/ui` (`AppFrame`, `SelectList`, `Field`, `Toast`,
+  `SpinnerText`, `KeyBar`, `Divider`), theme-aware and `PERSONAXIS_NO_ANIM`-respecting. The dead
+  pre-Ink `Screen` line-editor class is deleted (its cursor-following menu logic already lives as
+  the tested `windowFor`); `screen.ts` now holds only the shared `ReplHooks`/`SlashItem` types.
+- Fallbacks intact: non-TTY / `PERSONAXIS_NO_ALTSCREEN` / `PERSONAXIS_NO_INK` degrade to text or the
+  readline menu, so pipes and CI are unaffected.
+
 ### Feat: memory engine V2, the persona actually remembers you (V2-F1)
 - **Cross-session recall of who you are.** Stable user facts persist as dotted `user.*` keys in
   the `user_preferences` store (no new artifact) and load FIRST in every recall path as a
