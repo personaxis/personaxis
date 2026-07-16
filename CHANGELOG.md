@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Feat: session continuity flags + /status + /doctor (V2-F3, first batch)
+- **`personaxis --continue` / `--resume [id]`**: rehydrate a saved conversation before the REPL
+  starts (the flag form of the in-app `/resume`), sharing one `resumeSessionInto` helper.
+- **`/status`**: a compact one-screen snapshot, model/profile, posture + improve mode, drift D with
+  any over-threshold layers, which memory kinds are enabled, session id, live context usage, and
+  mutation count.
+- **`/doctor`**: diagnoses the session, persona validity (the five-state validator), compiled-doc
+  presence, memory-chain integrity, model configured + provider reachability (a bounded `/models`
+  ping), and the installed version. Every check degrades gracefully (offline is a warning, not a
+  crash). New `docs/guides/parity.md` tracks the full Claude Code feature catalog with status.
+
 ### Feat: the Command Center, one stable fullscreen hub for every menu (V2-F2)
 - **Alt-screen modals, zero residue.** A new `@personaxis/tui/fullscreen` harness enters the
   terminal's ALTERNATE SCREEN buffer (the k9s / lazygit / btop standard) and restores the primary

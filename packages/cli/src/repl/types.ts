@@ -23,6 +23,10 @@ import type { LineRole } from "@personaxis/tui/screen";
 
 export interface ReplOptions {
   persona?: string;
+  /** `--continue`: resume the most recent saved conversation for this persona. */
+  continueLast?: boolean;
+  /** `--resume [id]`: resume this session id/name; "" lists sessions and starts fresh. */
+  resume?: string;
 }
 
 /** Session context shared by both UIs (Screen + line mode). */

@@ -52,11 +52,17 @@ program
   .version(version)
   // `personaxis` with no subcommand enters the living REPL.
   .option("--persona <path>", "Path to the persona (personaxis.md / PERSONA.md) for the REPL")
-  .action(async (opts: { persona?: string }) => {
+  .option("-c, --continue", "Resume the most recent conversation for this persona")
+  .option("-r, --resume [id]", "Resume a saved conversation by id/name (lists them when the id is omitted)")
+  .action(async (opts: { persona?: string; continue?: boolean; resume?: string | boolean }) => {
     // Lazy: the REPL pulls in Ink/React (~1 s of import cost), only the
     // no-subcommand path pays it, never `validate`/CI/hook invocations.
     const { startRepl } = await import("./repl/index.js");
-    await startRepl({ persona: opts.persona });
+    await startRepl({
+      persona: opts.persona,
+      continueLast: opts.continue === true,
+      resume: opts.resume === true ? "" : typeof opts.resume === "string" ? opts.resume : undefined,
+    });
   });
 
 program.addCommand(initCommand);

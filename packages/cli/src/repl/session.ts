@@ -36,9 +36,12 @@ import {
   consolidateSemantic,
   pruneMemory,
   listSessions,
+  findSession,
+  loadConversation,
   readAutobiographical,
   appendAutobiographical,
   type ContextMeter,
+  type SessionSummary,
 } from "@personaxis/core";
 import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
 import type { Ctx } from "./types.js";
@@ -144,6 +147,24 @@ export function closeSession(ctx: Ctx): void {
   } catch {
     /* closing must never block exit */
   }
+}
+
+/**
+ * Load a saved conversation into a ctx (the shared body of `/resume` and the
+ * `--continue`/`--resume` startup flags). Returns the resolved session, or
+ * undefined when nothing matched.
+ */
+export function resumeSessionInto(ctx: Ctx, query: string): SessionSummary | undefined {
+  const s = query ? findSession(ctx.handle.personaPath, query) : listSessions(ctx.handle.personaPath)[0];
+  if (!s) return undefined;
+  const conv = loadConversation(ctx.handle.personaPath, s.id);
+  ctx.conversation = conv;
+  ctx.sessionId = s.id;
+  ctx.sessionStarted = true;
+  ctx.sessionNamed = true;
+  ctx.sessionClosed = false;
+  ctx.meter.estimate([{ role: "system", content: "" }, ...conv]);
+  return s;
 }
 
 /** Append a completed user/assistant exchange to the persona's session; auto-name once. */

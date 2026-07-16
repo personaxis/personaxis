@@ -63,8 +63,10 @@ import { buildResourceManifest } from "../resource-manifest.js";
 import { discoverTree } from "./roster.js";
 import type { Ctx, CommandDef } from "./types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, readGoalText } from "./config.js";
+import { fmtK } from "./render.js";
+import { version } from "../generated/assets.js";
 import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
-import { ensureCtxSession } from "./session.js";
+import { ensureCtxSession, resumeSessionInto } from "./session.js";
 import { maybeRecompile } from "./turn.js";
 
 // ── Commands (single source for /help and the live `/` menu) ─────────────────
@@ -628,15 +630,9 @@ export const COMMANDS: CommandDef[] = [
     run: async (arg, ctx) => {
       const q = arg.trim();
       if (!q) return void ctx.out(chalk.dim("  usage: /resume <id|name>, see /sessions"));
-      const s = findSession(ctx.handle.personaPath, q);
+      const s = resumeSessionInto(ctx, q);
       if (!s) return void ctx.out(chalk.yellow(`  no session matching "${q}", see /sessions`));
-      const conv = loadConversation(ctx.handle.personaPath, s.id);
-      ctx.conversation = conv;
-      ctx.sessionId = s.id;
-      ctx.sessionStarted = true;
-      ctx.sessionNamed = true;
-      ctx.meter.estimate([{ role: "system", content: "" }, ...conv]);
-      ctx.out(chalk.green(`  ✓ resumed "${s.name}"`) + chalk.dim(` · ${conv.length} message(s) restored`));
+      ctx.out(chalk.green(`  ✓ resumed "${s.name}"`) + chalk.dim(` · ${ctx.conversation.length} message(s) restored`));
     },
   },
   {
@@ -646,6 +642,83 @@ export const COMMANDS: CommandDef[] = [
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
       notePostureChange(ctx);
       ctx.out(chalk.dim(`  sandbox posture → ${chalk.bold(POSTURES[ctx.postureIndex])}`));
+    },
+  },
+  {
+    name: "status",
+    desc: "a compact snapshot: model, persona, posture, drift, memory loaded, session, context usage",
+    run: (_a, ctx) => {
+      const fm = ctx.handle.frontmatter as Record<string, unknown>;
+      const st = readState(ctx.handle.statePath);
+      const env = extractEnvelopes(ctx.handle.frontmatter);
+      const report = driftReport({
+        values: st.values,
+        envelopes: env.envelopes,
+        maxStepDelta: readMaxStepDelta(fm),
+        thresholds: readDriftThresholds(fm),
+        protectedFields: env.protectedFields,
+      });
+      const over = report.layers.filter((l) => l.exceeded).map((l) => l.layer);
+      const types = readMemoryTypes(fm);
+      const onKinds = (Object.entries(types) as [string, boolean][]).filter(([, v]) => v).map(([k]) => k);
+      const m = ctx.meter;
+      const row = (label: string, value: string): void => ctx.out(`  ${chalk.cyan(label.padEnd(9))} ${value}`);
+      ctx.out(chalk.bold(`  ${ctx.name}`) + chalk.dim(`  ·  ${slugAddressFromPath(ctx.handle.personaPath) || "root"}`));
+      row("model", appraiserLabel(ctxModelArg(ctx)));
+      row("posture", `${POSTURES[ctx.postureIndex]}  ·  improve:${ctx.mode}`);
+      row("drift", `D ${report.global.toFixed(3)}` + (over.length ? chalk.red(`  ⚠ over: ${over.join(", ")}`) : chalk.green("  within thresholds")));
+      row("memory", `${onKinds.join(", ") || "(none enabled)"}`);
+      row("session", `${ctx.sessionId}${ctx.sessionStarted ? "" : chalk.dim(" (not yet written)")}`);
+      row("context", m.limit ? `${fmtK(m.used)}/${fmtK(m.limit)} (${Math.round(m.pct * 100)}%)  ·  ${m.elapsedSeconds.toFixed(0)}s` : chalk.dim("offline (no model)"));
+      row("mutations", String(st.mutation_log.length));
+    },
+  },
+  {
+    name: "doctor",
+    desc: "diagnose this session: config, provider reachability, persona validity, memory integrity, version",
+    run: async (_a, ctx) => {
+      const ok = (s: string): string => chalk.green("  ✓ ") + s;
+      const bad = (s: string): string => chalk.red("  ✗ ") + s;
+      const warn = (s: string): string => chalk.yellow("  ! ") + s;
+      ctx.out(chalk.bold("  personaxis doctor"));
+
+      // 1. persona validates.
+      try {
+        const v = validatePersona(ctx.handle.frontmatter as Record<string, unknown>);
+        ctx.out(v.valid ? ok(`persona valid (${v.status})`) : bad(`persona ${v.status}: run /validate`));
+      } catch (e) {
+        ctx.out(bad(`persona load failed: ${(e as Error).message}`));
+      }
+
+      // 2. compiled document present.
+      const compiled = compiledPathFor(ctx.handle.personaPath);
+      ctx.out(existsSync(compiled) ? ok(`compiled doc present (${compiled})`) : warn(`no PERSONA.md yet, run /compile`));
+
+      // 3. memory chain integrity.
+      const chain = verifyMemoryChain(ctx.handle.personaPath);
+      ctx.out(chain.ok ? ok("memory chain intact") : bad(`memory chain broken at #${chain.brokenAt}`));
+
+      // 4. model configured + reachable.
+      const llm = llmConfig(ctxModelArg(ctx));
+      if (!llm) {
+        ctx.out(warn("no model configured, running offline (heuristic). /config to set one up"));
+      } else {
+        ctx.out(ok(`model configured: ${llm.model} @ ${llm.endpoint}`));
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 4000);
+          const res = await fetch(`${llm.endpoint.replace(/\/$/, "")}/models`, {
+            headers: llm.apiKey ? { authorization: `Bearer ${llm.apiKey}` } : {},
+            signal: ctrl.signal,
+          }).finally(() => clearTimeout(timer));
+          ctx.out(res.ok ? ok(`provider reachable (HTTP ${res.status})`) : warn(`provider answered HTTP ${res.status} (key/endpoint?)`));
+        } catch (e) {
+          ctx.out(warn(`provider unreachable: ${(e as Error).message} (endpoint down or offline)`));
+        }
+      }
+
+      // 5. version.
+      ctx.out(chalk.dim(`  personaxis ${version}`));
     },
   },
   {

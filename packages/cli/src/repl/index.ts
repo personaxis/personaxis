@@ -24,7 +24,7 @@ import { runCommandCenter } from "../command-center.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
 import { replyLine, fmtK, firstRunModelHint } from "./render.js";
-import { makeCtx, closeSession } from "./session.js";
+import { makeCtx, closeSession, resumeSessionInto } from "./session.js";
 import { dispatchTurn, buildRoster } from "./turn.js";
 import { COMMANDS, listCommands, runCommand } from "./commands.js";
 
@@ -102,6 +102,19 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 
   const meter = makeMeter();
   const ctx = makeCtx(personaPath, meter);
+
+  // --continue / --resume [id]: rehydrate a saved conversation before the UI starts.
+  if (opts.continueLast || opts.resume !== undefined) {
+    const query = opts.continueLast ? "" : (opts.resume ?? "");
+    const s = resumeSessionInto(ctx, query);
+    if (s) {
+      stdout.write(chalk.green("  ✓ ") + `resumed ${chalk.bold(s.name)}` + chalk.dim(` · ${ctx.conversation.length} message(s) · ${s.id}\n`));
+    } else if (query) {
+      stdout.write(chalk.yellow(`  no session matching "${query}"`) + chalk.dim("; starting fresh (see /sessions).\n"));
+    } else {
+      stdout.write(chalk.dim("  no saved conversation yet; starting fresh.\n"));
+    }
+  }
 
   if (stdin.isTTY) {
     await runScreenMode(ctx);
