@@ -25,11 +25,15 @@ import {
   proposals,
   readMemory,
   readMemoryTypes,
+  readMemoryKnobs,
   readSemanticMemory,
   readProcedural,
   readAutobiographical,
   readPreferences,
   readEvaluations,
+  consolidateSemantic,
+  pruneMemory,
+  searchMemory,
   applySelfEdit,
   rejectSelfEdit,
   verifyMemoryChain,
@@ -402,10 +406,31 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "memory",
-    desc: "all declared memory kinds: episodic, semantic, procedural, autobiographical, preferences, evaluations",
-    run: (_a, ctx) => {
+    desc: "memory kinds + actions: /memory [consolidate | prune | search <query>]",
+    run: async (arg, ctx) => {
       const p = ctx.handle.personaPath;
-      const types = readMemoryTypes(ctx.handle.frontmatter as Record<string, unknown>);
+      const fm = ctx.handle.frontmatter as Record<string, unknown>;
+      const types = readMemoryTypes(fm);
+      const parts = arg.trim().split(/\s+/).filter(Boolean);
+      if (parts[0] === "consolidate") {
+        const c = consolidateSemantic(p);
+        return void ctx.out(chalk.green("  ✓ ") + `memory.md consolidated (${c.count} entries kept by salience) → ${c.path}`);
+      }
+      if (parts[0] === "prune") {
+        const days = readMemoryKnobs(fm).retentionDays;
+        if (!days) return void ctx.out(chalk.dim("  no retention window declared (runtime.memory.retention_days_default); nothing to prune."));
+        const r = pruneMemory(p, days);
+        return void ctx.out(chalk.green("  ✓ ") + `${r.pruned} entr${r.pruned === 1 ? "y" : "ies"} beyond ${days}d tombstoned (anchors/facts/distillates spared).`);
+      }
+      if (parts[0] === "search") {
+        const query = parts.slice(1).join(" ");
+        if (!query) return void ctx.out(chalk.dim("  usage: /memory search <query>"));
+        const r = await searchMemory(p, query, readMemoryKnobs(fm), { sessionId: ctx.sessionId });
+        if (!r.results.length) return void ctx.out(chalk.dim(`  no memory matched "${query}"`));
+        ctx.out(chalk.bold(`  ${r.results.length} match(es)`) + chalk.dim(` via ${r.via}`));
+        for (const x of r.results) ctx.out(`  ${chalk.cyan(`[${x.doc.kind}]`)} ${chalk.dim(x.doc.id)} ${x.doc.text.replace(/\n+/g, " ").slice(0, 90)}`);
+        return;
+      }
       // A small helper: a header + recent rows, or a one-line "(off)" / "(empty)" note per kind.
       const section = (label: string, enabled: boolean, rows: string[]): void => {
         if (!enabled) return void ctx.out(chalk.bold(`  ${label}`) + chalk.dim("  (off in memory.types)"));

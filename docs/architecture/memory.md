@@ -1,22 +1,61 @@
 # Memory: the six `memory.types`, enforced
 
-A persona's `memory.types` declares six memory kinds. All six are now real producers and
-consumers, previously only `episodic` + `semantic` were wired and the other four were a
-facade. Each kind honors its `memory.types.<kind>` flag at the producer call site, so a
+A persona's `memory.types` declares six memory kinds. All six are real producers and
+consumers. Each kind honors its `memory.types.<kind>` flag at the producer call site, so a
 persona that does not declare a kind writes nothing for it.
 
-Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}`.
+Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}` and
+`packages/core/src/memory/{knobs,profile,retrieval,consolidate}.ts` (the V2 engine).
 
 ## The six kinds
 
 | Kind | Storage (beside the persona) | Producer | Consumer |
 |---|---|---|---|
-| `episodic` | `memory/episodic.jsonl` (append-only, hash-chained) | the Living Loop, per turn | `resumeContext`, audit |
-| `semantic` | `memory.md` | `consolidateSemantic` (grouped by source) | compile / context |
-| `procedural` | `memory/procedural.jsonl` (append-only) | `agent.persist` on a successful task (how-to per task) | `resumeContext` |
-| `autobiographical` | `memory/autobiographical.jsonl` (append-only) | improvement-mode changes; identity milestones | recall |
-| `user_preferences` | `memory/preferences.json` (last-wins map) | the appraiser proposes `preferences[]` | `resumeContext` |
-| `evaluations` | `memory/evaluations.jsonl` (append-only) | `scoreMemoryEntry`, per turn in the loop | quality review |
+| `episodic` | `memory/episodic.jsonl` (append-only, hash-chained) | the Living Loop (salient lines only) + session distillation | recall window, `memory_search`, audit |
+| `semantic` | `memory.md` | `consolidateSemantic` (salience-ranked digest) | always loaded into context |
+| `procedural` | `memory/procedural.jsonl` (append-only) | `agent.persist` on a successful task (how-to per task) | `resumeContext`, `memory_search` |
+| `autobiographical` | `memory/autobiographical.jsonl` (append-only) | milestones: first conversation, a user fact learned, a band crossing, improvement-mode changes | recall, `memory_search` |
+| `user_preferences` | `memory/preferences.json` (last-wins map) | the appraiser proposes `preferences[]` (dotted `user.*` keys = the user profile) | the `# User profile` block, ALWAYS loaded first |
+| `evaluations` | `memory/evaluations.jsonl` (append-only) | `scoreMemoryEntry`, per turn in the loop | salience ranking, quality review |
+
+## The V2 recall architecture (who reads what, when)
+
+One design rule: the raw dialog lives ONCE, in `sessions/<id>.jsonl`. Everything else is
+derived, and each artifact has a declared role:
+
+- **Always in context** (every turn, `agent.resumeContext`): the `# User profile` (all
+  `user.*` preferences + `memory.working_self` + `memory.anchors`), the previous-session
+  recap (derived at read time from the newest other session, no summary artifact), the
+  consolidated `memory.md`, and a today/yesterday episodic window bounded by
+  `runtime.memory.max_items`.
+- **On demand**: the `memory_search` / `memory_get` agent tools (lexical BM25 across every
+  kind; `use_embeddings` ranks via the endpoint's `/embeddings` when it serves them;
+  `use_reranker` re-ranks the lexical top-k with the chat model). The system prompt tells
+  the model to search before claiming it does not remember.
+- **At session close** (`closeSession`): the session is DISTILLED into 3-8 persistent
+  episodic entries (facts / decisions / one event line, tagged `distilled` + `kind:*` +
+  `from:<session>`, idempotent), `memory.md` is re-consolidated when
+  `consolidation_policy.mode: auto`, and the retention window prunes (tombstones) stale
+  un-anchored entries.
+
+Offline fact extraction (`memory/profile.ts`): deterministic ES/EN presentation patterns
+("me llamo X", "my name is X", "call me X") persist `user.name`/`user.alias` with NO model
+configured, and even the offline reflective responder greets a known user by name.
+
+## Spec knobs, consumed (documented assumptions where SPEC is silent)
+
+- `runtime.memory.max_items`: bounds every recall window and search result (default 20).
+- `runtime.memory.use_embeddings` / `use_reranker`: retrieval behavior above; when the
+  backend cannot honor them the fallback is STATED in the tool observation, never silent.
+- `runtime.memory.retention_days_default`: the pruning window; absent = keep forever.
+- `memory.write_policy.default`: `ephemeral` persists nothing (abstain event), `session`
+  tags entries to their session (recalled only there unless distilled/typed), `persistent`
+  (and an absent block) writes untagged, the pre-V2 behavior.
+- `memory.consolidation_policy.mode`: `auto` consolidates inline; `assisted` emits a
+  proposal (run `/memory consolidate`); `manual` only ever consolidates on command.
+  Absent = `auto` (the pre-V2 behavior).
+- `memory.anchors`: injected into the profile block and never pruned.
+- `memory.working_self`: injected as the profile block's self-model line.
 
 Storage mirrors episodic memory: append-only JSONL under `<personaDir>/memory/`, except
 `user_preferences`, which is a small last-wins JSON map (`setPreference` overwrites by key).

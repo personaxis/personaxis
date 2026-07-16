@@ -25,7 +25,9 @@ import {
   prepareMemoryEntry,
   readMemoryTypes,
 } from "./memory.js";
-import { recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
+import { appendAutobiographical, getPreference, recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
+import { readConsolidationMode, readWritePolicy } from "./memory/knobs.js";
+import { USER_KEY_PREFIX } from "./memory/profile.js";
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
 import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers, SelfEditError } from "./self-evolution.js";
@@ -53,6 +55,9 @@ export interface TickInput {
   source: ProvenanceSource;
   /** Actor recorded in the mutation log. Defaults to actor-llm. */
   actor?: "actor-llm" | "runtime-context";
+  /** V2-F1: the conversation session this observation belongs to. Under
+   * write_policy "session", memories are tagged to it (recall-scoped). */
+  sessionId?: string;
 }
 
 export interface TickReport {
@@ -281,21 +286,43 @@ export class LivingLoop {
       const memTypesForPrefs = readMemoryTypes(fm);
       const prefs = signal.preferences ?? [];
       if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
-        for (const pref of prefs) setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale);
+        for (const pref of prefs) {
+          // An identity fact learned for the FIRST time is an autobiographical milestone
+          // (V2-F1.3: "learned the user's name" is part of the persona's life story).
+          const firstTime = pref.key.startsWith(USER_KEY_PREFIX) && getPreference(this.handle.personaPath, pref.key) === undefined;
+          setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale);
+          if (firstTime && memTypesForPrefs.autobiographical) {
+            appendAutobiographical(this.handle.personaPath, {
+              event: `learned ${pref.key.slice(USER_KEY_PREFIX.length) === "name" ? "the user's name" : `user fact "${pref.key}"`}: ${pref.value}`,
+              tags: ["milestone", "user-fact"],
+            });
+            bus.emit({ type: "memory-kind", kind: "autobiographical", detail: `milestone: ${pref.key} = ${pref.value}` });
+          }
+        }
         bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `+${prefs.length} pref(s)` });
       }
 
       // 5. memory, HONOR memory.types (spec fidelity). Episodic writes only when
       // the persona declares `memory.types.episodic`; otherwise nothing is logged.
+      // V2-F1.6: `memory.write_policy` is honored too: "ephemeral" writes nothing
+      // to disk (abstain, stated); "session" tags entries to the live session
+      // (recall-scoped; distillation promotes the durable ones); "persistent"
+      // (and the absent-block default) writes untagged, the pre-V2 behavior.
       const memTypes = readMemoryTypes(fm);
+      const writePolicy = readWritePolicy(fm);
       let memoriesWritten = 0;
       const written: ReturnType<typeof prepareMemoryEntry>[] = [];
-      if (memTypes.episodic) {
+      if (memTypes.episodic && writePolicy.default === "ephemeral") {
+        if (signal.memories.length > 0) {
+          bus.emit({ type: "abstain", reason: `write_policy.default=ephemeral, ${signal.memories.length} note(s) not persisted` });
+        }
+      } else if (memTypes.episodic) {
+        const scopeTags = writePolicy.default === "session" && input.sessionId ? [`session:${input.sessionId}`] : [];
         for (const mem of signal.memories) {
           const entry = prepareMemoryEntry(this.handle.personaPath, {
             content: mem.content,
             source: mem.source,
-            tags: injectionBlocked ? [...(mem.tags ?? []), "injection-flagged"] : mem.tags,
+            tags: [...(injectionBlocked ? [...(mem.tags ?? []), "injection-flagged"] : mem.tags ?? []), ...scopeTags],
           });
           const chain = this.storage.ledger.verify(this.handle.personaPath);
           if (!chain.ok) {
@@ -316,10 +343,17 @@ export class LivingLoop {
         for (const a of detectMemoryAnomalies(this.storage.ledger.read(this.handle.personaPath))) {
           bus.emit({ type: "anomaly", kind: a.kind, detail: a.detail });
         }
-        // Episodic → semantic consolidation when the persona declares it.
+        // Episodic → semantic consolidation when the persona declares it, HONORING
+        // `consolidation_policy.mode` (V2-F1.3): auto consolidates inline; assisted
+        // proposes (the host surfaces "/memory consolidate"); manual stays silent.
         if (memTypes.semantic) {
-          const c = this.storage.memory.consolidate(this.handle.personaPath);
-          bus.emit({ type: "recompile", reason: `semantic consolidation (${c.count} entries → memory.md)` });
+          const mode = readConsolidationMode(fm);
+          if (mode === "auto") {
+            const c = this.storage.memory.consolidate(this.handle.personaPath);
+            bus.emit({ type: "recompile", reason: `semantic consolidation (${c.count} entries → memory.md)` });
+          } else if (mode === "assisted") {
+            bus.emit({ type: "memory-kind", kind: "semantic", detail: "consolidation proposed (assisted mode): run /memory consolidate to fold new entries into memory.md" });
+          }
         }
       }
 
@@ -344,6 +378,16 @@ export class LivingLoop {
           });
         }
         if (evals > 0) bus.emit({ type: "memory-kind", kind: "evaluations", detail: `+${evals} eval(s)` });
+      }
+
+      // A band crossing is an identity-level event: record the milestone when the
+      // persona keeps an autobiography (V2-F1.3, a real producer for the kind).
+      if (bandCrossings.length > 0 && memTypes.autobiographical) {
+        appendAutobiographical(this.handle.personaPath, {
+          event: `band crossing: ${bandCrossings.join(", ")}`,
+          tags: ["milestone", "band-crossing"],
+        });
+        bus.emit({ type: "memory-kind", kind: "autobiographical", detail: `milestone: band crossing (${bandCrossings.join(", ")})` });
       }
 
       // 4. recompile on DRIFT, i.e. on a band crossing, not on any mutation

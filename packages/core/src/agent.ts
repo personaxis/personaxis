@@ -45,7 +45,11 @@ import {
   readMemoryTypes,
   type AgentOutcome,
 } from "./memory.js";
-import { appendProcedural, readProcedural, readPreferences, readAutobiographical } from "./memory-kinds.js";
+import { appendProcedural, readProcedural, readAutobiographical } from "./memory-kinds.js";
+import { readMemoryKnobs, readAnchors, readWorkingSelf } from "./memory/knobs.js";
+import { userProfile, renderUserProfile } from "./memory/profile.js";
+import { recallWindow, memoryTools } from "./memory/retrieval.js";
+import { sessionBrief } from "./memory/consolidate.js";
 import { loadPersona, readState, writeState } from "./persona.js";
 import { withStateLock } from "./lock.js";
 import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow } from "./context.js";
@@ -80,6 +84,9 @@ export interface AgentOptions {
   judge?: JudgeConfig;
   /** v0.9: persona path, enables resumption (memory + state.json agent_session). */
   personaPath?: string;
+  /** V2-F1: the current conversation session id. Scopes session-tagged memories and
+   * excludes the live session from the "previous session" recap. */
+  sessionId?: string;
   /** Shared session context meter (the REPL passes one so it persists across turns). */
   meter?: ContextMeter;
   /** Compact the conversation when context fill crosses this fraction (default 0.8). */
@@ -128,7 +135,18 @@ export class PersonaAgent {
   constructor(private readonly opts: AgentOptions) {
     this.bus = opts.bus ?? new EventBus();
     this.policy = opts.policy ?? DEFAULT_POLICY;
-    this.tools = opts.tools ?? TOOLS;
+    // With a persona attached, the loop also gets the read-only memory tools
+    // (memory_search / memory_get), honoring the persona's runtime.memory knobs.
+    let tools = opts.tools ?? TOOLS;
+    if (!opts.tools && opts.personaPath) {
+      try {
+        const fm = loadPersona(opts.personaPath).frontmatter as Record<string, unknown>;
+        tools = [...TOOLS, ...memoryTools(opts.personaPath, readMemoryKnobs(fm), { sessionId: opts.sessionId, llm: opts.llm })];
+      } catch {
+        /* an unreadable persona must not kill the agent; memory tools are additive */
+      }
+    }
+    this.tools = tools;
   }
 
   private systemPrompt(): string {
@@ -149,16 +167,22 @@ export class PersonaAgent {
   }
 
   /**
-   * Resume context, so the agent RESUMES, not restarts. Built from the spec's
-   * EXISTING memory artifacts (no STATE.md): the active task from state.json's
-   * agent_session, the consolidated semantic memory.md, and recent episodic memory.
+   * Resume context, so the agent RESUMES, not restarts (V2-F1.2). Built from the
+   * spec's memory artifacts, in salience order: the USER PROFILE always loads
+   * first (the fix for "forgot my name"), then the previous-session recap, the
+   * consolidated memory.md, and a today/yesterday episodic window bounded by
+   * `runtime.memory.max_items` (the knob, finally consumed). Anything older is
+   * reachable through the memory_search tool, and the prompt says so.
    */
   private resumeContext(): string {
     const p = this.opts.personaPath;
     if (!p) return "";
     const parts: string[] = [];
+    let fm: Record<string, unknown> = {};
     try {
-      const st = readState(loadPersona(p).statePath);
+      const handle = loadPersona(p);
+      fm = handle.frontmatter as Record<string, unknown>;
+      const st = readState(handle.statePath);
       const sess = st.agent_session;
       if (sess?.active_task) {
         parts.push(`\n# Resume (do not restart)\nLast task: ${sess.active_task}${sess.stop_reason ? `, stopped: ${sess.stop_reason}` : ""}`);
@@ -166,20 +190,32 @@ export class PersonaAgent {
     } catch {
       /* state may not exist yet */
     }
+    const knobs = readMemoryKnobs(fm);
     // As each memory kind is injected, emit a `memory-recall` event so the UI can show WHICH
     // memories were actually used to answer this turn (the user asked to see this), not just writes.
+    const profile = userProfile(p);
+    const profileBlock = renderUserProfile(profile, { workingSelf: readWorkingSelf(fm), anchors: readAnchors(fm) });
+    if (profileBlock) {
+      parts.push("\n" + profileBlock);
+      this.bus.emit({ type: "memory-recall", kind: "user_preferences", count: Object.keys(profile.facts).length, detail: Object.keys(profile.facts).slice(0, 4).join(", ") || "profile" });
+    }
+    const brief = sessionBrief(p, this.opts.sessionId);
+    if (brief) {
+      parts.push("\n# Previous session\n" + brief);
+      this.bus.emit({ type: "memory-recall", kind: "episodic", count: 1, detail: "previous-session recap" });
+    }
     const semantic = readSemanticMemory(p);
     if (semantic.trim()) {
       parts.push("\n# Long-term memory (memory.md)\n" + semantic.slice(0, 2500));
       this.bus.emit({ type: "memory-recall", kind: "semantic", count: 1, detail: "memory.md" });
     }
-    const mem = readLiveMemory(p).slice(-6);
+    const mem = recallWindow(p, { maxItems: knobs.maxItems, sessionId: this.opts.sessionId });
     if (mem.length) {
       parts.push("\n# Recent memory\n" + mem.map((m) => `- [${m.source}] ${m.content}`).join("\n"));
       this.bus.emit({ type: "memory-recall", kind: "episodic", count: mem.length, detail: mem[mem.length - 1].content.slice(0, 60) });
     }
     // Other memory kinds (only present when the persona enabled them, producers gate on flags).
-    const prefs = Object.entries(readPreferences(p));
+    const prefs = Object.entries(profile.preferences);
     if (prefs.length) {
       parts.push("\n# User preferences\n" + prefs.map(([k, v]) => `- ${k}: ${v.value}`).join("\n"));
       this.bus.emit({ type: "memory-recall", kind: "user_preferences", count: prefs.length, detail: prefs.map(([k]) => k).slice(0, 4).join(", ") });
@@ -193,6 +229,9 @@ export class PersonaAgent {
     if (auto.length) {
       parts.push("\n# Identity milestones\n" + auto.map((x) => `- ${x.event}${x.detail ? `: ${x.detail}` : ""}`).join("\n"));
       this.bus.emit({ type: "memory-recall", kind: "autobiographical", count: auto.length, detail: auto[auto.length - 1].event.slice(0, 50) });
+    }
+    if (parts.length) {
+      parts.push("\n(Older or unlisted memory is searchable: use the memory_search tool before saying you don't remember.)");
     }
     return parts.join("\n");
   }
@@ -214,11 +253,13 @@ export class PersonaAgent {
     try {
       const handle = loadPersona(p);
       const memTypes = readMemoryTypes(handle.frontmatter as Record<string, unknown>);
-      if (memTypes.episodic) {
+      // V2-F1.3 dedup: a one-shot chat reply is already in sessions/; only a REAL
+      // run (multi-step, or anything that did not end in success) earns a ledger entry.
+      if (memTypes.episodic && (step > 1 || outcome !== "success")) {
         const entry = prepareMemoryEntry(p, {
           content: `agent run [${outcome}] "${task}": ${summary.replace(/\n+/g, " ").slice(0, 240)}`,
           source: "synthesis",
-          tags: ["agent-run", outcome],
+          tags: ["agent-run", outcome, ...(this.opts.sessionId ? [`session:${this.opts.sessionId}`] : [])],
         });
         commitMemoryEntry(p, entry);
       }

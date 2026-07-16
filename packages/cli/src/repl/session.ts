@@ -28,6 +28,16 @@ import {
   assemblePersonaDoc,
   activeOverlay,
   readState,
+  readMemoryTypes,
+  readWritePolicy,
+  readConsolidationMode,
+  readMemoryKnobs,
+  distillSession,
+  consolidateSemantic,
+  pruneMemory,
+  listSessions,
+  readAutobiographical,
+  appendAutobiographical,
   type ContextMeter,
 } from "@personaxis/core";
 import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
@@ -106,6 +116,34 @@ export function ensureCtxSession(ctx: Ctx, seedMsg: string): void {
     persona: address,
   });
   ctx.sessionStarted = true;
+}
+
+/**
+ * Close the conversation session (V2-F1.3), the moment raw dialog becomes durable
+ * memory: distill the session's facts/decisions/event into the episodic ledger
+ * (back-referenced, not copied), consolidate memory.md when the spec says auto,
+ * apply the retention window, and record the first-conversation milestone.
+ * Idempotent per ctx (guarded by ctx.sessionClosed); best-effort by design.
+ */
+export function closeSession(ctx: Ctx): void {
+  if (!ctx.sessionStarted || ctx.sessionClosed) return;
+  ctx.sessionClosed = true;
+  const p = ctx.handle.personaPath;
+  const fm = ctx.handle.frontmatter as Record<string, unknown>;
+  try {
+    const memTypes = readMemoryTypes(fm);
+    if (memTypes.episodic && readWritePolicy(fm).default !== "ephemeral") {
+      distillSession(p, ctx.sessionId);
+    }
+    if (memTypes.autobiographical && listSessions(p).length === 1) {
+      const already = readAutobiographical(p).some((e) => e.tags.includes("first-conversation"));
+      if (!already) appendAutobiographical(p, { event: "first conversation with the user", tags: ["milestone", "first-conversation"] });
+    }
+    if (memTypes.semantic && readConsolidationMode(fm) === "auto") consolidateSemantic(p);
+    pruneMemory(p, readMemoryKnobs(fm).retentionDays);
+  } catch {
+    /* closing must never block exit */
+  }
 }
 
 /** Append a completed user/assistant exchange to the persona's session; auto-name once. */

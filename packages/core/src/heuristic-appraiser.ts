@@ -9,11 +9,17 @@
  */
 
 import type { AppraiseInput, AppraisalSignal, Appraiser } from "./appraisal.js";
+import { extractUserFacts } from "./memory/profile.js";
 
 const POSITIVE =
   /\b(good|great|love|nice|thanks|excellent|win|happy|success|works?|fixed|clean|elegant)\b/gi;
 const NEGATIVE =
   /\b(bad|hate|angry|fail|failed|broken|bug|error|slow|ugly|wrong|stuck|frustrat\w*)\b/gi;
+
+/** Signals that an observation is worth an episodic entry (V2-F1.3 dedup: the raw
+ * dialog already lives in sessions/; only SALIENT lines earn a ledger slot). */
+const SALIENT =
+  /\b(recuerda|no olvides|importante|decidimos|acordamos|mi meta|el objetivo|prefiero|remember|don'?t forget|important|we (?:decided|agreed)|my goal|i prefer|deadline|siempre|nunca|always|never)\b/i;
 
 function count(re: RegExp, s: string): number {
   return (s.match(re) ?? []).length;
@@ -41,11 +47,23 @@ export class HeuristicAppraiser implements Appraiser {
       }
     }
 
-    const memories: AppraisalSignal["memories"] = [
-      { content: input.observation.slice(0, 480), source: input.source, tags: ["episode", input.source] },
-    ];
+    // Stable user facts (name, alias) extracted OFFLINE, so "me llamo David"
+    // survives sessions even with no model configured (V2-F1.1).
+    const facts = input.source === "user" ? extractUserFacts(input.observation) : [];
+    const preferences: AppraisalSignal["preferences"] = facts;
 
-    const confidence = Math.max(0.2, Math.min(0.9, 0.4 + Math.abs(net) * 0.15));
+    // The raw dialog already persists in sessions/; the episodic ledger only gets
+    // a line when it carries durable signal (a fact, or a salience keyword).
+    const memories: AppraisalSignal["memories"] = [];
+    if (facts.length) {
+      for (const f of facts) {
+        memories.push({ content: `${f.key} = ${f.value}`, source: input.source, tags: ["episode", "kind:fact", input.source] });
+      }
+    } else if (SALIENT.test(input.observation)) {
+      memories.push({ content: input.observation.slice(0, 300), source: input.source, tags: ["episode", input.source] });
+    }
+
+    const confidence = Math.max(0.2, Math.min(0.9, 0.4 + Math.abs(net) * 0.15 + (facts.length ? 0.3 : 0)));
 
     return {
       appraisal:
@@ -54,6 +72,7 @@ export class HeuristicAppraiser implements Appraiser {
           : `Observation reads ${net > 0 ? "positive" : "negative"} (net ${net}); nudging affect within envelope.`,
       mutations,
       memories,
+      preferences,
       confidence,
     };
   }

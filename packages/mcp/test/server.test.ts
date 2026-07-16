@@ -86,7 +86,9 @@ describe("personaxis MCP server", () => {
   });
 
   it("persona_observe runs a governed cycle and persona_audit verifies integrity", async () => {
-    const obs = await callJson("persona_observe", { persona, observation: "great progress", source: "user" });
+    // V2-F1.3: only SALIENT observations earn a ledger entry (raw chatter stays in
+    // sessions/), so the observation carries an explicit remember cue.
+    const obs = await callJson("persona_observe", { persona, observation: "remember: great progress on the deploy", source: "user" });
     expect(obs.report.memoriesWritten).toBeGreaterThanOrEqual(1);
     const audit = await callJson("persona_audit", { persona });
     expect(audit.memory_chain_intact).toBe(true);

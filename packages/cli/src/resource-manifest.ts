@@ -15,7 +15,8 @@ interface FolderSection {
 }
 
 const FOLDER_SECTIONS: FolderSection[] = [
-  { folder: "memory", description: "date-stamped episodic sessions, newest first", sortNewestFirst: true },
+  { folder: "memory", description: "the memory stores (hash-chained episodic.jsonl + procedural/autobiographical/evaluations JSONL + preferences.json), searchable via the memory_search tool" },
+  { folder: "sessions", description: "full conversation transcripts, one JSONL per session, newest first (resume with /resume)", sortNewestFirst: true },
   { folder: "references", description: "background material this persona draws on" },
   { folder: "examples", description: "worked outputs for voice/format calibration" },
   { folder: "skills", description: "Anthropic-compatible sub-skills" },
@@ -61,7 +62,7 @@ export function buildResourceManifest(baseDir: string, opts: ResourceManifestOpt
 
   const memoryFile = join(baseDir, "memory.md");
   if (existsSync(memoryFile) && statSync(memoryFile).isFile()) {
-    lines.push("- `./memory.md` - curated long-term semantic memory (read on demand).");
+    lines.push("- `./memory.md` - consolidated semantic memory, salience-ranked (ALWAYS loaded into context).");
   }
 
   for (const section of FOLDER_SECTIONS) {

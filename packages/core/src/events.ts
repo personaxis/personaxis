@@ -17,7 +17,7 @@ export type LoopEvent =
   | { type: "govern"; verdicts: Verdict[] }
   | { type: "mutate"; result: MutationResult }
   | { type: "memory"; entry: MemoryEntry }
-  | { type: "memory-kind"; kind: "procedural" | "autobiographical" | "user_preferences" | "evaluations"; detail: string }
+  | { type: "memory-kind"; kind: "semantic" | "procedural" | "autobiographical" | "user_preferences" | "evaluations"; detail: string }
   // Memory consumed to answer this turn (resumeContext injected it). One per kind, with a count.
   | { type: "memory-recall"; kind: "episodic" | "semantic" | "procedural" | "autobiographical" | "user_preferences"; count: number; detail?: string }
   // A single quality/utility score written this turn (target + dimension + score), so the UI can

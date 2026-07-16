@@ -49,6 +49,8 @@ export interface Ctx {
   sessionStarted: boolean;
   /** Whether the session has been auto-named yet. */
   sessionNamed: boolean;
+  /** Whether closeSession already ran for this ctx (distill/consolidate/prune once). */
+  sessionClosed?: boolean;
   /** Session-level context-window meter (persists across turns). */
   meter: ContextMeter;
   /** Update the spinner phase label (Screen mode only). */

@@ -56,7 +56,9 @@ export class LlmResponder implements Responder {
       Object.entries(input.state)
         .map(([k, v]) => `${k}=${v.toFixed(2)}`)
         .join(", "),
-      input.memory.length ? "\n# Recent memory\n" + input.memory.slice(-6).join("\n") : "",
+      // The caller bounds `memory` (profile first, then the recall window); a second
+      // slice here would drop the profile lines that lead the array.
+      input.memory.length ? "\n# Memory (stable facts first)\n" + input.memory.join("\n") : "",
     ].join("\n");
 
     const res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
@@ -96,8 +98,11 @@ export class ReflectiveResponder implements Responder {
   async respond(input: RespondInput): Promise<string> {
     const tone = input.state["mood.tone"] ?? 0;
     const mood = tone > 0.12 ? "upbeat" : tone < -0.12 ? "subdued" : "even";
+    // The user profile leads the memory lines ("user name: X"). Even offline, the
+    // persona addresses a KNOWN user by name, cross-session recall made visible.
+    const known = input.memory.map((l) => /^user name:\s*(.+)$/.exec(l)?.[1]).find(Boolean);
     return (
-      `(${input.name}, modeled tone: ${mood}) I registered that and updated my state + memory. ` +
+      `(${input.name}, modeled tone: ${mood})${known ? ` Noted, ${known}.` : ""} I registered that and updated my state + memory. ` +
       `I can't hold a full conversation without a model, set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL ` +
       `(Ollama/llama.cpp) or BYOK to talk with me for real.`
     );

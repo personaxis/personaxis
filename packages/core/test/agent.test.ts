@@ -164,30 +164,36 @@ describe("PersonaAgent (governed task execution)", () => {
     expect(res.verification?.passed).toBe(false); // reported as failed, but did not block
   });
 
-  it("records each run in the EXISTING memory (no STATE.md) and resumes via memory + agent_session", async () => {
+  it("records REAL runs in the EXISTING memory (no STATE.md); one-shot chat is not duplicated", async () => {
     const personaPath = join(dir, "personaxis.md");
     // A persona with episodic memory enabled + seeded state.json.
     writeFileSync(personaPath, `---\nmetadata: { name: a, version: 1.0.0 }\nidentity: { canonical_id: a }\nmemory: { types: { episodic: true } }\n---\nbody`);
     writeFileSync(join(dir, "state.json"), JSON.stringify({ schema_version: "0.9.0", persona_id: "a", persona_version: "1.0.0", values: {}, mutation_log: [] }));
-    const mk = () =>
-      new PersonaAgent({
-        llm: llm(scriptedFetch([{ tool: "finish", args: { summary: "shipped the landing page" } }])),
-        policy: policy(),
-        personaPath,
-      });
-    await mk().run("build a landing page");
+
+    // V2-F1.3 dedup: a 1-step success (a chat-style finish, no action) earns NO
+    // ledger entry, the dialog already lives in sessions/.
+    await new PersonaAgent({
+      llm: llm(scriptedFetch([{ tool: "finish", args: { summary: "nothing to do" } }])),
+      policy: policy(),
+      personaPath,
+    }).run("say hi");
+    expect(readMemory(personaPath).filter((m) => m.tags.includes("agent-run")).length).toBe(0);
+
+    // A multi-step run (real action taken) IS recorded.
+    const agent = new PersonaAgent({
+      llm: llm(scriptedFetch([{ tool: "list_dir", args: { path: "." } }, { tool: "finish", args: { summary: "shipped the landing page" } }])),
+      policy: policy(),
+      personaPath,
+    });
+    await agent.run("build a landing page");
     // No STATE.md / agent-state.jsonl files exist.
     expect(existsSync(join(dir, "STATE.md"))).toBe(false);
     expect(existsSync(join(dir, "memory", "agent-state.jsonl"))).toBe(false);
-    // The run is recorded as an episodic memory entry (source synthesis, tag agent-run).
     const mem = readMemory(personaPath);
     expect(mem.some((m) => m.tags.includes("agent-run") && m.content.includes("build a landing page"))).toBe(true);
     // agent_session in state.json tracks the run.
     const st = readState(loadPersona(personaPath).statePath);
     expect(st.agent_session?.step_count).toBeGreaterThanOrEqual(1);
-
-    await mk().run("write the launch email");
-    expect(readMemory(personaPath).filter((m) => m.tags.includes("agent-run")).length).toBe(2);
   });
 });
 

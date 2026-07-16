@@ -11,7 +11,7 @@
 
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import chalk from "chalk";
 import { readState, resolveModel } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
@@ -24,7 +24,7 @@ import { runModelSetupInk } from "../config-ui.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
 import { replyLine, fmtK, firstRunModelHint } from "./render.js";
-import { makeCtx } from "./session.js";
+import { makeCtx, closeSession } from "./session.js";
 import { dispatchTurn, buildRoster } from "./turn.js";
 import { COMMANDS, listCommands, runCommand } from "./commands.js";
 
@@ -36,6 +36,13 @@ export { notePostureChange, listCommands };
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   let personaPath = resolvePersonaPath(opts.persona);
   await animateLogo();
+
+  // Transparency when the persona was INHERITED from an ancestor directory (the
+  // git-like walk-up): say which one, so "who am I talking to" is never a mystery.
+  if (personaPath && !opts.persona) {
+    const rel = relative(process.cwd(), personaPath);
+    if (rel.startsWith("..")) stdout.write(chalk.dim(`  persona: ${personaPath} (inherited from an ancestor directory)\n`));
+  }
 
   if (!personaPath) {
     stdout.write(chalk.yellow("  No persona here yet.") + chalk.dim(" Let's create one so you can start playing.\n\n"));
@@ -125,6 +132,7 @@ async function runLineMode(ctx: Ctx): Promise<void> {
     }
   }
   rl.close();
+  closeSession(ctx);
   await farewell(ctx.handle.frontmatter);
 }
 
@@ -181,6 +189,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
         const done = await runCommand(line, ctx);
         if (done) {
           screen.stop();
+          closeSession(ctx); // distill + consolidate + prune before we vanish
           await farewell(ctx.handle.frontmatter);
           process.exit(0);
         }
@@ -225,6 +234,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   // Ink keeps the process alive until unmount / ctrl+c; block here so the session
   // stays open, then say goodbye (the /quit path exits directly before this).
   await screen.waitUntilExit();
+  closeSession(ctx);
   await farewell(ctx.handle.frontmatter);
 }
 

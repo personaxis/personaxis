@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ProvenanceSource } from "./appraisal.js";
+import { readEvaluations } from "./memory-kinds.js";
 
 /**
  * The spec's `memory.types` map (MUST). The runtime now HONORS these instead of
@@ -170,10 +171,34 @@ export function readLiveMemory(personaPath: string): MemoryEntry[] {
 }
 
 /**
- * Consolidate episodic memory into a semantic snapshot at <personaDir>/memory.md
- * (the spec's `memory.types.semantic`). Deterministic + dependency-free: groups
- * live (non-tombstoned) entries by provenance source into a digest. Idempotent, 
- * rewritten each call, so it always reflects the current live memory.
+ * Deterministic salience of a live episodic entry (V2-F1.3): what deserves a slot
+ * in the bounded semantic snapshot. Typed distillates and user-sourced content
+ * rank first; recorded usefulness evaluations and recency add; an injection flag
+ * subtracts hard. In [0, 1].
+ */
+export function salienceOf(entry: MemoryEntry, opts: { usefulness?: number; now?: Date } = {}): number {
+  let s = entry.source === "user" ? 0.55 : entry.source === "synthesis" ? 0.45 : 0.3;
+  if (entry.tags.some((t) => t === "anchor")) s += 0.35;
+  if (entry.tags.some((t) => t === "kind:fact" || t === "kind:decision" || t === "kind:preference")) s += 0.25;
+  else if (entry.tags.some((t) => t === "kind:event")) s += 0.1;
+  if (entry.tags.includes("distilled")) s += 0.1;
+  if (typeof opts.usefulness === "number") s += opts.usefulness * 0.15;
+  const ageDays = ((opts.now ?? new Date()).getTime() - Date.parse(entry.ts)) / 86_400_000;
+  if (Number.isFinite(ageDays) && ageDays <= 7) s += 0.08;
+  if (entry.tags.includes("injection-flagged")) s -= 0.5;
+  return Math.max(0, Math.min(1, s));
+}
+
+/** The semantic snapshot's hard budget: what resumeContext injects verbatim. */
+const SEMANTIC_BUDGET_CHARS = 2400;
+
+/**
+ * Consolidate episodic memory into the semantic snapshot at <personaDir>/memory.md
+ * (the spec's `memory.types.semantic`). Deterministic + dependency-free. V2: the
+ * snapshot is a SALIENCE-RANKED digest under typed sections (facts / decisions /
+ * events / other), budgeted to what the prompt actually loads, so the most
+ * important content survives the cut, never merely the oldest (the pre-V2 dump
+ * kept the first 2500 chars and buried the user's name under noise).
  */
 export function consolidateSemantic(personaPath: string, limit = 200): { ok: boolean; path: string; count: number } {
   const entries = readLiveMemory(personaPath).slice(-limit);
@@ -182,20 +207,50 @@ export function consolidateSemantic(personaPath: string, limit = 200): { ok: boo
     writeFileSync(path, "# Semantic memory\n\n_(empty)_\n", "utf-8");
     return { ok: true, path, count: 0 };
   }
-  const bySource = new Map<string, MemoryEntry[]>();
-  for (const e of entries) {
-    const arr = bySource.get(e.source) ?? [];
-    arr.push(e);
-    bySource.set(e.source, arr);
+  // Average recorded usefulness per target (evaluations.jsonl), when present.
+  const usefulness = new Map<string, { sum: number; n: number }>();
+  for (const ev of readEvaluations(personaPath)) {
+    if (ev.dimension !== "usefulness") continue;
+    const cur = usefulness.get(ev.target) ?? { sum: 0, n: 0 };
+    usefulness.set(ev.target, { sum: cur.sum + ev.score, n: cur.n + 1 });
   }
-  const lines = ["# Semantic memory (consolidated)", "", `_generated ${new Date().toISOString()} from ${entries.length} episodic entr${entries.length === 1 ? "y" : "ies"}_`, ""];
-  for (const [source, arr] of bySource) {
-    lines.push(`## From ${source}`);
-    for (const e of arr) lines.push(`- ${e.content.replace(/\n+/g, " ").trim()} \`#${e.hash.slice(0, 8)}\``);
-    lines.push("");
+  const scored = entries
+    .map((e) => {
+      const u = usefulness.get(`#${e.hash.slice(0, 8)}`);
+      return { e, s: salienceOf(e, { usefulness: u ? u.sum / u.n : undefined }) };
+    })
+    .sort((a, b) => b.s - a.s);
+
+  const sectionOf = (e: MemoryEntry): string => {
+    if (e.tags.includes("kind:fact")) return "Facts";
+    if (e.tags.includes("kind:decision") || e.tags.includes("kind:preference")) return "Decisions & preferences";
+    if (e.tags.includes("kind:event")) return "Events";
+    return "Other";
+  };
+  const sections = new Map<string, string[]>();
+  let used = 0;
+  let kept = 0;
+  for (const { e, s } of scored) {
+    const line = `- ${e.content.replace(/\n+/g, " ").trim()} \`#${e.hash.slice(0, 8)}\` (s=${s.toFixed(2)})`;
+    if (used + line.length > SEMANTIC_BUDGET_CHARS) continue;
+    used += line.length;
+    kept++;
+    const sec = sectionOf(e);
+    sections.set(sec, [...(sections.get(sec) ?? []), line]);
+  }
+  const lines = [
+    "# Semantic memory (consolidated)",
+    "",
+    `_generated ${new Date().toISOString()}: top ${kept} of ${entries.length} live entr${entries.length === 1 ? "y" : "ies"} by salience_`,
+    "",
+  ];
+  for (const sec of ["Facts", "Decisions & preferences", "Events", "Other"]) {
+    const rows = sections.get(sec);
+    if (!rows?.length) continue;
+    lines.push(`## ${sec}`, ...rows, "");
   }
   writeFileSync(path, lines.join("\n"), "utf-8");
-  return { ok: true, path, count: entries.length };
+  return { ok: true, path, count: kept };
 }
 
 /**

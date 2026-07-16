@@ -26,7 +26,7 @@ import {
   type SandboxMode,
   type PersonaHandle,
 } from "@personaxis/core";
-import { slugChainFromPath } from "../load.js";
+import { slugChainFromPath, resolvePersonaSourcePath } from "../load.js";
 import type { Ctx } from "./types.js";
 
 export const CANDIDATES = [".personaxis/personaxis.md", ".personaxis/PERSONA.md", "personaxis.md", "PERSONA.md"];
@@ -46,7 +46,13 @@ export function resolvePersonaPath(opt?: string): string | null {
     const p = resolve(c);
     if (existsSync(p)) return p;
   }
-  return null;
+  // Nothing at the cwd: inherit an ancestor's persona (git-like walk-up, stops at
+  // the home dir), so `~/.personaxis` acts as the user's global persona anywhere.
+  try {
+    return resolvePersonaSourcePath();
+  } catch {
+    return null;
+  }
 }
 
 /** Record that the sandbox posture changed, so the next turn nudges the model to re-evaluate.

@@ -17,8 +17,10 @@ import {
   EventBus,
   Tracer,
   readState,
-  readMemory,
   readMemoryTypes,
+  readMemoryKnobs,
+  userProfile,
+  recallWindow,
   prepareMemoryEntry,
   commitMemoryEntry,
   appendTurn,
@@ -46,12 +48,21 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const llm = llmConfig(ctxModelArg(ctx));
   if (!llm) {
     const cur = readState(ctx.handle.statePath);
+    // Offline recall (V2-F1.2): the user profile loads FIRST (name recall works with
+    // no model), then the bounded recent window, never a blind last-6 of raw lines.
+    const p = ctx.handle.personaPath;
+    const knobs = readMemoryKnobs(ctx.handle.frontmatter as Record<string, unknown>);
+    const profile = userProfile(p);
+    const memoryLines = [
+      ...Object.entries(profile.facts).map(([k, v]) => `user ${k}: ${v.value}`),
+      ...recallWindow(p, { maxItems: knobs.maxItems, sessionId: ctx.sessionId }).map((m) => m.content),
+    ];
     const reply = await ctx.responder
-      .respond({ message: line, personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, memory: readMemory(ctx.handle.personaPath).slice(-6).map((m) => m.content), state: cur.values, name: shortName(ctx) })
+      .respond({ message: line, personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, memory: memoryLines, state: cur.values, name: shortName(ctx) })
       .catch((e) => `(responder error: ${(e as Error).message})`);
     ctx.out(replyLine(ctx, reply), "persona");
     await recordTurn(ctx, line, reply);
-    await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
+    await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
     return;
   }
 
@@ -79,6 +90,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     verification: readVerification(fm),
     judge: { endpoint: llm.endpoint, model: llm.model, apiKey: llm.apiKey },
     personaPath: ctx.handle.personaPath,
+    sessionId: ctx.sessionId,
     meter: ctx.meter,
     priorMessages: ctx.conversation,
     bus,
@@ -137,7 +149,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     }
     // NB: within-band ticks emit no recompile; the fast .live.json marker stays internal.
   });
-  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm" }).catch(() => {});
+  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch(() => {});
   off();
   // Per-turn telemetry as a distinct, labeled BLOCK (one line per fact) so it never blends into
   // the persona's reply above. Rendered dim, with a gutter (┊) and an aligned label; only the

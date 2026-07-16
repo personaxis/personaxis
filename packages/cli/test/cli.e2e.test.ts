@@ -65,7 +65,9 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
       cwd,
       input: "hi there\n/exit\n",
       encoding: "utf-8",
-      env: { ...process.env, FORCE_COLOR: "0", PERSONAXIS_NO_ANIM: "1" },
+      // NO_INHERIT: without it the git-like walk-up would attach to the developer's
+      // real ~/.personaxis (the temp dir lives under the home) and never scaffold.
+      env: { ...process.env, FORCE_COLOR: "0", PERSONAXIS_NO_ANIM: "1", PERSONAXIS_NO_INHERIT: "1" },
     });
     expect(out).toContain("is ready");
     expect(out).toContain("is awake");

@@ -99,15 +99,17 @@ describe("LivingLoop honors memory.types (spec fidelity)", () => {
   });
 });
 
-describe("consolidateSemantic", () => {
-  it("groups live entries by source into memory.md", () => {
+describe("consolidateSemantic (V2: salience-ranked digest)", () => {
+  it("keeps live entries in typed sections with provenance + salience", () => {
     writeFileSync(personaPath, fixture("    episodic: true"));
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "a", source: "user" }));
-    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "b", source: "tool" }));
+    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "user.name = David", source: "user", tags: ["kind:fact"] }));
     const r = consolidateSemantic(personaPath);
     expect(r.count).toBe(2);
     const md = readFileSync(r.path, "utf-8");
-    expect(md).toContain("## From user");
-    expect(md).toContain("## From tool");
+    expect(md).toContain("## Facts");
+    expect(md).toContain("user.name = David");
+    expect(md).toContain("## Other");
+    expect(md).toMatch(/\(s=0\.\d\d\)/); // salience is visible per line
   });
 });

@@ -14,14 +14,20 @@ function sameDir(a: string, b: string): boolean {
 
 /**
  * Walk up from `startDir` looking for `<dir>/.personaxis/personaxis.md` (like git
- * resolves its repo root). Stops at the filesystem root. Returns the spec path or
- * undefined. SPEC assumption (documented): the nearest ancestor wins.
+ * resolves its repo root). SPEC assumption (documented): the nearest ancestor wins;
+ * inside the user's home the walk STOPS at the home directory itself (so
+ * `~/.personaxis` acts as the global persona and the search never crosses into
+ * other users' space); outside the home it stops at the filesystem root.
  */
 function findRootSpecUpwards(startDir: string): string | undefined {
+  if (process.env.PERSONAXIS_NO_INHERIT === "1") return undefined; // explicit opt-out (CI, tests, isolation)
   let dir = resolve(startDir);
+  const home = resolve(homedir());
+  const underHome = process.platform === "win32" ? dir.toLowerCase().startsWith(home.toLowerCase()) : dir.startsWith(home);
   for (;;) {
     const candidate = join(dir, PERSONAXIS_DIR, "personaxis.md");
     if (existsSync(candidate)) return candidate;
+    if (underHome && sameDir(dir, home)) return undefined; // home itself was just checked
     const parent = dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;

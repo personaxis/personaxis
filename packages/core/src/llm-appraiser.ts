@@ -52,7 +52,10 @@ matches the provided schema:
   uncertainty disclosure threshold to 0.10":
     "selfEdits": [{ "targetPath": "cognition.uncertainty_policy.disclose_when_above",
       "toValue": 0.10, "rationale": "user authorized a durable lower disclosure threshold" }]
-- "preferences": optional stable user preferences you inferred (key + value);
+- "preferences": optional STABLE user facts/preferences you inferred (key + value). Use dotted
+  keys: "user.name" when the user introduces themselves, "user.alias" for how to address them,
+  "user.role"/"user.timezone" for stated facts, plain keys ("format.tone") for preferences.
+  These persist across sessions and greet the user by name, so record a presentation EVERY time;
 - "confidence" in [0,1] (self-edits/preferences are only considered at confidence >= 0.6).
 Propose only minimal, well-justified changes. You are NOT applying anything, the runtime
 clamps, governs (mode + consensus + protected paths), and may queue your proposal.`;
