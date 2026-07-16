@@ -19,7 +19,7 @@ import {
   readState,
   readMemoryTypes,
   readMemoryKnobs,
-  userProfile,
+  factsView,
   recallWindow,
   prepareMemoryEntry,
   commitMemoryEntry,
@@ -52,9 +52,9 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     // no model), then the bounded recent window, never a blind last-6 of raw lines.
     const p = ctx.handle.personaPath;
     const knobs = readMemoryKnobs(ctx.handle.frontmatter as Record<string, unknown>);
-    const profile = userProfile(p);
+    const known = factsView(p);
     const memoryLines = [
-      ...Object.entries(profile.facts).map(([k, v]) => `user ${k}: ${v.value}`),
+      ...Object.entries(known.facts).map(([k, v]) => `${k}: ${v.value}`),
       ...recallWindow(p, { maxItems: knobs.maxItems, sessionId: ctx.sessionId }).map((m) => m.content),
     ];
     const reply = await ctx.responder

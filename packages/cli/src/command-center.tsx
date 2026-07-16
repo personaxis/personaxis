@@ -32,6 +32,7 @@ import {
   readAutobiographical,
   readPreferences,
   readEvaluations,
+  isFactKey,
   describeModel,
   type PersonaFrontmatter,
 } from "@personaxis/core";
@@ -341,14 +342,14 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
     if (!p) return [];
     const types = readMemoryTypes(loadPersonaFm(p));
     const prefs = Object.entries(readPreferences(p));
-    const profile = prefs.filter(([k]) => k.startsWith("user."));
+    const facts = prefs.filter(([k]) => isFactKey(k));
     return [
-      { value: "profile", title: "User profile", desc: `${profile.length} stable fact(s), always loaded first`, badge: undefined },
+      { value: "facts", title: "Known facts", desc: `${facts.length} stable fact(s) about any entity, always loaded first`, badge: undefined },
       { value: "episodic", title: "Episodic", desc: `${readMemory(p).length} chained entr(ies)${types.episodic ? "" : " · OFF"}`, badge: undefined },
       { value: "semantic", title: "Semantic (memory.md)", desc: `${readSemanticMemory(p) ? "consolidated, salience-ranked" : "(empty)"}${types.semantic ? "" : " · OFF"}` },
       { value: "procedural", title: "Procedural", desc: `${readProcedural(p).length} how-to(s)${types.procedural ? "" : " · OFF"}` },
       { value: "autobiographical", title: "Autobiographical", desc: `${readAutobiographical(p).length} milestone(s)${types.autobiographical ? "" : " · OFF"}` },
-      { value: "preferences", title: "Preferences", desc: `${prefs.length - profile.length} plain preference(s)` },
+      { value: "preferences", title: "Preferences", desc: `${prefs.length - facts.length} plain preference(s)` },
       { value: "evaluations", title: "Evaluations", desc: `${readEvaluations(p).length} score(s)${types.evaluations ? "" : " · OFF"}` },
     ];
   }
@@ -635,10 +636,10 @@ function MemorySection(props: { personaPath: string; kind: string | null; kinds:
   if (!props.kind) return <SelectList items={props.kinds} index={props.cursor} />;
   const rows: string[] = (() => {
     switch (props.kind) {
-      case "profile":
+      case "facts":
         return Object.entries(readPreferences(p))
-          .filter(([k]) => k.startsWith("user."))
-          .map(([k, v]) => `${k.slice(5)} = ${v.value}   (${v.ts.slice(0, 10)})`);
+          .filter(([k]) => isFactKey(k))
+          .map(([k, v]) => `${k} = ${v.value}   (${v.ts.slice(0, 10)})`);
       case "episodic":
         return readMemory(p).slice(-40).map((m) => `${m.ts.slice(0, 19)} [${m.source}] ${m.content.slice(0, 90)}`);
       case "semantic":
@@ -649,7 +650,7 @@ function MemorySection(props: { personaPath: string; kind: string | null; kinds:
         return readAutobiographical(p).map((x) => `${x.ts.slice(0, 10)}  ${x.event}${x.detail ? `: ${x.detail}` : ""}`);
       case "preferences":
         return Object.entries(readPreferences(p))
-          .filter(([k]) => !k.startsWith("user."))
+          .filter(([k]) => !isFactKey(k))
           .map(([k, v]) => `${k} = ${v.value}`);
       case "evaluations":
         return readEvaluations(p).slice(-40).map((e) => `${e.target} ${e.dimension} ${e.score.toFixed(2)}  ${e.rationale.slice(0, 50)}`);

@@ -9,7 +9,7 @@
  */
 
 import type { AppraiseInput, AppraisalSignal, Appraiser } from "./appraisal.js";
-import { extractUserFacts } from "./memory/profile.js";
+import { extractFacts } from "./memory/facts.js";
 
 const POSITIVE =
   /\b(good|great|love|nice|thanks|excellent|win|happy|success|works?|fixed|clean|elegant)\b/gi;
@@ -47,9 +47,9 @@ export class HeuristicAppraiser implements Appraiser {
       }
     }
 
-    // Stable user facts (name, alias) extracted OFFLINE, so "me llamo David"
-    // survives sessions even with no model configured (V2-F1.1).
-    const facts = input.source === "user" ? extractUserFacts(input.observation) : [];
+    // Stable entity facts (name, alias of the interlocutor) extracted OFFLINE, so
+    // an introduction survives sessions even with no model configured (V2-F1.1).
+    const facts = input.source === "user" ? extractFacts(input.observation) : [];
     const preferences: AppraisalSignal["preferences"] = facts;
 
     // The raw dialog already persists in sessions/; the episodic ledger only gets

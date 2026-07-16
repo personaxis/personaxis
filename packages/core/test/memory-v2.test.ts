@@ -1,7 +1,8 @@
 /**
- * Memory engine V2 (plan V2-F1): user profile + offline fact extraction, spec
- * knobs finally consumed, session distillation (dedup of sessions/episodic),
- * salience consolidation, retrieval (BM25 + tools), write_policy and retention.
+ * Memory engine V2 (plan V2-F1): entity-facts memory (generalized, not "user"-only)
+ * + offline fact extraction, spec knobs finally consumed, session distillation
+ * (dedup of sessions/episodic), salience consolidation, retrieval (BM25 + tools),
+ * write_policy and retention.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -19,9 +20,10 @@ import {
   commitMemoryEntry,
   ensureSession,
   appendTurn,
-  extractUserFacts,
-  userProfile,
-  renderUserProfile,
+  extractFacts,
+  factsView,
+  renderFacts,
+  isFactKey,
   readMemoryKnobs,
   readWritePolicy,
   readConsolidationMode,
@@ -84,19 +86,26 @@ function seed(): void {
   writeFileSync(handle.statePath, JSON.stringify(state, null, 2));
 }
 
-describe("extractUserFacts (offline, es/en)", () => {
-  it("catches presentations in Spanish and English", () => {
-    expect(extractUserFacts("hola, me llamo David y trabajo en esto")[0]).toMatchObject({ key: "user.name", value: "David" });
-    expect(extractUserFacts("Mi nombre es Ana Lucía.")[0]).toMatchObject({ key: "user.name", value: "Ana Lucía" });
-    expect(extractUserFacts("hey, my name is Grace Hopper!")[0]).toMatchObject({ key: "user.name", value: "Grace Hopper" });
-    expect(extractUserFacts("please call me Dave")[0]).toMatchObject({ key: "user.alias", value: "Dave" });
-    expect(extractUserFacts("llámame Q cuando quieras")[0]).toMatchObject({ key: "user.alias", value: "Q" });
+describe("extractFacts (offline, es/en; entity-neutral)", () => {
+  it("attributes an introduction to the neutral 'interlocutor' subject, never 'user'", () => {
+    expect(extractFacts("hola, me llamo David y trabajo en esto")[0]).toMatchObject({ key: "interlocutor.name", value: "David" });
+    expect(extractFacts("Mi nombre es Ana Lucía.")[0]).toMatchObject({ key: "interlocutor.name", value: "Ana Lucía" });
+    expect(extractFacts("hey, my name is Grace Hopper!")[0]).toMatchObject({ key: "interlocutor.name", value: "Grace Hopper" });
+    expect(extractFacts("please call me Dave")[0]).toMatchObject({ key: "interlocutor.alias", value: "Dave" });
+    expect(extractFacts("llámame Q cuando quieras")[0]).toMatchObject({ key: "interlocutor.alias", value: "Q" });
   });
 
   it("does NOT false-positive on 'soy/I'm' sentences (precision over recall)", () => {
-    expect(extractUserFacts("soy sincero contigo")).toEqual([]);
-    expect(extractUserFacts("I'm tired of this bug")).toEqual([]);
-    expect(extractUserFacts("no tengo nada que decir")).toEqual([]);
+    expect(extractFacts("soy sincero contigo")).toEqual([]);
+    expect(extractFacts("I'm tired of this bug")).toEqual([]);
+    expect(extractFacts("no tengo nada que decir")).toEqual([]);
+  });
+
+  it("isFactKey separates subject-qualified facts from loose preferences", () => {
+    expect(isFactKey("interlocutor.name")).toBe(true);
+    expect(isFactKey("project.deadline")).toBe(true);
+    expect(isFactKey("agent:reviewer.owner")).toBe(true);
+    expect(isFactKey("tone")).toBe(false);
   });
 });
 
@@ -120,17 +129,20 @@ describe("spec knobs are read (V2-F1.6, zero decorative fields)", () => {
   });
 });
 
-describe("the name survives a session (V2-F1.1, the reported bug)", () => {
-  it("HeuristicAppraiser + LivingLoop persist user.name; userProfile recalls it", async () => {
+describe("a stable fact survives a session (V2-F1.1, generalized; name is one instance)", () => {
+  it("HeuristicAppraiser + LivingLoop persist the fact; factsView recalls it grouped by subject", async () => {
     writeFileSync(personaPath, fixture());
     seed();
     const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
     await loop.tick({ observation: "hola, me llamo David", source: "user" });
-    // The fact is in the preferences store under user.*, ready for every later session.
-    expect(readPreferences(personaPath)["user.name"]?.value).toBe("David");
-    const view = userProfile(personaPath);
-    expect(view.facts.name.value).toBe("David");
-    expect(renderUserProfile(view)).toContain("- name: David");
+    // The fact is in the preferences store as a subject-qualified key, ready for every later session.
+    expect(readPreferences(personaPath)["interlocutor.name"]?.value).toBe("David");
+    const view = factsView(personaPath);
+    expect(view.facts["interlocutor.name"].value).toBe("David");
+    // The block groups by subject, and works for ANY subject, not just "user".
+    expect(renderFacts(view)).toContain("interlocutor: name = David");
+    // A general entity fact (e.g. project) lands in the same block, another subject.
+    await loop.tick({ observation: "recuerda esto", source: "user" }); // salient, keeps the loop honest
     // And learning it the first time is an autobiographical milestone.
     expect(readAutobiographical(personaPath).some((e) => e.event.includes("David"))).toBe(true);
   });
@@ -178,7 +190,7 @@ describe("session distillation (V2-F1.3)", () => {
 
   it("distillTurns extracts facts, decisions, and one event line", () => {
     const d = distillTurns(turns as never, "kickoff");
-    expect(d.find((x) => x.kind === "fact")?.content).toBe("user.name = David");
+    expect(d.find((x) => x.kind === "fact")?.content).toBe("interlocutor.name = David");
     expect(d.find((x) => x.kind === "decision")?.content).toContain("pnpm");
     expect(d.find((x) => x.kind === "event")?.content).toContain('session "kickoff"');
   });
@@ -213,14 +225,14 @@ describe("retention pruning (V2-F1.6)", () => {
     // Backdating an entry would break the hash chain, so age them the other way:
     // prune with a 'now' 40 days in the future against a 30-day window.
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "stale chatter", source: "user" }));
-    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "user.name = David", source: "user", tags: ["kind:fact"] }));
+    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "interlocutor.name = David", source: "user", tags: ["kind:fact"] }));
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "anchored truth", source: "user", tags: ["anchor"] }));
     const future = new Date(Date.now() + 40 * 24 * 3600 * 1000);
     const r = pruneMemory(personaPath, 30, future);
     expect(r.pruned).toBe(1);
     const live = readLiveMemory(personaPath).map((e) => e.content);
     expect(live).not.toContain("stale chatter");
-    expect(live).toContain("user.name = David");
+    expect(live).toContain("interlocutor.name = David");
     expect(live).toContain("anchored truth");
     expect(pruneMemory(personaPath, undefined).pruned).toBe(0); // no window declared → no-op
   });
@@ -230,7 +242,7 @@ describe("retrieval (V2-F1.4)", () => {
   function seedDocs(): void {
     writeFileSync(personaPath, fixture());
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "the deploy pipeline uses github actions", source: "user" }));
-    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "user.name = David", source: "user", tags: ["kind:fact"] }));
+    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "interlocutor.name = David", source: "user", tags: ["kind:fact"] }));
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "lunch was pasta", source: "internal" }));
   }
 

@@ -59,40 +59,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fallbacks intact: non-TTY / `PERSONAXIS_NO_ALTSCREEN` / `PERSONAXIS_NO_INK` degrade to text or the
   readline menu, so pipes and CI are unaffected.
 
-### Feat: memory engine V2, the persona actually remembers you (V2-F1)
-- **Cross-session recall of who you are.** Stable user facts persist as dotted `user.*` keys in
-  the `user_preferences` store (no new artifact) and load FIRST in every recall path as a
-  `# User profile` block. Name/alias presentations ("me llamo X", "my name is X", "call me X")
-  are extracted OFFLINE by deterministic ES/EN patterns, so recall works with no model
-  configured; the LLM appraiser proposes the same dotted keys when a model is present. Even the
-  offline reflective responder greets a known user by name. E2E gate:
-  `packages/cli/test/name-recall.e2e.test.ts` (session A "me llamo David" → new process →
-  greeted by name).
-- **Session-start recall.** Every turn now injects the user profile, a previous-session recap
-  (derived at read time, no summary artifact), the consolidated memory.md, and a
-  today/yesterday episodic window, replacing the blind last-6 slice.
-- **The triplication is gone.** The raw dialog lives once, in `sessions/`; the Living Loop only
-  ledgers SALIENT lines (facts, explicit remember-cues); one-shot chat replies no longer write
-  "agent run [success]" entries; and at session close the session is distilled into 3-8
-  persistent typed entries (facts/decisions/one event, `from:<session>` back references,
-  idempotent).
-- **memory.md is now a salience-ranked digest** (facts / decisions / events sections, budgeted
-  to what the prompt loads, evaluations feed the ranking), no longer a chronological dump that
-  buried the user's name.
-- **Retrieval on demand.** New agent tools `memory_search` (lexical BM25 across every memory
-  kind; `use_embeddings`/`use_reranker` honored with stated fallbacks) and `memory_get`; also
-  `/memory search <q>`, `/memory consolidate`, `/memory prune` in the REPL.
-- **Spec knobs consumed** (previously decorative): `runtime.memory.{max_items, use_embeddings,
-  use_reranker, retention_days_default}`, `memory.write_policy` (ephemeral/session/persistent),
-  `memory.consolidation_policy.mode` (manual/assisted/auto), `memory.anchors`,
-  `memory.working_self`. Documented in `docs/architecture/memory.md`.
-- **Autobiographical memory gains real producers**: first conversation, a user fact learned, a
-  band crossing (plus the existing improvement-mode change).
-- **Personas inherit like git**: with no persona at the cwd, `personaxis` (REPL, `sigil`,
-  `dash`) walks up ancestors (stopping at your home), so `~/.personaxis` acts as your global
-  persona anywhere; the REPL prints the inherited path. Opt out with `PERSONAXIS_NO_INHERIT=1`.
-- The resource manifest now tells the truth: `memory/` is the memory stores (searchable),
-  `sessions/` is the transcript archive, `memory.md` is always loaded.
+### Feat: memory engine V2, general entity-facts memory + real recall (V2-F1)
+- **General facts memory, not "the user".** A fact's subject is ANY named entity, the ambient
+  interlocutor (human, agent, or app), a named person/agent/app, the project. Stable facts
+  persist as dotted `<subject>.<attribute>` keys in the `user_preferences` store (no new
+  artifact) and load first every turn as a `# Known facts` block grouped by subject; a dot-free
+  key is a loose preference. The name case is one instance of the same logic.
+- **Recall works offline.** Deterministic ES/EN introduction patterns persist
+  `interlocutor.name`/`interlocutor.alias` with no model; the LLM appraiser proposes the same
+  `subject.attribute` shape for any subject; the offline responder addresses a known party by
+  name. E2E gate: `packages/cli/test/name-recall.e2e.test.ts` (session A → new process → known).
+- **Session-start recall**: known facts + previous-session recap (derived at read time) +
+  consolidated memory.md + a today/yesterday episodic window, replacing the blind last-6 slice.
+- **No more triplication.** The dialog lives once in `sessions/`; the loop only ledgers salient
+  lines; one-shot chat no longer writes agent-run entries; at close the session distills into
+  3-8 typed entries (`from:<session>` refs). `memory.md` is a salience-ranked digest.
+- **Retrieval on demand**: `memory_search` (BM25; `use_embeddings`/`use_reranker` honored with
+  stated fallbacks) and `memory_get` tools; `/memory search|consolidate|prune`.
+- **Spec knobs consumed** (were decorative): `runtime.memory.*`, `write_policy`,
+  `consolidation_policy.mode`, `anchors`, `working_self`. See `docs/architecture/memory.md`.
+- **Personas inherit like git**: with no persona at the cwd, `personaxis` walks up to
+  `~/.personaxis` (stops at home); `PERSONAXIS_NO_INHERIT=1` opts out.
 
 ### Fix: honest compile, git-like persona discovery, height-aware TUI lists (V2-F0)
 - **`/compile` never lies.** The REPL's `/compile` now checks that the compiled document actually

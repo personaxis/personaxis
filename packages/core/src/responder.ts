@@ -98,9 +98,10 @@ export class ReflectiveResponder implements Responder {
   async respond(input: RespondInput): Promise<string> {
     const tone = input.state["mood.tone"] ?? 0;
     const mood = tone > 0.12 ? "upbeat" : tone < -0.12 ? "subdued" : "even";
-    // The user profile leads the memory lines ("user name: X"). Even offline, the
-    // persona addresses a KNOWN user by name, cross-session recall made visible.
-    const known = input.memory.map((l) => /^user name:\s*(.+)$/.exec(l)?.[1]).find(Boolean);
+    // The known facts lead the memory lines (e.g. "interlocutor.name: X"). Even
+    // offline, the persona addresses a KNOWN party by name, whatever the subject,
+    // cross-session recall made visible (not limited to a "user").
+    const known = input.memory.map((l) => /^[\w:.-]*\.?name:\s*(.+)$/.exec(l)?.[1]).find(Boolean);
     return (
       `(${input.name}, modeled tone: ${mood})${known ? ` Noted, ${known}.` : ""} I registered that and updated my state + memory. ` +
       `I can't hold a full conversation without a model, set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL ` +

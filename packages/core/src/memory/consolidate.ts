@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { commitMemoryEntry, prepareMemoryEntry, readLiveMemory, readMemory, tombstoneMemory, type MemoryEntry } from "../memory.js";
 import { listSessions, readSession, fallbackName, type SessionTurn } from "../sessions.js";
-import { extractUserFacts } from "./profile.js";
+import { extractFacts } from "./facts.js";
 
 export interface Distillate {
   content: string;
@@ -39,7 +39,7 @@ export function distillTurns(turns: SessionTurn[], sessionName: string): Distill
   const user = turns.filter((t) => t.role === "user");
   const assistant = turns.filter((t) => t.role === "assistant");
   for (const t of user) {
-    for (const f of extractUserFacts(t.content)) push({ content: `${f.key} = ${f.value}`, kind: "fact", source: "user" });
+    for (const f of extractFacts(t.content)) push({ content: `${f.key} = ${f.value}`, kind: "fact", source: "user" });
     if (DECISION_RE.test(t.content)) push({ content: `decision: ${trim1(t.content, 200)}`, kind: "decision", source: "user" });
     else if (GOAL_RE.test(t.content)) push({ content: `goal: ${trim1(t.content, 200)}`, kind: "decision", source: "user" });
   }

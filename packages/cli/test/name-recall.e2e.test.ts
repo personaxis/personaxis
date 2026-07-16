@@ -45,13 +45,13 @@ describe.runIf(built)("cross-session name recall (V2-F1 gate)", () => {
   it("session A learns the name; session B (new process) greets by name", { timeout: 120_000 }, () => {
     const a = repl("hola, me llamo David\n");
     expect(a).toContain("is awake");
-    // The fact persisted to the profile store...
+    // The fact persisted as a subject-qualified fact (entity-neutral, not "user")...
     const prefs = join(cwd, ".personaxis", "memory", "preferences.json");
     expect(existsSync(prefs)).toBe(true);
-    expect(JSON.parse(readFileSync(prefs, "utf-8"))["user.name"].value).toBe("David");
+    expect(JSON.parse(readFileSync(prefs, "utf-8"))["interlocutor.name"].value).toBe("David");
     // ...and learning it was an autobiographical milestone.
     const auto = readFileSync(join(cwd, ".personaxis", "memory", "autobiographical.jsonl"), "utf-8");
-    expect(auto).toContain("the user's name");
+    expect(auto).toMatch(/learned interlocutor\.name = David/);
 
     const b = repl("hola de nuevo, sabes quien soy?\n");
     expect(b).toContain("David"); // recalled in a NEW process, no search requested

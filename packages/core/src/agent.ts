@@ -47,7 +47,7 @@ import {
 } from "./memory.js";
 import { appendProcedural, readProcedural, readAutobiographical } from "./memory-kinds.js";
 import { readMemoryKnobs, readAnchors, readWorkingSelf } from "./memory/knobs.js";
-import { userProfile, renderUserProfile } from "./memory/profile.js";
+import { factsView, renderFacts } from "./memory/facts.js";
 import { recallWindow, memoryTools } from "./memory/retrieval.js";
 import { sessionBrief } from "./memory/consolidate.js";
 import { loadPersona, readState, writeState } from "./persona.js";
@@ -168,9 +168,10 @@ export class PersonaAgent {
 
   /**
    * Resume context, so the agent RESUMES, not restarts (V2-F1.2). Built from the
-   * spec's memory artifacts, in salience order: the USER PROFILE always loads
-   * first (the fix for "forgot my name"), then the previous-session recap, the
-   * consolidated memory.md, and a today/yesterday episodic window bounded by
+   * spec's memory artifacts, in salience order: the KNOWN FACTS about any entity
+   * always load first (the fix for "forgot my name", generalized to every entity,
+   * not just a "user"), then the previous-session recap, the consolidated
+   * memory.md, and a today/yesterday episodic window bounded by
    * `runtime.memory.max_items` (the knob, finally consumed). Anything older is
    * reachable through the memory_search tool, and the prompt says so.
    */
@@ -193,11 +194,11 @@ export class PersonaAgent {
     const knobs = readMemoryKnobs(fm);
     // As each memory kind is injected, emit a `memory-recall` event so the UI can show WHICH
     // memories were actually used to answer this turn (the user asked to see this), not just writes.
-    const profile = userProfile(p);
-    const profileBlock = renderUserProfile(profile, { workingSelf: readWorkingSelf(fm), anchors: readAnchors(fm) });
-    if (profileBlock) {
-      parts.push("\n" + profileBlock);
-      this.bus.emit({ type: "memory-recall", kind: "user_preferences", count: Object.keys(profile.facts).length, detail: Object.keys(profile.facts).slice(0, 4).join(", ") || "profile" });
+    const known = factsView(p);
+    const factsBlock = renderFacts(known, { workingSelf: readWorkingSelf(fm), anchors: readAnchors(fm) });
+    if (factsBlock) {
+      parts.push("\n" + factsBlock);
+      this.bus.emit({ type: "memory-recall", kind: "user_preferences", count: Object.keys(known.facts).length, detail: Object.keys(known.facts).slice(0, 4).join(", ") || "facts" });
     }
     const brief = sessionBrief(p, this.opts.sessionId);
     if (brief) {
@@ -215,9 +216,9 @@ export class PersonaAgent {
       this.bus.emit({ type: "memory-recall", kind: "episodic", count: mem.length, detail: mem[mem.length - 1].content.slice(0, 60) });
     }
     // Other memory kinds (only present when the persona enabled them, producers gate on flags).
-    const prefs = Object.entries(profile.preferences);
+    const prefs = Object.entries(known.preferences);
     if (prefs.length) {
-      parts.push("\n# User preferences\n" + prefs.map(([k, v]) => `- ${k}: ${v.value}`).join("\n"));
+      parts.push("\n# Preferences\n" + prefs.map(([k, v]) => `- ${k}: ${v.value}`).join("\n"));
       this.bus.emit({ type: "memory-recall", kind: "user_preferences", count: prefs.length, detail: prefs.map(([k]) => k).slice(0, 4).join(", ") });
     }
     const proc = readProcedural(p).slice(-3);

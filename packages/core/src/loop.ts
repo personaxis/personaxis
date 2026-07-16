@@ -27,7 +27,7 @@ import {
 } from "./memory.js";
 import { appendAutobiographical, getPreference, recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
 import { readConsolidationMode, readWritePolicy } from "./memory/knobs.js";
-import { USER_KEY_PREFIX } from "./memory/profile.js";
+import { isFactKey } from "./memory/facts.js";
 import { detectMemoryAnomalies } from "./provenance.js";
 import { scanForInjection } from "./injection.js";
 import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers, SelfEditError } from "./self-evolution.js";
@@ -281,20 +281,20 @@ export class LivingLoop {
         }
       }
 
-      // 3c. user preferences, written only when declared (memory.types.user_preferences)
-      // and never under a malicious injection.
+      // 3c. preferences + entity facts, written only when declared
+      // (memory.types.user_preferences) and never under a malicious injection.
       const memTypesForPrefs = readMemoryTypes(fm);
       const prefs = signal.preferences ?? [];
       if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
         for (const pref of prefs) {
-          // An identity fact learned for the FIRST time is an autobiographical milestone
-          // (V2-F1.3: "learned the user's name" is part of the persona's life story).
-          const firstTime = pref.key.startsWith(USER_KEY_PREFIX) && getPreference(this.handle.personaPath, pref.key) === undefined;
+          // A subject-qualified FACT learned for the FIRST time is an autobiographical
+          // milestone (any entity, not just a user): "learned interlocutor.name = David".
+          const firstTime = isFactKey(pref.key) && getPreference(this.handle.personaPath, pref.key) === undefined;
           setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale);
           if (firstTime && memTypesForPrefs.autobiographical) {
             appendAutobiographical(this.handle.personaPath, {
-              event: `learned ${pref.key.slice(USER_KEY_PREFIX.length) === "name" ? "the user's name" : `user fact "${pref.key}"`}: ${pref.value}`,
-              tags: ["milestone", "user-fact"],
+              event: `learned ${pref.key} = ${pref.value}`,
+              tags: ["milestone", "entity-fact"],
             });
             bus.emit({ type: "memory-kind", kind: "autobiographical", detail: `milestone: ${pref.key} = ${pref.value}` });
           }

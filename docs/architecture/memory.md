@@ -5,7 +5,7 @@ consumers. Each kind honors its `memory.types.<kind>` flag at the producer call 
 persona that does not declare a kind writes nothing for it.
 
 Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}` and
-`packages/core/src/memory/{knobs,profile,retrieval,consolidate}.ts` (the V2 engine).
+`packages/core/src/memory/{knobs,facts,retrieval,consolidate}.ts` (the V2 engine).
 
 ## The six kinds
 
@@ -15,7 +15,7 @@ Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}` and
 | `semantic` | `memory.md` | `consolidateSemantic` (salience-ranked digest) | always loaded into context |
 | `procedural` | `memory/procedural.jsonl` (append-only) | `agent.persist` on a successful task (how-to per task) | `resumeContext`, `memory_search` |
 | `autobiographical` | `memory/autobiographical.jsonl` (append-only) | milestones: first conversation, a user fact learned, a band crossing, improvement-mode changes | recall, `memory_search` |
-| `user_preferences` | `memory/preferences.json` (last-wins map) | the appraiser proposes `preferences[]` (dotted `user.*` keys = the user profile) | the `# User profile` block, ALWAYS loaded first |
+| `user_preferences` | `memory/preferences.json` (last-wins map) | the appraiser proposes `preferences[]`; a dotted `<subject>.<attribute>` key is an ENTITY FACT (any subject), a dot-free key is a loose preference | the `# Known facts` block (facts, grouped by subject) ALWAYS loaded first; preferences loaded after |
 | `evaluations` | `memory/evaluations.jsonl` (append-only) | `scoreMemoryEntry`, per turn in the loop | salience ranking, quality review |
 
 ## The V2 recall architecture (who reads what, when)
@@ -23,10 +23,10 @@ Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}` and
 One design rule: the raw dialog lives ONCE, in `sessions/<id>.jsonl`. Everything else is
 derived, and each artifact has a declared role:
 
-- **Always in context** (every turn, `agent.resumeContext`): the `# User profile` (all
-  `user.*` preferences + `memory.working_self` + `memory.anchors`), the previous-session
-  recap (derived at read time from the newest other session, no summary artifact), the
-  consolidated `memory.md`, and a today/yesterday episodic window bounded by
+- **Always in context** (every turn, `agent.resumeContext`): the `# Known facts` block (all
+  subject-qualified facts, grouped by subject, `+ memory.working_self + memory.anchors`), the
+  previous-session recap (derived at read time from the newest other session, no summary
+  artifact), the consolidated `memory.md`, and a today/yesterday episodic window bounded by
   `runtime.memory.max_items`.
 - **On demand**: the `memory_search` / `memory_get` agent tools (lexical BM25 across every
   kind; `use_embeddings` ranks via the endpoint's `/embeddings` when it serves them;
@@ -38,9 +38,19 @@ derived, and each artifact has a declared role:
   `consolidation_policy.mode: auto`, and the retention window prunes (tombstones) stale
   un-anchored entries.
 
-Offline fact extraction (`memory/profile.ts`): deterministic ES/EN presentation patterns
-("me llamo X", "my name is X", "call me X") persist `user.name`/`user.alias` with NO model
-configured, and even the offline reflective responder greets a known user by name.
+## Entity facts, not "the user"
+
+Facts are general: the SUBJECT of a fact is any named entity, the ambient interlocutor (a
+human, another agent, or an app), a named person / agent / app, the project, a system. A
+preference key with a dot is a subject-qualified fact (`<subject>.<attribute>`, e.g.
+`interlocutor.name`, `project.deadline`, `agent:reviewer.owner`), always loaded and grouped by
+subject; a key without a dot is a loose preference. Nothing hardcodes "user" (`memory/facts.ts`).
+
+Offline fact extraction (`memory/facts.ts`): deterministic ES/EN presentation patterns
+("me llamo X", "my name is X", "call me X") persist `interlocutor.name`/`interlocutor.alias`
+with NO model configured; the LLM appraiser proposes the same `subject.attribute` shape and can
+attribute a fact to any subject. Even the offline reflective responder addresses a known party
+by name, whatever the subject. The user's-name case is one instance of this general logic.
 
 ## Spec knobs, consumed (documented assumptions where SPEC is silent)
 
@@ -54,8 +64,8 @@ configured, and even the offline reflective responder greets a known user by nam
 - `memory.consolidation_policy.mode`: `auto` consolidates inline; `assisted` emits a
   proposal (run `/memory consolidate`); `manual` only ever consolidates on command.
   Absent = `auto` (the pre-V2 behavior).
-- `memory.anchors`: injected into the profile block and never pruned.
-- `memory.working_self`: injected as the profile block's self-model line.
+- `memory.anchors`: injected into the known-facts block and never pruned.
+- `memory.working_self`: injected as the known-facts block's self-model line.
 
 Storage mirrors episodic memory: append-only JSONL under `<personaDir>/memory/`, except
 `user_preferences`, which is a small last-wins JSON map (`setPreference` overwrites by key).
