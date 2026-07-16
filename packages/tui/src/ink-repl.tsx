@@ -32,6 +32,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";
 import type { DriftReport } from "@personaxis/core";
 import { Transcript, DriftView } from "./components.js";
+import { useTerminalSize, windowFor, fitLine } from "./viewport.js";
 import type { ReplHooks, LineRole, SlashItem } from "./screen.js";
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -95,7 +96,9 @@ function createReplStore(): StoreApi<ReplUiState> {
 function paletteMatches(input: string, commands: SlashItem[]): SlashItem[] {
   if (!input.startsWith("/")) return [];
   const q = input.slice(1).toLowerCase();
-  return commands.filter((c) => c.name.toLowerCase().startsWith(q)).slice(0, 8);
+  // Every match stays reachable; the RENDER windows the list to the terminal height
+  // (the old hard slice(0, 8) made commands 9+ invisible AND unreachable by arrow).
+  return commands.filter((c) => c.name.toLowerCase().startsWith(q));
 }
 
 /** One committed summary line per crossing (also the NO_ANIM fast path). */
@@ -166,6 +169,12 @@ function ReplApp({ store, hooks }: { store: StoreApi<ReplUiState>; hooks: ReplHo
   );
   const idx = matches.length ? ((paletteIndex % matches.length) + matches.length) % matches.length : 0;
 
+  // Window the palette to the terminal (F0.2): header + transcript tail + status +
+  // input + the ▲/▼ markers need breathing room, so the list gets rows-9 at most.
+  const { columns, rows } = useTerminalSize();
+  const paletteMax = Math.max(3, rows - 9);
+  const win = windowFor(matches.length, idx, paletteMax);
+
   // Palette navigation + posture cycle + view escape. TextInput owns character
   // keys; we claim ↑/↓ (highlight), Tab (complete), Shift+Tab (posture), and Esc
   // (leave a view). Inside a view, DriftView owns ↑/↓/Enter via its own useInput.
@@ -219,11 +228,17 @@ function ReplApp({ store, hooks }: { store: StoreApi<ReplUiState>; hooks: ReplHo
 
       {matches.length > 0 && (
         <Box flexDirection="column" marginLeft={2}>
-          {matches.map((m, i) => (
-            <Text key={m.name} inverse={i === idx} dimColor={i !== idx}>
-              {`/${m.name}`.padEnd(14)} {m.desc}
-            </Text>
-          ))}
+          {win.above > 0 ? <Text dimColor>{`▲ ${win.above} more`}</Text> : null}
+          {matches.slice(win.start, win.end).map((m, i) => {
+            const gi = win.start + i;
+            return (
+              <Text key={m.name} inverse={gi === idx} dimColor={gi !== idx}>
+                {fitLine(`/${m.name}`.padEnd(14) + " " + (m.desc ?? ""), Math.max(20, columns - 4))}
+              </Text>
+            );
+          })}
+          {win.below > 0 ? <Text dimColor>{`▼ ${win.below} more`}</Text> : null}
+          {matches.length > paletteMax ? <Text dimColor>{`${idx + 1}/${matches.length}`}</Text> : null}
         </Box>
       )}
 

@@ -20,6 +20,7 @@ import {
   type CoordinateDrift,
 } from "@personaxis/core";
 import { sigilLines, auraBar, envelopeBars, envelopeRow, sparkline } from "./visual.js";
+import { useTerminalSize, windowFor } from "./viewport.js";
 
 // ── brand components (pure wrappers over visual.ts) ─────────────────────────
 
@@ -195,6 +196,7 @@ export function DriftView(props: {
   const [cursor, setCursor] = useState(0);
   const [detail, setDetail] = useState<string | null>(null);
   const [frame, setFrame] = useState<DashFrame | null>(null);
+  const { rows: rowsAvail } = useTerminalSize();
 
   // One frame read on mount / detail open (sparkline + log need the file).
   useEffect(() => {
@@ -238,6 +240,8 @@ export function DriftView(props: {
   const global = props.report?.global ?? 0;
   const filled = Math.round(Math.min(1, global) * gaugeWidth);
   const over = (props.report?.layers ?? []).filter((l) => l.exceeded);
+  // Clamp the coordinate list to the terminal height (header + gauge + footer ≈ 8 rows).
+  const coordWin = windowFor(coords.length, Math.min(cursor, Math.max(0, coords.length - 1)), Math.max(4, rowsAvail - 8));
   return (
     <Box flexDirection="column" paddingLeft={2} paddingTop={1}>
       <Text bold>
@@ -251,22 +255,27 @@ export function DriftView(props: {
       {coords.length === 0 ? (
         <Text dimColor>{"  no drift data yet, say something and the loop will report after its tick"}</Text>
       ) : (
-        coords.map((c, i) => {
-          const selected = i === Math.min(cursor, coords.length - 1);
-          const dir = c.u > 0 ? "+" : c.u < 0 ? "−" : " ";
-          const cost = c.protected
-            ? "immutable"
-            : c.decayAssisted
-              ? "recovery exit (decay-assisted, audited)"
-              : `≥${c.minStepsToCross} step(s) to cross`;
-          return (
-            <Text key={c.field} color={selected ? "cyanBright" : undefined} dimColor={!selected}>
-              {selected ? "▸ " : "  "}
-              {c.field.padEnd(38)} u {dir}
-              {Math.abs(c.u).toFixed(2)} {c.band.padEnd(8)} {cost}
-            </Text>
-          );
-        })
+        <>
+          {coordWin.above > 0 ? <Text dimColor>{`  ▲ ${coordWin.above} more`}</Text> : null}
+          {coords.slice(coordWin.start, coordWin.end).map((c, k) => {
+            const i = coordWin.start + k;
+            const selected = i === Math.min(cursor, coords.length - 1);
+            const dir = c.u > 0 ? "+" : c.u < 0 ? "−" : " ";
+            const cost = c.protected
+              ? "immutable"
+              : c.decayAssisted
+                ? "recovery exit (decay-assisted, audited)"
+                : `≥${c.minStepsToCross} step(s) to cross`;
+            return (
+              <Text key={c.field} color={selected ? "cyanBright" : undefined} dimColor={!selected}>
+                {selected ? "▸ " : "  "}
+                {c.field.padEnd(38)} u {dir}
+                {Math.abs(c.u).toFixed(2)} {c.band.padEnd(8)} {cost}
+              </Text>
+            );
+          })}
+          {coordWin.below > 0 ? <Text dimColor>{`  ▼ ${coordWin.below} more`}</Text> : null}
+        </>
       )}
       <Text> </Text>
       <Text dimColor>{"  ↑/↓ select · Enter inspect · Esc back"}</Text>
@@ -291,8 +300,11 @@ export function Dashboard(props: DashboardProps): React.JSX.Element {
   const [data, setData] = useState<DashFrame>(() => readFrame(props.personaPath));
   const [cursor, setCursor] = useState(0);
   const [detail, setDetail] = useState<string | null>(null);
+  const { rows } = useTerminalSize();
 
   const coords = Object.keys(data.values).filter((k) => data.envelopes[k]);
+  // Sigil + header + footer take ~14 rows; window the envelope list into what remains.
+  const coordWin = windowFor(coords.length, Math.min(cursor, Math.max(0, coords.length - 1)), Math.max(4, rows - 14));
 
   useInput(
     (input, key) => {
@@ -343,9 +355,13 @@ export function Dashboard(props: DashboardProps): React.JSX.Element {
           <Text> </Text>
           {props.interactive ? (
             <Text>
-              {coords
-                .map((k, i) => envelopeRow(data.theme, k, data.values[k], data.envelopes[k], 18, i === Math.min(cursor, coords.length - 1)))
-                .join("\n")}
+              {[
+                ...(coordWin.above > 0 ? [`  ▲ ${coordWin.above} more`] : []),
+                ...coords
+                  .slice(coordWin.start, coordWin.end)
+                  .map((k, j) => envelopeRow(data.theme, k, data.values[k], data.envelopes[k], 18, coordWin.start + j === Math.min(cursor, coords.length - 1))),
+                ...(coordWin.below > 0 ? [`  ▼ ${coordWin.below} more`] : []),
+              ].join("\n")}
             </Text>
           ) : (
             <EnvelopeBars theme={data.theme} values={data.values} envelopes={data.envelopes} />

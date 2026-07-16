@@ -56,6 +56,31 @@ describe("InkScreen / ReplApp", () => {
     expect(out).not.toContain("/compile");
   });
 
+  it("windows a long palette to the terminal height instead of hard-capping at 8", async () => {
+    const many: ReplHooks = {
+      ...hooks,
+      commands: Array.from({ length: 30 }, (_, i) => ({ name: `cmd${String(i).padStart(2, "0")}`, desc: `command ${i}` })),
+    };
+    const store = createReplStore();
+    const { lastFrame } = render(<ReplApp store={store} hooks={many} />);
+    store.getState().setInput("/");
+    await flush();
+    const out = lastFrame() ?? "";
+    // More than the old cap of 8 is visible (default 24 rows → 15-item window)...
+    expect(out).toContain("/cmd08");
+    expect(out).toContain("/cmd14");
+    // ...and what does not fit is announced, with a cursor counter.
+    expect(out).toContain("▼ 15 more");
+    expect(out).toContain("1/30");
+    // Every command stays REACHABLE: walking the cursor re-windows the list.
+    store.getState().setPaletteIndex(29);
+    await flush();
+    const end = lastFrame() ?? "";
+    expect(end).toContain("/cmd29");
+    expect(end).toContain("30/30");
+    expect(end).toContain("▲ 15 more");
+  });
+
   it("surfaces an approval prompt when asked", async () => {
     const store = createReplStore();
     const { lastFrame } = render(<ReplApp store={store} hooks={hooks} />);

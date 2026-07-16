@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
 
+### Fix: honest compile, git-like persona discovery, height-aware TUI lists (V2-F0)
+- **`/compile` never lies.** The REPL's `/compile` now checks that the compiled document actually
+  EXISTS before declaring anything up to date, performs the FIRST compile when it is missing
+  (deterministic assembler, works with no model configured), verifies the artifact after compiling,
+  reports the absolute path written, and reloads the live identity from the fresh document. A
+  compile that produces no file is reported as an error, never as success.
+- **A persona is born marked "compile pending."** `personaxis init` (all three modes) and the
+  starter scaffold drop the recompile-pending marker, and the REPL's first-run onboarding compiles
+  the starter deterministically right away, so a fresh persona always has its PERSONA.md.
+- **Single owner for the compiled-document path.** New `compiledPathFor()`: sub-personas compile
+  inside their folder, project roots one level above `.personaxis/`, and a persona rooted in the
+  user's HOME compiles to `~/.personaxis/PERSONA.md` (documented assumption: the home directory is
+  not a project root, so no loose `~/PERSONA.md` or `~/CLAUDE.md` is ever created there).
+- **Git-like discovery.** `personaxis` now walks up parent directories to find `.personaxis/`
+  (nearest ancestor wins; the cwd's own persona always takes precedence), so a home-root persona
+  works from any subdirectory. `sigil` and `dash` honor the same discovery for their default path.
+- **Every list clamps to the terminal.** The REPL's `/` palette drops its hard cap of 8 (all ~30
+  commands are now visible AND reachable) in favor of a height-aware window that follows the cursor,
+  with hidden-count markers and a position counter. The card selector, drift view, and dashboard
+  envelope list window the same way, via a new shared `@personaxis/tui/viewport` (resize-aware
+  `useTerminalSize` + pure `windowFor`).
+- **Research: E4 transcription corrected.** The paper's §7.2 latency table now quotes the committed
+  `e4-bench.json` receipt (worst p99 0.245 ms, a 4x margin under the 1 ms bar; previously it carried
+  an earlier uncommitted run's digits). Amendment logged in `RESEARCH.md`; H4's verdict unchanged.
+
 ### Feat: interactive model configuration (profiles + first-run wizard + /config)
 - **Named model profiles, any provider.** `config.json` gains a `profiles` library, a
   `defaultProfile`, and a per-persona `profile` reference. A profile carries a `provider`

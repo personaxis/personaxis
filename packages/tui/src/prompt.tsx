@@ -10,6 +10,7 @@
 import React, { useState, useRef } from "react";
 import { render, Box, Text, useApp, useInput } from "ink";
 import TextInput from "ink-text-input";
+import { useTerminalSize, windowFor, fitLine } from "./viewport.js";
 
 export interface Card {
   value: string;
@@ -38,19 +39,33 @@ export function SelectApp({ title, cards, footer, onDone }: { title: string; car
       if (Number.isInteger(n) && n >= 1 && n <= cards.length) finish(cards[n - 1].value);
     }
   });
+  // Viewport (F0.3): each card takes up to 2 lines (title + desc); the header block
+  // takes 3. Window the list so tall card sets never overflow the terminal, with
+  // ▲/▼ hidden-count markers and a cursor position counter when windowed.
+  const { columns, rows } = useTerminalSize();
+  const maxCards = Math.max(2, Math.floor((rows - 5) / 2));
+  const win = windowFor(cards.length, i, maxCards);
+  const windowed = cards.length > maxCards;
   return (
     <Box flexDirection="column">
       <Text bold>{title}</Text>
-      <Text dimColor>{footer ?? "↑/↓ move · 1-9 jump · enter select · esc cancel"}</Text>
+      <Text dimColor>
+        {(footer ?? "↑/↓ move · 1-9 jump · enter select · esc cancel") + (windowed ? `  ·  ${i + 1}/${cards.length}` : "")}
+      </Text>
       <Box height={1} />
-      {cards.map((c, idx) => (
-        <Box key={c.value} flexDirection="column">
-          <Text color={idx === i ? "cyanBright" : undefined} bold={idx === i}>
-            {(idx === i ? "❯ " : "  ") + c.title}
-          </Text>
-          {c.desc ? <Text dimColor>{"      " + c.desc}</Text> : null}
-        </Box>
-      ))}
+      {win.above > 0 ? <Text dimColor>{`  ▲ ${win.above} more`}</Text> : null}
+      {cards.slice(win.start, win.end).map((c, k) => {
+        const idx = win.start + k;
+        return (
+          <Box key={c.value} flexDirection="column">
+            <Text color={idx === i ? "cyanBright" : undefined} bold={idx === i}>
+              {fitLine((idx === i ? "❯ " : "  ") + c.title, Math.max(20, columns - 2))}
+            </Text>
+            {c.desc ? <Text dimColor>{fitLine("      " + c.desc, Math.max(20, columns - 2))}</Text> : null}
+          </Box>
+        );
+      })}
+      {win.below > 0 ? <Text dimColor>{`  ▼ ${win.below} more`}</Text> : null}
     </Box>
   );
 }

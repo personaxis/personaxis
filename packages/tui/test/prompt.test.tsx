@@ -67,6 +67,30 @@ describe("SelectApp (card selector)", () => {
     await drive(<SelectApp title="pick" cards={CARDS} onDone={(v) => (picked = v)} />, [ESC]);
     expect(picked).toBeNull();
   });
+
+  it("windows a tall card list to the terminal height, with markers and a counter", async () => {
+    const many: Card[] = Array.from({ length: 20 }, (_, i) => ({
+      value: `v${i}`,
+      title: `Card ${String(i).padStart(2, "0")}`,
+      desc: `description ${i}`,
+    }));
+    const { lastFrame, stdin } = render(<SelectApp title="pick" cards={many} onDone={() => {}} />);
+    await flush();
+    const out = lastFrame() ?? "";
+    // Default 24 rows → 9 two-line cards visible, the rest announced below.
+    expect(out).toContain("Card 00");
+    expect(out).toContain("Card 08");
+    expect(out).not.toContain("Card 12");
+    expect(out).toContain("▼ 11 more");
+    expect(out).toContain("1/20");
+    // The last card stays REACHABLE: wrap up re-windows to the bottom.
+    stdin.write(UP);
+    await flush();
+    const end = lastFrame() ?? "";
+    expect(end).toContain("Card 19");
+    expect(end).toContain("▲ 11 more");
+    expect(end).toContain("20/20");
+  });
 });
 
 describe("PromptApp (text input)", () => {
