@@ -19,6 +19,22 @@ personaxis lint <file>
   never override safety; hint when the material is absent (the compiled doc will be derived
   from the quantitative layers).
 
+## Every finding carries its remedy
+
+`fix` is a **required** field on `Finding`, so the compiler is what stops a new rule from
+shipping a bare warning. It prints under each finding:
+
+```
+warning  personality.traits.humor   'humor' declares an envelope but no per-band expression …
+         fix: Add expression: {low, moderate, high} under personality.traits.humor, each line
+              saying how the persona actually behaves in that band. Right now the number is
+              decorative: `personaxis jacobian` shows it moves nothing.
+```
+
+Where the honest remedy is "nothing to change in the file", it says so and explains why (the
+`memory-policy-unenforced` findings report a gap in THIS runtime, not a defect in your
+persona).
+
 ## Example
 ```bash
 personaxis lint .personaxis/personas/cmo/personaxis.md

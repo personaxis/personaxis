@@ -21,7 +21,7 @@ personaxis compile [slug] [options]
 | `--from-file <path>` | Use a file's contents as the compiled output instead of calling the LLM. |
 | `-o, --out <path>` | Override the canonical output path. |
 | `--stdout` | Print to stdout instead of writing. |
-| `--platform <p>` | ALSO export a host placement for a sub (`.claude/agents` / `.codex`). |
+| `--platform <p>` | Export the placement for a host: `claude-code \| codex \| openclaw \| hermes`. |
 | `--if-pending` | No-op unless a self-edit marked the doc stale (`.recompile-pending.json`). |
 
 ## What it does
@@ -30,11 +30,32 @@ personaxis compile [slug] [options]
 - Assembles a second-person document: role adoption, character card, voice exemplars, scene
   contracts, behavioral anchors, break-character guardrails, hard limits, memory/resources.
 - Clears the recompile-pending marker on success.
-- Root compile also injects `@PERSONA.md` into `CLAUDE.md` / `AGENTS.md`.
+- Root compile also injects the `@PERSONA.md` baseline block for the hosts that read one.
+
+## Where each host reads the persona
+`--platform` writes the file that host actually looks for. The two baseline hosts read the
+canonical `PERSONA.md` through a managed block in a root file; the two SOUL hosts read a
+`SOUL.md` injected as the first section of their system prompt and re-read it each message.
+
+| Host | Main persona | Sub-persona |
+|---|---|---|
+| `claude-code` | `PERSONA.md` + block in `CLAUDE.md` | `.claude/agents/<slug>.md` |
+| `codex` | `PERSONA.md` + block in `AGENTS.md` | `.codex/agents/<slug>.toml` |
+| `openclaw` | `SOUL.md` | `.openclaw/agents/<slug>/SOUL.md` |
+| `hermes` | `.hermes/SOUL.md` | `.hermes/agents/<slug>/SOUL.md` |
+
+Baseline policy: **with** `--platform`, that host's baseline is created if missing (you
+asked for the host, so you get it). **Without** `--platform`, existing baselines are
+refreshed and `CLAUDE.md` is created only when the project has none, so a project never
+gains baselines for hosts it does not use. SOUL hosts get no baseline: they auto-load
+`SOUL.md`. `personaxis hooks install --host <host>` then feeds each turn back to the
+persona; see [hooks](./hooks.md).
 
 ## Examples
 ```bash
 personaxis compile --root
+personaxis compile --root --platform codex        # PERSONA.md + AGENTS.md baseline
+personaxis compile --root --platform hermes       # .hermes/SOUL.md (no baseline needed)
 personaxis compile cmo --platform claude-code     # canonical + .claude/agents/cmo.md
 PERSONAXIS_ENDPOINT=https://api.cohere.ai/compatibility/v1 \
 PERSONAXIS_MODEL=command-a-03-2025 PERSONAXIS_API_KEY=… \

@@ -61,16 +61,25 @@ any host. The REPL applies it fresh each turn (`buildPolicy`) and cycles the pos
 
 ## OS enforcement, honest limits
 
-The policy gate is the same everywhere; native kernel wrapping (`wrapCommand`) is best-effort on top,
-only for already-allowed commands:
+The policy gate is the same everywhere; native kernel wrapping (`wrapCommand` →
+`security/isolation.ts` `resolveIsolation`) is best-effort on top, only for already-allowed
+commands, and **availability-aware** (K.02): a primitive that is not on PATH degrades to `none`
+with an honest note, never to a wrapper binary that would fail to spawn.
 
-- **macOS**: Seatbelt via `sandbox-exec` (deny network, writes constrained to the workspace).
-- **Linux**: bubblewrap via `bwrap` (read-only bind of `/`, writable workspace, no network; requires
-  `bwrap` on PATH).
-- **Windows / other**: **no OS-level sandbox**: containment is the **policy gate alone**
-  (`classifyCommand` + deny-list + `pathEscapesWorkspace`), not kernel isolation. Where no native
-  wrapper exists, enforcement degrades to the policy decision (deny-by-default for risky ops), never
-  a silent full-access fallback. This is stated rather than pretended.
+- **macOS**: Seatbelt via `sandbox-exec` (deny network, writes constrained to the workspace) when
+  `sandbox-exec` is present; otherwise policy-only.
+- **Linux**: bubblewrap via `bwrap` (read-only bind of `/`, writable workspace, no network) **when
+  `bwrap` is on PATH**. If it is not, isolation is honestly `none` and the policy is the control,
+  rather than spawning a `bwrap` that does not exist and breaking every command (the bug K.02
+  fixed).
+- **Windows / other**: **no OS-level sandbox** (Job Objects / restricted tokens / AppContainer are
+  not reachable from Node without a native addon): containment is the **policy gate alone**
+  (`classifyCommand` + deny-list + `pathEscapesWorkspace`), not kernel isolation.
+
+Where no native primitive exists, enforcement degrades to the policy decision (deny-by-default for
+risky ops), never a silent full-access fallback. `describeIsolation` reports which case a given run
+is in (`kernel-enforced` vs `policy-only`). This is stated rather than pretended. Full spec:
+`docs/security/02-os-sandboxing.md`.
 
 ## The "no difference" case
 

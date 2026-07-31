@@ -31,8 +31,8 @@ an env var), recommended for CI/prod where the secret comes from the deploy's se
 | What | Windows | macOS / Linux |
 |---|---|---|
 | personaxis config | `C:\Users\<you>\.personaxis\config.json` | `~/.personaxis/config.json` |
-| Claude Code hook | `…\.claude\settings.json` (project) or `C:\Users\<you>\.claude\settings.json` (`--global`) | `~/.claude/settings.json` |
-| Codex hook | `…\.codex\hooks.json` or `C:\Users\<you>\.codex\hooks.json` | `~/.codex/hooks.json` |
+| Claude Code hook | `<project>\.claude\settings.json` or `C:\Users\<you>\.claude\settings.json` (`--global`) | `~/.claude/settings.json` |
+| Codex hook | `<project>\.codex\hooks.json` or `C:\Users\<you>\.codex\hooks.json` | `~/.codex/hooks.json` |
 | Hermes hook | `C:\Users\<you>\.hermes\config.yaml` | `~/.hermes/config.yaml` |
 | openclaw hook | `C:\Users\<you>\.openclaw\hooks\personaxis-observe\` | `~/.openclaw/hooks/personaxis-observe/` |
 
@@ -161,3 +161,72 @@ Unset per-persona settings fall back to the project/global default. See
 [providers.md](./providers.md) for the `local | byok | agent | remote` providers used by
 compile/decompile, and [architecture/deployment.md](./architecture/deployment.md) for how config
 feeds each deployment mode.
+
+## Persistent tool permissions (V2-F3.B9)
+
+Pre-approve or block tools without being asked every time, via `config.permissions` (project rules
+concatenate onto global). Patterns are globs (`*` only) matched against the tool name, `name detail`,
+and `name:detail`; a `deny` match always wins, an `allow` match auto-approves, everything else falls
+back to interactive approval:
+
+```json
+{
+  "permissions": {
+    "allow": ["read", "grep", "bash git *"],
+    "deny": ["bash rm *", "bash:curl *"]
+  }
+}
+```
+
+## User hooks (`.personaxis/hooks.json`, V2-F3.C14)
+
+Run your own shell commands on persona lifecycle events. The file lives next to the persona
+(`.personaxis/hooks.json`) and maps an event to matcher-scoped command groups. Events:
+`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SessionEnd`. The hook
+receives the event JSON (`{ hook_event, ... }`) on stdin. `UserPromptSubmit` and `PreToolUse` are
+blocking (a hook can veto them by emitting a `{"decision":"block"}` JSON on stdout); the rest are
+fire-and-forget. A hook that times out fails OPEN (warns, never hangs the agent).
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "my-audit-logger" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "bash", "hooks": [{ "type": "command", "command": "my-bash-gate", "timeout": 3000 }] }
+    ]
+  }
+}
+```
+
+These are hooks OF personaxis (personaxis calls out to you); the separate `personaxis hooks` command
+installs personaxis INTO a host, the inverse direction.
+
+## Any model, any mode (V5.FIX.2)
+
+The engine speaks **OpenAI-compatible `chat/completions` over HTTP**, which covers every major
+mode with the same three fields (`endpoint`, `model`, key):
+
+| Provider / mode | Endpoint | Key |
+|---|---|---|
+| OpenAI | `https://api.openai.com/v1` | API key |
+| Anthropic (Claude) | `https://api.anthropic.com/v1` (OpenAI-compat surface) | API key |
+| Cohere | `https://api.cohere.ai/compatibility/v1` | API key |
+| Hugging Face (router) | `https://router.huggingface.co/v1` | HF token |
+| Ollama (local) | `http://localhost:11434/v1` | none needed |
+| LM Studio (local) | `http://localhost:1234/v1` | none needed |
+| llama.cpp / vLLM (local server) | your `http://localhost:<port>/v1` | none needed |
+
+Resolution rules that keep a session from ever stranding:
+
+1. The **default profile** wins when it is USABLE (its key resolves, or its endpoint is local).
+2. If the default is broken (for example it points at a profile whose key env var is unset),
+   resolution **falls back** to the first usable profile: ones with a real key first, then
+   local-no-key ones. `/model` and `describeModel` say when a fallback happened and to which
+   profile.
+3. Explicit assignments are never silently switched: an env override
+   (`PERSONAXIS_ENDPOINT/MODEL/API_KEY`), the spec's `runtime` block, or a per-persona
+   assignment resolve verbatim, and their errors surface with an ACTIONABLE message
+   (what failed + how to fix it with `/model` or `personaxis model set`), never a raw
+   HTTP dump.

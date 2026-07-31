@@ -1,8 +1,10 @@
-# `/sessions` and `/resume`, persistent conversations
+# `/resume` and persistent conversations
 
 The REPL persists every conversation so you can leave and come back, the way Claude Code does.
+`/resume` opens the session picker; `/sessions` is a hidden alias for the same view (its
+listing was folded into `/resume`, so there is one command, not two).
 
-Source: `packages/cli/src/repl/index.ts` (`recordTurn`, the `sessions`/`resume` commands) →
+Source: `packages/cli/src/repl/index.ts` (`recordTurn`, the `resume` command) →
 `packages/core/src/sessions.ts`.
 
 ## Where conversations live
