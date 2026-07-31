@@ -29,8 +29,9 @@ function personaSlugs(cwd: string): string[] {
 
 export const menuCommand = new Command("menu")
   .description("Open the Command Center: a stable fullscreen menu for model config, state, drift, audit, memory, proposals, and the persona fleet.")
-  .option("--section <name>", `Open directly on a section (${SECTIONS.join(" | ")})`)
-  .action(async (opts: { section?: string }) => {
+  .option("--section <name>", `Open the classic sectioned hub directly on a section (${SECTIONS.join(" | ")})`)
+  .option("--classic", "Open the classic sectioned hub instead of the scope-tree navigator")
+  .action(async (opts: { section?: string; classic?: boolean }) => {
     const section = (opts.section && SECTIONS.includes(opts.section as CenterSection) ? opts.section : "home") as CenterSection;
 
     if (!stdin.isTTY || !stdout.isTTY) {
@@ -44,6 +45,14 @@ export const menuCommand = new Command("menu")
           chalk.cyan("personaxis dash --once") +
           "\n",
       );
+      return;
+    }
+
+    // V9/G.4c: the scope-tree navigator is the DEFAULT. The classic sectioned hub (model wizard,
+    // config, etc.) stays reachable with `--classic` or `--section`, and via `/model`, `config`.
+    if (!opts.classic && !opts.section) {
+      const { runScopeNavigator } = await import("../center/run.js");
+      await runScopeNavigator();
       return;
     }
 

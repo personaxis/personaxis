@@ -112,6 +112,9 @@ export function buildCompilePrompt(input: CompilePromptInput): string {
       `over restating the YAML; never quote field names or YAML verbatim.`,
     `- NO NUMERIC STATE: never include runtime numbers, trait/affect tables, sigil seeds, or a ` +
       `"live state" block. The compiled document is purely qualitative; state lives in state.json.`,
+    `- LANGUAGE: if the spec sets persona.voice.language (a BCP 47 tag), write the compiled document ` +
+      `so the persona communicates in that language, and state the rule explicitly in "How you speak"; ` +
+      `if persona.voice.languages lists more, note it may also reply in those per the interlocutor.`,
     `Output ONLY the compiled document. Do not wrap it in a code block.`,
     section("personaxis.md (quantitative spec + persona_prompting source, source of truth)", input.personaxisMd),
     input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0

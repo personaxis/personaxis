@@ -1,7 +1,7 @@
 /**
  * V2-F1 phase gate: cross-session name recall, end to end, OFFLINE.
  *
- * Session A tells the persona "me llamo David" and exits. Session B is a brand-new
+ * Session A tells the persona "me llamo Mara" and exits. Session B is a brand-new
  * process; the persona must know the name WITHOUT being asked to search: the
  * profile (user.* preferences) loads first in every recall path, and even the
  * offline reflective responder addresses a known user by name.
@@ -43,17 +43,17 @@ function repl(input: string): string {
 
 describe.runIf(built)("cross-session name recall (V2-F1 gate)", () => {
   it("session A learns the name; session B (new process) greets by name", { timeout: 120_000 }, () => {
-    const a = repl("hola, me llamo David\n");
+    const a = repl("hola, me llamo Mara\n");
     expect(a).toContain("is awake");
     // The fact persisted as a subject-qualified fact (entity-neutral, not "user")...
     const prefs = join(cwd, ".personaxis", "memory", "preferences.json");
     expect(existsSync(prefs)).toBe(true);
-    expect(JSON.parse(readFileSync(prefs, "utf-8"))["interlocutor.name"].value).toBe("David");
+    expect(JSON.parse(readFileSync(prefs, "utf-8"))["interlocutor.name"].value).toBe("Mara");
     // ...and learning it was an autobiographical milestone.
     const auto = readFileSync(join(cwd, ".personaxis", "memory", "autobiographical.jsonl"), "utf-8");
-    expect(auto).toMatch(/learned interlocutor\.name = David/);
+    expect(auto).toMatch(/learned interlocutor\.name = Mara/);
 
     const b = repl("hola de nuevo, sabes quien soy?\n");
-    expect(b).toContain("David"); // recalled in a NEW process, no search requested
+    expect(b).toContain("Mara"); // recalled in a NEW process, no search requested
   });
 });

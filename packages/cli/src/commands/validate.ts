@@ -22,13 +22,17 @@ function printResult(personaPath: string, name: string, result: ValidationResult
   const marker = result.valid ? chalk.green("✓") : chalk.red("✗");
   console.log(`${marker} ${chalk.bold(name)} ${chalk.dim(`(${personaPath})`)} ${badge}`);
 
+  // Every issue carries its remedy (ValidationIssue.fix is required), so no
+  // finding is ever printed as a verdict the reader has to decode alone.
   for (const err of result.errors) {
     const field = err.field ? chalk.yellow(err.field) + ", " : "";
     console.error(`    ${chalk.red("✗")} ${field}${err.message}`);
+    console.error(`      ${chalk.dim("fix:")} ${chalk.dim(err.fix)}`);
   }
   for (const w of result.warnings) {
     const field = w.field ? chalk.cyan(w.field) + ", " : "";
     console.log(`    ${chalk.yellow("!")} ${field}${w.message}`);
+    console.log(`      ${chalk.dim("fix:")} ${chalk.dim(w.fix)}`);
   }
 }
 
@@ -73,7 +77,19 @@ function validateFile(filePath?: string): ValidationResult {
     loaded = loadPersonaFile(filePath);
   } catch (err) {
     console.error(chalk.red("Error:"), (err as Error).message);
-    return { status: "FAIL_SCHEMA", valid: false, errors: [{ field: "", message: (err as Error).message, category: "FAIL_SCHEMA" }], warnings: [] };
+    return {
+      status: "FAIL_SCHEMA",
+      valid: false,
+      errors: [
+        {
+          field: "",
+          message: (err as Error).message,
+          category: "FAIL_SCHEMA",
+          fix: "Check the path: `personaxis validate` looks for .personaxis/personaxis.md (or the file you named). `personaxis create` scaffolds one if this project has no persona yet.",
+        },
+      ],
+      warnings: [],
+    };
   }
 
   const result = validatePersona(loaded.data);
@@ -97,6 +113,7 @@ function validateFile(filePath?: string): ValidationResult {
         console.log(`${sub} ${chalk.red.bold("FAIL_SCHEMA")}`);
         for (const e of policyResult.errors) {
           console.error(`     ${chalk.red("✗")} ${chalk.yellow(e.field)}, ${e.message}`);
+          console.error(`       ${chalk.dim("fix:")} ${chalk.dim(e.fix)}`);
         }
         result.errors.push(...policyResult.errors.map((e) => ({ ...e, category: "FAIL_SCHEMA" as const })));
         result.status = "FAIL_SCHEMA";
@@ -106,6 +123,7 @@ function validateFile(filePath?: string): ValidationResult {
         console.log(`${sub} ${tag}`);
         for (const w of policyResult.warnings) {
           console.log(`     ${chalk.yellow("!")} ${chalk.cyan(w.field)}, ${w.message}`);
+          console.log(`       ${chalk.dim("fix:")} ${chalk.dim(w.fix)}`);
         }
         if (policyResult.warnings.length > 0 && result.status === "PASS") {
           result.status = "PASS_WITH_WARNINGS";
@@ -113,7 +131,12 @@ function validateFile(filePath?: string): ValidationResult {
       }
     } catch (err) {
       console.error(chalk.red("  └─ policy.yaml load error:"), (err as Error).message);
-      result.errors.push({ field: "policy.yaml", message: (err as Error).message, category: "FAIL_SCHEMA" });
+      result.errors.push({
+        field: "policy.yaml",
+        message: (err as Error).message,
+        category: "FAIL_SCHEMA",
+        fix: "The sibling policy.yaml could not be read. Fix its YAML (spaces, not tabs), or delete it: an absent policy is a warning, a broken one is a failure.",
+      });
       result.status = "FAIL_SCHEMA";
       result.valid = false;
     }

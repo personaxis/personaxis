@@ -68,15 +68,46 @@ function subagentFrontmatter(slug: string, data: Record<string, unknown>): strin
   return `---\nname: ${slug}\ndescription: ${JSON.stringify(description)}\n---\n\n`;
 }
 
-function injectRootBaselines(): void {
-  const claudeMdPath = resolve("CLAUDE.md");
-  const agentsMdPath = resolve("AGENTS.md");
+/**
+ * Refresh the root baseline files that point a host at PERSONA.md.
+ *
+ * Default policy (no `--platform`): update whichever baselines already exist, and create
+ * CLAUDE.md only when the project has none, so we never litter a project with baselines
+ * for hosts it does not use.
+ *
+ * With an explicit `--platform`, that host's baseline is CREATED if missing. Asking to
+ * compile for codex and getting a CLAUDE.md instead of an AGENTS.md left the main persona
+ * unreachable from Codex while the command reported success: an explicit request is not a
+ * guess to be defaulted away. (Found by dogfooding all four hosts in V7.C5.)
+ */
+export function injectRootBaselines(platform?: PlacementPlatform, cwd: string = process.cwd()): void {
+  // `cwd` is a parameter rather than a read of `process.cwd()` so this can be exercised
+  // against a temp directory without `process.chdir`, which is process-global and leaks
+  // into every other test sharing the worker (it did: it changed which persona another
+  // suite loaded).
+  const claudeMdPath = resolve(cwd, "CLAUDE.md");
+  const agentsMdPath = resolve(cwd, "AGENTS.md");
+  // An explicitly requested host gets its baseline, existing or not.
+  if (platform === "codex" && !existsSync(agentsMdPath)) {
+    writeFileSync(agentsMdPath, injectBaselineIntoAgents(""), "utf-8");
+    console.log(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim("(created), @PERSONA.md reference injected"));
+    injectSecondaryBaselines(cwd);
+    return;
+  }
+  if (platform === "claude-code" && !existsSync(claudeMdPath)) {
+    writeFileSync(claudeMdPath, injectBaselineIntoClaude(""), "utf-8");
+    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created), @PERSONA.md reference injected"));
+    injectSecondaryBaselines(cwd);
+    return;
+  }
+
   const claudeExists = existsSync(claudeMdPath);
   const agentsExists = existsSync(agentsMdPath);
 
   if (!claudeExists && !agentsExists) {
     writeFileSync(claudeMdPath, injectBaselineIntoClaude(""), "utf-8");
     console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created), @PERSONA.md reference injected"));
+    injectSecondaryBaselines(cwd);
     return;
   }
 
@@ -92,6 +123,30 @@ function injectRootBaselines(): void {
     writeFileSync(agentsMdPath, injectBaselineIntoAgents(existing), "utf-8");
     const action = existing.includes("PERSONA:BASELINE") || existing.includes("PERSONA:CODEX") ? "already up to date" : "updated";
     console.log(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim(`(${action}), @PERSONA.md reference injected`));
+  }
+  injectSecondaryBaselines(cwd);
+}
+
+/**
+ * V4.3 (V6.9): the target-matrix audit's verdict, in code. Most agent hosts now
+ * read AGENTS.md (Codex, Cursor, Zed, Amp, ...) or CLAUDE.md, and SOUL.md hosts
+ * have their own targets; the two REAL ecosystems that read a different root
+ * context file are Gemini CLI (GEMINI.md) and GitHub Copilot in VS Code
+ * (.github/copilot-instructions.md). We refresh the baseline there when the
+ * file EXISTS, and never create it (no litter for hosts the project does not
+ * use). Full matrix: docs/architecture/target-matrix.md.
+ */
+function injectSecondaryBaselines(cwd: string = process.cwd()): void {
+  const hosts: Array<{ label: string; path: string }> = [
+    { label: "GEMINI.md", path: resolve(cwd, "GEMINI.md") },
+    { label: ".github/copilot-instructions.md", path: resolve(cwd, ".github", "copilot-instructions.md") },
+  ];
+  for (const h of hosts) {
+    if (!existsSync(h.path)) continue;
+    const existing = readFileSync(h.path, "utf-8");
+    writeFileSync(h.path, injectBaselineIntoAgents(existing), "utf-8");
+    const action = existing.includes("PERSONA:BASELINE") ? "already up to date" : "updated";
+    console.log(chalk.green("✓"), chalk.bold(h.label), chalk.dim(`(${action}), @PERSONA.md reference injected`));
   }
 }
 
@@ -137,7 +192,15 @@ async function polishOrFallback(
   } catch (err) {
     if (err instanceof ProviderRequiresAgentError) throw err; // handled by runProviderOrExit (exits)
     console.log(chalk.yellow("!"), `polish skipped (${(err as Error).message}); wrote the deterministic document.`);
-    return { content: assembled, polished: false, via: "deterministic assembler", source: provider.source, model: "none" };
+    // Carry the REASON, not just the outcome: callers report why a persona came out as a
+    // template, and "deterministic assembler" alone tells the user nothing actionable.
+    return {
+      content: assembled,
+      polished: false,
+      via: `provider unavailable: ${(err as Error).message}`,
+      source: provider.source,
+      model: "none",
+    };
   }
 
   let polished = result.text.trim();
@@ -162,7 +225,25 @@ async function polishOrFallback(
  * document) via the configured provider. Exported so `migrate 0.6-to-0.7`
  * (B.9) and `push` (B.8) can invoke it directly.
  */
-export async function runCompile(opts: RunCompileOptions): Promise<void> {
+/**
+ * What a compile actually did. Returned because callers were guessing: `create` treated
+ * "runCompile did not throw" as "the document was polished by a model", which is false
+ * whenever the faithfulness gate rejects the model's rewrite and the deterministic
+ * assembly is kept. The command then reported "compiled + LLM polished" over a template.
+ * A caller cannot report honestly about a step whose outcome it never receives.
+ */
+export interface CompileOutcome {
+  /** True only when a model's rewrite was accepted and written. */
+  polished: boolean;
+  /** How the final document was produced, e.g. "cli-local polish" or "deterministic assembler (polish rejected)". */
+  via: string;
+  /** Model that answered, or "none". */
+  model: string;
+  /** Where the compiled document was written. */
+  outPath: string;
+}
+
+export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcome> {
   const isSubagent = !!opts.slug && !opts.root;
   const slug = isSubagent ? (opts.slug as string) : undefined;
 
@@ -175,7 +256,9 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   }
 
   if (opts.ifPending && !readRecompilePending(sourcePath).pending) {
-    return; // nothing stale, cheap no-op
+    // Nothing stale: a cheap no-op. Reported as "not polished" because no document was
+    // produced, so no caller can mistake this for a model having rewritten anything.
+    return { polished: false, via: "up to date (no recompile needed)", model: "none", outPath: compiledPathFor(sourcePath) };
   }
 
   const baseDir = dirname(sourcePath);
@@ -245,7 +328,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
 
   if (opts.stdout) {
     process.stdout.write(withFrontmatter + "\n");
-    return;
+    return { polished: stage2.polished, via: stage2.via, model: stage2.model, outPath: "(stdout)" };
   }
 
   let finalContent = withFrontmatter;
@@ -325,7 +408,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
   // HOME-root persona: no host reads a loose ~/CLAUDE.md or ~/AGENTS.md, it would be litter.
   const homeRoot = !isSubagent && canonicalOutPath.replace(/\\/g, "/").includes("/.personaxis/");
   if (!isSubagent && !homeRoot && !isSoulPlatform(opts.platform as PlacementPlatform | undefined)) {
-    injectRootBaselines();
+    injectRootBaselines(opts.platform as PlacementPlatform | undefined);
   }
 
   saveManifest(baseDir, {
@@ -338,6 +421,8 @@ export async function runCompile(opts: RunCompileOptions): Promise<void> {
     source: result.source,
     timestamp: new Date().toISOString(),
   });
+
+  return { polished: stage2.polished, via: stage2.via, model: stage2.model, outPath };
 }
 
 export const compileCommand = new Command("compile")

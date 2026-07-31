@@ -23,6 +23,7 @@ import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
 import {
   loadPersona,
+  readState,
   extractEnvelopes,
   applyMutation,
   governMutations,
@@ -71,7 +72,34 @@ function gauge(label: string, value: number, e: { mean: number; min: number; max
   return `  ${label.padEnd(10)} [${bar}] u ${u >= 0 ? "+" : "−"}${Math.abs(u).toFixed(2)} ${dim(bandOf(value, e))}`;
 }
 
+/**
+ * V5.P2.2: the proof runs on the ACTIVE persona by default. `sourcePersonaPath`
+ * copies that spec into a throwaway dir (mutations never touch the real state)
+ * and seeds values from its LIVE state; the embedded demo persona remains behind
+ * `--demo` (and as fallback when the source declares no envelopes).
+ */
+let proofSource: string | undefined;
+export function setProofSource(path: string | undefined): void {
+  proofSource = path;
+}
+
 function scaffold(): { dir: string; personaPath: string; state: StateFile; env: ReturnType<typeof extractEnvelopes> } {
+  if (proofSource) {
+    const dir = mkdtempSync(join(tmpdir(), "pxs-proof-"));
+    const personaPath = join(dir, "personaxis.md");
+    writeFileSync(personaPath, readFileSync(proofSource, "utf-8"));
+    const srcHandle = loadPersona(proofSource);
+    const handle = loadPersona(personaPath);
+    const env = extractEnvelopes(handle.frontmatter);
+    if (Object.keys(env.envelopes).length > 0) {
+      const live = readState(srcHandle.statePath).values;
+      const values: Record<string, number> = {};
+      for (const [k, e] of Object.entries(env.envelopes)) values[k] = typeof live[k] === "number" ? live[k] : e.mean;
+      const state: StateFile = { schema_version: "1.0.0", persona_id: "proof", persona_version: "1.0.0", values, mutation_log: [] };
+      return { dir, personaPath, state, env };
+    }
+    rmSync(dir, { recursive: true, force: true }); // no envelopes: fall through to the demo
+  }
   const dir = mkdtempSync(join(tmpdir(), "pxs-proof-"));
   const personaPath = join(dir, "personaxis.md");
   writeFileSync(
@@ -173,21 +201,40 @@ async function sceneInjection(frame: Frame): Promise<SceneResult> {
 async function sceneEvidence(frame: Frame, width: number): Promise<SceneResult> {
   const { dir, state, env } = scaffold();
   try {
-    // `resolve` sits at 0.40 (moderate); the demo's tighter δ_max of 0.05 makes
-    // the certified minimum ⌈(0.66−0.40)/0.05⌉ = 6 audited steps to reach `high`.
-    const field = "personality.traits.resolve";
+    // V5.P2.2: pick the coordinate with the most upward room in THIS persona (the
+    // demo's `resolve` at 0.40 is just one instance). δ_max 0.05 keeps the crossing
+    // watchable: ⌈(b2 − value)/δ_max⌉ audited steps to reach the next band.
+    // Candidate = a non-protected coordinate whose NEXT upward band boundary is
+    // both above the current value AND inside the envelope (band boundaries live
+    // on the coordinate's natural scale; an envelope that stops short of the
+    // boundary can never cross it, the canCross geometry). Pick the one with the
+    // most reachable room so the crossing is visible.
+    const candidates = Object.entries(env.envelopes)
+      .filter(([f]) => !(env.protectedFields ?? []).includes(f))
+      .map(([f, en]) => {
+        const v = state.values[f];
+        const [bb1, bb2] = bandBoundaries(en);
+        const tgt = v < bb1 ? bb1 : bb2;
+        return { f, target: tgt, room: tgt - v, reachable: tgt <= en.max - 1e-9 };
+      })
+      .filter((c) => c.reachable && c.room > 0.05)
+      .sort((a, b) => b.room - a.room);
+    const field = candidates[0]?.f ?? Object.keys(env.envelopes)[0];
     const deltaMax = 0.05;
     const e = env.envelopes[field];
-    // Directional bound: the adversary pushes UP, so the crossing target is b2
-    // (moderate→high). ⌈(b2 − mean)/δ_max⌉ = ⌈0.26/0.05⌉ = 6 for this persona.
-    const [, b2] = bandBoundaries(e);
-    const bound = Math.ceil((b2 - e.mean) / deltaMax);
-    const startBand = bandOf(e.mean, e);
+    // Directional bound: the adversary pushes UP, so the crossing target is the
+    // next boundary ABOVE the CURRENT value (V5.P2.2 fix: the live value, not the
+    // mean; a persona whose state has drifted starts where it actually is).
+    const start = state.values[field];
+    const [b1, b2] = bandBoundaries(e);
+    const target = start < b1 ? b1 : b2;
+    const bound = Math.max(1, Math.ceil((target - start) / deltaMax));
+    const startBand = bandOf(start, e);
     let steps = 0;
     while (bandOf(state.values[field], e) === startBand && steps < 50) {
       applyMutation(state, env.envelopes, { field, delta: deltaMax, reason: "push to the boundary", actor: "actor-llm" });
       steps++;
-      await frame(gauge("resolve", state.values[field], e, width) + dim(`   audited entries: ${state.mutation_log.length}`));
+      await frame(gauge(field.split(".").pop()!, state.values[field], e, width) + dim(`   audited entries: ${state.mutation_log.length}`));
       await new Promise((r) => setTimeout(r, 60)); // let the crossing be watchable (≈0.4 s total)
     }
     const crossed = bandOf(state.values[field], e) !== startBand;
@@ -259,11 +306,32 @@ export const proofCommand = new Command("proof")
   .option("--quick", "Short storm (1,000 steps instead of 10,000)")
   .option("--seed <n>", "PRNG seed for the storm (default 42), same seed, same run", "42")
   .option("--auto", "No pauses/animation (CI, piping); implied when not a TTY")
-  .action(async (opts: { quick?: boolean; seed: string; auto?: boolean }) => {
+  .option("--persona <path>", "Run the scenes on THIS persona's spec (default: the active persona here)")
+  .option("--demo", "Use the embedded demo persona instead of the active one", false)
+  .action(async (opts: { quick?: boolean; seed: string; auto?: boolean; persona?: string; demo?: boolean }) => {
     const tty = Boolean(process.stdout.isTTY) && !opts.auto;
     const width = process.stdout.columns ?? 80;
     const steps = opts.quick ? 1_000 : 10_000;
     const seed = Number(opts.seed) || 42;
+
+    // V5.P2.2: default to the ACTIVE persona (its real coordinates, on a copy);
+    // --demo keeps the embedded one. The header always says whose proof this is.
+    let proofOn = "the embedded demo persona";
+    if (!opts.demo) {
+      const { existsSync: exists } = await import("node:fs");
+      const { resolvePersonaOption } = await import("../load.js");
+      const source = resolvePersonaOption(opts.persona ?? ".personaxis/personaxis.md");
+      if (exists(source)) {
+        setProofSource(source);
+        try {
+          proofOn = `${loadPersona(source).frontmatter && (loadPersona(source).frontmatter as { identity?: { display_name?: string } }).identity?.display_name || "your persona"} (${source})`;
+        } catch {
+          proofOn = source;
+        }
+      }
+    } else {
+      setProofSource(undefined);
+    }
 
     // Frame renderer: TTY repaints in place; non-TTY stays quiet (checks speak).
     let lastFrameLines = 0;
@@ -288,6 +356,8 @@ export const proofCommand = new Command("proof")
 
     console.log("");
     console.log(chalk.bold("  personaxis proof") + dim("  · the guarantees, live, on the real engine · offline"));
+    console.log(dim(`  running on: ${proofOn} (a throwaway copy; your real state is never touched)`));
+    console.log(dim("  what this is: the live demo of the math guarantees (T1-T5) you can show a customer or auditor"));
     console.log("");
 
     const rl = tty ? createInterface({ input: process.stdin, output: process.stdout }) : null;

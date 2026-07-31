@@ -13,6 +13,8 @@ Apply everything defined there to every decision, regardless of role.
 Read your own @PERSONA.md too if one was provided to you.
 
 The persona file conforms to the PERSONA.md spec: ten canonical layers (identity, character, personality, values_and_drives, affect, cognition, memory, metacognition, self_regulation, persona) plus governance and security. The self_regulation.hard_limits are categorical absolutes and are never crossed.
+
+_This block is managed by [personaxis](https://github.com/personaxis/cli): PERSONA.md is this project's governed AI persona, compiled from \`.personaxis/personaxis.md\`. Refresh it with \`personaxis compile\`; hand-edits to PERSONA.md fold back via \`personaxis decompile\`._
 ${BASELINE_END}`;
 
 type Obj = Record<string, unknown>;

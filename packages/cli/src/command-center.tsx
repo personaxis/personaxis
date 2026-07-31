@@ -4,7 +4,7 @@
  * Audit, Memory, Proposals, Fleet. Rendered on the ALTERNATE SCREEN buffer
  * (tui/fullscreen), so opening, navigating and leaving it never prints a
  * single line into the terminal scrollback, the professional-TUI standard
- * (k9s / lazygit) David asked for.
+ * (k9s / lazygit).
  *
  * One root useInput owns navigation (this kills the double-enter the old
  * sequential-render config UI had); text fields yield the keyboard while
@@ -15,6 +15,12 @@
 
 import React, { useMemo, useState } from "react";
 import { useApp, useInput, Box, Text } from "ink";
+import { join, dirname, basename } from "node:path";
+import { existsSync } from "node:fs";
+import { hostname } from "node:os";
+import chalk from "chalk";
+import { isAwake, readLiveStatus } from "./fleet.js";
+import { hostsFor } from "./repl/scope.js";
 import {
   loadPersona,
   readState,
@@ -23,6 +29,7 @@ import {
   displayName,
   verifyMemoryChain,
   proposals,
+  loadRegistry,
   applySelfEdit,
   rejectSelfEdit,
   readMemory,
@@ -35,10 +42,13 @@ import {
   isFactKey,
   describeModel,
   type PersonaFrontmatter,
+  livePresence,
+  describePresence,
 } from "@personaxis/core";
 import { DriftView } from "@personaxis/tui/ink";
 import { envelopeBars, sigilLines } from "@personaxis/tui/visual";
 import { AppFrame, SelectList, Field, Toast, type ListItem, type KeyHint } from "@personaxis/tui/ui";
+import { windowFor } from "@personaxis/tui/viewport";
 import { runFullscreen } from "@personaxis/tui/fullscreen";
 import { loadConfig, saveConfig, configPath, type PersonaxisConfig } from "./config.js";
 import {
@@ -225,6 +235,16 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
 
   // Memory section state.
   const [memoryKind, setMemoryKind] = useState<string | null>(null);
+  // Fleet scope (V5.P3.4): this project vs every registered project on this machine.
+  const [fleetScope, setFleetScope] = useState<"project" | "all">("project");
+  /**
+   * V8.B6: filter the fleet as you type (`/` starts, Esc clears).
+   *
+   * Scoping the search to the fleet is deliberate: it is the only list that grows without
+   * bound (every project, every sub-persona, on every machine you use). The section menu
+   * has seven fixed entries and searching it would be ceremony for nothing.
+   */
+  const [filter, setFilter] = useState<string | null>(null);
 
   const cfg = useMemo(() => loadConfig("global"), [section, modelView, toast]);
   const p = props.personaPath;
@@ -272,8 +292,24 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
   // only Esc is claimed here (TextInput owns characters + Enter).
   const textActive = section === "model" && modelView === "form" && wizSteps[wizIndex]?.kind === "text";
   useInput((input, key) => {
+    // The filter owns the keyboard while it is open, so typing "q" searches for "q"
+    // instead of quitting. Esc closes it without leaving the section.
+    if (filter !== null && section === "fleet") {
+      if (key.escape) {
+        setFilter(null);
+        setCursor(0);
+        return;
+      }
+      if (key.return) return void setFilter(filter); // keep it, move on to the list
+      if (key.backspace || key.delete) return void setFilter(filter.slice(0, -1));
+      if (input && !key.ctrl && !key.meta && !key.upArrow && !key.downArrow) {
+        setCursor(0);
+        return void setFilter(filter + input);
+      }
+    }
     if (key.escape) return back();
     if (textActive) return;
+    if (input === "/" && section === "fleet") return void setFilter("");
     if (input === "q" && section === "home") return exit();
 
     const listLen = activeListLength();
@@ -284,6 +320,16 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
       const order = SECTIONS.map((s) => s.value as CenterSection);
       const at = order.indexOf(section);
       setSection(order[(at + 1) % order.length]);
+      setCursor(0);
+      return;
+    }
+    // Left/right deliberately do NOT enter and leave. Binding them that way made
+    // navigation feel clumsy: horizontal keys read as "move along this row", and
+    // firing an action from one turns an exploratory keypress into a commitment.
+    // Enter enters, Esc goes back, which is what every other view here does.
+    // Fleet: g switches the scope between this project and every known project.
+    if (section === "fleet" && input === "g") {
+      setFleetScope((s) => (s === "project" ? "all" : "project"));
       setCursor(0);
       return;
     }
@@ -313,6 +359,20 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
     }
   });
 
+  /**
+   * The fleet rows CURRENTLY VISIBLE (after the filter).
+   *
+   * Computed in one place and used by both the key handler and the renderer: two
+   * separate filters would let the cursor point at a row the screen is not showing,
+   * which is the same class of bug as the palette that disagreed with /help.
+   */
+  function visibleFleet(): FleetRow[] {
+    const all = fleetRows(fleetScope, p, props.personas ?? []);
+    const q = (filter ?? "").trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((r) => `${r.label} ${r.detail} ${r.hosts.join(" ")} ${r.personaPath ?? ""}`.toLowerCase().includes(q));
+  }
+
   function activeListLength(): number {
     if (section === "home") return SECTIONS.length;
     if (section === "model") {
@@ -325,6 +385,7 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
     }
     if (section === "memory" && !memoryKind) return memoryKinds().length;
     if (section === "proposals" && p) return proposals(p).filter((x) => x.status === "pending").length;
+    if (section === "fleet") return visibleFleet().length;
     return 0;
   }
 
@@ -432,6 +493,11 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
       setMemoryKind(memoryKinds()[index]?.value ?? null);
       setCursor(0);
     }
+    // V5.P3.4: fleet drill-down, show exactly how to open the selected persona.
+    if (section === "fleet") {
+      const row = fleetRows(fleetScope, p, props.personas ?? [])[index];
+      if (row?.personaPath) setToast({ kind: "info", text: `open it: personaxis --persona ${row.personaPath}` });
+    }
   }
 
   function advanceWizard(id: string, value: string): void {
@@ -473,6 +539,34 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
 
   return (
     <AppFrame title="command center" breadcrumb={crumb} hints={hints}>
+      {/*
+        V5.P3.4: ALWAYS say where we are, project, persona, cwd.
+        V7.C4: and say what everything below is SCOPED to. Design note: "no se si la
+        app iniciada del /menu es para configurar el proyecto en si, todos los proyectos, o
+        todos los ai root personas o todos los subai personas?". Every section except Fleet
+        acts on the persona named here; Fleet is the one that spans projects, and it says
+        which span it is showing.
+      */}
+      {/*
+        V8.B1: the three levels of WHERE, always, in the order they contain each other:
+        machine › project › persona. One of them is what everything below acts on, and
+        the line under it says which. Before this you could be three screens deep and
+        have no way to tell whether you were configuring one persona, one project, or
+        everything on the machine.
+      */}
+      <Text dimColor>
+        {"  "}
+        {hostname()}
+        {chalk.dim(" › ")}
+        {basename(props.cwd) || props.cwd}
+        {chalk.dim(" › ")}
+        {chalk.cyan(p ? displayName(loadPersonaFm(p)) : "(no persona)")}
+      </Text>
+      <Text dimColor>
+        {section === "fleet"
+          ? `  acting on: ${fleetScope === "all" ? "EVERY project on this machine" : "this project"} · g switches scope`
+          : `  acting on: this persona${p ? "" : " (none here yet)"} · Fleet spans projects`}
+      </Text>
       {toast ? <Toast kind={toast.kind} text={toast.text} /> : null}
       {section === "home" ? (
         <SelectList items={SECTIONS} index={cursor} />
@@ -504,7 +598,7 @@ export function CommandCenter(props: CommandCenterProps): React.JSX.Element {
       ) : section === "proposals" && p ? (
         <ProposalsSection personaPath={p} cursor={cursor} />
       ) : section === "fleet" ? (
-        <FleetSection personaPath={p} personas={props.personas ?? []} />
+        <FleetSection rows={visibleFleet()} scope={fleetScope} cursor={cursor} filter={filter} />
       ) : (
         <Text dimColor>{"  no persona here (run `personaxis init` or enter a project with .personaxis/)"}</Text>
       )}
@@ -680,18 +774,162 @@ function ProposalsSection(props: { personaPath: string; cursor: number }): React
   );
 }
 
-function FleetSection(props: { personaPath?: string; personas: string[] }): React.JSX.Element {
+/** One row of the fleet, either scope (V5.P3.4; hosts added in V7.C5). */
+export interface FleetRow {
+  label: string;
+  detail: string;
+  awake: boolean;
+  personaPath?: string;
+  /**
+   * Host agents that can actually READ this persona right now (its compiled document
+   * exists in their discovery location). Presence answers "is it awake"; this answers
+   * the other question: a persona can be live in several host agents at once (claude-code,
+   * codex, and the SOUL hosts). Checked against the filesystem, never inferred.
+   */
+  hosts: string[];
+}
+
+/**
+ * V5.P3.4: the fleet across BOTH scopes. "project" lists this project's main +
+ * subs with live presence; "all" walks ~/.personaxis/registry.json (projects
+ * self-register when opened) and shows every known project's main persona, sub
+ * count and presence, one hub for everything on this machine.
+ */
+export function fleetRows(scope: "project" | "all", personaPath: string | undefined, personas: string[]): FleetRow[] {
+  const rowFor = (p: string, label: string): FleetRow => {
+    const live = readLiveStatus(p);
+    // V8.D: WHO is holding this persona, not just whether it is awake. "awake" collapsed
+    // three different situations (a local REPL, an agent on another machine, an HTTP
+    // consumer) into one word and answered none of the questions you actually have.
+    const instances = livePresence(p);
+    const who = instances.length ? describePresence(instances) : "";
+    return {
+      label,
+      detail:
+        (instances.length ? `${instances.length} instance(s) · ${who}` : isAwake(p) ? "awake" : "idle") +
+        (live ? ` · ${live.mutations ?? 0} mutation(s)` : ""),
+      awake: isAwake(p) || instances.length > 0,
+      personaPath: p,
+      hosts: hostsFor(p),
+    };
+  };
+  if (scope === "project") {
+    const rows: FleetRow[] = [];
+    if (personaPath) rows.push(rowFor(personaPath, "main"));
+    for (const s of personas) {
+      const p = personaPath ? join(dirname(personaPath), "personas", s.split("/").join("/personas/"), "personaxis.md") : undefined;
+      rows.push(p && existsSync(p) ? rowFor(p, `@${s}`) : { label: `@${s}`, detail: "", awake: false, hosts: [] });
+    }
+    return rows;
+  }
+  const reg = loadRegistry();
+  const rows: FleetRow[] = [];
+  for (const root of Object.keys(reg.projects)) {
+    const p = join(root, ".personaxis", "personaxis.md");
+    if (!existsSync(p)) continue;
+    const subs = reg.projects[root]?.slugs?.length ?? 0;
+    const r = rowFor(p, basename(root));
+    rows.push({ ...r, detail: `${subs} sub(s) · ${r.detail} · ${root}` });
+  }
+  return rows.length
+    ? rows
+    : [{ label: "(no registered projects yet)", detail: "projects self-register when you open them", awake: false, hosts: [] }];
+}
+
+function FleetSection(props: {
+  rows: FleetRow[];
+  scope: "project" | "all";
+  cursor: number;
+  filter: string | null;
+}): React.JSX.Element {
+  const rows = props.rows;
+
+  // V8.B5: an empty fleet must teach, not show a zero. Someone with ten projects saw
+  // one because the registry only ever learned about a project when the REPL was opened
+  // inside it; saying so, and saying how to fix it, is the difference between a bug
+  // report and a solved problem.
+  // A search that matches nothing is not the same as having nothing: say which it is,
+  // or the empty-state advice below would be wrong and confusing.
+  if (!rows.length && props.filter) {
+    return (
+      <Box flexDirection="column">
+        <Text>{`  search: ${props.filter}`}</Text>
+        <Text> </Text>
+        <Text dimColor>{"  nothing matches. Esc clears the search."}</Text>
+      </Box>
+    );
+  }
+
+  if (!rows.length) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{"  nothing here yet."}</Text>
+        <Text> </Text>
+        <Text dimColor>{"  Projects register themselves as you use them: create, open, compile or"}</Text>
+        <Text dimColor>{"  diagnose a persona and it appears here."}</Text>
+        <Text dimColor>{"  Already had projects before? Find them once:"}</Text>
+        <Text>{"    personaxis overseer scan --root ~/your-code-folder"}</Text>
+      </Box>
+    );
+  }
+
+  // V8.F3: the fleet is the one list with no upper bound (every project, every
+  // sub-persona, on every machine). Without a height budget a long fleet pushes the
+  // input and the key hints off the screen, which is how a view becomes unusable on the
+  // day it finally has real data in it.
+  const budget = Math.max(3, (process.stdout.rows ?? 24) - 12);
+  const win = windowFor(rows.length, props.cursor, budget);
+  const shown = rows.slice(win.start, win.end);
+
   return (
     <Box flexDirection="column">
-      <Text bold>{"Personas in this project"}</Text>
-      <Text dimColor>{props.personaPath ? `  root: ${props.personaPath}` : "  (no root persona)"}</Text>
-      {props.personas.length ? (
-        props.personas.map((s) => <Text key={s}>{`  @${s}`}</Text>)
-      ) : (
-        <Text dimColor>{"  no sub-personas"}</Text>
-      )}
+      <Box gap={1}>
+        <Text inverse={props.scope === "project"}>{" This project "}</Text>
+        <Text inverse={props.scope === "all"}>{" All my projects "}</Text>
+        <Text dimColor>{props.filter === null ? "  g switches scope · / to search" : "  Esc clears the search"}</Text>
+      </Box>
+      {props.filter !== null ? (
+        <Text>
+          {"  search: "}
+          <Text color="cyan">{props.filter}</Text>
+          <Text dimColor>{"▏"}</Text>
+        </Text>
+      ) : null}
       <Text> </Text>
-      <Text dimColor>{"  live status (awake/idle, drift, model, active task) lands with `personaxis ps` (V2-F4)."}</Text>
+      {/* V8.B2: a header, because a dense table without one is a wall of strings. */}
+      <Text dimColor>
+        {"     "}
+        {"persona".padEnd(22)}
+        {"reachable from".padEnd(20)}
+        {"who is using it"}
+      </Text>
+      {win.above > 0 ? <Text dimColor>{`   ▲ ${win.above} more above`}</Text> : null}
+      {shown.map((r, k) => {
+        const i = win.start + k;
+        return (
+        <Text key={`${r.label}-${i}`} inverse={i === props.cursor} dimColor={!r.awake && i !== props.cursor}>
+          {i === props.cursor ? " ❯ " : "   "}
+          {r.awake ? "● " : "○ "}
+          {r.label.padEnd(22)}
+          {/* V7.C5: WHERE this persona can be read from, next to whether it is awake. */}
+          {(r.hosts.length ? r.hosts.join("+") : "not compiled").padEnd(20)}
+          {r.detail}
+        </Text>
+        );
+      })}
+      {win.below > 0 ? <Text dimColor>{`   ▼ ${win.below} more below`}</Text> : null}
+      <Text> </Text>
+      {/*
+        V8.B4: the focused row says what Enter does to IT, rather than one generic
+        line for every row. "What happens if I press this" should never be a guess.
+      */}
+      <Text dimColor>
+        {"  Enter: "}
+        {rows[props.cursor]?.personaPath
+          ? `open ${rows[props.cursor].label} (shows the exact command)`
+          : "nothing to open on this row"}
+      </Text>
+      <Text dimColor>{"  ● in use right now · ○ idle · reachable from = agents whose file exists on disk"}</Text>
     </Box>
   );
 }

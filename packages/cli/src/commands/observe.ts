@@ -184,6 +184,17 @@ export const observeCommand = new Command("observe")
         chalk.green("✓ observed"),
         chalk.dim(`· ${r.mutationsApplied} mutation(s) · ${r.memoriesWritten} memory · ${result.recompiled ? "PERSONA.md recompiled" : "no drift"}`),
       );
+      // A zero with no reason reads as a failure. The engine already says WHY it
+      // held back (an ephemeral write policy, a locked gate, episodic memory
+      // switched off); it was being dropped on the floor here.
+      for (const e of result.events) {
+        if (e.type === "abstain") console.log(chalk.dim(`  · ${e.reason}`));
+        if (e.type === "govern") {
+          for (const v of e.verdicts.filter((x) => !x.admitted)) {
+            console.log(chalk.dim(`  · ${v.field} not applied: ${v.reason}`));
+          }
+        }
+      }
     } else {
       console.error(chalk.yellow("· observe skipped:"), result.error);
     }

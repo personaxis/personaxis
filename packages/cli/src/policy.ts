@@ -80,6 +80,8 @@ export interface PolicyValidationIssue {
   field: string;
   message: string;
   category: "FAIL_SCHEMA" | "FAIL_POLICY" | "PASS_WITH_WARNINGS";
+  /** The edit that resolves it. Required, same contract as the persona validator. */
+  fix: string;
 }
 
 export interface PolicyValidationResult {
@@ -109,6 +111,14 @@ export function validatePolicy(
         field: e.instancePath || e.schemaPath,
         message: e.message ?? "invalid",
         category: "FAIL_SCHEMA",
+        fix:
+          e.keyword === "required"
+            ? `Add '${(e.params as { missingProperty?: string }).missingProperty}' to policy.yaml${e.instancePath ? ` at ${e.instancePath}` : ""}. \`personaxis init\` writes a complete template.`
+            : e.keyword === "if" || e.keyword === "then"
+              ? `A conditional rule applies here: what ${e.instancePath || "the document"} already declares makes another field required or restricted. Fix the sibling error above this one; this line is its consequence.`
+              : e.keyword === "enum"
+                ? `Use one of the allowed values ${e.instancePath ? `at ${e.instancePath}` : ""}: ${((e.params as { allowedValues?: unknown[] }).allowedValues ?? []).map((v) => JSON.stringify(v)).join(", ")}.`
+                : `Correct the value ${e.instancePath ? `at ${e.instancePath}` : "in policy.yaml"} so it satisfies '${e.keyword}'.`,
       });
     }
     return { valid: false, errors, warnings };
@@ -121,6 +131,7 @@ export function validatePolicy(
       field: "applies_to.persona_name",
       message: `policy.yaml applies_to.persona_name='${policy.applies_to.persona_name}' does not match PERSONA.md metadata.name='${personaName}'.`,
       category: "FAIL_POLICY",
+      fix: `Set applies_to.persona_name: ${personaName} in policy.yaml (or rename metadata.name in the spec to match). A policy pointing at another persona governs nothing here, which is worse than having no policy at all.`,
     });
   }
 
@@ -130,6 +141,7 @@ export function validatePolicy(
         field: "improvement_policy.approved_by",
         message: `Required when improvement_policy.mode != 'locked'.`,
         category: "FAIL_POLICY",
+        fix: `Add improvement_policy.approved_by with the person or team that signed off on mode '${policy.improvement_policy.mode}'. A persona allowed to change itself must record who allowed it.`,
       });
     }
     if (!policy.improvement_policy.last_approval_at) {
@@ -137,6 +149,7 @@ export function validatePolicy(
         field: "improvement_policy.last_approval_at",
         message: `Required when improvement_policy.mode != 'locked'.`,
         category: "FAIL_POLICY",
+        fix: "Add improvement_policy.last_approval_at with the ISO date of that sign-off. It is what makes an approval expire instead of standing forever.",
       });
     }
     if (policy.improvement_policy.mode === "auto") {
@@ -146,6 +159,7 @@ export function validatePolicy(
           "mode='auto' applies patches automatically. Reserved for sandbox / R&D. " +
           "Never use in production without explicit org-level opt-in.",
         category: "PASS_WITH_WARNINGS",
+        fix: "If this is production, set improvement_policy.mode: suggesting so edits queue for review instead of applying themselves. If it is deliberate, leave it and record the org-level opt-in in approved_by.",
       });
     }
   }
@@ -157,6 +171,7 @@ export function validatePolicy(
         field: "assertions",
         message: `${judgeCount} llm_judge assertions. Each evaluated trace pays one judge call per assertion (subject to sampling). Consider consolidating to <= 30 to keep judge cost predictable.`,
         category: "PASS_WITH_WARNINGS",
+        fix: `Merge related llm_judge assertions, or convert the mechanical ones to type 'regex' (free and deterministic). Alternatively lower the sampling rate: at ${judgeCount} judges every evaluated trace costs ${judgeCount} model calls.`,
       });
     }
   }
@@ -168,6 +183,7 @@ export function validatePolicy(
         "No assertions defined. Drift detection will be limited to layer averages only. " +
         "Recommended: 3 assertions per layer (~30 total).",
       category: "PASS_WITH_WARNINGS",
+      fix: "Add assertions to policy.yaml, starting with the cheap deterministic ones (type: regex) for the behaviors you would notice if they broke. Layer averages tell you something moved; an assertion tells you WHAT broke.",
     });
   }
 

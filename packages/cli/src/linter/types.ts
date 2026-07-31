@@ -5,6 +5,12 @@ export interface Finding {
   severity: Severity;
   path?: string;
   message: string;
+  /**
+   * The edit that resolves the finding, in the imperative. REQUIRED: the type
+   * system is what keeps a new rule from shipping a warning the reader has to
+   * decode. `message` says what is wrong, `fix` says what to change.
+   */
+  fix: string;
 }
 
 export interface LintSummary {

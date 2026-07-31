@@ -25,6 +25,35 @@ export interface PersonaxisConfig {
     apiBase?: string;
     model?: string;
   };
+  /** Persistent tool-permission rules (V2-F3.B9): allow/deny glob patterns matched
+   *  against a tool call before the human is asked. Project rules concatenate onto global. */
+  permissions?: { allow?: string[]; deny?: string[] };
+  /** MCP client servers (V2-F3.B11): stdio MCP servers this persona can mount as tools,
+   *  keyed by name. Managed with `personaxis mcp add/list/remove`. */
+  mcpServers?: Record<string, { command: string; args?: string[]; env?: Record<string, string> }>;
+  /** Opt-in telemetry (V2-F3.D21), default OFF. Lightweight local span log; an
+   *  OpenTelemetry SDK exporter is a follow-up. */
+  telemetry?: { enabled?: boolean; file?: string };
+  /** Configurable statusline template (V2-F3.D20). `{key}` placeholders are filled
+   *  (persona, model, posture, drift, tokens). Unset uses the built-in line. */
+  statusline?: string;
+  /**
+   * Folders `personaxis scan-projects` may walk looking for personas (V8.E2).
+   *
+   * Declared by the user, never inferred: the registry only ever knew a project if the
+   * REPL had been opened inside it, so someone with ten projects saw one. Scanning fixes
+   * that, but scanning somebody's disk uninvited does not become acceptable just because
+   * it is useful. `~` is expanded.
+   */
+  scanRoots?: string[];
+  /**
+   * Take an exclusive write lease while a session runs (V8.D4). Default off.
+   *
+   * Off is correct for almost everyone: per-writer chains make concurrent evolution safe
+   * on their own. Turn it on when you would rather one machine be the only author for a
+   * stretch, and accept that the others go read-only while it is.
+   */
+  writeLease?: boolean;
 }
 
 /**
@@ -87,15 +116,30 @@ export function loadMergedConfig(): PersonaxisConfig {
     byok: { ...g.byok, ...p.byok },
     remote: { ...g.remote, ...p.remote },
     personas: { ...g.personas, ...p.personas },
+    permissions: {
+      allow: [...(g.permissions?.allow ?? []), ...(p.permissions?.allow ?? [])],
+      deny: [...(g.permissions?.deny ?? []), ...(p.permissions?.deny ?? [])],
+    },
   };
 }
 
-/** Set one model field in the `local` section of the chosen config scope. Used by `/model set`. */
-export function setModelSetting(key: string, value: string, global = false): void {
+/**
+ * Set one model field in the chosen config scope. Used by `personaxis model set`.
+ * V5.P1.8: `personaSlug` targets a specific persona's override (`personas.<slug>`)
+ * instead of the shared `local` section, so the main persona and every sub can run
+ * different models per project or globally.
+ */
+export function setModelSetting(key: string, value: string, global = false, personaSlug?: string): void {
   const scope: ConfigScope = global ? "global" : "project";
   const field = key === "key-env" ? "apiKeyEnv" : key === "endpoint" ? "endpoint" : key === "model" ? "model" : key === "key" ? "apiKey" : undefined;
   if (!field) throw new Error(`unknown model setting "${key}" (use: endpoint | model | key-env | key)`);
   const config = loadConfig(scope);
-  config.local = { ...config.local, [field]: value };
+  if (personaSlug) {
+    const personas = (config.personas ?? {}) as Record<string, Record<string, string>>;
+    personas[personaSlug] = { ...(personas[personaSlug] ?? {}), [field]: value };
+    config.personas = personas as never;
+  } else {
+    config.local = { ...config.local, [field]: value };
+  }
   saveConfig(config, scope);
 }

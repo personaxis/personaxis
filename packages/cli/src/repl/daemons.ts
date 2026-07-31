@@ -8,7 +8,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import chalk from "chalk";
-import type { Ctx } from "./types.js";
+import type { Ctx, DaemonInfo } from "./types.js";
 
 /** Kill any background daemons (serve/watch) started from `/`, called on exit. */
 export function stopDaemons(ctx: Ctx): void {
@@ -29,6 +29,8 @@ export function startStopDaemon(
   ctx: Ctx,
   buildArgs: (port: string) => string[],
   describe: (port: string) => string,
+  /** What this daemon is FOR, and what it exposes; surfaced by the Daemons view. */
+  info?: (port: string) => Omit<DaemonInfo, "startedAt">,
 ): void {
   ctx.bg = ctx.bg ?? {};
   const rest = arg.trim();
@@ -41,6 +43,7 @@ export function startStopDaemon(
       /* already gone */
     }
     delete ctx.bg[name];
+    delete ctx.daemonInfo?.[name];
     return void ctx.out(chalk.green(`  ✓ stopped ${name}`));
   }
   if (ctx.bg[name] && ctx.bg[name].exitCode === null) {
@@ -55,8 +58,30 @@ export function startStopDaemon(
   });
   child.on("error", (e) => ctx.out(chalk.red(`  /${name} failed to start: ${e.message}`)));
   ctx.bg[name] = child;
+  if (info) {
+    ctx.daemonInfo = ctx.daemonInfo ?? {};
+    ctx.daemonInfo[name] = { ...info(port), startedAt: Date.now() };
+  }
   ctx.out(chalk.green(`  ✓ ${name} running in the background`) + chalk.dim(` (pid ${child.pid}), ${describe(port)}`));
   ctx.out(chalk.dim(`  /${name} stop to stop it (it also stops when you /exit).`));
+}
+
+/**
+ * V6.2: while a child owns the inherited TTY, THIS process must stop reading the
+ * same console. After Ink unmounts, `process.stdin` stays in flowing mode with no
+ * listeners (Node keeps draining the console and discards the bytes), so parent
+ * and child raced for every keystroke; on Windows the console distributes input
+ * among readers, which surfaced as "press Enter twice to enter a menu".
+ */
+export async function withConsoleYielded(run: () => Promise<void>): Promise<void> {
+  const stdin = process.stdin;
+  const wasPaused = stdin.isPaused();
+  stdin.pause();
+  try {
+    await run();
+  } finally {
+    if (!wasPaused) stdin.resume();
+  }
 }
 
 /** FASE 7 P2, run `personaxis <name> <args>` on the RAW TTY (stdio inherited),
@@ -64,15 +89,18 @@ export function startStopDaemon(
  *  Cross-OS: process.execPath + argv[1], no shell. */
 export function runCliInteractive(name: string, arg: string): Promise<void> {
   const args = arg.split(/\s+/).filter(Boolean);
-  return new Promise<void>((resolve) => {
-    const child = spawn(process.execPath, [process.argv[1], name, ...args], {
-      cwd: process.cwd(),
-      stdio: "inherit",
-      env: { ...process.env, FORCE_COLOR: process.env.NO_COLOR ? "0" : "1" },
-    });
-    child.on("close", () => resolve());
-    child.on("error", () => resolve());
-  });
+  return withConsoleYielded(
+    () =>
+      new Promise<void>((resolve) => {
+        const child = spawn(process.execPath, [process.argv[1], name, ...args], {
+          cwd: process.cwd(),
+          stdio: "inherit",
+          env: { ...process.env, FORCE_COLOR: process.env.NO_COLOR ? "0" : "1" },
+        });
+        child.on("close", () => resolve());
+        child.on("error", () => resolve());
+      }),
+  );
 }
 
 /** Run `personaxis <name> <args>` as a subprocess (the same build) and echo its output into the REPL. */

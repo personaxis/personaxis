@@ -38,13 +38,19 @@ import {
   listSessions,
   findSession,
   loadConversation,
+  readSession,
   readAutobiographical,
   appendAutobiographical,
+  recordSessionStats,
   type ContextMeter,
   type SessionSummary,
+  type SessionKind,
 } from "@personaxis/core";
+import chalk from "chalk";
 import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
+import { replyLine, userLine } from "./render.js";
 import type { Ctx } from "./types.js";
+import type { LineRole } from "@personaxis/tui/screen";
 import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "./config.js";
 
 /**
@@ -102,18 +108,21 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
     sessionNamed: false,
     meter,
     usage: { turns: 0, tokens: 0, costUsd: 0, steps: 0 },
+    presence: { activity: "idle" },
     replyColor,
   };
 }
 
 /** Lazily create the on-disk session (header) for a ctx, seeded by the first message. */
-export function ensureCtxSession(ctx: Ctx, seedMsg: string): void {
+export function ensureCtxSession(ctx: Ctx, seedMsg: string, kind?: SessionKind): void {
   if (ctx.sessionStarted) return;
   const isSub = isSubagentPath(ctx.handle.personaPath);
   const address = slugAddressFromPath(ctx.handle.personaPath);
   ensureSession(ctx.handle.personaPath, {
     id: ctx.sessionId,
-    kind: isSub ? "sub" : "root",
+    // A background run labels itself, so its turns are identifiable later without being
+    // treated differently by anything that reads them.
+    kind: kind ?? (isSub ? "sub" : "root"),
     participants: [address || "(root)"],
     name: fallbackName(seedMsg),
     created: new Date().toISOString(),
@@ -145,6 +154,10 @@ export function closeSession(ctx: Ctx): void {
     }
     if (memTypes.semantic && readConsolidationMode(fm) === "auto") consolidateSemantic(p);
     pruneMemory(p, readMemoryKnobs(fm).retentionDays);
+    // V6.10: fold this session's per-model usage into the global stats cache
+    // (~/.personaxis/stats-cache.json), so Settings > Stats draws tokens/day
+    // per model instantly, across every project.
+    if (ctx.usage.byModel && Object.keys(ctx.usage.byModel).length) recordSessionStats(ctx.usage.byModel);
   } catch {
     /* closing must never block exit */
   }
@@ -158,6 +171,9 @@ export function closeSession(ctx: Ctx): void {
 export function resumeSessionInto(ctx: Ctx, query: string): SessionSummary | undefined {
   const s = query ? findSession(ctx.handle.personaPath, query) : listSessions(ctx.handle.personaPath)[0];
   if (!s) return undefined;
+  // V7.A6: closing the CURRENT session first is what makes resuming a switch rather
+  // than a merge; without it the outgoing conversation would never be distilled.
+  if (ctx.sessionStarted && ctx.sessionId !== s.id) closeSession(ctx);
   const conv = loadConversation(ctx.handle.personaPath, s.id);
   ctx.conversation = conv;
   ctx.sessionId = s.id;
@@ -165,13 +181,105 @@ export function resumeSessionInto(ctx: Ctx, query: string): SessionSummary | und
   ctx.sessionNamed = true;
   ctx.sessionClosed = false;
   ctx.meter.estimate([{ role: "system", content: "" }, ...conv]);
+  // Tell the MODEL that the restored history is its own.
+  //
+  // Without this it treats those messages as somebody else's transcript and
+  // refuses on principle ("I cannot access previous sessions") while the answer
+  // sits in its context: it had the words and would quote them verbatim when
+  // asked to repeat a literal string, but denied "remembering" anything. That
+  // reads as a broken resume and, worse, as a persona being untruthful about
+  // what it knows. Delivered as SYSTEM speech, never glued to the user's text.
+  if (conv.length > 0) {
+    ctx.pendingEnvNote =
+      `The conversation above is YOUR OWN earlier exchange with this same person, in this same ` +
+      `session ("${s.name}"), which has just been resumed. It is your memory of this conversation, ` +
+      `not a transcript of someone else's: answer questions about it directly and quote it when ` +
+      `asked. Do not claim you cannot access previous sessions.`;
+  }
   return s;
 }
 
-/** Append a completed user/assistant exchange to the persona's session; auto-name once. */
-export async function recordTurn(ctx: Ctx, userMsg: string, assistantMsg: string): Promise<void> {
+/**
+ * The resumed conversation, rendered as the transcript lines the session would have left
+ * on screen. Resuming REBUILDS the chat you left: the caller clears the screen and prints
+ * these, so the old conversation reappears as it was instead of being appended under
+ * whatever belonged to a different one.
+ */
+export function replayTranscript(ctx: Ctx): Array<{ text: string; role: LineRole }> {
+  const out: Array<{ text: string; role: LineRole }> = [];
+  const push = (text: string, role: LineRole): void => void out.push({ text, role });
+
+  // Built from the RECORD on disk, not from ctx.conversation: the conversation is
+  // only what the model sees (role + content), while the file also holds the
+  // evidence notes. Rebuilding the chat means rebuilding what was on SCREEN.
+  const turns = ctx.sessionId ? readSession(ctx.handle.personaPath, ctx.sessionId).turns : [];
+  if (turns.length === 0) {
+    // No session file (a conversation held in memory): replay what we have.
+    for (const m of ctx.conversation) {
+      const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+      if (!content.trim()) continue;
+      if (m.role === "user") {
+        push("", "divider");
+        push(userLine(content), "user");
+      } else if (m.role === "assistant") {
+        push(replyLine(ctx, content), "persona");
+        push("", "system");
+      }
+    }
+    return out;
+  }
+
+  // A /compact checkpoint REPLACES everything before it, exactly as loadConversation
+  // does, so the rebuilt screen matches the context the persona actually carries.
+  let start = 0;
+  for (let i = 0; i < turns.length; i++) if (turns[i].role === "summary") start = i;
+  if (turns[start]?.role === "summary") {
+    push("", "divider");
+    push(chalk.dim(`  ┊ earlier conversation, compacted: ${turns[start].content.slice(0, 120)}`), "activity");
+    start += 1;
+  }
+
+  for (let i = start; i < turns.length; i++) {
+    const t = turns[i];
+    if (t.role === "user") {
+      // The same chrome a live turn gets: a divider opens each exchange, so a long
+      // history reads as a conversation rather than one uninterrupted block.
+      push("", "divider");
+      push(userLine(t.content), "user");
+    } else if (t.role === "assistant") {
+      push(replyLine(ctx, t.content), "persona");
+      // A trailing gap unless the evidence note follows, which carries its own.
+      if (turns[i + 1]?.role !== "note") push("", "system");
+    } else if (t.role === "note" && t.evidence?.length) {
+      push("", "activity");
+      for (const l of t.evidence) push(l, "activity");
+      push("", "system");
+    }
+  }
+  return out;
+}
+
+/**
+ * Record the "this turn" evidence block against the exchange just written.
+ *
+ * Append-only, as a `note`: the block is only known after the loop tick, which
+ * runs once the turn is already on disk. `loadConversation` skips notes, so this
+ * costs the model nothing on reload and exists purely so `/resume` can rebuild
+ * what the screen showed.
+ */
+export function recordEvidence(ctx: Ctx, block: string[]): void {
+  if (!block.length || !ctx.sessionStarted) return;
   try {
-    ensureCtxSession(ctx, userMsg);
+    appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "note", content: "this turn", evidence: block });
+  } catch {
+    /* evidence is a nicety; never break a turn over it */
+  }
+}
+
+/** Append a completed user/assistant exchange to the persona's session; auto-name once. */
+export async function recordTurn(ctx: Ctx, userMsg: string, assistantMsg: string, kind?: SessionKind): Promise<void> {
+  try {
+    ensureCtxSession(ctx, userMsg, kind);
     const from = slugAddressFromPath(ctx.handle.personaPath) || "(root)";
     appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "user", content: userMsg });
     appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "assistant", content: assistantMsg, from });

@@ -1,4 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { injectRootBaselines } from "../src/commands/compile.js";
 import { placeCompiledDocument, isSoulPlatform, PLACEMENT_PLATFORMS } from "../src/targets/placement.js";
 import { toSoulMd } from "../src/targets/soul-md.js";
 import type { CompileTargetInfo } from "../src/compile-instructions.js";
@@ -52,5 +56,50 @@ describe("toSoulMd", () => {
   });
   it("adds a # SOUL heading when the body has none", () => {
     expect(toSoulMd("You are a plain persona.")).toBe("# SOUL\n\nYou are a plain persona.");
+  });
+});
+
+/**
+ * V7.C5, found by dogfooding all four hosts end to end: `compile --root --platform codex`
+ * reported success while writing a CLAUDE.md and no AGENTS.md, so the main persona was
+ * unreachable from Codex. The default policy (only refresh baselines that already exist,
+ * and create CLAUDE.md when a project has none) is right for an unqualified compile: it
+ * keeps us from littering a project with baselines for hosts it does not use. It is wrong
+ * for an EXPLICIT --platform, which is a request, not a guess.
+ */
+describe("root baseline injection follows the requested platform (V7.C5)", () => {
+  // No `process.chdir` here: it is process-global, and vitest shares a worker between
+  // suites, so changing it leaked into another suite and made it load a different persona.
+  // `injectRootBaselines` takes the directory instead.
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "pxs-baseline-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("--platform codex CREATES AGENTS.md in a project that has no baseline", () => {
+    injectRootBaselines("codex", dir);
+    expect(existsSync(join(dir, "AGENTS.md")), "codex must get its own baseline").toBe(true);
+    expect(existsSync(join(dir, "CLAUDE.md")), "and not another host's").toBe(false);
+  });
+
+  it("--platform claude-code creates CLAUDE.md, and only that", () => {
+    injectRootBaselines("claude-code", dir);
+    expect(existsSync(join(dir, "CLAUDE.md"))).toBe(true);
+    expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
+  });
+
+  it("with no platform, it still defaults to CLAUDE.md and litters nothing else", () => {
+    injectRootBaselines(undefined, dir);
+    expect(existsSync(join(dir, "CLAUDE.md"))).toBe(true);
+    expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
+  });
+
+  it("refreshes an EXISTING baseline of the other host rather than ignoring it", () => {
+    writeFileSync(join(dir, "AGENTS.md"), "# my agents file\n", "utf-8");
+    injectRootBaselines(undefined, dir);
+    const agents = readFileSync(join(dir, "AGENTS.md"), "utf-8");
+    expect(agents, "the user's own content survives").toContain("# my agents file");
+    expect(agents).toMatch(/PERSONA:(BASELINE|CODEX)/);
   });
 });

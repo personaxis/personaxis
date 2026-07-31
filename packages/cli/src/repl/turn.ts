@@ -28,15 +28,22 @@ import {
   readAgentBudget,
   readVerification,
   readObservability,
+  compactMessages,
+  recordCompaction,
+  readHooksConfig,
+  runHooks,
+  appendHistory,
 } from "@personaxis/core";
 import { slugAddressFromPath } from "../load.js";
 import { runCompile } from "../commands/compile.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import type { Ctx } from "./types.js";
-import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
-import { shortName, replyLine, phaseFor, renderEvent } from "./render.js";
-import { recordTurn, makeCtx, ensureCtxSession } from "./session.js";
+import { llmConfig, ctxModelArg, buildPolicy, readGoalText, POSTURES } from "./config.js";
+import type { AwarenessOpts } from "./awareness.js";
+import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError } from "./render.js";
+import { expandFileMentions } from "./mentions.js";
+import { recordTurn, recordEvidence, makeCtx, ensureCtxSession } from "./session.js";
 
 /**
  * A turn: the persona CONVERSES and (when needed) USES TOOLS, one governed agent
@@ -44,6 +51,19 @@ import { recordTurn, makeCtx, ensureCtxSession } from "./session.js";
  * and `/do`: natural language can now call tools. Offline (no model) → the honest
  * reflective responder. Identity evolution (the Living Loop) still runs each turn.
  */
+/** Session facts for the runtime-context block (V5.P0.1). */
+function awarenessOpts(ctx: Ctx, model: string | undefined): AwarenessOpts {
+  return {
+    frontmatter: ctx.handle.frontmatter as Record<string, unknown>,
+    posture: POSTURES[ctx.postureIndex],
+    model,
+    cwd: process.cwd(),
+    // V7.A7: the standing goal rides the runtime context (recency slot), which the
+    // model demonstrably reads, instead of being buried mid system prompt.
+    goal: readGoalText(ctx.handle),
+  };
+}
+
 export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const llm = llmConfig(ctxModelArg(ctx));
   if (!llm) {
@@ -58,8 +78,8 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       ...recallWindow(p, { maxItems: knobs.maxItems, sessionId: ctx.sessionId }).map((m) => m.content),
     ];
     const reply = await ctx.responder
-      .respond({ message: line, personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, memory: memoryLines, state: cur.values, name: shortName(ctx) })
-      .catch((e) => `(responder error: ${(e as Error).message})`);
+      .respond({ message: expandFileMentions(line), personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, awareness: buildAwarenessBlock(p, awarenessOpts(ctx, undefined)), memory: memoryLines, state: cur.values, name: shortName(ctx) })
+      .catch((e) => `(responder error: ${friendlyProviderError((e as Error).message)})`);
     ctx.out(replyLine(ctx, reply), "persona");
     await recordTurn(ctx, line, reply);
     await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
@@ -73,7 +93,8 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const recalls: string[] = [];
   bus.on((e) => {
     ctx.phase?.(phaseFor(e));
-    if (e.type === "memory-recall") recalls.push(`${e.kind}×${e.count}${e.detail ? ` (${e.detail})` : ""}`);
+    // V5.FIX.3: human phrasing ("2 user preferences: …"), not the cryptic "kind×N".
+    if (e.type === "memory-recall") recalls.push(`${e.count} ${e.kind.replace(/_/g, " ")}${e.detail ? `: ${e.detail}` : ""}`);
     const l = renderEvent(ctx.theme, e);
     if (l) ctx.out(l, "activity");
   });
@@ -83,7 +104,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     llm,
     policy: buildPolicy(ctx),
     personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
-    awareness: buildAwarenessBlock(ctx.handle.personaPath),
+    awareness: buildAwarenessBlock(ctx.handle.personaPath, awarenessOpts(ctx, llm.model)),
     goal: readGoalText(ctx.handle),
     onApproval: ctx.approve,
     budget: readAgentBudget(fm),
@@ -93,15 +114,15 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     sessionId: ctx.sessionId,
     meter: ctx.meter,
     priorMessages: ctx.conversation,
+    // V7.A1: a posture change is announced as an EPHEMERAL SYSTEM MESSAGE so the model
+    // re-evaluates what it declined under a stricter posture. It used to be glued in
+    // front of the user's text, which made the model answer the environment note as if
+    // the user had written it ("thanks for restoring my access!" out of nowhere).
+    envNote: ctx.pendingEnvNote,
     bus,
   });
-  // If the sandbox posture just changed, prepend a one-shot environment note so the model
-  // RE-EVALUATES (and retries) a request it may have declined under the old posture, instead of
-  // parroting its previous refusal from the conversation history. The note is NOT persisted to the
-  // session (recordTurn stores the real user line).
-  const taskLine = ctx.pendingEnvNote ? `${ctx.pendingEnvNote}\n\n${line}` : line;
   ctx.pendingEnvNote = undefined;
-  const result = await agent.run(taskLine);
+  const result = await agent.run(line);
   ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
   ctx.out(replyLine(ctx, result.summary || "…"), "persona");
   // Cumulative session accounting (F3.D16: /cost, /usage).
@@ -109,6 +130,12 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   ctx.usage.tokens += result.budget.tokens;
   ctx.usage.costUsd += result.budget.costUsd;
   ctx.usage.steps += result.budget.steps;
+  // V5.P1.2: per-model breakdown for Settings > Usage.
+  const bm = (ctx.usage.byModel ??= {});
+  const slot = (bm[llm.model] ??= { turns: 0, tokens: 0, costUsd: 0 });
+  slot.turns += 1;
+  slot.tokens += result.budget.tokens;
+  slot.costUsd += result.budget.costUsd;
   await recordTurn(ctx, line, result.summary || "…");
   // Only surface the budget line when something noteworthy happened (a multi-step
   // task or an early stop), not on every one-shot chat reply.
@@ -159,18 +186,36 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // Per-turn telemetry as a distinct, labeled BLOCK (one line per fact) so it never blends into
   // the persona's reply above. Rendered dim, with a gutter (┊) and an aligned label; only the
   // rows that actually happened appear.
+  // V5.P3.5: multi-value facts get ONE LINE PER ITEM under their label (the old
+  // comma-run made "recalled a, b, c, d" unreadable); the block opens with a
+  // dim title so it reads as a unit, never as part of the reply.
   const rows: Array<[string, string]> = [];
-  if (recalls.length) rows.push(["recalled", recalls.join(", ")]);
-  if (changed.length) rows.push(["evolved", changed.join(", ")]);
-  if (selfEdits.length) rows.push(["self-edit", selfEdits.join(" · ")]);
+  const pushAll = (label: string, values: string[], cap = 5): void => {
+    values.slice(0, cap).forEach((v, i) => rows.push([i === 0 ? label : "", v]));
+    if (values.length > cap) rows.push(["", `… +${values.length - cap} more`]);
+  };
+  // Recalled memory shows COMPLETE: no "+N more" hiding what the persona actually read.
+  if (recalls.length) pushAll("recalled", recalls, Number.POSITIVE_INFINITY);
+  if (changed.length) pushAll("evolved", changed);
+  if (selfEdits.length) pushAll("self-edit", selfEdits);
   if (memWrites) rows.push(["memory", `+${memWrites} episodic` + (memWriteKinds.length ? ` (${memWriteKinds[memWriteKinds.length - 1]})` : "")]);
   for (const k of memKinds) rows.push(["memory", k]);
-  if (evals.length) rows.push(["evaluated", evals.slice(0, 4).join(" · ") + (evals.length > 4 ? ` +${evals.length - 4} more` : "")]);
+  if (evals.length) pushAll("evaluated", evals, 4);
   if (rows.length) {
+    const block = [
+      chalk.dim(`  ┊ ${chalk.bold("this turn")}`),
+      ...rows.map(([label, value]) => chalk.dim(`  ┊ ${chalk.cyan(label.padEnd(9))} ${value}`)),
+    ];
     ctx.out("", "activity"); // blank line separates the telemetry block from the reply
-    for (const [label, value] of rows) {
-      ctx.out(chalk.dim(`  ┊ ${chalk.cyan(label.padEnd(9))} ${value}`), "activity");
-    }
+    for (const l of block) ctx.out(l, "activity");
+    // Recorded so a resumed session reprints the WORK, not just the words.
+    //
+    // Its own append-only entry rather than a field on the reply, because the
+    // evidence only EXISTS after the loop tick, which runs after the turn is
+    // already persisted. Rewriting a written line to attach it would break the
+    // one property this log has. `role: "note"` keeps it out of what the model
+    // sees on reload, so replaying costs no context.
+    recordEvidence(ctx, block);
   }
 
   // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline, 
@@ -269,14 +314,50 @@ export function buildRoster(rootCtx: Ctx): Roster {
 }
 
 /**
+ * V2-F3.A3: when the model's context window is filling up, auto-summarize older
+ * turns (once, with a visible notice) instead of waiting for a manual /compact.
+ * Best-effort: needs a model, and never breaks the turn on failure.
+ */
+export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85): Promise<void> {
+  const llm = llmConfig(ctxModelArg(ctx));
+  if (!llm || ctx.meter.pct < threshold) return;
+  try {
+    const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold });
+    if (!r.compacted) return;
+    ctx.conversation = r.messages.filter((m) => m.role !== "system");
+    if (r.summary) {
+      ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
+      recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
+    }
+    ctx.out(chalk.dim(`  · context auto-compacted (${r.removed} msg freed, ${Math.round(ctx.meter.pct * 100)}% full)`), "activity");
+  } catch {
+    /* best-effort; a failed compaction must never break the turn */
+  }
+}
+
+/**
  * Route one user line to the ROOT or to addressed sub-personas (@address/@all). Replies come
  * from each target; every delegation is recorded in the root's hash-chained memory.
  */
 export async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, setPhase?: (s: string) => void): Promise<void> {
+  // V6.10: every user turn lands in the GLOBAL cross-project history
+  // (~/.personaxis/history.jsonl), the same pattern ~/.claude/history.jsonl uses.
+  appendHistory({ cwd: process.cwd(), persona: rootCtx.name, prompt: line });
+  // User hooks (V2-F3.C14): a UserPromptSubmit hook may observe or block the prompt.
+  try {
+    const pre = await runHooks("UserPromptSubmit", { prompt: line }, readHooksConfig(rootCtx.handle.personaPath));
+    if (pre.blocked) {
+      rootCtx.out(chalk.yellow("  · prompt blocked by a UserPromptSubmit hook"), "activity");
+      return;
+    }
+  } catch {
+    /* hooks are best-effort; never break the turn */
+  }
   const { targets, rest } = parseMentions(line, roster.subs);
   const msg = rest || line;
   if (targets.length === 0) {
     await handleTurn(msg, rootCtx);
+    await maybeAutoCompact(rootCtx);
     return;
   }
   for (const addr of targets) {
@@ -311,4 +392,5 @@ export async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, s
       /* delegation logging is best-effort */
     }
   }
+  await maybeAutoCompact(rootCtx);
 }

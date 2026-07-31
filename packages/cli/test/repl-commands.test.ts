@@ -6,13 +6,14 @@ describe("REPL slash-command registry", () => {
   const names = cmds.map((c) => c.name);
 
   it("exposes the core commands (incl. evolution review + session controls)", () => {
-    for (const n of ["help", "persona", "state", "review", "audit", "memory", "mode", "improve", "sessions", "resume", "goal", "loop", "exit"]) {
+    // The consolidated surface (V8.A): absorbed verbs are no longer commands at all.
+    for (const n of ["help", "persona", "status", "audit", "memory", "sandbox", "resume", "drift", "exit"]) {
       expect(names).toContain(n);
     }
   });
 
-  it("exposes the setup/action commands too (config, hooks, validate, lint), the CLI depth from inside the app", () => {
-    for (const n of ["config", "model", "hooks", "validate", "lint", "compile"]) {
+  it("exposes the setup/action commands too, the CLI depth from inside the app", () => {
+    for (const n of ["model", "compile", "create", "skill", "doctor", "menu"]) {
       expect(names).toContain(n);
     }
   });

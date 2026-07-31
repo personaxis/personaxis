@@ -197,6 +197,27 @@ function uninstallOpenclaw(): { path: string; removed: boolean } {
   return { path: dir, removed };
 }
 
+/** Whether the end-of-turn hook is installed for a host (V5.P1.9, powers the /hooks menu). */
+export function hookStatus(host: Host, global: boolean): { path: string; installed: boolean } {
+  if (host === "claude-code" || host === "codex") {
+    const path = jsonStopHookPath(host, global);
+    return { path, installed: hasJsonStopHook(readJson<JsonHookSettings>(path, {})) };
+  }
+  if (host === "hermes") {
+    const dir = hermesHookDir();
+    return { path: dir, installed: existsSync(join(dir, "HOOK.yaml")) };
+  }
+  const dir = openclawHookDir();
+  return { path: dir, installed: existsSync(join(dir, "HOOK.md")) };
+}
+
+/** Uninstall the end-of-turn hook for a host (V5.P1.9, powers the /hooks menu). */
+export function uninstallHook(host: Host, global: boolean): { path: string; removed: boolean } {
+  if (host === "claude-code" || host === "codex") return uninstallJsonStopHook(jsonStopHookPath(host, global));
+  if (host === "hermes") return uninstallHermes();
+  return uninstallOpenclaw();
+}
+
 /** Install the end-of-turn hook for a host. Reusable by `hooks install` and `onboard`. */
 export function installHook(host: Host, global: boolean): { path: string; already: boolean; extra: string } {
   if (host === "claude-code" || host === "codex") {

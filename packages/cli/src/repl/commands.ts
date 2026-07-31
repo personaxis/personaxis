@@ -9,9 +9,10 @@
 
 import chalk from "chalk";
 import { relative, dirname, join } from "node:path";
-import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
 import {
   readState,
+  writeState,
   extractEnvelopes,
   driftReport,
   readDriftThresholds,
@@ -38,6 +39,7 @@ import {
   rejectSelfEdit,
   verifyMemoryChain,
   overseerView,
+  liveProjects,
   readRecompilePending,
   displayName,
   readMode,
@@ -48,7 +50,8 @@ import {
   findSession,
   renameSession,
 } from "@personaxis/core";
-import { sigilLines, envelopeBars } from "@personaxis/tui/visual";
+import { envelopeBars, auraLines } from "@personaxis/tui/visual";
+import { sigilParams, liveIntensity } from "@personaxis/core";
 import { renderFrame } from "@personaxis/tui";
 import type { SlashItem } from "@personaxis/tui/screen";
 import { isSubagentPath, slugAddressFromPath, loadPersonaFile, compiledPathFor } from "../load.js";
@@ -61,20 +64,58 @@ import { lint } from "../linter/index.js";
 import { writeStarterPersona } from "../starter.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { discoverTree } from "./roster.js";
+import { buildAwarenessBlock } from "./awareness.js";
 import type { Ctx, CommandDef } from "./types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, readGoalText } from "./config.js";
-import { fmtK } from "./render.js";
+import { fmtK, panel, meterBar, userLine } from "./render.js";
 import { version } from "../generated/assets.js";
 import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
-import { ensureCtxSession, resumeSessionInto } from "./session.js";
+import { ensureCtxSession, resumeSessionInto, replayTranscript } from "./session.js";
 import { maybeRecompile, handleTurn } from "./turn.js";
 import { loadCustomCommands, findCustomCommand, expandCommand } from "./custom-commands.js";
+import { resolveDeclaredSkills } from "../targets/skills.js";
+import type { PersonaData } from "../load.js";
+import { rewindState } from "../rewind.js";
+import { startTask, listTasks, readTaskDetail, markTaskSurfaced } from "./tasks.js";
+import { statusLines, configLines, usageLines } from "./views/settings-data.js";
+import { driftTextLines } from "./views/drift-view.js";
+import { runDoctorChecks } from "./doctor-checks.js";
+import { lineText } from "./views/tabbed.js";
+import { AUDIT_TABS, auditLines } from "./views/audit-data.js";
+
+/**
+ * V6.2: the Command Center opens IN-PROCESS inside suspend(). The old path
+ * spawned a second full CLI on the same console, so two processes read one
+ * stdin (keystrokes split between them: the "press Enter twice" bug) and every
+ * open paid a whole Node boot. Dynamic import keeps the REPL start lean.
+ */
+async function openCenterInProcess(ctx: Ctx, section: "home" | "model"): Promise<void> {
+  const { runCommandCenter } = await import("../command-center.js");
+  const dir = join(process.cwd(), ".personaxis", "personas");
+  let personas: string[] = [];
+  try {
+    personas = existsSync(dir)
+      ? readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)
+      : [];
+  } catch {
+    personas = [];
+  }
+  await runCommandCenter({ personaPath: ctx.handle.personaPath, personas, cwd: process.cwd(), section });
+}
+
+/** V9/G.4c: open the scope-tree navigator in-process (the default Command Center). */
+async function openNavigatorInProcess(): Promise<void> {
+  const { runScopeNavigator } = await import("../center/run.js");
+  await runScopeNavigator();
+}
 
 // ── Commands (single source for /help and the live `/` menu) ─────────────────
 export const COMMANDS: CommandDef[] = [
   {
     name: "help",
     desc: "show commands by category; /help <query> to filter",
+    external: "session-only",
+    why: "lists the slash commands of a running session; outside, `personaxis --help` is the equivalent",
     run: (arg, ctx) => {
       ctx.out(helpText(arg));
       const custom = loadCustomCommands(ctx.handle.personaPath);
@@ -87,13 +128,53 @@ export const COMMANDS: CommandDef[] = [
     },
   },
   {
+    name: "skill",
+    desc: "the reusable procedures this persona can run: add, update, apply",
+    external: "skills",
+    run: async (arg, ctx) => {
+      // V5.P1.10: no args in the TUI opens the skills miniapp (per-persona, apply, status).
+      if (!arg.trim() && ctx.openView) return void ctx.openView("skills");
+      const baseDir = dirname(ctx.handle.personaPath);
+      const skills = resolveDeclaredSkills(ctx.handle.frontmatter as unknown as PersonaData, baseDir);
+      const parts = arg.trim().split(/\s+/).filter(Boolean);
+      const nameArg = parts[0] ?? "";
+      if (!nameArg) {
+        if (!skills.length) return void ctx.out(chalk.dim("  no skills declared (extensions.skills in personaxis.md)."));
+        ctx.out(chalk.bold("  Skills:"));
+        for (const s of skills) {
+          const status =
+            s.kind === "local" ? (s.missing ? chalk.red("missing") : chalk.green("local")) : chalk.dim(s.kind);
+          ctx.out(`  ${chalk.cyan(s.name)} ${chalk.dim("·")} ${status}${s.ref ? chalk.dim(" " + s.ref) : ""}`);
+        }
+        ctx.out(chalk.dim("  /skill <name> [args] to apply one."));
+        return;
+      }
+      const skill = skills.find((s) => s.name === nameArg);
+      if (!skill) return void ctx.out(chalk.yellow(`  no skill "${nameArg}". /skill to list.`));
+      if (skill.kind !== "local" || skill.missing || !skill.sourceDir) {
+        return void ctx.out(
+          chalk.yellow(`  skill "${nameArg}" is ${skill.kind}${skill.missing ? " (SKILL.md missing)" : ""}, not runnable locally.`),
+        );
+      }
+      const skillMd = join(skill.sourceDir, "SKILL.md");
+      if (!existsSync(skillMd)) return void ctx.out(chalk.yellow(`  ${nameArg}: SKILL.md not found.`));
+      const body = readFileSync(skillMd, "utf-8");
+      const rest = parts.slice(1).join(" ");
+      ctx.out(chalk.dim(`  /skill ${nameArg}: applying skill…`));
+      await handleTurn(`Apply the "${nameArg}" skill:\n\n${body}${rest ? `\n\nInput: ${rest}` : ""}`, ctx);
+    },
+  },
+  {
     name: "persona",
-    desc: "identity, role, sub-personas, resources + sigil",
+    desc: "who this persona is: identity, the ten layers, its resources, its sub-personas, how it evolves",
+    external: "list",
     run: (_a, ctx) => {
+      // V5.P3.3: in the TUI this is a miniapp; pipes keep the inline summary.
+      if (ctx.openView) return void ctx.openView("persona");
       const p = ctx.handle.personaPath;
       const id = ctx.handle.frontmatter.identity as { display_name?: string; system_identity?: { purpose?: string } } | undefined;
       const address = slugAddressFromPath(p);
-      const role = isSubagentPath(p) && address ? `sub-persona @${address}` : "root persona";
+      const role = isSubagentPath(p) && address ? `sub-persona @${address}` : "main persona";
       ctx.out(chalk.bold(`  ${ctx.name}`) + chalk.dim(`  · ${role}`));
       if (id?.system_identity?.purpose) ctx.out(`  ${chalk.dim("purpose:")} ${id.system_identity.purpose}`);
       ctx.out(chalk.dim(`  improve: ${ctx.mode} · sandbox: ${POSTURES[ctx.postureIndex]}`));
@@ -109,42 +190,22 @@ export const COMMANDS: CommandDef[] = [
         ctx.out(chalk.bold("  Resources"));
         for (const line of manifest.split("\n")) ctx.out(`  ${chalk.dim(line.replace(/^- /, ""))}`);
       }
-      // the living sigil (sober microdetail)
-      ctx.out(sigilLines(ctx.theme, readState(ctx.handle.statePath).values).join("\n"));
-      ctx.out(chalk.dim(`  seed #${ctx.theme.seed.toString(16)} · voice ${ctx.theme.voice.density}`));
-    },
-  },
-  {
-    name: "dash",
-    desc: "the living dashboard: in-app drift view (↑/↓ · Enter · Esc), inline frame in pipes",
-    run: (_a, ctx) => {
-      // FASE 7 P2: inside the app the dashboard IS a view. Line mode (pipe/CI)
-      // keeps the single inline frame.
-      if (ctx.openDriftView) {
-        ctx.openDriftView();
-        return;
-      }
-      for (const line of renderFrame(ctx.handle.personaPath, 0).split("\n")) ctx.out(line);
-      ctx.out(chalk.dim(`  live view: `) + chalk.cyan(`personaxis dash -p ${relative(process.cwd(), ctx.handle.personaPath) || ctx.handle.personaPath}`) + chalk.dim(" (second terminal, animates as this session evolves)"));
-    },
-  },
-  {
-    name: "proof",
-    desc: "run the live guarantee scenes full-screen inside the app",
-    run: async (arg, ctx) => {
-      // FASE 7 P2: proof takes the raw TTY (animated scenes); the app suspends
-      // and re-mounts after. In pipes it degrades to the captured passthrough.
-      if (!ctx.suspend) {
-        runCliPassthrough("proof", arg, ctx);
-        return;
-      }
-      await ctx.suspend(() => runCliInteractive("proof", arg));
-      ctx.out(chalk.dim("  proof finished, the scenes are in the scrollback above."));
+      // V5.P3.2: the AURA, the persona's living creature mark (unique per seed;
+      // it breathes with the loop and flares when drift crosses thresholds).
+      const st = readState(ctx.handle.statePath);
+      ctx.out(
+        auraLines(sigilParams(ctx.handle.frontmatter), 0, { intensity: liveIntensity(st.values, 0) })
+          .split("\n")
+          .map((l) => `     ${l}`)
+          .join("\n"),
+      );
+      ctx.out(chalk.dim(`  aura #${ctx.theme.seed.toString(16)} (unique to this persona) · voice ${ctx.theme.voice.density}`));
     },
   },
   {
     name: "create",
-    desc: "Genesis full-screen: interview wizard or --from-prompt/--from-import/...",
+    desc: "create or rewrite a persona: interview, a prompt, an import, a transcript",
+    external: "create",
     run: async (arg, ctx) => {
       if (!ctx.suspend) {
         runCliPassthrough("create", arg, ctx);
@@ -155,207 +216,42 @@ export const COMMANDS: CommandDef[] = [
     },
   },
   {
-    name: "state",
-    desc: "live mutable surface: envelopes + applied self-edits + pending proposals",
-    run: (_a, ctx) => {
-      const p = ctx.handle.personaPath;
-      const st = readState(ctx.handle.statePath);
-      const env = extractEnvelopes(ctx.handle.frontmatter);
-      // (1) quantitative, the numeric envelope state.
-      ctx.out(chalk.bold("  Envelope values") + chalk.dim("  (quantitative)"));
-      ctx.out(envelopeBars(ctx.theme, st.values, env.envelopes));
-      ctx.out(chalk.dim(`  mutation_log: ${st.mutation_log.length} entries`));
-      // (2) qualitative, self-edits already APPLIED to the spec (the overlay). This is the rest of
-      // the mutable surface beyond the 9 numbers: any non-protected section may live here now.
-      const overlay = activeOverlay(p);
-      const keys = Object.keys(overlay);
-      ctx.out(chalk.bold("  Applied self-edits") + chalk.dim("  (qualitative overlay)"));
-      if (!keys.length) ctx.out(chalk.dim("  (none), no spec section has self-evolved yet"));
-      else for (const k of keys) ctx.out(`  ${chalk.cyan(k)} ${chalk.dim("→ " + JSON.stringify(overlay[k]).slice(0, 72))}`);
-      // (3) governance queue, proposals awaiting /review.
-      const pending = proposals(p).filter((x) => x.status === "pending");
-      if (pending.length) ctx.out(chalk.yellow(`  ${pending.length} pending proposal(s)`) + chalk.dim(", /review"));
-    },
-  },
-  {
     name: "drift",
-    desc: "drift metric: u per coordinate, bands, layer thresholds, steps-to-cross (T3)",
+    desc: "how far the persona has moved from what it declared, and in what",
+    external: "state drift",
     run: (_a, ctx) => {
-      const st = readState(ctx.handle.statePath);
-      const fm = ctx.handle.frontmatter as Record<string, unknown>;
-      const env = extractEnvelopes(ctx.handle.frontmatter);
-      const report = driftReport({
-        values: st.values,
-        envelopes: env.envelopes,
-        maxStepDelta: readMaxStepDelta(fm),
-        thresholds: readDriftThresholds(fm),
-        protectedFields: env.protectedFields,
-      });
-      // FASE 7 P2: in the app, /drift opens the full-height interactive view
-      // (↑/↓ · Enter · Esc). Pipe/CI line mode keeps the inline report below.
-      if (ctx.openDriftView) {
-        ctx.onDrift?.(report);
-        ctx.openDriftView();
-        return;
-      }
-      ctx.out(
-        chalk.bold("  Drift") +
-          chalk.dim(`  D = ${report.global.toFixed(3)} (max |u|) · δ_max ${report.maxStepDelta}`),
-      );
-      for (const c of report.coordinates) {
-        const dir = c.u > 0 ? "+" : c.u < 0 ? "−" : " ";
-        ctx.out(
-          `  ${chalk.cyan(c.field.padEnd(36))} u ${dir}${Math.abs(c.u).toFixed(2)} ` +
-            `${chalk.bold(c.band.padEnd(8))}` +
-            (c.protected
-              ? chalk.magenta(" immutable")
-              : c.decayAssisted
-                ? chalk.dim(" recovery exit (decay-assisted, audited)")
-                : chalk.dim(` ≥${c.minStepsToCross} step(s) to cross`)),
-        );
-      }
-      for (const l of report.layers) {
-        if (l.threshold === undefined) continue;
-        const mark = l.exceeded ? chalk.red("✗ over threshold") : chalk.green("✓");
-        ctx.out(`  ${mark} ${l.layer}: D ${l.drift.toFixed(3)} / ${l.threshold}`);
-      }
-    },
-  },
-  {
-    name: "replay",
-    desc: "replay the mutation_log as an animated trajectory (T4: state is a fold of history)",
-    run: async (arg, ctx) => {
-      const st = readState(ctx.handle.statePath);
-      const env = extractEnvelopes(ctx.handle.frontmatter);
-      const log = st.mutation_log;
-      if (!log.length) return void ctx.out(chalk.dim("  mutation_log is empty, nothing to replay"));
-      const last = Math.max(1, Math.min(log.length, Number(arg.trim()) || 30));
-      const slice = log.slice(-last);
-      const values: Record<string, number> = {};
-      for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
-      for (const e of log.slice(0, log.length - last)) values[e.field] = e.to; // fast-forward the prefix
-      ctx.out(chalk.bold(`  Replaying ${slice.length}/${log.length} mutation(s)`) + chalk.dim("  (each line is one audited entry)"));
-      const animate = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
-      for (const entry of slice) {
-        values[entry.field] = entry.to;
-        // Legacy logs use short keys (mood.tone); resolve onto the v1.0 envelope.
-        const e = env.envelopes[resolveField(entry.field, env.envelopes)];
-        const short = entry.field.split(".").pop() ?? entry.field;
-        const marks = e
-          ? (() => {
-              const w = 20;
-              const frac = e.max === e.min ? 0.5 : (entry.to - e.min) / (e.max - e.min);
-              const pos = Math.max(0, Math.min(w - 1, Math.round(frac * (w - 1))));
-              return "·".repeat(pos) + chalk.bold("●") + "·".repeat(w - 1 - pos);
-            })()
-          : "";
-        ctx.out(
-          `  ${chalk.dim(entry.ts.slice(11, 19))} ${chalk.cyan(short.padEnd(14))} ${entry.from.toFixed(2)}→${entry.to.toFixed(2)} [${marks}] ` +
-            (entry.governance_blocked ? chalk.red("blocked") : entry.clamped ? chalk.yellow("clamped") : chalk.dim(entry.actor)) +
-            chalk.dim(` ${entry.reason.slice(0, 34)}`),
-        );
-        if (animate) await new Promise((r) => setTimeout(r, 90));
-      }
-      const rebuilt = rebuildStateValues(env.envelopes, log, st.values);
-      ctx.out(
-        rebuilt.drift.length === 0
-          ? chalk.green("  ✓ replay reproduces the live state exactly (T4)")
-          : chalk.red(`  ✗ ${rebuilt.drift.length} field(s) diverge from the log, run \`personaxis state rebuild\``),
-      );
-    },
-  },
-  {
-    name: "arbitrate",
-    desc: "resolve a value conflict: /arbitrate <a> <b>, or no args for the full ranking",
-    run: (arg, ctx) => {
-      const values = readArbitrationValues(ctx.handle.frontmatter as Record<string, unknown>);
-      if (!values.length) return void ctx.out(chalk.dim("  no weighted values declared"));
-      const [a, b] = arg.trim().split(/\s+/).filter(Boolean);
-      if (!a || !b) {
-        ctx.out(chalk.bold("  Arbitration ranking") + chalk.dim("  governance ≻ weight ≻ name"));
-        rankValues(values).forEach((v, i) => {
-          const gov = v.type === "governance" ? chalk.magenta(" governance") : "";
-          ctx.out(`  ${String(i + 1).padStart(2)}. ${chalk.cyan(v.name)} ${chalk.dim(String(v.weight))}${gov}`);
-        });
-        return;
-      }
-      const va = values.find((v) => v.name === a);
-      const vb = values.find((v) => v.name === b);
-      if (!va || !vb) {
-        return void ctx.out(
-          chalk.red(`  unknown value '${!va ? a : b}'`) + chalk.dim(`, declared: ${values.map((v) => v.name).join(", ")}`),
-        );
-      }
-      const verdict = arbitrate(va, vb);
-      ctx.out(`  ${chalk.green("✓")} ${chalk.bold(verdict.winner)} prevails ${chalk.dim(`(${verdict.rule})`)}`);
-      ctx.out(chalk.dim(`  ${verdict.trace}`));
-    },
-  },
-  {
-    name: "improve",
-    desc: "view/set self-improvement mode: locked | suggesting | autonomous",
-    run: (arg, ctx) => {
-      const wanted = arg.trim().toLowerCase();
-      if (!wanted) {
-        ctx.out(chalk.dim(`  improvement mode = ${chalk.bold(ctx.mode)}  ·  usage: /improve <${MODES.join("|")}>`));
-        return;
-      }
-      if (!isMode(wanted)) {
-        ctx.out(chalk.yellow(`  mode must be one of ${MODES.join(" | ")}`));
-        return;
-      }
-      try {
-        const r = runMode(ctx.handle.personaPath, wanted);
-        ctx.mode = r.current;
-        ctx.out(chalk.green(`  ✓ improvement mode → ${chalk.bold(ctx.mode)}`) + (r.changed ? "" : chalk.dim(" (unchanged)")));
-      } catch (e) {
-        ctx.out(chalk.red(`  could not set mode: ${(e as Error).message}`));
-      }
-    },
-  },
-  {
-    name: "review",
-    desc: "review queued self-edits: /review [approve|reject] <id|all>",
-    run: async (arg, ctx) => {
-      const p = ctx.handle.personaPath;
-      const pending = proposals(p).filter((x) => x.status === "pending");
-      const [verb, which] = arg.trim().split(/\s+/).filter(Boolean);
-      if (!verb) {
-        if (!pending.length) return void ctx.out(chalk.dim("  no pending self-edit proposals."));
-        ctx.out(chalk.bold(`  Pending self-edits (${pending.length})`));
-        for (const x of pending) {
-          ctx.out(`  ${chalk.cyan(x.id)} ${chalk.dim(x.targetPath)}`);
-          ctx.out(`     → ${chalk.dim(JSON.stringify(x.toValue).slice(0, 100))}`);
-          ctx.out(`     ${chalk.dim(x.rationale)}`);
-        }
-        ctx.out(chalk.dim("  /review approve <id|all>  ·  /review reject <id|all>"));
-        return;
-      }
-      if (verb !== "approve" && verb !== "reject") return void ctx.out(chalk.yellow("  usage: /review [approve|reject] <id|all>"));
-      if (!which) return void ctx.out(chalk.yellow(`  usage: /review ${verb} <id|all>`));
-      const targets = which === "all" ? pending : pending.filter((x) => x.id === which);
-      if (!targets.length) return void ctx.out(chalk.yellow(`  no pending proposal "${which}", see /review`));
-      let approved = 0;
-      for (const x of targets) {
+      // /drift is the DELTA ("how far have I moved"), three planes deep; /status is the
+      // SNAPSHOT ("what am I now"). They used to print the same envelope block, which made
+      // one of the two redundant.
+      if (ctx.openView) {
+        // Feed the live gauge in the status bar with the numeric plane, then open the app.
         try {
-          if (verb === "approve") {
-            const r = applySelfEdit(p, x.id, "user");
-            approved++;
-            ctx.out(chalk.green(`  ✓ applied ${x.id}`) + chalk.dim(` ${x.targetPath} → v${r.version}`));
-          } else {
-            rejectSelfEdit(p, x.id, "user");
-            ctx.out(chalk.dim(`  ✗ rejected ${x.id} ${x.targetPath}`));
-          }
-        } catch (e) {
-          ctx.out(chalk.red(`  ${x.id}: ${(e as Error).message}`));
+          const st = readState(ctx.handle.statePath);
+          const fm = ctx.handle.frontmatter as Record<string, unknown>;
+          const env = extractEnvelopes(ctx.handle.frontmatter);
+          ctx.onDrift?.(
+            driftReport({
+              values: st.values,
+              envelopes: env.envelopes,
+              maxStepDelta: readMaxStepDelta(fm),
+              thresholds: readDriftThresholds(fm),
+              protectedFields: env.protectedFields,
+            }),
+          );
+        } catch {
+          /* a persona with no state still opens the view; the plane says so itself */
         }
+        ctx.openView("drift-planes");
+        return;
       }
-      if (approved > 0) await maybeRecompile(ctx);
+      // Pipe / CI: the same three planes as text.
+      for (const line of driftTextLines(ctx)) ctx.out(line);
     },
   },
   {
     name: "compile",
-    desc: "compile PERSONA.md from the (evolved) spec; the first compile works without a model",
+    desc: "rebuild the persona document your agents read, from the (evolved) spec",
+    external: "compile",
     run: async (_a, ctx) => {
       const compiledPath = compiledPathFor(ctx.handle.personaPath);
       const firstCompile = !existsSync(compiledPath);
@@ -392,42 +288,32 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "audit",
-    desc: "mutation log + memory-chain integrity + self-edit ledger + recent evaluations",
-    run: (_a, ctx) => {
-      const p = ctx.handle.personaPath;
-      const st = readState(ctx.handle.statePath);
-      const chain = verifyMemoryChain(p);
-      ctx.out(chalk.bold("  Mutation log (last 8)"));
-      for (const m of st.mutation_log.slice(-8)) ctx.out(`  ${chalk.dim(m.ts)} ${m.field}: ${m.from} → ${m.to}${m.clamped ? chalk.yellow(" clamped") : ""}`);
-      ctx.out("  memory chain: " + (chain.ok ? chalk.green("intact ✓") : chalk.red(`broken at #${chain.brokenAt}`)));
-      // self-edit ledger, what the persona changed about ITSELF, and the governance verdict.
-      const all = proposals(p);
-      if (all.length) {
-        ctx.out(chalk.bold("  Self-edit ledger (last 6)"));
-        for (const x of all.slice(-6)) {
-          const c = x.status === "applied" ? chalk.green : x.status === "pending" ? chalk.yellow : chalk.red;
-          ctx.out(`  ${chalk.dim(x.id)} ${c(x.status)} ${chalk.dim(x.targetPath)}`);
-        }
-      }
-      // evaluations, quality/utility scores, with the target + dimension + score that "+N eval(s)" hid.
-      const evals = readEvaluations(p);
-      if (evals.length) {
-        ctx.out(chalk.bold(`  Evaluations (${evals.length}, last 6)`));
-        for (const ev of evals.slice(-6)) {
-          const c = ev.score >= 0.66 ? chalk.green : ev.score >= 0.33 ? chalk.yellow : chalk.red;
-          ctx.out(`  ${chalk.dim(ev.target)} ${ev.dimension} ${c(ev.score.toFixed(2))} ${chalk.dim(ev.rationale)}`);
-        }
+    desc: "the evidence: every mutation, the tamper-evident chain, self-edits, and the rewind",
+    external: "audit",
+    run: (arg, ctx) => {
+      // V7.B: ONE Ledger miniapp (Timeline / Integrity / Self-edits / Evaluations); the
+      // old /replay is the Integrity tab and /rewind is an action on Timeline.
+      const tab = arg.trim();
+      if (ctx.openView) return void ctx.openView("audit", tab ? { tab } : undefined);
+      // Pipes get the same collectors as flat text (single source of truth).
+      for (const t of AUDIT_TABS.keys()) {
+        ctx.out(chalk.bold(`  ${AUDIT_TABS[t]}`));
+        for (const l of auditLines(ctx, t)) ctx.out(lineText(l));
+        ctx.out("");
       }
     },
   },
   {
     name: "memory",
-    desc: "memory kinds + actions: /memory [consolidate | prune | search <query>]",
+    desc: "what it remembers, by kind, and what to do with it",
+    external: "memory",
     run: async (arg, ctx) => {
       const p = ctx.handle.personaPath;
       const fm = ctx.handle.frontmatter as Record<string, unknown>;
       const types = readMemoryTypes(fm);
       const parts = arg.trim().split(/\s+/).filter(Boolean);
+      // V5.P1.4: no args in the TUI opens the two-level memory browser.
+      if (!parts.length && ctx.openView) return void ctx.openView("memory");
       if (parts[0] === "consolidate") {
         const c = consolidateSemantic(p);
         return void ctx.out(chalk.green("  ✓ ") + `memory.md consolidated (${c.count} entries kept by salience) → ${c.path}`);
@@ -467,33 +353,25 @@ export const COMMANDS: CommandDef[] = [
     },
   },
   {
-    name: "overseer",
-    desc: "cross-machine/project registry view (optional infra)",
-    run: (_a, ctx) => {
-      const v = overseerView();
-      ctx.out(chalk.bold.magentaBright("  overseer") + chalk.dim(` · machine ${v.machine}`));
-      ctx.out(`  personas ${v.personas} · projects ${v.projects} · collections ${v.collections}`);
-      if (v.personas === 0 && v.projects === 0 && v.collections === 0) {
-        ctx.out(chalk.dim("  (empty) the overseer is OPTIONAL infra for reusing a persona across machines/projects,"));
-        ctx.out(chalk.dim("  complementing git, not replacing it. Populate with: personaxis personas import <path> · personaxis overseer register <slug>"));
-      }
-    },
-  },
-  {
     name: "model",
-    desc: "show the model, or set it: /model set <endpoint|model|key|key-env> <value> [project]",
-    run: (arg, ctx) => {
+    desc: "which model answers, for this persona or any other",
+    external: "model",
+    run: async (arg, ctx) => {
       const parts = arg.trim().split(/\s+/).filter(Boolean);
       if (parts[0] !== "set") {
+        // V5.P1.8: inside the app the MENU is the way to change models (no textual set).
         ctx.out(chalk.dim(`  model: ${appraiserLabel(ctxModelArg(ctx))}`));
-        ctx.out(chalk.dim(`  set (stored in ~/.personaxis, reused everywhere):`));
-        ctx.out(chalk.dim(`    /model set endpoint <url> · /model set model <name> · /model set key <API_KEY> · /model set key-env <ENV_VAR>`));
-        ctx.out(chalk.dim(`    (append 'project' to write the project config instead of global; per-persona lives in the spec's runtime block)`));
+        if (ctx.suspend) {
+          await ctx.suspend(() => openCenterInProcess(ctx, "model"));
+          ctx.out(chalk.dim(`  now: ${appraiserLabel(ctxModelArg(ctx))}`));
+          return;
+        }
+        ctx.out(chalk.dim("  change it: personaxis model set <name> [--persona <slug|main>] [--project] (outside the app)"));
         return;
       }
+      // Textual set stays available for pipes/agents; the same syntax as the external CLI.
       const [, key, value, scope] = parts;
-      if (!key || !value) return void ctx.out(chalk.yellow("  usage: /model set <endpoint|model|key|key-env> <value> [project]"));
-      // Config is GLOBAL by default (reused across projects); pass 'project' to scope it locally.
+      if (!key || !value) return void ctx.out(chalk.yellow("  usage (pipes): /model set <endpoint|model|key|key-env> <value> [project] · in the app just /model"));
       const global = scope !== "project";
       const isSecret = key === "key";
       try {
@@ -509,106 +387,41 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "menu",
-    desc: "open the Command Center: a stable fullscreen hub for model, state, drift, audit, memory, proposals, fleet",
-    run: async (_a, ctx) => {
+    desc: "the Command Center: navigate machine → project → persona → layer → field, with live state",
+    external: "menu",
+    run: async (args, ctx) => {
       if (ctx.suspend) {
-        // Alt-screen modal: the app suspends, the Center takes the raw TTY, and on
-        // exit the transcript is restored with ZERO residue (the k9s/lazygit standard).
-        await ctx.suspend(() => runCliInteractive("menu", ""));
+        // Alt-screen modal: the app suspends, the Center takes the raw TTY, and on exit the
+        // transcript is restored with ZERO residue (the k9s/lazygit standard). V9/G.4c: the
+        // scope-tree navigator is the default; `/menu classic` opens the legacy sectioned hub.
+        if (args.trim() === "classic") await ctx.suspend(() => openCenterInProcess(ctx, "home"));
+        else await ctx.suspend(() => openNavigatorInProcess());
         return;
       }
       ctx.out(chalk.dim("  the Command Center needs an interactive terminal; here, use /model /state /drift /audit /memory."));
     },
   },
   {
-    name: "config",
-    desc: "configure the model in the Command Center (stable menu: providers, profiles, default, per-persona)",
-    run: async (_a, ctx) => {
-      // Open the Command Center directly on the Model section, a stable alt-screen
-      // modal (no double-enter, no history residue, unlike the old sequential UI).
-      if (ctx.suspend) {
-        await ctx.suspend(() => runCliInteractive("menu", "--section model"));
-        ctx.out(chalk.dim(`  model now: ${appraiserLabel(ctxModelArg(ctx))}`));
-        return;
-      }
-      ctx.out(chalk.bold("  Model config") + chalk.dim("  (env > project > global; per-persona via a profile ref or the spec's runtime block)"));
-      ctx.out(`  ${chalk.cyan("resolved")}  ${appraiserLabel(ctxModelArg(ctx))}`);
-      ctx.out(chalk.dim(`  global   ~/.personaxis/config.json   ·   project   .personaxis/config.json`));
-      ctx.out(chalk.dim(`  set from here: /model set <endpoint|model|key|key-env> <value> [project]`));
-    },
-  },
-  {
-    name: "hooks",
-    desc: "install the end-of-turn learning hook for a host: /hooks <claude-code|codex|openclaw|hermes> [global]",
+    name: "bg",
+    desc: "run a prompt as a background task: /bg <prompt> (see /tasks)",
+    external: "session-only",
+    why: "starts a background task owned by the running session; outside, run the command directly",
     run: (arg, ctx) => {
-      const [host, scope] = arg.trim().split(/\s+/).filter(Boolean);
-      if (!host || !(HOSTS as readonly string[]).includes(host)) {
-        return void ctx.out(chalk.yellow(`  usage: /hooks <${HOSTS.join("|")}> [global]`));
-      }
-      try {
-        const r = installHook(host as (typeof HOSTS)[number], scope === "global");
-        ctx.out((r.already ? chalk.dim("  · already installed at ") : chalk.green("  ✓ installed at ")) + chalk.cyan(r.path));
-        ctx.out(chalk.dim(`  each turn now feeds a governed tick on your model (no host tokens).${r.extra}`));
-      } catch (e) {
-        ctx.out(chalk.red(`  ${(e as Error).message}`));
-      }
+      const prompt = arg.trim();
+      if (!prompt) return void ctx.out(chalk.yellow("  usage: /bg <prompt>"));
+      const rec = startTask(ctx.handle.personaPath, prompt);
+      ctx.out(chalk.dim(`  · background task ${chalk.cyan(rec.id)} started (see /tasks ${rec.id})`));
     },
-  },
-  {
-    name: "validate",
-    desc: "validate this persona's spec against the schema + universals",
-    run: (_a, ctx) => {
-      const r = validatePersona(loadPersonaFile(ctx.handle.personaPath).data);
-      const color = r.status === "PASS" ? chalk.green : r.status.startsWith("PASS") ? chalk.yellow : chalk.red;
-      ctx.out(`  ${color(r.status)}` + chalk.dim(` · ${r.errors.length} error(s), ${r.warnings.length} warning(s)`));
-      for (const e of [...r.errors, ...r.warnings].slice(0, 8)) ctx.out(chalk.dim(`    · ${e.field}: ${e.message}`));
-    },
-  },
-  {
-    name: "lint",
-    desc: "lint this persona's spec (tier-aware findings)",
-    run: (_a, ctx) => {
-      const report = lint(readFileSync(ctx.handle.personaPath, "utf-8"));
-      if (report.findings.length === 0) return void ctx.out(chalk.green("  ✓ no lint findings"));
-      ctx.out(chalk.bold(`  ${report.summary.errors} error(s) · ${report.summary.warnings} warning(s) · ${report.summary.infos} info`));
-      for (const f of report.findings.slice(0, 12)) {
-        const c = f.severity === "error" ? chalk.red : f.severity === "warning" ? chalk.yellow : chalk.dim;
-        ctx.out(`  ${c(f.severity)} ${chalk.dim(f.rule)}, ${f.message}`);
-      }
-    },
-  },
-  {
-    name: "init",
-    desc: "scaffold a NEW sub-persona under this project: /init <name>",
-    run: (arg, ctx) => {
-      const name = arg.trim();
-      if (!name) return void ctx.out(chalk.yellow("  usage: /init <name>   (creates a sub-persona; the root already exists in this session)"));
-      try {
-        const path = writeStarterPersona(process.cwd(), name, name);
-        const slug = path.split(/[\\/]+/).slice(-2)[0];
-        ctx.out(chalk.green("  ✓ created sub-persona ") + chalk.cyan(`@${slug}`) + chalk.dim(` → ${relative(process.cwd(), path).replace(/\\/g, "/")}`));
-        ctx.out(chalk.dim(`  next: fill it in, then /compile ${slug} (or address it with @${slug} …)`));
-      } catch (e) {
-        ctx.out(chalk.red(`  ${(e as Error).message}`));
-      }
-    },
-  },
-  {
-    name: "serve",
-    desc: "start/stop the HTTP server in the background: /serve [port] · /serve stop",
-    run: (arg, ctx) => startStopDaemon("serve", arg, ctx, (port) => ["serve", "--persona", ctx.handle.personaPath, "--port", port || "7637"], (port) => `http://localhost:${port || "7637"} (curl /agents.md)`),
-  },
-  {
-    name: "watch",
-    desc: "start/stop the freshness daemon in the background: /watch · /watch stop",
-    run: (arg, ctx) => startStopDaemon("watch", arg, ctx, () => ["watch", "--persona", ctx.handle.personaPath], () => "recompiling PERSONA.md on spec edits + drift"),
   },
   {
     name: "compact",
-    desc: "summarize older turns to free context",
+    desc: "summarize older turns to free context, keeping decisions and open threads",
+    external: "session-only",
+    why: "summarizes the CURRENT conversation history; there is no history outside a session",
     run: async (_a, ctx) => {
       const llm = llmConfig(ctxModelArg(ctx));
       if (!llm) return void ctx.out(chalk.dim("  /compact needs a model, configure with /model."));
+      const before = ctx.meter.used;
       const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
       if (r.compacted) {
         ctx.conversation = r.messages.filter((m) => m.role !== "system");
@@ -618,223 +431,309 @@ export const COMMANDS: CommandDef[] = [
           ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
           recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
         }
-        ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept · persisted (survives /resume)`));
+        const after = ctx.meter.used;
+        const freed = Math.max(0, before - after);
+        ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept · ${fmtK(before)} → ${fmtK(after)} tok${freed ? ` (freed ~${fmtK(freed)})` : ""} · persisted (survives /resume)`));
       } else {
         ctx.out(chalk.dim("  nothing to compact yet."));
       }
     },
   },
   {
-    name: "sessions",
-    desc: "list saved conversations (/resume to continue one)",
-    run: (_a, ctx) => {
-      const list = listSessions(ctx.handle.personaPath);
-      if (!list.length) return void ctx.out(chalk.dim("  no saved sessions yet."));
-      ctx.out(chalk.bold(`  Sessions (${list.length})`));
-      for (const s of list.slice(0, 12)) {
-        const when = s.updated.slice(0, 16).replace("T", " ");
-        const live = s.id === ctx.sessionId ? chalk.green(" ● live") : "";
-        ctx.out(`  ${chalk.cyan(s.name)}${live} ${chalk.dim(`· ${s.turns} turn(s) · ${when} · ${s.id}`)}`);
-      }
-    },
-  },
-  {
     name: "resume",
-    desc: "resume a saved conversation: /resume <id|name>",
+    desc: "go back into a saved conversation; it is rebuilt exactly as you left it",
+    external: "session-only",
+    why: "loads a saved conversation into the running REPL; a one-shot command has no conversation to load it into",
     run: async (arg, ctx) => {
       const q = arg.trim();
-      if (!q) return void ctx.out(chalk.dim("  usage: /resume <id|name>, see /sessions"));
+      if (!q) {
+        // V5.P1.3: no args opens the session picker in the TUI; in pipes, list them.
+        if (ctx.openView) return void ctx.openView("resume");
+        const list = listSessions(ctx.handle.personaPath);
+        if (!list.length) return void ctx.out(chalk.dim("  no saved sessions yet."));
+        for (const s of list.slice(0, 12)) ctx.out(`  ${chalk.cyan(s.name)} ${chalk.dim(`· ${s.turns} turn(s) · ${s.updated.slice(0, 16).replace("T", " ")} · ${s.id}`)}`);
+        return void ctx.out(chalk.dim("  /resume <id|name> to continue one."));
+      }
       const s = resumeSessionInto(ctx, q);
-      if (!s) return void ctx.out(chalk.yellow(`  no session matching "${q}", see /sessions`));
+      if (!s) return void ctx.out(chalk.yellow(`  no session matching "${q}", /resume lists them`));
+      // V7.A6: rebuild that conversation on screen instead of continuing it under the
+      // current one (the picker does the same through its own resume handler).
+      if (ctx.clearScreen) {
+        ctx.clearScreen();
+        ctx.out(chalk.dim(`  resumed "${s.name}"  ·  ${ctx.conversation.length} message(s)`), "activity");
+        for (const line of replayTranscript(ctx)) ctx.out(line.text, line.role);
+        ctx.out(chalk.dim(`  ── end of the restored history · type to carry on ──`), "activity");
+        return;
+      }
       ctx.out(chalk.green(`  ✓ resumed "${s.name}"`) + chalk.dim(` · ${ctx.conversation.length} message(s) restored`));
     },
   },
   {
-    name: "mode",
-    desc: "show/cycle the sandbox posture (shift+tab)",
+    // Named /sandbox because that is the word the status bar has always shown for it;
+    // /mode stays as a hidden alias.
+    name: "sandbox",
+    desc: "how much this session may touch your machine; cycles read-only → workspace-write → full access (shift+tab)",
+    external: "session-only",
+    why: "the sandbox posture belongs to a terminal; a one-shot run is governed by its own flags",
     run: (_a, ctx) => {
       ctx.postureIndex = (ctx.postureIndex + 1) % POSTURES.length;
       notePostureChange(ctx);
-      ctx.out(chalk.dim(`  sandbox posture → ${chalk.bold(POSTURES[ctx.postureIndex])}`));
-    },
-  },
-  {
-    name: "cost",
-    desc: "session spend so far: turns, tokens, and estimated cost",
-    run: (_a, ctx) => {
-      const u = ctx.usage;
-      if (u.turns === 0) return void ctx.out(chalk.dim("  no model turns yet this session (offline turns cost nothing)."));
-      ctx.out(chalk.bold("  Session cost"));
-      ctx.out(`  ${chalk.cyan("turns")}    ${u.turns}  ${chalk.dim(`(${u.steps} agent step(s))`)}`);
-      ctx.out(`  ${chalk.cyan("tokens")}   ${u.tokens.toLocaleString()}`);
-      ctx.out(`  ${chalk.cyan("cost")}     $${u.costUsd.toFixed(4)}  ${chalk.dim(u.turns ? `· ~$${(u.costUsd / u.turns).toFixed(4)}/turn` : "")}`);
-      ctx.out(chalk.dim(`  elapsed ${ctx.meter.elapsedSeconds.toFixed(0)}s · pricing per the active model profile`));
-    },
-  },
-  {
-    name: "usage",
-    desc: "context window + cumulative session usage (alias-friendly view of /cost + /context)",
-    run: (_a, ctx) => {
-      const m = ctx.meter;
-      const u = ctx.usage;
-      ctx.out(chalk.bold("  Context window"));
-      ctx.out(m.limit ? `  ${fmtK(m.used)}/${fmtK(m.limit)}  ${Math.round(m.pct * 100)}%  ${bar(m.pct)}` : chalk.dim("  offline (no model configured)"));
-      ctx.out(chalk.bold("  Session"));
-      ctx.out(`  ${u.turns} turn(s) · ${u.tokens.toLocaleString()} tok · $${u.costUsd.toFixed(4)} · ${m.elapsedSeconds.toFixed(0)}s`);
+      const posture = POSTURES[ctx.postureIndex];
+      const what =
+        posture === "read-only"
+          ? "it may read and run read-only commands; no writes, no network"
+          : posture === "workspace-write"
+            ? "it may also write inside this workspace; network still restricted"
+            : "it may read, write, use the network and run destructive commands";
+      ctx.out(chalk.dim(`  sandbox → ${chalk.bold(posture)}  ·  ${what}`));
+      ctx.clearScreen ? undefined : undefined; // posture is session-wide, per V7 decision
     },
   },
   {
     name: "context",
-    desc: "context-window usage: how full the model's window is, and when /compact will help",
-    run: (_a, ctx) => {
+    desc: "what is filling the model window right now, by category",
+    external: "session-only",
+    why: "reports the live context window of the running conversation",
+    run: (arg, ctx) => {
+      // V5.P0.3: estimated breakdown of WHAT fills the window, Claude Code-style.
+      const est = (s: string): number => Math.ceil(s.length / 4);
+      const fm = ctx.handle.frontmatter as Record<string, unknown>;
+      const p = ctx.handle.personaPath;
+      const sysPrompt = `You are ${ctx.name}. Stay in character.` + (readGoalText(ctx.handle) ?? "");
+      const awareness = buildAwarenessBlock(p, { frontmatter: fm, posture: POSTURES[ctx.postureIndex], cwd: process.cwd() });
+      const semantic = readSemanticMemory(p) ?? "";
+      const knobs = readMemoryKnobs(fm);
+      const episodic = readMemory(p).slice(-knobs.maxItems);
+      const memTokens = est(semantic) + episodic.reduce((n, e) => n + est(e.content), 0);
+      const skills = resolveDeclaredSkills(fm as unknown as PersonaData, dirname(p));
+      const msgs = ctx.conversation.reduce((n, m) => n + est(typeof m.content === "string" ? m.content : JSON.stringify(m.content)), 0);
+      const cats: Array<[string, number, string]> = [
+        ["System prompt", est(sysPrompt), ""],
+        ["Compiled persona", est(ctx.personaDoc), "PERSONA.md, read every turn"],
+        ["Runtime context", est(awareness), "who/where/resources, generated each session"],
+        ["Memory", memTokens, `memory.md + ${episodic.length} episodic (injected at session start)`],
+        ["Skills", 0, `${skills.length} declared · loaded on demand`],
+        ["Messages", msgs, `${ctx.conversation.length} message(s)`],
+      ];
+      const total = cats.reduce((n, [, t]) => n + t, 0);
       const m = ctx.meter;
-      if (!m.limit) return void ctx.out(chalk.dim("  offline (no model), the context window applies once a model is configured."));
-      const pct = Math.round(m.pct * 100);
-      ctx.out(chalk.bold("  Context window") + chalk.dim(`  (${ctx.conversation.length} message(s) in play)`));
-      ctx.out(`  ${bar(m.pct)}  ${fmtK(m.used)}/${fmtK(m.limit)}  ${pct}%`);
-      ctx.out(
-        m.pct >= 0.8
-          ? chalk.yellow("  ⚠ near the limit, /compact summarizes older turns to free room")
-          : chalk.dim("  headroom is fine; /compact any time to summarize older turns"),
-      );
+      const limit = m.limit || 0;
+      const free = limit ? Math.max(0, limit - Math.max(total, m.used)) : 0;
+      const pctOf = (t: number): string => (limit ? `${((t / limit) * 100).toFixed(1)}%` : "");
+      const lines: string[] = [];
+      if (limit) {
+        lines.push(`  ${bar(Math.max(total, m.used) / limit)}  ${fmtK(Math.max(total, m.used))}/${fmtK(limit)}  ${Math.round((Math.max(total, m.used) / limit) * 100)}%`);
+      } else {
+        lines.push(chalk.dim("  offline (no model configured): estimates only, no window limit"));
+      }
+      lines.push(chalk.dim("  estimated usage by category"));
+      for (const [label, tokens, note] of cats) {
+        lines.push(`  ${chalk.cyan("⛁")} ${label.padEnd(17)} ${fmtK(tokens).padStart(7)}${limit ? `  ${pctOf(tokens).padStart(6)}` : ""}${note ? chalk.dim(`  · ${note}`) : ""}`);
+      }
+      if (limit) lines.push(`  ${chalk.dim("⛶")} ${"Free space".padEnd(17)} ${fmtK(free).padStart(7)}  ${pctOf(free).padStart(6)}`);
+      if (limit && m.pct >= 0.8) lines.push(chalk.yellow("  ⚠ near the limit, /compact summarizes older turns to free room"));
+      if (arg?.trim() === "all") {
+        lines.push("", chalk.bold("  Memory files"));
+        lines.push(`  ${chalk.dim("├")} memory.md: ${fmtK(est(semantic))}`);
+        lines.push(`  ${chalk.dim("└")} episodic window: ${episodic.length} entr${episodic.length === 1 ? "y" : "ies"} · ${fmtK(episodic.reduce((n, e) => n + est(e.content), 0))}`);
+        lines.push("", chalk.bold("  Skills · loaded on demand"));
+        if (skills.length) skills.forEach((s, i) => lines.push(`  ${chalk.dim(i === skills.length - 1 ? "└" : "├")} ${s.name}`));
+        else lines.push(chalk.dim("  (none declared)"));
+        const byRole = ctx.conversation.reduce<Record<string, number>>((acc, mm) => ((acc[mm.role] = (acc[mm.role] ?? 0) + 1), acc), {});
+        lines.push("", chalk.bold("  Messages"));
+        lines.push(`  ${chalk.dim("└")} ${Object.entries(byRole).map(([r, n]) => `${r}: ${n}`).join(" · ") || "(none yet)"}`);
+      } else {
+        lines.push(chalk.dim("  /context all to expand"));
+      }
+      ctx.out(panel("context usage", lines));
     },
   },
   {
     name: "status",
-    desc: "a compact snapshot: model, persona, posture, drift, memory loaded, session, context usage",
+    desc: "this session at a glance: state, config, spend, stats, daemons and background tasks",
+    external: "status",
     run: (_a, ctx) => {
-      const fm = ctx.handle.frontmatter as Record<string, unknown>;
-      const st = readState(ctx.handle.statePath);
-      const env = extractEnvelopes(ctx.handle.frontmatter);
-      const report = driftReport({
-        values: st.values,
-        envelopes: env.envelopes,
-        maxStepDelta: readMaxStepDelta(fm),
-        thresholds: readDriftThresholds(fm),
-        protectedFields: env.protectedFields,
-      });
-      const over = report.layers.filter((l) => l.exceeded).map((l) => l.layer);
-      const types = readMemoryTypes(fm);
-      const onKinds = (Object.entries(types) as [string, boolean][]).filter(([, v]) => v).map(([k]) => k);
-      const m = ctx.meter;
-      const row = (label: string, value: string): void => ctx.out(`  ${chalk.cyan(label.padEnd(9))} ${value}`);
-      ctx.out(chalk.bold(`  ${ctx.name}`) + chalk.dim(`  ·  ${slugAddressFromPath(ctx.handle.personaPath) || "root"}`));
-      row("model", appraiserLabel(ctxModelArg(ctx)));
-      row("posture", `${POSTURES[ctx.postureIndex]}  ·  improve:${ctx.mode}`);
-      row("drift", `D ${report.global.toFixed(3)}` + (over.length ? chalk.red(`  ⚠ over: ${over.join(", ")}`) : chalk.green("  within thresholds")));
-      row("memory", `${onKinds.join(", ") || "(none enabled)"}`);
-      row("session", `${ctx.sessionId}${ctx.sessionStarted ? "" : chalk.dim(" (not yet written)")}`);
-      row("context", m.limit ? `${fmtK(m.used)}/${fmtK(m.limit)} (${Math.round(m.pct * 100)}%)  ·  ${m.elapsedSeconds.toFixed(0)}s` : chalk.dim("offline (no model)"));
-      row("mutations", String(st.mutation_log.length));
+      if (ctx.openView) return void ctx.openView("settings", { tab: "Status" });
+      ctx.out(panel(`${ctx.name} · ${slugAddressFromPath(ctx.handle.personaPath) || "main"}`, statusLines(ctx)));
     },
   },
   {
     name: "doctor",
-    desc: "diagnose this session: config, provider reachability, persona validity, memory integrity, version",
-    run: async (_a, ctx) => {
-      const ok = (s: string): string => chalk.green("  ✓ ") + s;
-      const bad = (s: string): string => chalk.red("  ✗ ") + s;
-      const warn = (s: string): string => chalk.yellow("  ! ") + s;
-      ctx.out(chalk.bold("  personaxis doctor"));
-
-      // 1. persona validates.
-      try {
-        const v = validatePersona(ctx.handle.frontmatter as Record<string, unknown>);
-        ctx.out(v.valid ? ok(`persona valid (${v.status})`) : bad(`persona ${v.status}: run /validate`));
-      } catch (e) {
-        ctx.out(bad(`persona load failed: ${(e as Error).message}`));
-      }
-
-      // 2. compiled document present.
-      const compiled = compiledPathFor(ctx.handle.personaPath);
-      ctx.out(existsSync(compiled) ? ok(`compiled doc present (${compiled})`) : warn(`no PERSONA.md yet, run /compile`));
-
-      // 3. memory chain integrity.
-      const chain = verifyMemoryChain(ctx.handle.personaPath);
-      ctx.out(chain.ok ? ok("memory chain intact") : bad(`memory chain broken at #${chain.brokenAt}`));
-
-      // 4. model configured + reachable.
-      const llm = llmConfig(ctxModelArg(ctx));
-      if (!llm) {
-        ctx.out(warn("no model configured, running offline (heuristic). /config to set one up"));
-      } else {
-        ctx.out(ok(`model configured: ${llm.model} @ ${llm.endpoint}`));
-        try {
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 4000);
-          const res = await fetch(`${llm.endpoint.replace(/\/$/, "")}/models`, {
-            headers: llm.apiKey ? { authorization: `Bearer ${llm.apiKey}` } : {},
-            signal: ctrl.signal,
-          }).finally(() => clearTimeout(timer));
-          ctx.out(res.ok ? ok(`provider reachable (HTTP ${res.status})`) : warn(`provider answered HTTP ${res.status} (key/endpoint?)`));
-        } catch (e) {
-          ctx.out(warn(`provider unreachable: ${(e as Error).message} (endpoint down or offline)`));
-        }
-      }
-
-      // 5. version.
-      ctx.out(chalk.dim(`  personaxis ${version}`));
-    },
-  },
-  {
-    name: "goal",
-    desc: "set / show / clear a standing goal",
-    run: (arg, ctx) => {
-      const goalPath = join(dirname(ctx.handle.personaPath), "goal.json");
-      if (arg === "clear") {
-        if (existsSync(goalPath)) unlinkSync(goalPath);
-        return void ctx.out(chalk.dim("  goal cleared."));
-      }
-      if (arg) {
-        writeFileSync(goalPath, JSON.stringify({ text: arg, createdTs: new Date().toISOString() }, null, 2));
-        return void ctx.out(chalk.green("  ✓") + ` goal set: ${arg} ${chalk.dim("(used by /do and the loop)")}`);
-      }
-      const g = readGoalText(ctx.handle);
-      ctx.out(g ? `  ${chalk.bold("goal:")} ${g}` : chalk.dim("  no goal set. /goal <text> to set."));
-    },
-  },
-  {
-    name: "loop",
-    desc: "run n governed Living-Loop ticks",
+    desc: "is anything wrong? config, spec, lint, integrity, provider, with a fix for each finding",
+    external: "doctor",
     run: async (arg, ctx) => {
-      const n = Math.max(1, Math.min(20, Number(arg) || 3));
-      const goal = readGoalText(ctx.handle) ?? "self-reflection";
-      ctx.out(chalk.dim(`  running ${n} governed tick(s) on: ${goal}`));
-      for (let i = 1; i <= n; i++) {
-        await ctx.loop.tick({ observation: goal, source: "internal", actor: "runtime-context" }).catch((e) => ctx.out(chalk.dim(`  tick ${i} skipped: ${(e as Error).message}`)));
-      }
+      // The view when there is one AND the checks are the offline set: it gives the
+      // persona selector for free. An explicit `@slug` or `net` keeps the text path,
+      // since the first is already scoped by hand and the second must not run inside
+      // a view that redraws on a timer.
+      if (ctx.openView && !arg.trim()) return void ctx.openView("doctor", {});
+      const report = await runDoctorChecks(ctx.handle.personaPath, arg);
+      ctx.out(panel("personaxis doctor", report.lines));
     },
   },
-  { name: "exit", desc: "leave the session", run: (_a, ctx) => { stopDaemons(ctx); return true; } },
-  { name: "quit", desc: "leave the session", run: () => true },
+  {
+    name: "exit",
+    desc: "leave the session",
+    external: "session-only",
+    why: "ends a running conversation; a one-shot command ends on its own",
+    run: (_a, ctx) => {
+      stopDaemons(ctx);
+      return true;
+    },
+  },
+  {
+    name: "quit",
+    desc: "leave the session",
+    external: "session-only",
+    why: "hidden alias of /exit; it ends a running conversation and nothing else",
+    run: () => true,
+  },
 ];
 
 /** The slash-command registry (names + descriptions), single source of truth. */
+/**
+ * What the `/` palette offers (V7.B). The FOURTEEN grouped commands plus `sandbox`, `bg`,
+ * `help` and `exit`, in the order of the help groups; absorbed verbs are hidden but still
+ * complete and run when typed, so muscle memory keeps working without turning the palette
+ * into a wall of 40 entries.
+ *
+ * The count is fourteen, not "about twelve". The plan set ~12 as a target and the
+ * implementation landed on 14; reports kept quoting the target instead of counting the
+ * code, which is how a headline number ended up disagreeing with the product.
+ */
 export function listCommands(): SlashItem[] {
-  return COMMANDS.filter((c) => c.name !== "quit").map((c) => ({ name: c.name, desc: c.desc }));
+  const visible = COMMANDS.filter((c) => c.name !== "quit" && !HELP_HIDDEN.has(c.name));
+  const order = [...HELP_GROUPS.flatMap((g) => g.names), "sandbox", "bg", "help"];
+  const rank = (n: string): number => {
+    const i = order.indexOf(n);
+    return i < 0 ? order.length : i;
+  };
+  const primary = [...visible].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+  // Absorbed verbs still appear AFTER the primary ones, marked with where they live and
+  // flagged `hidden`, so typing `/co` still finds `/cost` and tells you it is now a tab of
+  // /status, while BROWSING with a bare `/` shows only the consolidated surface.
+  const moved = COMMANDS.filter((c) => ABSORBED[c.name]).map((c) => ({
+    name: c.name,
+    desc: `→ ${ABSORBED[c.name].where}`,
+    hidden: true,
+  }));
+  return [...primary.map((c) => ({ name: c.name, desc: c.desc })), ...moved];
 }
 
-/** A tiny 12-cell meter bar for /context and /usage. */
-function bar(pct: number): string {
-  const w = 16;
-  const filled = Math.round(Math.max(0, Math.min(1, pct)) * w);
-  const color = pct >= 0.8 ? chalk.yellow : chalk.cyan;
-  return color("▰".repeat(filled)) + chalk.dim("▱".repeat(w - filled));
-}
+/** A tiny meter bar for /context and /usage (shared with the Settings view). */
+const bar = meterBar;
 
 /** /help categories: each command's name → its group. Anything unlisted falls in "More". */
+/**
+ * The command surface: as few commands as possible, each one properly built.
+ *
+ * FOURTEEN grouped commands carry everything; every other verb became a tab, an action
+ * inside a miniapp, or a hidden alias that still runs for muscle memory. What absorbed what is
+ * documented in ABSORBED below, and `/help` prints it, so nothing "disappears" silently.
+ */
 const HELP_GROUPS: Array<{ title: string; names: string[] }> = [
-  { title: "Session & context", names: ["sessions", "resume", "compact", "context", "usage", "cost", "status", "doctor"] },
-  { title: "Identity & evolution", names: ["persona", "state", "drift", "replay", "arbitrate", "improve", "review", "compile", "audit", "memory"] },
-  { title: "Menus & config", names: ["menu", "config", "model", "dash", "proof"] },
-  { title: "Build & extend", names: ["create", "init", "validate", "lint", "hooks", "serve", "watch"] },
-  { title: "Multi-persona", names: ["overseer", "goal", "loop", "mode"] },
+  { title: "Talk", names: ["resume", "compact", "context"] },
+  { title: "Identity", names: ["persona", "status", "drift", "audit", "memory"] },
+  { title: "Build", names: ["create", "compile", "skill"] },
+  { title: "Run", names: ["model", "menu", "doctor"] },
 ];
 
-/** Categorized help; `/help <query>` filters by name/description substring. */
+/**
+ * Where an absorbed verb now lives, as something EXECUTABLE (V8.A1).
+ *
+ * This used to be a map of prose, and prose cannot be enforced: `/state` and `/cost` really
+ * did delegate, while `/lint`, `/validate`, `/overseer` and `/init` kept a SECOND
+ * implementation of the same capability. Two implementations drift, and these did: the
+ * remedies added to `doctor` and to the `lint` subcommand never reached the `/lint` slash
+ * command, so the same query answered differently depending on where you typed it.
+ *
+ * Now the destination is data the code executes, and the alias body is GENERATED from it.
+ */
+export interface AbsorbedTarget {
+  /** Human phrasing for `/help moved` and the palette. */
+  where: string;
+  /** The view it opens in the TUI. Pure navigation verbs have one. */
+  view?: { name: string; tab?: string };
+  /** The REPL command that owns the capability now; used without a TTY, and as the fallback. */
+  command?: string;
+  /**
+   * Kept its own body ON PURPOSE: it takes an argument and DOES something (`/goal <text>`,
+   * `/loop <n>`, `/improve <mode>`), so a navigation alias would silently drop the action.
+   * These still share ONE implementation with their new home (V8.A4); what they must never
+   * do is re-render the same information a second way.
+   */
+  keepsBody?: true;
+}
+
+export const ABSORBED: Record<string, AbsorbedTarget> = {
+  // ── pure navigation: the body is generated, there is nothing to duplicate ──
+  cost: { where: "/status → Usage", view: { name: "settings", tab: "Usage" }, command: "status" },
+  usage: { where: "/status → Usage", view: { name: "settings", tab: "Usage" }, command: "status" },
+  state: { where: "/status (live envelopes + self-edits)", view: { name: "settings", tab: "Status" }, command: "status" },
+  config: { where: "/status → Config", view: { name: "settings", tab: "Config" }, command: "status" },
+  dash: { where: "/drift", view: { name: "drift-planes" }, command: "drift" },
+  replay: { where: "/audit → Integrity", view: { name: "audit", tab: "Integrity" }, command: "audit" },
+  review: { where: "/persona → Evolution", view: { name: "persona", tab: "Evolution" }, command: "persona" },
+  validate: { where: "/doctor → Spec", view: { name: "doctor" }, command: "doctor" },
+  lint: { where: "/doctor → Lint", view: { name: "doctor" }, command: "doctor" },
+  sessions: { where: "/resume", view: { name: "resume" }, command: "resume" },
+  serve: { where: "/status → Daemons", view: { name: "settings", tab: "Status" }, command: "status" },
+  watch: { where: "/status → Daemons", view: { name: "settings", tab: "Status" }, command: "status" },
+  hooks: { where: "/status → Daemons", view: { name: "settings", tab: "Status" }, command: "status" },
+  tasks: { where: "/bg (and /status → Tasks)", command: "bg" },
+  overseer: { where: "/menu → All my projects", view: { name: "menu" }, command: "menu" },
+  proof: { where: "/doctor → Proof", view: { name: "doctor" }, command: "doctor" },
+
+  // ── verbs that ACT on an argument: they keep their body, by design ──
+  rewind: { where: "/audit → Timeline", keepsBody: true },
+  arbitrate: { where: "/persona → Values", keepsBody: true },
+  goal: { where: "/persona → Evolution", keepsBody: true },
+  loop: { where: "/persona → Evolution", keepsBody: true },
+  improve: { where: "/persona → Evolution", keepsBody: true },
+  init: { where: "/create", keepsBody: true },
+  mode: { where: "/sandbox", keepsBody: true },
+};
+
+/**
+ * The generated body of a navigation alias: open the view when there is a TTY, otherwise run
+ * the command that owns the capability. One code path, so `/lint` and `/doctor` can never
+ * again answer the same question two different ways.
+ */
+function absorbedRun(name: string): CommandDef["run"] {
+  return async (arg, ctx) => {
+    // Read on CALL, not on construction: the command table is built above ABSORBED,
+    // so reading it here would hit the temporal dead zone at import time.
+    const t = ABSORBED[name];
+    if (t.view && ctx.openView && !arg.trim()) {
+      return void ctx.openView(t.view.name, t.view.tab ? { tab: t.view.tab } : {});
+    }
+    if (t.command) return void (await runCommand(`/${t.command} ${arg}`.trim(), ctx));
+    ctx.out(chalk.dim(`  /${name} now lives in ${t.where}`));
+  };
+}
+
+/**
+ * Aliases kept for muscle memory but never ADVERTISED, in `/help` or in the `/`
+ * palette. One set, both surfaces: they disagreed for a whole release, and the
+ * palette (the menu people actually open) was the one showing all forty.
+ */
+export const HELP_HIDDEN = new Set(["quit", ...Object.keys(ABSORBED)]);
+
+/** Categorized help; `/help <query>` filters, `/help moved` prints the absorption map. */
 function helpText(query = ""): string {
   const q = query.trim().toLowerCase();
-  const visible = COMMANDS.filter((c) => c.name !== "quit" && (!q || c.name.includes(q) || c.desc.toLowerCase().includes(q)));
+  if (q === "moved" || q === "aliases") {
+    const rows = Object.entries(ABSORBED)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, t]) => `  ${chalk.cyan(`/${name}`).padEnd(22)} ${chalk.dim(`→ ${t.where}`)}`);
+    return [
+      chalk.bold("Commands that became tabs or actions"),
+      chalk.dim("  they still run if you type them; this is where the capability lives now"),
+      "",
+      ...rows,
+    ].join("\n");
+  }
+  const visible = COMMANDS.filter((c) => !HELP_HIDDEN.has(c.name) && (!q || c.name.includes(q) || c.desc.toLowerCase().includes(q)));
   if (q && !visible.length) return chalk.dim(`  no command matches "${q}".`);
   const shown = new Set(visible.map((c) => c.name));
   const row = (c: CommandDef): string => `  ${chalk.cyan(`/${c.name}`).padEnd(22)} ${chalk.dim(c.desc)}`;
@@ -854,9 +753,40 @@ function helpText(query = ""): string {
     lines.push("", chalk.bold.dim("  More"));
     for (const c of rest) lines.push(row(c));
   }
-  if (!q) lines.push("", chalk.dim("Type without a leading / to talk, natural language both converses AND uses tools (one governed agent loop)."), chalk.dim("Ctrl+K opens the Command Center · /help <query> to filter."));
+  // V7.B: a query may name an ABSORBED verb; say where it lives instead of "no match".
+  if (q) {
+    const moved = Object.entries(ABSORBED).filter(([name]) => name.includes(q));
+    if (moved.length) {
+      lines.push("", chalk.bold.dim("  Moved (still works if you type it)"));
+      for (const [name, t] of moved) lines.push(`  ${chalk.cyan(`/${name}`).padEnd(22)} ${chalk.dim(`→ ${t.where}`)}`);
+    }
+  }
+  if (!q) {
+    lines.push(
+      "",
+      chalk.dim("Type without a leading / to talk: plain language both converses AND uses tools."),
+      chalk.dim("Everything else lives inside these: /help moved shows where each old command went."),
+      chalk.dim("Ctrl+K opens the Command Center · shift+tab cycles the sandbox posture."),
+    );
+  }
   return lines.join("\n");
 }
+
+/**
+ * The non-interactive door for a capability that no longer has a slash command.
+ *
+ * An absorbed verb is reachable two ways: inside the command that absorbed it, and from
+ * a shell. This maps the retired name to the second one, so someone typing the old
+ * command is told BOTH, instead of "unknown command".
+ */
+export const EXTERNAL_DOOR: Record<string, string> = {
+  cost: "status", usage: "status", state: "status", config: "config",
+  dash: "state drift", replay: "audit --tab Integrity", rewind: "state rewind <n>",
+  review: "review", goal: "goal <text>", loop: "observe", improve: "improve <mode>",
+  init: "create", validate: "validate", lint: "lint", sessions: "status",
+  serve: "serve", watch: "watch", hooks: "hooks", tasks: "status",
+  overseer: "overseer show", proof: "proof", arbitrate: "arbitrate", mode: "config",
+};
 
 /** CLI subcommands handled specially in the REPL (native or background), so the passthrough skips them. */
 const REPL_UNAVAILABLE: Record<string, string> = {
@@ -866,6 +796,21 @@ const REPL_UNAVAILABLE: Record<string, string> = {
 export async function runCommand(line: string, ctx: Ctx): Promise<boolean> {
   const name = line.slice(1).split(/\s+/)[0];
   const arg = line.slice(1 + name.length).trim();
+
+  // An ABSORBED verb is gone, not hidden (V8.A).
+  //
+  // Keeping them runnable-but-unlisted was half a consolidation: the clutter it was
+  // meant to remove was still there, just invisible, and two ways to do one thing is
+  // how the implementations drifted in the first place. So the capability MOVED, and
+  // typing the old name says where it went. It does not run it: that is the point.
+  const moved = ABSORBED[name];
+  if (moved && !COMMANDS.some((c) => c.name === name)) {
+    ctx.out(chalk.dim(`  /${name} is now part of ${chalk.cyan(moved.where)}`));
+    const outside = EXTERNAL_DOOR[name];
+    if (outside) ctx.out(chalk.dim(`  outside the REPL: ${chalk.cyan(`personaxis ${outside}`)}`));
+    return false;
+  }
+
   const cmd = COMMANDS.find((c) => c.name === name);
   if (cmd) return (await cmd.run(arg, ctx)) === true;
 

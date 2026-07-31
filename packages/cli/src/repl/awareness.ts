@@ -1,43 +1,93 @@
 /**
- * Structural self-awareness for a persona (F2).
+ * Structural self-awareness for a persona (F2, expanded V5.P0.1).
  *
- * A persona must know, at runtime, WHERE it sits and WHAT it has: whether it is the
- * project ROOT or a SUB-persona, its own hierarchical address, the sub-personas it can
- * delegate to, and the supporting resources beside its spec. This is injected into the
- * agent's system prompt every turn, it is NOT baked into the compiled PERSONA.md (which
- * stays portable + purely qualitative).
+ * A persona must know, at runtime, WHO it is, WHERE it sits and WHAT it has: which spec
+ * defines it and under which spec_version it operates, which files it reads and owns,
+ * whether it is the project MAIN persona or a SUB-persona, the sub-personas it can
+ * delegate to, its resource space, and the session posture. This block is injected into
+ * the agent's system prompt every turn, it is NOT baked into the compiled PERSONA.md
+ * (which stays portable + purely qualitative) and is NEVER written into personaxis.md.
  */
 
-import { dirname } from "node:path";
-import { isSubagentPath, slugAddressFromPath } from "../load.js";
+import { dirname, relative, resolve } from "node:path";
+import { compiledPathFor, isSubagentPath, slugAddressFromPath } from "../load.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { discoverTree } from "./roster.js";
 
-/** Build the `# Structure & resources` block for the persona at `personaPath`. */
-export function buildAwarenessBlock(personaPath: string): string {
-  const lines: string[] = ["# Structure & resources"];
+export interface AwarenessOpts {
+  /** Persona frontmatter (spec_version, apiVersion, improvement_policy, identity). */
+  frontmatter?: Record<string, unknown>;
+  /** Active sandbox posture (read-only | workspace-write | danger-full-access). */
+  posture?: string;
+  /** Model id answering this session (informational). */
+  model?: string;
+  /** Working directory of the session (project root). */
+  cwd?: string;
+  /** The standing objective set with /goal, rendered in the recency slot (V7.A7). */
+  goal?: string;
+}
 
-  const address = slugAddressFromPath(personaPath);
-  if (isSubagentPath(personaPath) && address) {
-    lines.push(
-      `You are a SUB-persona at address \`${address}\` (delegated under the project root). ` +
-        "You are an independent persona with your own spec, state, memory and self-improvement ledger. " +
-        "You may READ other personas' files but only WRITE within your own folder.",
-    );
-  } else {
-    lines.push(
-      "You are the ROOT persona of this project (the repo-wide agent). " +
-        "Sub-personas are specialists you can delegate to; you may READ their files but never WRITE them.",
-    );
+function fmString(fm: Record<string, unknown> | undefined, path: string[]): string | undefined {
+  let cur: unknown = fm;
+  for (const key of path) {
+    if (!cur || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[key];
   }
+  return typeof cur === "string" ? cur : undefined;
+}
 
-  // Sub-personas THIS persona can delegate to (works for root and for any sub).
+/** Build the `# Runtime context` block for the persona at `personaPath`. */
+export function buildAwarenessBlock(personaPath: string, opts: AwarenessOpts = {}): string {
+  const lines: string[] = ["# Runtime context (generated each session, not part of your persona files)"];
+  const fm = opts.frontmatter;
+  const cwd = opts.cwd ?? process.cwd();
+  const address = slugAddressFromPath(personaPath);
+  const isSub = isSubagentPath(personaPath) && !!address;
+  const rel = (p: string) => {
+    const r = relative(cwd, resolve(p));
+    return r && !r.startsWith("..") ? r.replace(/\\/g, "/") : resolve(p).replace(/\\/g, "/");
+  };
+
+  // Who I am and what defines me.
+  const displayName = fmString(fm, ["identity", "display_name"]) ?? fmString(fm, ["metadata", "name"]);
+  const specVersion = fmString(fm, ["spec_version"]);
+  const apiVersion = fmString(fm, ["apiVersion"]);
+  lines.push("", "## Who you are here");
+  lines.push(
+    isSub
+      ? `You are the SUB-persona \`@${address}\`${displayName ? ` ("${displayName}")` : ""}, delegated under the project's main persona. ` +
+          "You are an independent persona with your own spec, state, memory and self-improvement ledger. " +
+          "You may READ other personas' files but only WRITE within your own folder."
+      : `You are the MAIN persona of this project${displayName ? ` ("${displayName}")` : ""} (the repo-wide agent). ` +
+          "Sub-personas are specialists you can delegate to; you may READ their files but never WRITE them.",
+  );
+  lines.push("", "## Your defining files (the personaxis.md spec)");
+  lines.push(
+    `- Source of truth: \`${rel(personaPath)}\`` +
+      (specVersion || apiVersion
+        ? ` (spec_version ${specVersion ?? "?"}${apiVersion ? `, ${apiVersion}` : ""})`
+        : "") +
+      ": your quantitative 10-layer spec. You do not edit it directly; changes go through governance.",
+    `- Compiled identity: \`${rel(compiledPathFor(personaPath))}\`: the prose version of the spec that hosts read. Regenerated by compile; hand-edits are folded back via decompile.`,
+    `- Mutable state: \`${rel(dirname(personaPath))}/state.json\`: your live values, clamped to declared envelopes; every change lands in the mutation_log.`,
+  );
+
+  // Session facts.
+  const mode = fmString(fm, ["improvement_policy", "mode"]);
+  const session: string[] = [];
+  session.push(`- Project: \`${cwd.replace(/\\/g, "/")}\``);
+  if (opts.model) session.push(`- Model answering this session: ${opts.model}`);
+  if (opts.posture) session.push(`- Sandbox posture: ${opts.posture}`);
+  if (mode) session.push(`- Self-improvement mode: ${mode} (your edits ${mode === "locked" ? "are blocked" : mode === "suggesting" ? "queue for human review" : "may auto-apply within governance"})`);
+  lines.push("", "## This session", ...session);
+
+  // Sub-personas THIS persona can delegate to (works for main and for any sub).
   const subs = discoverTree(personaPath);
   if (subs.length) {
     lines.push(
       "",
       "## Sub-personas you can delegate to",
-      "Address with @address (also @all, or @parent/all). You may READ their files but never edit them.",
+      "Address one with @<address> in a message (also @all for every sub, or @<branch>/all for a subtree). You may READ their files but never edit them.",
       ...subs.map((s) => `${"  ".repeat(s.depth - 1)}- @${s.address}`),
     );
   } else {
@@ -46,8 +96,20 @@ export function buildAwarenessBlock(personaPath: string): string {
 
   // Resource inventory beside this persona's spec (.personaxis/ or .../personas/<slug>/).
   const manifest = buildResourceManifest(dirname(personaPath));
-  lines.push("", "## Your resources");
+  lines.push("", "## Your resource space", `Everything under \`${rel(dirname(personaPath))}/\` belongs to you (state, memory, sessions, skills, references).`);
   lines.push(manifest.trim() ? manifest : "(no supporting resources yet)");
+
+  // V7.A7: the standing goal goes LAST, the recency slot the model attends to most.
+  // It used to sit buried mid-prompt, so when asked "what is your goal" the model went
+  // looking through memory tools instead of reading what it already had.
+  if (opts.goal?.trim()) {
+    lines.push(
+      "",
+      "## Your standing objective (set by the user with /goal)",
+      opts.goal.trim(),
+      "It stands until the user clears it. If asked what your goal is, answer from this line; do not search memory.",
+    );
+  }
 
   return lines.join("\n");
 }

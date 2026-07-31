@@ -42,6 +42,9 @@ export const lintCommand = new Command("lint")
       for (const f of report.findings) {
         const path = f.path ? chalk.cyan(f.path.padEnd(42)) : " ".repeat(42);
         console.log(`${severityColor(f)} ${path} ${f.message}`);
+        // Finding.fix is required by the type, so every line above has a remedy
+        // under it. The summary line is the one exception worth suppressing.
+        if (f.rule !== "layer-summary") console.log(`${" ".repeat(11)} ${chalk.dim("fix:")} ${chalk.dim(f.fix)}`);
       }
     }
 

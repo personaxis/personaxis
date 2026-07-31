@@ -6,7 +6,7 @@
  * Pure helpers over core; no other repl module depends the other way.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import {
   resolveModel,
@@ -16,6 +16,7 @@ import {
   LlmResponder,
   ReflectiveResponder,
   policyFromFrontmatter,
+  personaResourceRoots,
   resolveEffectivePersona,
   ContextMeter,
   cachedContextWindow,
@@ -111,19 +112,51 @@ export function buildPolicy(ctx: Ctx): Policy {
   const base = policyFromFrontmatter(ctx.handle.frontmatter as Record<string, unknown>, process.cwd());
   return {
     ...base,
-    sandbox: POSTURES[ctx.postureIndex],
+    // V7.A2: a GETTER, not a snapshot. The posture used to be frozen when the agent was
+    // built, so shift+tab only took effect on the NEXT turn; now every tool check reads
+    // the live value, and changing the posture mid-turn applies to the next tool call.
+    get sandbox() {
+      return POSTURES[ctx.postureIndex];
+    },
     deny: [...base.deny, ...crossPersonaDenies(ctx.handle.personaPath)],
+    // V3.1: the ACTIVE persona's resource home(s), so `./memory.md` in a compiled
+    // doc resolves against the persona's own folder, not just the process CWD.
+    resourceRoots: personaResourceRoots(ctx.handle.personaPath),
   };
 }
 
-export function readGoalText(handle: PersonaHandle): string | undefined {
-  const goalPath = join(dirname(handle.personaPath), "goal.json");
+/**
+ * The standing goal: ONE implementation, used by the external `personaxis goal`
+ * subcommand and by the Evolution tab that absorbed the slash command (V8.A4).
+ *
+ * Two copies of "where the goal lives and how it is written" is precisely the shape
+ * that drifted elsewhere in this codebase, so the read, the write and the clear all
+ * live here and every surface calls them.
+ */
+export function goalPathFor(personaPath: string): string {
+  return join(dirname(personaPath), "goal.json");
+}
+
+export function readGoalAt(goalPath: string): string | undefined {
   if (!existsSync(goalPath)) return undefined;
   try {
     return (JSON.parse(readFileSync(goalPath, "utf-8")) as { text?: string }).text;
   } catch {
     return undefined;
   }
+}
+
+/** Empty text CLEARS the goal: "no objective" is a state, not an error. */
+export function writeGoalAt(goalPath: string, text: string): void {
+  if (!text.trim()) {
+    if (existsSync(goalPath)) unlinkSync(goalPath);
+    return;
+  }
+  writeFileSync(goalPath, JSON.stringify({ text: text.trim(), createdTs: new Date().toISOString() }, null, 2));
+}
+
+export function readGoalText(handle: PersonaHandle): string | undefined {
+  return readGoalAt(goalPathFor(handle.personaPath));
 }
 
 export function makeMeter(): ContextMeter {

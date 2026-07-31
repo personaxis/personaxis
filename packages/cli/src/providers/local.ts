@@ -7,6 +7,17 @@ const DEFAULT_ENDPOINT = "http://localhost:11434/v1";
 const DEFAULT_MODEL = "llama3.1";
 
 /**
+ * Whether an error means "the endpoint is not reachable" rather than "the endpoint does not
+ * support this request shape". Only the second kind is worth retrying with a simpler body.
+ */
+function isUnreachable(e: Error): boolean {
+  const cause = (e as { cause?: { code?: string } }).cause?.code ?? "";
+  return /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|fetch failed|socket hang up|network/i.test(
+    `${e.message} ${cause}`,
+  );
+}
+
+/**
  * Calls any OpenAI-compatible chat-completions endpoint, local (Ollama, llama.cpp,
  * LM Studio) OR a hosted, authenticated one (Cohere/OpenRouter/Groq/...). Configure with:
  *
@@ -70,6 +81,11 @@ export function createLocalProvider(config: PersonaxisConfig, personaPath?: stri
           return { json: JSON.parse(raw) as unknown, model: r.model, source: "cli-local" };
         } catch (e) {
           lastErr = e as Error;
+          // These fallbacks exist for servers that do not SUPPORT a response_format, not
+          // for a server that is not there. Retrying a different body against an endpoint
+          // that refused the connection only multiplies the wait: creation took ~24 s to
+          // report an unreachable model that was knowable on the first attempt.
+          if (isUnreachable(lastErr)) break;
         }
       }
       throw new Error(`Local provider structured call failed after all fallbacks: ${lastErr?.message}`);

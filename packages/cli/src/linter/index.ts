@@ -26,6 +26,7 @@ export function lint(markdownString: string): LintReport {
           rule: "parse-error",
           severity: "error",
           message: "Failed to parse YAML frontmatter. Ensure the file starts with --- and contains valid YAML.",
+          fix: "Open the file and check the frontmatter: it must start on line 1 with ---, close with ---, and use spaces (never tabs) for indentation. Unquoted values containing a colon are the usual culprit.",
         },
       ],
       summary: { errors: 1, warnings: 0, infos: 0 },

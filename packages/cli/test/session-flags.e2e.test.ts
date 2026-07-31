@@ -59,24 +59,38 @@ describe.runIf(built)("session flags + observability (V2-F3)", () => {
   it("/doctor diagnoses config, persona validity and memory integrity", { timeout: 120_000 }, () => {
     const out = repl("/doctor\n/exit\n");
     expect(out).toContain("personaxis doctor");
-    expect(out).toMatch(/persona valid/i);
+    expect(out).toMatch(/spec valid/i); // V5.P1.7: doctor absorbs /validate (+ /lint)
+    expect(out).toMatch(/lint/i);
+    expect(out).toMatch(/memory chain/i);
     expect(out).toMatch(/memory chain intact/i);
     // No model configured in the sandbox → the offline warning, not a crash.
     expect(out).toMatch(/offline|no model/i);
   });
 
-  it("/cost and /context report gracefully with no model", { timeout: 120_000 }, () => {
-    const cost = repl("/cost\n/exit\n");
-    expect(cost).toMatch(/no model turns|Session cost/i);
+  it("/context reports gracefully with no model", { timeout: 120_000 }, () => {
     const context = repl("/context\n/exit\n");
     expect(context).toMatch(/offline|Context window/i);
   });
 
+  /**
+   * V8.A: `/cost` was absorbed into `/status → Usage` and is no longer a command.
+   * Typing it must neither run nor answer "unknown command": it points at the new
+   * home, and at the external door, because an agent cannot drive a menu.
+   */
+  it("a retired verb says where it went, and does not run", { timeout: 120_000 }, () => {
+    const out = repl("/cost\n/exit\n");
+    expect(out).toMatch(/now part of/i);
+    expect(out).toMatch(/status/i);
+  });
+
   it("/help groups commands by category and filters by query", { timeout: 120_000 }, () => {
     const all = repl("/help\n/exit\n");
-    expect(all).toContain("Session & context");
-    expect(all).toContain("Menus & config");
+    // V7.B: the surface is fourteen commands in four groups; absorbed verbs are hidden
+    // from the default listing and reachable through `/help moved`.
+    expect(all).toContain("Talk");
+    expect(all).toContain("Identity");
     expect(all).toContain("/doctor");
+    expect(all).toContain("/help moved");
     const filtered = repl("/help drift\n/exit\n");
     expect(filtered).toMatch(/matching "drift"/i);
     expect(filtered).toContain("/drift");

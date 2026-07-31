@@ -45,12 +45,27 @@ persona's envelopes and appended to an immutable audit log.
 - Identity is immutable; only runtime state + memory evolve, within universal invariants.
 `;
 
-export function buildHttpServer(personaPath: string): Server {
+export interface ServeSecurity {
+  /** When set, every request must carry `Authorization: Bearer <token>` (V5.P2.6). */
+  token?: string;
+}
+
+export function buildHttpServer(personaPath: string, security: ServeSecurity = {}): Server {
   const handle = loadPersona(personaPath);
   ensureState(handle);
   const name = displayName(handle.frontmatter);
 
-  return createServer((req, res) => void route(req, res, personaPath, name));
+  return createServer((req, res) => {
+    if (security.token) {
+      const auth = req.headers.authorization ?? "";
+      if (auth !== `Bearer ${security.token}`) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "unauthorized (Bearer token required)" }));
+        return;
+      }
+    }
+    void route(req, res, personaPath, name);
+  });
 }
 
 async function route(
@@ -153,24 +168,39 @@ function readJson(req: IncomingMessage): Promise<ParsedBody> {
 }
 
 export const serveCommand = new Command("serve")
-  .description("Serve a living persona over HTTP + agents.md (low-context interop for any agent).")
+  .description(
+    "Serve a living persona over HTTP + agents.md (low-context interop for any agent). " +
+      "Binds to 127.0.0.1 by default; one server per port (a second start on the same port fails loudly); " +
+      "several personas can serve on different ports.",
+  )
   .requiredOption("-p, --persona <path>", "Path to personaxis.md / PERSONA.md")
   .option("--port <n>", "Port", "7637")
-  .action((opts: { persona: string; port: string }) => {
+  .option("--host <addr>", "Bind address; 127.0.0.1 by default (V5.P2.6: never exposed unless you say so)", "127.0.0.1")
+  .option("--token <t>", "Require `Authorization: Bearer <t>` on every request (mandatory when host is not local)")
+  .action((opts: { persona: string; port: string; host: string; token?: string }) => {
     const personaPath = resolve(opts.persona);
     if (!existsSync(personaPath)) {
       console.error(chalk.red("Error:"), `persona not found at ${personaPath}`);
       process.exit(1);
     }
-    const server = buildHttpServer(personaPath);
-    const port = Number(opts.port) || 7637;
+    const port = Number(opts.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+      console.error(chalk.red("Error:"), `invalid port "${opts.port}" (use 1-65535)`);
+      process.exit(1);
+    }
+    const local = opts.host === "127.0.0.1" || opts.host === "localhost" || opts.host === "::1";
+    if (!local && !opts.token) {
+      console.error(chalk.red("Error:"), `binding to ${opts.host} exposes the persona beyond this machine; pass --token <secret> to require auth.`);
+      process.exit(1);
+    }
+    const server = buildHttpServer(personaPath, { token: opts.token });
     server.on("error", (err: NodeJS.ErrnoException) => {
-      const why = err.code === "EADDRINUSE" ? `port ${port} is already in use` : err.message;
+      const why = err.code === "EADDRINUSE" ? `port ${port} is already in use (one server per port; pick another with --port)` : err.message;
       console.error(chalk.red("Error:"), `could not start server, ${why}`);
       process.exit(1);
     });
-    server.listen(port, () => {
-      console.log(chalk.green("✓"), `persona serving on ${chalk.cyan(`http://localhost:${port}`)}`);
-      console.log(chalk.dim(`  curl http://localhost:${port}/agents.md`));
+    server.listen(port, opts.host, () => {
+      console.log(chalk.green("✓"), `persona serving on ${chalk.cyan(`http://${opts.host}:${port}`)}${opts.token ? chalk.dim(" (Bearer token required)") : ""}`);
+      console.log(chalk.dim(`  curl ${opts.token ? `-H "Authorization: Bearer …" ` : ""}http://${opts.host}:${port}/agents.md`));
     });
   });
