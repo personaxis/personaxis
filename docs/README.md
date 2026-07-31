@@ -45,6 +45,9 @@ docs/
     sessions.md          persistent per-persona conversations, /sessions, /resume, /compact (persisted)
     awareness.md         runtime structural self-knowledge (root vs sub, address, sub-tree, resources)
     sandbox.md           two-axis permission policy, postures, the honest Windows limit
+    project-registry.md  how the CLI learns which projects have personas (by USE, not by scanning), and portable project identity
+    presence.md          who is using a persona right now: one file per instance, heartbeat liveness, and what the fleet shows
+    multi-device.md      the same persona on several machines: per-device logs, the fold, hybrid logical clocks, per-device chains
   integrations/        how each host uses personaxis
     README.md            START HERE, mental model + 3-step quickstart + which host + use cases
     claude-code.md       hooks (per-turn learning) + MCP (on-demand) + native subagent

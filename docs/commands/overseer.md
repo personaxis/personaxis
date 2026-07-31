@@ -57,3 +57,25 @@ is opt-in: it exists to power orchestration, not to track your day-to-day REPL u
 
 - [personas.md](./personas.md), the global-persona reuse model that seeds the registry.
 - [architecture/deployment.md](../architecture/deployment.md), where the overseer sits relative to the engine.
+
+## `overseer scan`, recovery only
+
+```bash
+personaxis overseer scan --root ~/Documents/GitHub   # ad hoc
+personaxis overseer scan                             # over your configured scanRoots
+```
+
+**This is not how the registry normally learns about your projects.** Every command
+registers the project it runs in, so a persona you create, open, compile or diagnose is
+recorded at that moment, for free and always correctly.
+
+The scan exists for one case: **projects that already existed before you started using the
+CLI**, which by definition were never registered by use. Run it once; from then on
+registration by use keeps up.
+
+It never runs automatically, only walks folders you name (`--root`, or `scanRoots` in your
+config), is depth-limited, and skips `node_modules`, `.git` and build output. On finding a
+project it stops descending, because sub-personas are read from the persona itself, not by
+walking further.
+
+Full rationale: [`docs/architecture/project-registry.md`](../architecture/project-registry.md).

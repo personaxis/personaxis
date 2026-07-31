@@ -11,7 +11,7 @@ Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}` and
 
 | Kind | Storage (beside the persona) | Producer | Consumer |
 |---|---|---|---|
-| `episodic` | `memory/episodic.jsonl` (append-only, hash-chained) | the Living Loop (salient lines only) + session distillation | recall window, `memory_search`, audit |
+| `episodic` | `memory/episodic.<deviceId>.jsonl`, one append-only hash chain per device | the Living Loop (salient lines only) + session distillation | recall window, `memory_search`, audit |
 | `semantic` | `memory.md` | `consolidateSemantic` (salience-ranked digest) | always loaded into context |
 | `procedural` | `memory/procedural.jsonl` (append-only) | `agent.persist` on a successful task (how-to per task) | `resumeContext`, `memory_search` |
 | `autobiographical` | `memory/autobiographical.jsonl` (append-only) | milestones: first conversation, a user fact learned, a band crossing, improvement-mode changes | recall, `memory_search` |
@@ -115,3 +115,24 @@ them. The sandbox policy's cross-persona deny rules block any cross-persona writ
 the highest precedence, see [multi-persona.md](./multi-persona.md) and
 [sandbox.md](./sandbox.md)). So a parent can consult a child's episodic/semantic memory for
 context, but each persona's memory is written only by that persona.
+
+
+## One episodic log per device
+
+A hash chain has exactly one appender. Two machines writing the same file produce links that
+do not follow from each other, and the integrity check correctly reports tampering while
+being unable to say which side is right, so a persona used from a desktop and a laptop was
+either losing memory or failing verification.
+
+Each device therefore writes `memory/episodic.<deviceId>.jsonl`, its own chain starting at
+`""`. Recall reads the **union** of every log in time order (one history); verification runs
+**per log** and names which one broke, and where.
+
+The pre-V8 `memory/episodic.jsonl` is still read, as the chain of "the machine this persona
+lived on before devices existed". Nothing needs migrating.
+
+Redaction, tombstones and the chain migration operate on the log that HOLDS the entry, and a
+tombstone written on one machine for an entry made on another is re-linked when the chains
+are migrated: otherwise migration would resurrect exactly the entries someone chose to hide.
+
+See [`multi-device.md`](./multi-device.md) for the same principle applied to state.

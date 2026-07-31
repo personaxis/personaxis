@@ -5,7 +5,7 @@ tracks parity with the features a modern coding agent (Claude Code / Codex) expo
 personaxis-native capabilities no other agent has (drift, governance, the persona fleet).
 
 Legend: **done** shipped and tested · **partial** usable, being extended · **planned** on the
-roadmap (`plan/IMPLEMENTATION_CHECKLIST.md`, section V2-F3).
+roadmap.
 
 ## A. Session & context
 
@@ -63,5 +63,5 @@ roadmap (`plan/IMPLEMENTATION_CHECKLIST.md`, section V2-F3).
 | Verifiable identity (sigil + hash-chain) | done | `core/src/sigil.ts`, `core/src/memory.ts` |
 
 Items marked **planned** are not stubs: each has an execution entry in
-`plan/IMPLEMENTATION_CHECKLIST.md` (V2-F3/F4). This table is the single place a contributor checks
+the project's internal roadmap. This table is the single place a contributor checks
 before adding a feature, to avoid duplicating one that already exists under a different name.

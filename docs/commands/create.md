@@ -6,7 +6,8 @@ property-tested), `state.json`, a stage-1 compiled `PERSONA.md`, and
 `creation-report.md` with **per-number provenance**.
 
 ```bash
-personaxis create                              # psychometric interview (TTY)
+personaxis create                              # asks WHICH source to use (TTY)
+personaxis create --deep                       # the full 20-question interview
 personaxis create --from-prompt "<brief>"      # natural language
 personaxis create --from-project [dir]         # infer from the project's own docs
 personaxis create --from-import card.png       # character card V2/V3 (.json/.png)
@@ -20,9 +21,28 @@ report). `[slug]` names the persona (default: under `.personaxis/personas/<slug>
 
 | Flag | Effect |
 |---|---|
+| `--deep` | ask the FULL question bank (20) instead of the 12 core questions |
 | `--yes` | non-interactive: accept labeled defaults, overwrite existing |
 | `--json` | emit spec + gates + provenance as JSON (dry-run unless `--yes`) |
 | `--provider <p>` | override the provider for LLM extraction (`local\|byok\|agent\|remote`) |
+
+## Two interviews, one bank
+
+Running `create` with no `--from-*` flag opens on the six ways to build a persona, so the
+sources are visible rather than hidden in `--help`. Passing any flag skips that screen,
+which is what scripts and agents do.
+
+| Interview | Questions | Asks about |
+|---|---|---|
+| default | **12** | identity, the five trait axes, values, voice, what it must never do |
+| `--deep` | **20** | the above plus envelope width, mood half-life, refusal detail, uncertainty thresholds, memory policy, improvement posture, a voice exemplar |
+
+Whatever is not asked falls back to a **labeled default**, and `creation-report.md` keeps
+saying which numbers you decided and which the tool assumed, so a short interview is a
+smaller claim rather than a hidden guess.
+
+Answers are saved as you give them: leaving the interview part-way does not lose them, and
+the next run offers to continue. The draft is deleted once the persona exists.
 
 **The interview** maps answers deterministically (item bank v1.0.0): Likert to
 trait means, a confidence item to envelope widths, value ranking to weights,

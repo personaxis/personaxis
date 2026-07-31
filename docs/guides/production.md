@@ -42,6 +42,24 @@ mutable coordinates (E4, the research bundle (E4 bench)). The
 LLM appraiser is the only network hop and is optional (heuristic appraiser works
 offline); constrained decoding keeps even a ≤4B local model safe as appraiser.
 
+## Ship an agent whose persona holds (Mode 1: bring your own agent)
+
+You do not have to run your agent on personaxis. Keep your existing agent (any framework, any model)
+and add personaxis as the persona + governance + verification layer around it. Three surfaces:
+
+- **Guard the input.** Before an untrusted message reaches your agent, screen it for
+  prompt-injection / jailbreak. CLI: `personaxis scan <file>` (exit 0 clean / 1 suspicious / 2 risky
+  / 3 malicious, a CI gate). SDK: `guardInput(text)` returns `{ allowed, verdict, reason, scan }`, so
+  an adversarial input cannot steer the agent out of its persona. Your agent still does its task; we
+  govern who it is.
+- **Sign the persona.** `personaxis sign` writes `personaxis.sig.json`, an integrity attestation
+  (SHA-256 of the source `personaxis.md` + a deterministic sigil fingerprint + canonical_id and
+  spec_version).
+- **Verify it.** `personaxis verify` recomputes the hash and reports tamper-evidence (exit 0
+  verified, 1 mismatch/tampered, 2 error), gateable in CI so a changed persona never ships silently.
+  This local seam is what the hosted verifier extends into a cryptographically attestable,
+  agent-to-agent credential.
+
 ## Troubleshooting
 
 | Symptom | Do this |

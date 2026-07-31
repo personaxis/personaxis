@@ -21,6 +21,22 @@ The 12 universals (e.g. `affect.regulation_policy.never_claim_real_feeling === t
 safety weight ≥ 0.90, the three literal hard limits) are enforced in `src/schema.ts`. Error
 output names the exact failing field/rule.
 
+## Every issue carries its remedy
+
+`fix` is a **required** field on `ValidationIssue`, so a check cannot ship without stating
+the edit that resolves it. It is printed under each finding, and it names the value rather
+than the rule:
+
+```
+✗ apiVersion, U1: apiVersion must be exactly 'personaxis.com/v1'.
+  fix: Set apiVersion: personaxis.com/v1 in the frontmatter.
+```
+
+Ajv's own phrasing is translated on the way out: `must be equal to constant` becomes the
+constant it wants, and a conditional (`if`/`then`/`anyOf`) failure says it is the consequence
+of a sibling error instead of asking you to satisfy `'if'`. A missing top-level field is
+reported by its NAME, not by the schema's internal path.
+
 ## Example
 ```bash
 personaxis validate .personaxis/personaxis.md
