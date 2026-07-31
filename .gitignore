@@ -26,6 +26,7 @@ FABLE5_BRIEF.md
 # Internal working docs and research bundle, kept local (never public)
 plan/
 research/
+product/
 # Security architecture docs, kept local for now (published later)
 docs/security/
 # Stray sandbox-test artifacts
