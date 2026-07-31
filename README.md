@@ -1,6 +1,11 @@
 # personaxis
 
-> **Living, governed AI agent personas.** Define who an agent is once, run it unchanged on any model, and get mathematical guarantees it cannot drift outside what you declared.
+> **Compliance infrastructure for AI agents, built on an open persona spec.** Your agent
+> already reads a default file, CLAUDE.md, AGENTS.md, SOUL.md, GEMINI.md; personaxis compiles a
+> governed persona INTO those files and makes it provably stay who it declares: define the
+> persona once (any format imports), enforce it at runtime with mathematical bounds, watch its
+> drift live, and mint an attestation anyone can re-check, in the stack's own formats (W3C VC,
+> A2A Agent Card).
 
 [![npm](https://img.shields.io/npm/v/personaxis)](https://www.npmjs.com/package/personaxis)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -21,8 +26,17 @@ guarantees** that it cannot drift outside what you declared:
   minimum of hash-chained audit entries (T3); history replays deterministically, and tampering is
   located, not just detected (T4/T5).
 - **Created from anything, grounded in evidence.** `personaxis create` builds a
-  valid-by-construction persona from an interview, a prompt, your repo, a character card, or
-  transcripts, with a creation report giving the provenance of every number.
+  valid-by-construction persona from an interview, a prompt, your repo, a **SOUL.md / SoulSpec
+  package**, a character card, or transcripts, with a creation report giving the provenance of
+  every number. Compile out to every default-read file: CLAUDE.md (Claude Code), AGENTS.md
+  (Codex, Cursor and the 60K+ repo ecosystem), SOUL.md (OpenClaw, Hermes), and the
+  `PERSONA:BASELINE` block for GEMINI.md / `.github/copilot-instructions.md` when present.
+- **The persona holds, and you can prove it.** `personaxis attest` mints a local behavioral
+  credential (spec signature + drift within declared thresholds + tamper-evident audit chain,
+  with expiry); `attest --check` re-derives every claim and answers "is this agent still who it
+  declares?" with an exit code CI can gate on. `attest --format vc` / `--format a2a` emit the
+  same credential as a W3C Verifiable Credential 2.0 or an A2A Agent Card extension, so it
+  rides the rails the agent stack already parses.
 
 **Documentation:** [`docs/`](docs/README.md) (this repo, the CLI) ·
 [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) (the overview) ·
@@ -148,13 +162,36 @@ They are independent on purpose, so read them separately:
 
 | Number | Example | What it versions | Where you see it |
 |---|---|---|---|
-| Package / CLI | `0.12.0` | the software (all eight packages move together, lockstep) | `personaxis --version` |
+| Package / CLI | `0.14.0` | the software (all eight packages move together, lockstep) | `personaxis --version` |
 | Spec | `1.1.0` | the `personaxis.md` file format the software implements | `spec_version:` in every persona |
 | apiVersion | `personaxis.com/v1` | the stable API namespace of the spec | `apiVersion:` in every persona |
 
-The software at `0.12.0` implements spec `1.1.0`. The CLI can keep releasing while still targeting
+The software at `0.14.0` implements spec `1.1.0`. The CLI can keep releasing while still targeting
 spec `1.1.0`, and a persona written for spec `1.0.0` keeps validating because `1.1.0` only adds
 optional fields.
+
+**New in 0.14.0** (the terminal app grows up):
+
+- **Fourteen commands, not forty.** The slash surface is four groups (Talk / Identity /
+  Build / Run), eighteen entries in the palette once you count `/sandbox`, `/bg`, `/help` and
+  `/exit`. Twenty-three older verbs still run when typed, and `/help moved` says where each
+  one now lives.
+- **Miniapps instead of walls of text.** `/persona`, `/status`, `/audit`, `/drift`, `/doctor`
+  and the rest are navigable views with tabs, selectable rows and drill-downs. `p` switches
+  persona in every one of them, so a sub-persona is one key away rather than a syntax to
+  remember.
+- **Drift covers the whole spec, not just the numbers.** Three planes: continuous (u-space
+  over envelopes), **structural** (a field-by-field diff of what the spec declares vs what is
+  in force, for strings, lists, flags and shapes alike), and **behavioral** (whether the
+  change moves the document agents actually read).
+- **No finding without a remedy.** `fix` is a required field on every validator issue and
+  every lint finding, so a check cannot ship without stating the edit that resolves it.
+- **Everything works outside the TUI.** Every capability either has a non-interactive
+  subcommand with `--json` or declares why it only means something inside a live session, and
+  a test fails when a new command answers neither way. Agents drive the CLI; they cannot
+  drive menus.
+- **A face per persona.** The `aura` is a layered portrait generated from the persona's own
+  hash and animated from its live state.
 
 ---
 
@@ -165,7 +202,7 @@ code, is [`docs/commands/`](docs/commands/README.md).
 
 | Command | Description |
 |---|---|
-| `create [slug]` | Genesis: build a valid-by-construction persona from an interview, `--from-prompt`, `--from-project`, `--from-import` (cards V2/V3, system prompts), or `--from-transcript`, with per-number provenance |
+| `create [slug]` | Genesis: build a valid-by-construction persona from an interview, `--from-prompt`, `--from-project`, `--from-import` (SOUL.md / SoulSpec, cards V2/V3, system prompts, AGENTS.md), or `--from-transcript`, with per-number provenance |
 | `(no subcommand)` | Enter the living REPL: talk to your persona; it replies and evolves via the governed Living Loop |
 | `validate` | Schema and universals validation; returns `PASS`, `PASS_WITH_WARNINGS`, `FAIL_SCHEMA`, `FAIL_POLICY`, or `FAIL_CONCEPTUAL`. Also validates sibling `policy.yaml` and `state.json` |
 | `lint` | Semantic lint with structured findings (errors, warnings, info) |
@@ -176,6 +213,8 @@ code, is [`docs/commands/`](docs/commands/README.md).
 | `state init \| mutate \| show \| drift \| rebuild` | Seed, adjust (clamped + logged), inspect, measure drift, or replay the mutation log |
 | `proof [--quick]` | Watch the guarantees hold, offline: adversarial storm, certified band-crossing cost, tamper located, deterministic replay |
 | `jacobian` | Exact compile-sensitivity per coordinate; flags provably decorative numbers |
+| `sign` \| `verify` | Sign the spec bytes (content hash + sigil fingerprint); verify tamper-evidence (exit 0/1/2) |
+| `attest [--check] [--ttl <h>]` | Mint the local behavioral credential (signature + drift within thresholds + intact chain, expiring); `--check` re-derives every claim (exit 0 live / 1 not live / 2 error) |
 | `arbitrate [a] [b]` | Deterministic value-conflict resolution with a trace (`governance` ≻ `weight` ≻ name) |
 | `dash [--persona <p>]` | Live ASCII dashboard: sigil, envelopes, and chain, reflecting evolution in real time |
 | `sigil [--persona <p>]` | Render a persona's deterministic, state-aware ASCII sigil and envelope panel |
