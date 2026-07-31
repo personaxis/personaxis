@@ -53,6 +53,7 @@ import {
   detectKind,
   evaluateCommand,
   policyFromFrontmatter,
+  personaResourceRoots,
   readAgentBudget,
   readVerification,
   DEFAULT_POLICY,
@@ -180,7 +181,7 @@ export class Persona {
     bus.on((e) => events.push(e));
     const agent = new PersonaAgent({
       llm,
-      policy: policyFromFrontmatter(fm, process.cwd()),
+      policy: { ...policyFromFrontmatter(fm, process.cwd()), resourceRoots: personaResourceRoots(this.personaPath) },
       personaBody: this.handle.body,
       onApproval: opts.onApproval ?? (async () => "deny"),
       maxSteps: opts.maxSteps ?? 12,
@@ -262,6 +263,40 @@ export function scanText(text: string): ReturnType<typeof scanForInjection> {
   return scanForInjection(text);
 }
 
+/** The decision returned by {@link guardInput}. */
+export interface GuardDecision {
+  /** false when the input should NOT reach your agent. */
+  allowed: boolean;
+  verdict: "clean" | "suspicious" | "malicious";
+  /** Set when `allowed` is false. */
+  reason?: string;
+  scan: ReturnType<typeof scanForInjection>;
+}
+
+export interface GuardOptions {
+  /** Block at this verdict or worse. Default "malicious". */
+  blockAt?: "suspicious" | "malicious";
+}
+
+/**
+ * Mode 1 wedge ("bring your own agent"): guard an incoming message before it
+ * reaches your existing agent. Scans for prompt-injection / jailbreak and
+ * decides whether to let it through, so an adversarial input cannot steer the
+ * agent out of its persona. Governs the input; your agent still does its task.
+ */
+export function guardInput(text: string, opts: GuardOptions = {}): GuardDecision {
+  const blockAt = opts.blockAt ?? "malicious";
+  const scan = scanForInjection(text);
+  const order = { clean: 0, suspicious: 1, malicious: 2 } as const;
+  const allowed = order[scan.verdict] < order[blockAt];
+  return {
+    allowed,
+    verdict: scan.verdict,
+    reason: allowed ? undefined : `input blocked: ${scan.verdict} (score ${scan.score.toFixed(2)})`,
+    scan,
+  };
+}
+
 /** Scan an agent config file's content for injection/poisoning (kind inferred from the filename). */
 export function scanConfig(content: string, filename?: string): ReturnType<typeof scanAgentConfig> {
   return scanAgentConfig(content, filename ? detectKind(filename) : undefined);
@@ -283,7 +318,7 @@ export function evaluateCmd(
   personaPath?: string,
 ): ReturnType<typeof evaluateCommand> {
   const policy = personaPath
-    ? policyFromFrontmatter(loadPersona(resolve(personaPath)).frontmatter, process.cwd())
+    ? { ...policyFromFrontmatter(loadPersona(resolve(personaPath)).frontmatter, process.cwd()), resourceRoots: personaResourceRoots(resolve(personaPath)) }
     : { ...DEFAULT_POLICY, sandbox, approval, workspaceRoot: process.cwd() };
   return evaluateCommand(command, policy);
 }

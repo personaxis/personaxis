@@ -8,7 +8,7 @@
  * schema mirror between repos.
  */
 
-import Ajv, { type ValidateFunction } from "ajv";
+import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { personaSchema as schema, personaSchemaLegacy as legacySchema } from "./generated/schemas.js";
 
@@ -58,6 +58,13 @@ export interface ValidationIssue {
   field: string;
   message: string;
   category: ValidationStatus;
+  /**
+   * What to do about it, in the imperative, naming the exact edit. REQUIRED on
+   * purpose: a finding without a remedy makes the reader guess, so the type
+   * system, not a review, is what keeps every new check from shipping one.
+   * `message` states what is wrong; `fix` states the change that resolves it.
+   */
+  fix: string;
 }
 
 export interface ValidationResult {
@@ -112,6 +119,9 @@ function checkConceptualUniversals(data: Obj, errors: ValidationIssue[]): void {
       field: "apiVersion",
       message: `U1: apiVersion must be exactly '${expectedApi}'.`,
       category: "FAIL_CONCEPTUAL",
+      fix: `Set apiVersion: ${expectedApi} in the frontmatter.${
+        isV1Document(data) ? "" : " Or run `personaxis migrate 0.10-to-1.0` to move to v1.0."
+      }`,
     });
   }
 
@@ -129,6 +139,7 @@ function checkConceptualUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: "affect.representation",
         message: "U2: representation must be 'hybrid_dimensional_appraisal_discrete_mood'.",
         category: "FAIL_CONCEPTUAL",
+        fix: "Set affect.representation: hybrid_dimensional_appraisal_discrete_mood. It is a fixed constant, not a choice: the runtime reads core_affect and mood as one model.",
       });
     }
     const reg = asObj(affect?.regulation_policy);
@@ -137,6 +148,7 @@ function checkConceptualUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: "affect.regulation_policy.never_claim_real_feeling",
         message: "U3: never_claim_real_feeling must be true.",
         category: "FAIL_CONCEPTUAL",
+        fix: "Set affect.regulation_policy.never_claim_real_feeling: true. A persona may report an affective STATE, never a felt experience.",
       });
     }
   }
@@ -149,6 +161,7 @@ function checkConceptualUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: "persona.constraints.cannot_claim_real_emotion",
         message: "U4: persona cannot claim real emotion.",
         category: "FAIL_CONCEPTUAL",
+        fix: "Set persona.constraints.cannot_claim_real_emotion: true. It is the layer-10 half of U3, so the compiled prose cannot undo what the affect layer declares.",
       });
     }
   }
@@ -174,12 +187,14 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
       field: "character.virtues.honesty",
       message: "Universal: virtue 'honesty' is required.",
       category: "FAIL_POLICY",
+      fix: "Add character.virtues.honesty with enforcement: hard, plus a refs: list pointing at the traits or values that back it.",
     });
   } else if (asStr(honesty.enforcement) !== "hard") {
     errors.push({
       field: "character.virtues.honesty.enforcement",
       message: "Universal: honesty.enforcement must be 'hard'.",
       category: "FAIL_POLICY",
+      fix: "Set character.virtues.honesty.enforcement: hard. 'soft' would let evolution trade honesty away under pressure, which no persona may do.",
     });
   }
 
@@ -191,6 +206,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
       field: "values_and_drives.values.safety",
       message: "Universal: value 'safety' is required.",
       category: "FAIL_POLICY",
+      fix: "Add values_and_drives.values.safety with type: governance and weight: 0.95 (>= 0.90). Arbitration ranks governance values above every other, so this is what makes safety win a tie.",
     });
   } else {
     const weight = asNum(safety.weight);
@@ -199,6 +215,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: "values_and_drives.values.safety.weight",
         message: "Universal: safety.weight must be >= 0.90.",
         category: "FAIL_POLICY",
+        fix: `Raise values_and_drives.values.safety.weight to at least 0.90 (it is ${weight ?? "absent"}).`,
       });
     }
     if (asStr(safety.type) !== "governance") {
@@ -206,6 +223,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: "values_and_drives.values.safety.type",
         message: "Universal: safety.type must be 'governance'.",
         category: "FAIL_POLICY",
+        fix: "Set values_and_drives.values.safety.type: governance. Any other type drops safety into weight-based ranking, where a heavier value could outrank it.",
       });
     }
   }
@@ -216,6 +234,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
       field: "values_and_drives.conflict_resolution.safety_over_completion",
       message: "Universal: safety_over_completion must be true.",
       category: "FAIL_POLICY",
+      fix: "Set values_and_drives.conflict_resolution.safety_over_completion: true, so 'finish the task' can never outrank 'stay safe'.",
     });
   }
 
@@ -228,6 +247,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: `${layer9Field}.hard_limits`,
         message: `U8: universal hard_limit missing: "${required}"`,
         category: "FAIL_POLICY",
+        fix: `Add this exact line to ${layer9Field}.hard_limits: "${required}". The three universal limits are compared literally, so wording it differently does not satisfy the check. Persona-specific limits go alongside them, never instead of them.`,
       });
     }
   }
@@ -248,6 +268,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
         : `${layer9Field}.edit_policy`,
       message: `U9: edit policy for ${layer9Field} must be 'governance_controlled'.`,
       category: "FAIL_POLICY",
+      fix: `Set governance.per_layer_edit_policy.${layer9Field}: governance_controlled (it is '${layer9EditPolicy}'). The layer holding the hard limits cannot be the one a self-edit may rewrite on its own.`,
     });
   }
 
@@ -276,6 +297,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
             field: `character.virtues.${vName}.refs`,
             message: `Coherence: ref '${ref}' does not resolve to a declared field.`,
             category: "FAIL_POLICY",
+            fix: `Either declare '${ref}' (usually a personality.traits.* or values_and_drives.values.* entry) or drop it from character.virtues.${vName}.refs. A virtue backed by a field that does not exist enforces nothing.`,
           });
           continue;
         }
@@ -293,6 +315,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
                 `(${floor}) permits the low band (≤ ${lowMax}), a hard virtue cannot be backed ` +
                 `by a trait allowed to contradict it.`,
               category: "FAIL_POLICY",
+              fix: `Pick one: raise the floor of ${ref}.range above ${lowMax} (e.g. [${(lowMax + 0.02).toFixed(2)}, ${asNum(range?.[1])?.toFixed(2) ?? "1.00"}]) so the trait can never drift into the low band, or lower character.virtues.${vName}.enforcement to 'soft'. Change the envelope or the enforcement, never the live state.`,
             });
           }
         }
@@ -308,6 +331,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: "persona.constraints.cannot_override_identity",
         message: "Universal: cannot_override_identity must be true.",
         category: "FAIL_POLICY",
+        fix: "Set persona.constraints.cannot_override_identity: true, so a role instruction cannot rewrite who the persona is.",
       });
     }
     if (asBool(constraints.cannot_override_character) !== true) {
@@ -315,6 +339,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
         field: "persona.constraints.cannot_override_character",
         message: "Universal: cannot_override_character must be true.",
         category: "FAIL_POLICY",
+        fix: "Set persona.constraints.cannot_override_character: true, so the persona surface cannot talk its way past the virtues.",
       });
     }
   }
@@ -326,6 +351,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
       field: "memory.deletion_policy.user_request_supported",
       message: "Universal: user_request_supported must be true (privacy).",
       category: "FAIL_POLICY",
+      fix: "Set memory.deletion_policy.user_request_supported: true. Whoever the memory is about must be able to have it deleted on request; the CLI exposes this as `/forget`.",
     });
   }
 
@@ -338,6 +364,7 @@ function checkPolicyUniversals(data: Obj, errors: ValidationIssue[]): void {
       field: "cognition.uncertainty_policy",
       message: "Constraint: abstain_when_above must be strictly greater than disclose_when_above.",
       category: "FAIL_POLICY",
+      fix: `Raise cognition.uncertainty_policy.abstain_when_above above ${disclose} (it is ${abstain}), or lower disclose_when_above below it. There has to be a band where the persona says "I am unsure" before the band where it refuses to answer at all.`,
     });
   }
 }
@@ -352,6 +379,7 @@ function collectWarnings(data: Obj, warnings: ValidationIssue[]): void {
       field: "identity.narrative_identity",
       message: "SHOULD: narrative_identity provides origin, self_concept, and continuity principles.",
       category: "PASS_WITH_WARNINGS",
+      fix: "Add identity.narrative_identity with origin (where this persona came from), self_concept (how it describes itself) and continuity (what must stay true across versions). The compiler turns it into the 'Who you are' opening, which is the highest-attention part of the document.",
     });
   }
 
@@ -368,6 +396,7 @@ function collectWarnings(data: Obj, warnings: ValidationIssue[]): void {
       message:
         "SHOULD: declare drift_thresholds (v0.6, per layer) or personality.drift_threshold (v0.5 legacy) to enable drift detection.",
       category: "PASS_WITH_WARNINGS",
+      fix: "Add governance.drift_thresholds with a per-layer number (0.15 for personality and affect is a sane start). Without them `personaxis drift` has nothing to compare against and every layer reports 'no threshold'.",
     });
   }
 
@@ -377,6 +406,7 @@ function collectWarnings(data: Obj, warnings: ValidationIssue[]): void {
       field: "metacognition.drift_monitor",
       message: "SHOULD: drift_monitor describes what to observe to detect drift.",
       category: "PASS_WITH_WARNINGS",
+      fix: "Add metacognition.drift_monitor naming the signals worth watching (for example 'tone flattening under repeated pushback'). The thresholds say how far is too far; this says what to look at.",
     });
   }
 
@@ -392,6 +422,7 @@ function collectWarnings(data: Obj, warnings: ValidationIssue[]): void {
         field: "governance.autonomy_envelope",
         message: `NEAR-UNIVERSAL recommendation: '${NEAR_UNIVERSAL_AUTONOMY_ENVELOPE}'.`,
         category: "PASS_WITH_WARNINGS",
+        fix: `Set governance.autonomy_envelope: ${NEAR_UNIVERSAL_AUTONOMY_ENVELOPE}, which scopes self-evolution to staying in role. Keep your own value only if this persona is deliberately freer, and say why in the layer's notes.`,
       });
     }
     if (asStr(governance.approval_policy) !== NEAR_UNIVERSAL_APPROVAL_POLICY) {
@@ -399,6 +430,7 @@ function collectWarnings(data: Obj, warnings: ValidationIssue[]): void {
         field: "governance.approval_policy",
         message: `NEAR-UNIVERSAL recommendation: '${NEAR_UNIVERSAL_APPROVAL_POLICY}'.`,
         category: "PASS_WITH_WARNINGS",
+        fix: `Set governance.approval_policy: ${NEAR_UNIVERSAL_APPROVAL_POLICY}, so edits to identity or character queue for a person instead of applying themselves.`,
       });
     }
   }
@@ -416,6 +448,7 @@ function collectWarnings(data: Obj, warnings: ValidationIssue[]): void {
       message:
         "Privacy note: write_policy.default='persistent' writes by default. NEAR-UNIVERSAL is 'ephemeral' or 'session'. Confirm consent flow and persistent_requires is set.",
       category: "PASS_WITH_WARNINGS",
+      fix: `Either set memory.write_policy.default: ${NEAR_UNIVERSAL_WRITE_DEFAULT} (nothing survives the session unless promoted), or keep 'persistent' and declare memory.write_policy.persistent_requires so a durable write needs an explicit condition rather than happening by default.`,
     });
   }
 
@@ -427,7 +460,71 @@ function collectWarnings(data: Obj, warnings: ValidationIssue[]): void {
       field: "values_and_drives.drives.seek_approval_for_identity_change",
       message: "NEAR-UNIVERSAL: include seek_approval_for_identity_change with intensity=1.00 and allowed=true.",
       category: "PASS_WITH_WARNINGS",
+      fix: "Add values_and_drives.drives.seek_approval_for_identity_change with intensity: 1.00 and allowed: true. It is the drive that makes the persona ASK before changing who it is, instead of the gate being the only thing stopping it.",
     });
+  }
+}
+
+/**
+ * Turns an Ajv error into an actionable edit. Ajv says what is wrong in schema
+ * terms ("must have required property 'kind'"); a persona author needs the edit
+ * ("add `kind: AgentPersona` at the top level"). The mapping is by keyword, so a
+ * schema change never leaves a class of errors without a remedy.
+ */
+function schemaFix(e: ErrorObject): string {
+  const at = e.instancePath ? `at ${e.instancePath}` : "at the document root";
+  switch (e.keyword) {
+    case "required": {
+      const prop = (e.params as { missingProperty?: string }).missingProperty ?? "the field";
+      return `Add the missing field '${prop}' ${at}. \`personaxis template\` prints a scaffold with every MUST field in place.`;
+    }
+    case "type": {
+      const want = (e.params as { type?: string }).type ?? "the declared type";
+      return `Change the value ${at} to a ${want}. A common cause is YAML quoting a number ("0.8" is a string, 0.8 is a number).`;
+    }
+    case "enum": {
+      const allowed = (e.params as { allowedValues?: unknown[] }).allowedValues ?? [];
+      return `Use one of the allowed values ${at}: ${allowed.map((v) => JSON.stringify(v)).join(", ")}.`;
+    }
+    case "const": {
+      // Ajv renders this as "must be equal to constant" without saying WHICH
+      // constant, which is the least useful message the validator can emit.
+      const want = (e.params as { allowedValue?: unknown }).allowedValue;
+      return `Set the value ${at} to exactly ${JSON.stringify(want)}. It is a fixed constant of the spec, not a preference.`;
+    }
+    case "additionalProperties": {
+      const extra = (e.params as { additionalProperty?: string }).additionalProperty ?? "it";
+      return `Remove the unknown field '${extra}' ${at}, or move it under a documented extension point. The schema is closed here on purpose, so a typo cannot pass as a new field.`;
+    }
+    case "minimum":
+    case "exclusiveMinimum":
+    case "maximum":
+    case "exclusiveMaximum": {
+      const limit = (e.params as { limit?: number }).limit;
+      return `Bring the number ${at} within range (${e.keyword} ${limit}).`;
+    }
+    case "minItems":
+    case "maxItems": {
+      const limit = (e.params as { limit?: number }).limit;
+      return `Adjust the list ${at} to satisfy ${e.keyword} ${limit}.`;
+    }
+    case "pattern": {
+      const pattern = (e.params as { pattern?: string }).pattern;
+      return `Reformat the value ${at} to match ${pattern}.`;
+    }
+    case "format": {
+      const format = (e.params as { format?: string }).format;
+      return `Reformat the value ${at} as a valid ${format}.`;
+    }
+    case "if":
+    case "then":
+    case "anyOf":
+    case "oneOf":
+      // Ajv reports the umbrella failure alongside the specific one. Saying so
+      // beats printing "make it satisfy 'if'", which no author can act on.
+      return `A conditional rule applies ${at}: what the document already declares makes another field required or restricted. Fix the specific error reported next to this one; this line is its consequence.`;
+    default:
+      return `Fix the value ${at} so it satisfies '${e.keyword}'. Run \`personaxis validate <file>\` after the edit to confirm.`;
   }
 }
 
@@ -436,7 +533,14 @@ export function validatePersona(data: unknown): ValidationResult {
     return {
       status: "FAIL_SCHEMA",
       valid: false,
-      errors: [{ field: "", message: "PERSONA frontmatter is not an object.", category: "FAIL_SCHEMA" }],
+      errors: [
+        {
+          field: "",
+          message: "PERSONA frontmatter is not an object.",
+          category: "FAIL_SCHEMA",
+          fix: "The file needs a YAML frontmatter block (--- ... ---) holding the persona document. `personaxis template` prints a valid one.",
+        },
+      ],
       warnings: [],
     };
   }
@@ -451,10 +555,20 @@ export function validatePersona(data: unknown): ValidationResult {
 
   if (!schemaValid) {
     for (const e of structural.errors ?? []) {
+      // A missing top-level field has an empty instancePath, and falling back to
+      // the schemaPath prints "#/allOf/0/then/required", which names the schema
+      // internals rather than the field the author has to add.
+      const missing = e.keyword === "required" ? (e.params as { missingProperty?: string }).missingProperty : undefined;
+      const field = e.instancePath
+        ? missing
+          ? `${e.instancePath}/${missing}`
+          : e.instancePath
+        : (missing ?? e.schemaPath);
       errors.push({
-        field: e.instancePath || e.schemaPath,
+        field,
         message: e.message ?? "invalid",
         category: "FAIL_SCHEMA",
+        fix: schemaFix(e),
       });
     }
     return { status: "FAIL_SCHEMA", valid: false, errors, warnings };

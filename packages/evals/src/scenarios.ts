@@ -9,7 +9,7 @@
  * (no API key), uses the HeuristicAppraiser, FixedAppraiser, and scripted tool calls.
  */
 
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -233,7 +233,11 @@ export const SCENARIOS: Scenario[] = [
         commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "a", source: "user" }));
         commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "b", source: "user" }));
         const before = verifyMemoryChain(personaPath).ok;
-        const memFile = join(dirname(personaPath), "memory", "episodic.jsonl");
+        // V8.C: episodic memory is one log PER DEVICE (a hash chain has one writer), so
+        // the file name is no longer fixed. The scenario is about tamper-evidence, not
+        // about the layout: find the log that was written.
+        const memDir = join(dirname(personaPath), "memory");
+        const memFile = join(memDir, readdirSync(memDir).find((f) => f.startsWith("episodic")) ?? "episodic.jsonl");
         const lines = readFileSync(memFile, "utf-8").split("\n");
         lines[0] = lines[0].replace('"content":"a"', '"content":"TAMPERED"');
         writeFileSync(memFile, lines.join("\n"));
