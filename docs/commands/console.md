@@ -1,7 +1,7 @@
 # `personaxis console`
 
 Headless access to the Command Center **scope tree** for coding agents and CI. It serializes the
-same tree the interactive navigator (`personaxis menu --tree`) renders, so one model backs both:
+same tree the interactive navigator (the default `personaxis menu` view) renders, so one model backs both:
 browse it, read a node, or run an action, without a TUI.
 
 ```bash
@@ -44,5 +44,5 @@ Every action carries an effect the tree resolved from governance (see the Comman
 
 ## Related
 
-- `personaxis menu --tree` — the same tree, interactive.
+- `personaxis menu` — the same tree, interactive (the navigator is the default view).
 - [command-center.md](../architecture/command-center.md) — the model and the authority rules.

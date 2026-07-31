@@ -12,7 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > The spec it implements is unchanged at 1.1.0; nothing here touches the persona schema.
 
 ### Feat: the Command Center is a navigable tree, not eight screens (V9)
-- **`personaxis menu --tree`** opens one recursive view over a scope tree,
+- **`personaxis menu`** now opens one recursive view over a scope tree,
   `machine → project → persona → layer → field`. A real breadcrumb path answers "where am I"
   at every depth; the old Command Center was eight sibling sections and its Fleet "drill" only
   printed a hint.
@@ -66,9 +66,61 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Opt-in and additive: reflection runs only when the host injects the extractor, so nothing changes
   for a persona that has not enabled it.
 
+### Feat: one declaration per tool, typed end to end (V11 / J.1)
+- **`defineTool`** registers a tool from ONE declaration: the handler's argument type is derived
+  from the very JSON Schema the model sees, so reading an argument the schema never declared is a
+  compile error, not a runtime surprise. The JSON Schema stays the single schema source (FR.7:
+  no parallel Zod layer), and every built-in tool goes through the same gate.
+
+### Feat: the loop breaks loops, and vets plans before they run (V11 / J.4a-b)
+- **Loop breaker.** Hammering a failing action or spinning without progress is the classic
+  autonomous-agent failure and a real cost drain (threat T11). Escalation, not a hair trigger:
+  the first repetition or stall past the limit gets a NUDGE (one injected hint to change
+  approach); only if it persists does the run STOP. A model that self-corrects is never cut off.
+- **`assessPlan`.** An intended plan is evaluated against the SAME gates the loop uses, BEFORE
+  any step runs: a plan with a step that would be denied (hard limit, protected path, unknown
+  tool) is rejected as a plan. Pure, no LLM, no side effects.
+
+### Feat: skills pick the toolbox (V11 / J.2a)
+- The agent is no longer shown every tool on every task: the active skills decide the tool
+  SUBSET on the table (a filesystem task exposes filesystem tools plus a small base, not the
+  shell and every mounted MCP tool). Fewer tokens, and no invitation to reach for a tool the
+  task never needed. Opt-in wiring in the agent loop.
+
+### Security: one interceptor in front of the operating system (V12 / K.03)
+- Every tool the agent runs, built-in or MCP, goes through the interceptor's `run`: exactly one
+  place where execution, untrusted-output scanning, post-hooks, and the forensic record happen.
+  A capability cannot quietly acquire a path that skips any of them. An approved call is
+  executed and recorded; a blocked call is recorded and never executed.
+
+### Security: OS-level isolation that never fakes a sandbox (V12 / K.02)
+- An ALLOWED shell command runs under the platform's native sandbox (bubblewrap on Linux,
+  Seatbelt on macOS), so the kernel, not just the policy, enforces the boundary (threat T9).
+  Availability-aware and honest: where no sandbox primitive is reachable it says so and runs
+  unwrapped by explicit posture, instead of spawning a binary that does not exist (the old
+  ENOENT failure) or silently claiming an isolation it does not have.
+
+### Security: a watchdog that aborts out of band (V12 / K.07)
+- Budget checks between steps cannot catch a tool call that hangs or blows the wall-clock or
+  cost ceiling mid-flight. The watchdog runs on its own timer: when a limit is breached it
+  aborts immediately via `AbortSignal`, records the abort in the forensic log, and does so even
+  while the loop is blocked awaiting a tool. The enforcement half of the DoS defense (T11).
+
+### Security: a forensic, hash-chained record of every security decision (V12 / K.10)
+- Tool calls allowed and denied, injection findings, aborts: each record is frozen on creation
+  and commits to the previous record's hash, so "what did the agent do, and was any of it
+  altered" has a verifiable answer (threat T15), not a mutable log.
+
+### Security: untrusted content becomes data, never instructions (V12 / K.05)
+- One ingest door for every piece of external content re-entering the model's context: files
+  read, command output, web pages, MCP replies, sub-agent answers. Everything is scanned for
+  injection and tainted by provenance before the model sees it (threat T7, indirect prompt
+  injection). The taint feeds consent (K.04): a destructive action under malicious taint is
+  denied in every posture.
+
 ### Note
-- The `--tree` navigator is opt-in while it grows into the default `/menu`; the classic sectioned
-  hub is unchanged. The agent-core (V11) and security (V12) work lands under this version too; see
+- The scope-tree navigator is the default `menu`/`/menu` view; the classic sectioned hub stays
+  reachable via `--classic` / `--section`. The deep design docs live in
   `docs/architecture/agent-core.md` and `docs/security/` (the latter private for now).
 
 ## [0.14.0] - Unreleased: the self-aware session (V5 P0) + real miniapps (V5 P1)
