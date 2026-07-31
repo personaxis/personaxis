@@ -6,7 +6,931 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]: Fase 7 living instrument (foundations review + app-first redesign, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [0.15.0] - Unreleased: a production agent (V11/V12) + the Command Center as a control surface (V9)
+
+> Version target for the V9-V12 arc (agent core, security, Command Center, sync backends).
+> The spec it implements is unchanged at 1.1.0; nothing here touches the persona schema.
+
+### Feat: the Command Center is a navigable tree, not eight screens (V9)
+- **`personaxis menu --tree`** opens one recursive view over a scope tree,
+  `machine → project → persona → layer → field`. A real breadcrumb path answers "where am I"
+  at every depth; the old Command Center was eight sibling sections and its Fleet "drill" only
+  printed a hint.
+- **Editing reaches a single coordinate.** `Enter` on an editable trait/affect coordinate opens
+  an inline prompt; the value is applied as an envelope-clamped mutation. Every action shows its
+  authority, resolved from governance (the engine's `editGate`): **read-only** (a hard virtue
+  backs it), **→ review** (a governed layer queues a proposal), or **editable**.
+- **Live activity, for real.** A session publishes what it is doing (`answering` vs `idle`), not
+  a permanent "idle", and the tree surfaces every running instance.
+- The tree is a pure, Ink-free model, so the two front-ends stay in sync by construction.
+
+### Feat: `personaxis console`, the Command Center for agents (V9 / G.5)
+- A coding agent cannot drive a TUI. `console ls|get|do <path> [--json]` serializes the SAME tree:
+  list a node's children, read its attributes and actions, or run an action. `do` honors the
+  authority (a protected coordinate is refused, a governed edit queues a proposal).
+- `--persona <path>` targets one persona directly, without the project registry, so an agent can
+  act on a persona it already knows.
+
+### Feat: consent that reads the room, not just the command (V12 / K.04)
+- **A risk matrix decides when to ask a human**, from more than the command's static class: the
+  sandbox posture, whether the context is injection-tainted, whether the action is irreversible, and
+  whether it touches sensitive data. A destructive or exfiltrating action proposed while an untrusted
+  tool output has tainted the context is refused outright, even under full-access mode, because the
+  user opted into low friction for their own actions, not for injected text acting with full rights.
+- **Consent can only tighten, never loosen.** It combines with the sandbox verdict by taking the
+  stricter of the two, so it is safe as a second layer: at worst it makes the agent more cautious.
+- Plans are approved as a batch, not step by step, and an explicit "always" for a pattern is
+  remembered, so the guardrail does not turn into rubber-stamp fatigue.
+
+### Feat: the agent survives long tasks, context first (V11 / J.6)
+- **Task state that outlives the transcript.** The run's goal, plan, decisions, files touched and
+  recent errors live in a bounded, structured object that is pinned back into the context on every
+  compaction, so a long task no longer loses its objective when older messages are summarized away.
+- **Large tool outputs are recoverable, not truncated.** A big build log or listing is offloaded to
+  a handle (`out-N`); the model sees a short preview and pulls the slice it needs with `read_output`
+  or `grep_output`. A 55k-line log costs ~1k of context, and the one error line buried in it is still
+  reachable, where plain truncation would have dropped it.
+- Fixed per-run tool resolution so tools a run adds for itself (memory, output store) are actually
+  callable, not just shown.
+
+### Feat: the agent core learns methods, under a security floor (V11 / J.3)
+- **Self-written skills.** After a hard-won run (multi-step, or recovered from failures), an
+  autonomous persona can abstract the winning method into a reusable skill, the Voyager/Reflexion
+  loop. A brand-new skill is registered in the skill ledger and activates on the next similar task.
+- **The security floor comes first, in every posture.** A self-authored skill is executable
+  methodology, so before it is written anywhere it must pass injection scanning and a danger review;
+  a skill body carrying `curl … | sh`, `rm -rf`, `eval(`, or a prompt-injection payload is refused
+  even when the persona is fully autonomous. Only then does governance decide: **locked** blocks
+  authorship entirely, **suggesting** queues the skill to `skills/pending/` for a human to approve,
+  **autonomous** writes and activates it.
+- Opt-in and additive: reflection runs only when the host injects the extractor, so nothing changes
+  for a persona that has not enabled it.
+
+### Note
+- The `--tree` navigator is opt-in while it grows into the default `/menu`; the classic sectioned
+  hub is unchanged. The agent-core (V11) and security (V12) work lands under this version too; see
+  `docs/architecture/agent-core.md` and `docs/security/` (the latter private for now).
+
+## [0.14.0] - Unreleased: the self-aware session (V5 P0) + real miniapps (V5 P1)
+
+> Version bumped in lockstep across all eight packages (2026-07-21). `personaxis --version`
+> reports 0.14.0; the spec it implements is unchanged at 1.1.0.
+
+### Feat: one persona, several machines (V8.C)
+- **A persona can now be used on more than one computer without losing anything.** It could
+  not before, by design rather than by bug: `state.json` is overwritten and the memory log
+  was a single hash chain with a single writer, so two machines produced either a silent
+  loss of memory or a broken chain that could not say which side was right.
+- **Each device appends to its OWN log** (`.personaxis/devices/<id>/mutations.jsonl`, and
+  one episodic memory log per device). Nobody writes anybody else's file, so file-level
+  conflict cannot happen, whatever carries the folder between machines: git, Syncthing,
+  Dropbox, a USB stick. No sync service to run; the format survives any transport.
+- **State is a fold of those logs, and the clamp is applied at every step.** This is the
+  guarantee, not a detail: `clamp(a+b)` is not `clamp(a)+clamp(b)`, so summing deltas and
+  clamping once at the end would let a value escape its envelope through a sequence that
+  never individually did. Merged history obeys the same bound as local history.
+- **Ordering does not trust clocks.** Entries carry a hybrid logical clock (physical time as
+  a readable hint, plus a counter that keeps advancing when a clock stalls or is corrected
+  backwards). A machine an hour behind still orders correctly, because a device never emits
+  a timestamp that sorts before something it has already seen.
+- **Integrity is per device.** A single chain cannot have two writers. A break now names the
+  device AND the position ("the laptop's log, entry 12") instead of condemning every machine
+  at once, and that device is EXCLUDED from the merge: tamper-evidence is worth nothing if
+  the tampered entries still shape the result.
+- **`state.json` became a cache.** `personaxis sync --rebuild` recomputes it from the logs;
+  `--status` reports who contributed, each chain's health, and how many mutations were
+  clamped. Never silent: a merge that quietly changes a persona is indistinguishable from a
+  bug.
+- Rationale in full: `docs/architecture/multi-device.md`.
+
+### Feat: the fleet knows who is using each persona (V8.D)
+- Presence is now **one file per instance** with a heartbeat, carrying machine, user, pid,
+  the surface driving it (repl / claude-code / codex / mcp / serve), project, session and
+  current activity. The previous answer was a single "awake" flag, which collapsed three
+  concurrent situations into one word.
+- **Liveness is the heartbeat, never the file's existence**: a crashed process cannot clean
+  up after itself, and phantoms accumulate (a registry here once carried 26 dead projects).
+  Stale and unreadable entries are deleted as they are read.
+- The fleet shows `2 instance(s) · this machine (repl) · MacBook (claude-code)`, next to a
+  separate column for which host agents *could* read that persona. Two different questions
+  that used to be confused with each other.
+
+### Feat: an optional write lease, for when you would rather serialise than merge (V8.D4)
+- `personaxis lease status|take|release` (with `--json`) and `writeLease` in config. Off by
+  default: per-writer chains already make concurrent evolution safe, so the lease exists only
+  for people who want one obvious author for a stretch (an overnight loop, a migration).
+- **Two kinds of hold, because they cannot expire the same way.** A *session* hold is keyed to
+  (device, pid) and dies with its heartbeat, so a crash cannot lock a persona forever. A
+  *manual* hold is keyed to the device and waits for a release: the command that takes it
+  exits at once, so a heartbeat rule would have killed the hold seconds after you took it and
+  locked out the very machine that took it.
+- **Taking is atomic.** Exclusive file creation guards the critical section, so two machines
+  cannot both believe they hold it; a guard left by a crash expires, and a guard held right
+  now makes the attempt fail rather than guess.
+- Refusals are actionable: which machine, which user, why, and how to break the hold
+  (`--force`, which records whose hold it broke). `personaxis ps` shows a held lease, since a
+  fleet view that omits it reports a persona as available when it is not.
+
+### Feat: the CLI knows which projects have personas (V8.E)
+- **Registration happens BY USE**, from any command: create, open, compile or diagnose a
+  persona and its project is recorded then, correctly, for free. It used to happen only when
+  the REPL was opened inside a project, so someone with ten projects saw one.
+- **Portable project identity**: a project is keyed by its normalised git remote, so the same
+  repository is the same project on your desktop and your laptop. A path cannot do that, and
+  without it multi-device sync has no way to pair anything.
+- `personaxis overseer scan` exists for projects that predate the mechanism, and only for
+  that: it never runs automatically and only walks folders you name. Scanning a disk to
+  rediscover what the tool was already told is the wrong default.
+- The registry self-heals: a folder that lost its persona stops being a project.
+
+### Changed: absorbed commands are gone, not hidden (V8.A)
+- Twenty-three verbs became tabs and actions inside the fourteen that absorbed them. They are
+  **no longer commands**: typing an old name says where the capability went and what to run
+  outside the app, and does not execute. A hidden command that still works is the clutter the
+  consolidation existed to remove.
+- Their capability MOVED first, which is what made removal safe: `rewind` is an action in the
+  audit Timeline, `goal`, `loop`, `improve` and `review` are actionable rows in
+  Persona → Evolution. Views can now ask for input, which is what let verbs that take an
+  argument live inside a menu instead of surviving as commands.
+- **`/lint` and `/validate` had genuinely drifted**: both printed findings WITHOUT the
+  remedies that `doctor` and the subcommands had carried for months. That is the failure
+  mode two implementations of one capability always produce.
+
+### Fix: a resumed conversation the persona would not admit was its own
+- **"I cannot access previous sessions", with the answer sitting in its context.** After
+  `/resume` the model had the restored history (asked to repeat a literal word from an
+  earlier message, it quoted it correctly) but treated those messages as somebody else's
+  transcript and refused questions about them on principle. Resuming now hands the model a
+  SYSTEM note saying the history is its own, in this same session, and that it may quote it.
+  Verified against a live model: before, "I cannot recall the name of your cat"; after, "the
+  keyword you gave me is ZANAHORIA".
+- **`/resume` announced itself twice**, once above the restored history and once below it:
+  the picker printed a confirmation the resume handler had already printed.
+
+### Fix: the header stacked up while resizing the window
+- **Root cause: live UI was rendered ABOVE `<Static>`.** Ink writes static output
+  permanently above the dynamic region, so anything before it in the tree is re-emitted into
+  the scrollback on every repaint instead of being erased. The persistent header sat there,
+  and dragging the window printed `─ Clio (main) · cli · workspace-write` once per repaint,
+  down the whole screen. It now renders after the transcript, immediately above the input it
+  is chrome for, so it reads exactly the same and cannot stack. A test asserts the ordering,
+  because the symptom only appears on a terminal being dragged by hand.
+- The header and status line are also **truncated, never wrapped** (ANSI-aware: colour
+  escapes stay whole and are closed at the cut). A line that wraps to a second row breaks
+  the line count Ink erases by; the dynamic region is now exactly one row at any width.
+  Tested at 40/60/80/120 columns.
+
+### Fix: `/resume` quit the app, and rebuilt a chat that did not look like one
+- **Resuming ended the session.** `clearScreen` unmounts the Ink instance to wipe the
+  scrollback and mounts a fresh one; the REPL stayed alive by awaiting that instance's exit
+  promise, so the unmount resolved it, the REPL fell through its await and the process quit
+  the moment the restored conversation finished printing. The session's lifetime is now its
+  own promise, resolved only by a real exit (`/exit`, ctrl+c, `stop()`), and a re-mount is
+  recognised by identity rather than by a flag (`unmount()` is synchronous, its promise is
+  not). `suspend()` had the same hazard and is fixed with it.
+- **The rebuilt chat had no chrome.** Every line was printed back to back, so a long history
+  arrived as one undifferentiated block. Each exchange now opens with the same divider a
+  live turn gets, replies keep their trailing gap, and a closing line says where the restored
+  history ends and the live conversation begins.
+- **The work was missing, only the words came back.** A transcript of questions and answers
+  reads as if nothing happened between them. The per-turn evidence block (recalled memory,
+  evolution, self-edits, evaluations) is now recorded with the session as its own append-only
+  `note` and reprinted on resume. It is a note, not part of the exchange, so it never reaches
+  the model's context on reload: replaying the screen costs zero tokens.
+- A `/compact` checkpoint in the middle of a session is replayed as such, matching the
+  context the persona actually carries rather than reprinting turns it no longer holds.
+
+### Fix: the consolidated command surface was invisible where people look for it
+- **Typing `/` offered all forty commands** while `/help` showed the grouped surface. The
+  palette built its own list from the raw command table instead of using `listCommands()`, so
+  the consolidation was real everywhere except the menu people actually open. There is now
+  ONE source for "what commands exist": browsing with a bare `/` lists **18** (the fourteen
+  grouped, plus sandbox, bg, help and exit), and typing toward an absorbed verb still finds
+  it and says where it went (`/val` → `validate  → /doctor → Spec`).
+- Covered by tests that assert the PALETTE, not the help text. Asserting `listCommands()`
+  alone is exactly what let this survive a full release.
+
+### Feat: no finding without a remedy (V7.B4)
+- **Every validator issue and every lint finding now carries a `fix`**, a required field on
+  `ValidationIssue` (`@personaxis/spec`) and on `Finding` (the linter). Required, not
+  optional, on purpose: the compiler is what stops a new rule from shipping a warning the
+  reader has to decode. `validate`, `lint` and `doctor` print the remedy under each finding,
+  wrapped to the terminal width.
+- **Remedies name the value, not the rule.** Ajv's `const` violations rendered as "must be
+  equal to constant" without saying WHICH constant; the remedy now states it. Ajv's
+  conditional (`if`/`then`/`anyOf`) failures say they are a consequence of a sibling error
+  instead of asking the reader to satisfy `'if'`.
+- **A missing top-level field is reported by its name.** It used to print the schema's own
+  path (`#/allOf/0/then/required`), which names the schema internals rather than the field
+  the author has to add.
+- **`doctor` is a miniapp** (`/doctor`), on the shared tabbed host, so `p` switches persona
+  and the checks re-run against that one: a sub-persona's health no longer requires knowing
+  the `/doctor @slug` syntax. The provider ping stays on the command (`/doctor net`), since a
+  view that redraws on a timer must not open a socket per frame.
+- **Fix: `doctor` counted its findings by grepping its own rendered output** for `✗` and
+  `!`, so a remedy containing either glyph would have inflated the count. Counted at the
+  source now.
+- **Fix: `policy.schema.json` rejected `spec_version: 1.1.0`**, the current spec version, so
+  a policy.yaml aligned with its persona failed FAIL_SCHEMA for no reason. The enum is
+  additive-only, and 1.1.0 added no policy fields.
+- **Fix (found auditing): `overseer show` still read "personas 0".** The count a person
+  expects (main + subs across their projects) was already computed and simply not printed;
+  the view showed only the count of shared personas under `~/.personaxis/personas/`, which is
+  a rarer thing and is usually zero. It now reports all three, each labelled: personas across
+  projects, your own home persona (which is not a project and was invisible in every count),
+  and the shared ones. Projects list as `[main]` rather than `[]`.
+- **Fix (parity, found dogfooding): headless answered slash commands with the MODEL.**
+  `personaxis -p "/help"` forwarded the text to the persona, which improvised a plausible,
+  entirely invented help page and exited 0. An agent driving the CLI cannot tell that from
+  the real output, which is worse than an error. Headless now routes `/x` to the external
+  door that command declares (`personaxis status`), explains why a session-only command has
+  none, and exits 2 on an unknown one.
+- **Fix: `observe` reported zeros without a reason.** "0 mutation(s) · 0 memory" reads as a
+  broken tick when it is usually correct behavior. The engine already emitted the reason and
+  the summary was dropping it; it now prints each one: `improvement_policy=locked` per held
+  coordinate, `write_policy.default=ephemeral, 1 note(s) not persisted`.
+- **Fix (Skills): `p` meant "materialize" here and "switch persona" everywhere else.**
+  Materialize moved to `m`, and `p` now switches persona in Skills too. The persona list is
+  also recomputed instead of memoised once, so a sub-persona created mid-session appears.
+
+### Feat: the background is legible, and continuable (V7.H)
+- **`/serve` and `/watch` are one screen.** `Settings > Status > Daemons` leads with what
+  each daemon is FOR, in plain language, before any number: then pid, uptime, port, bind
+  address and whether a token is required. With none running it still explains what they
+  are and the security posture (localhost by default; exposing a server beyond it requires
+  an explicit host AND a token), so knowing what these commands do no longer means reading
+  the source.
+- **Fix: a background task was a dead end.** `/bg` printed a session id its run never wrote,
+  so the id pointed at nothing. A headless run now records its transcript like any other
+  session, labelled `background`, and **`/tasks <id> continue`** loads that conversation
+  into the live session and reprints it. The label identifies which turns happened while
+  you were not watching; it grants and removes nothing else.
+
+### Feat: every capability has a door an agent can use (V7.H)
+- **External parity is now a contract, not an intention.** A coding agent cannot drive
+  menus, so every slash command declares how it is reached without the TUI: either the
+  equivalent subcommand, or `session-only` **with the reason**. The declaration lives on
+  each command, so a new one cannot quietly join, and a test verifies that every declared
+  gate names a subcommand that actually exists (read from the real `--help`) and that every
+  session-only exception explains itself.
+- **Seven new subcommands**, each with `--json` and `-p <persona>`: `status`, `audit`
+  (`--tab`), `memory`, `drift`, `goal`, `review` (list, approve, reject, or `all`), and
+  `doctor` (`--net` to also ping the provider; exits 1 on failure, so it drops into CI).
+  They reuse the same collectors the miniapps render rather than re-querying the engine:
+  two implementations of "what is this persona's status" would disagree the first time one
+  of them changed.
+- The `doctor` checks moved out of the slash command into one shared implementation, since
+  two health reports that disagreed would be worse than one. Still offline by default.
+
+### Feat: creation asks the right number of questions, and remembers them (V7.G)
+- **Two interviews, one question bank.** `personaxis create` asks **12** questions by
+  default (identity, the five trait axes, values, voice, and what it must never do), and the
+  full **20** with `--deep` (envelope width, mood half-life, refusal detail, uncertainty
+  thresholds, memory policy, improvement posture, a voice exemplar). Depth is a property of
+  each item rather than a second list, so a question added to the bank can never be silently
+  unreachable; what is not asked still falls back to a LABELED default, and the creation
+  report keeps separating what the author decided from what the tool assumed.
+- **An abandoned interview is no longer lost.** Answers are saved as they are given, so
+  leaving the deep interview at question 17 does not cost the sixteen already answered; the
+  next run offers to continue. The draft is deleted the moment the persona exists, and a
+  draft written against a different question bank is discarded rather than replayed, since
+  its answers are keyed by questions that may no longer ask the same thing.
+- **The other four sources are visible.** Running `create` with no flags now opens on the
+  six ways to build a persona (12 questions, the full bank, a one-sentence brief, inferring
+  from this project, importing an existing persona, or inducing one from transcripts), each
+  with what it does and what it reads. Previously it dropped straight into the interview and
+  the rest existed only in `--help`. The flags skip the screen, so scripts and agents are
+  unaffected.
+
+### Fix: creation never claims a polish that did not happen (V7.G)
+- **`create` reported "compiled + LLM polished" over a template.** `runCompile` returned
+  nothing, so "it did not throw" was read as "a model rewrote it" — which is false whenever
+  the faithfulness gate rejects the model's rewrite and the deterministic assembly is kept,
+  or the provider is unreachable. Compilation now returns its outcome (`polished`, `via`,
+  `model`, `outPath`), creation reports what actually happened, and a template produced
+  while a model was configured fails loudly on stderr with the reason and the fix. With no
+  model, a template is still a legitimate, quiet result, marked in the file with WHY.
+- **Fix: an unreachable model no longer takes ~24 s to report itself.** The local provider
+  retried three request shapes on failure, but those fallbacks exist for servers that do not
+  support `json_schema`, not for a server that is not there. It now stops on a connection
+  error: 24 s → 10.7 s, measured.
+
+### Feat: drift has three planes, and none of them is a count (V7.F)
+- **Drift stops being a numbers-only report.** A spec is full of strings, arrays and
+  booleans, and until now only the coordinates with an envelope were measured; the
+  qualitative side got a block that COUNTED governed edits per layer, which says a layer
+  moved without saying what moved, from what, or by how much. `/drift` is now three planes,
+  each reporting a magnitude on the same 0–1 scale:
+  **continuous** (u-space over envelope coordinates), **structural** (the per-field diff of
+  the declared spec against the one in force — text, lists, flags, numbers, shapes, added
+  and removed fields alike, each tagged with its layer's edit policy), and **behavioral**
+  (how far the compiled document moves because of those edits, whether the document the
+  host agents are reading is still current, and how many turns have been lived since the
+  last applied change).
+- **Every structural row opens.** Enter shows the literal value the spec declares and the
+  one in force, and says that the spec itself was never rewritten — applied self-edits live
+  in an overlay. That overlay is also why the comparison needs no snapshot file, no baseline
+  copy and no git: both sides already exist on disk.
+- **`/status` and `/drift` stop overlapping.** The live-envelope block left `/status`, which
+  is now strictly the snapshot ("what am I right now") while `/drift` is strictly the delta
+  ("how far have I moved from what I declared, and in what").
+- **Fix (security): an unrecognized provenance source is now untrusted BY RULE.** It made
+  the computed justification trust `NaN`; the gate still refused, but only because
+  `NaN >= min` is false — fail-closed by accident rather than by design, reported as
+  "justification trust NaN". Sources arrive from callers we do not control (MCP clients,
+  agents, JSON on disk), so an unknown label is an expected input. It now scores 0 and the
+  refusal names the source it did not recognize.
+
+### Feat: every setting, for every persona (V7.C)
+- **Configuration is a matrix now.** `Settings > Config` used to list what the CURRENT
+  session was using and say nothing at all about your sub-personas. It now shows one row
+  per setting (model, improve, sandbox, memory, hooks) and one column per persona, with
+  each cell marking whether that persona SET the value or inherited it, and Enter opening
+  the setting for every persona with the layer that decided it (global config, project
+  config, a per-persona assignment, its own spec, policy.yaml, the environment, or this
+  session) and how to change it. The jerarquía is explicit rather than implied: **improve
+  is per persona** (it lives in each persona's own personaxis.md and can be changed for any
+  of them from the drill-down), **sandbox is per session** (one posture per terminal, and
+  the view says so instead of pretending otherwise).
+- **The persona selector belongs to the host.** Any miniapp that can show more than one
+  persona declares its scopes and gets the same selector, in the same place, on the same
+  key (`p`) — Persona and `Settings > Status/Stats` answer for whichever persona it points
+  at. A scoped view is read-only by construction: it re-points the persona's files but
+  never the session's loop or conversation, so it can display another persona and cannot
+  make one speak or evolve by accident.
+- **Fix: the matrix now reports the mode the gate will actually apply.** Reading
+  `improvement_policy.mode` from the frontmatter disagreed with the runtime, which resolves
+  it through `readMode` and lets a sibling `policy.yaml` cap it, the stricter of the two
+  winning. A persona whose spec asked for `autonomous` under a policy pinned at `locked`
+  would have been displayed as autonomous while behaving as locked.
+- **The Ledger is per persona too.** `/audit` is wrapped through the same selector, because
+  every persona keeps its own mutation log, memory chain and self-edits; a ledger that only
+  ever showed the main persona's evidence is not evidence.
+- **The Command Center says what it acts on.** A permanent scope line sits under the
+  persona and cwd: every section acts on the persona named there, and Fleet is the one that
+  spans projects, saying which span it is showing.
+- **Fleet gained a host column.** Next to whether a persona is awake, you now see which
+  agents can actually READ it — all four supported hosts: claude-code, codex, openclaw and
+  Hermes. Presence and reach are different questions. The host list is derived from the
+  compile-target registry and each host's location comes from the same `place()` the
+  compiler writes through, so registering a new target makes it appear here too. Reach is
+  verified against the filesystem, never inferred from configuration: a SOUL host counts
+  when its SOUL.md exists, and a baseline host counts for the main persona only when the
+  baseline actually carries the managed block pointing at the compiled document.
+- **Fix: `compile --platform codex` now writes AGENTS.md.** It reported success while
+  writing a CLAUDE.md and no AGENTS.md, leaving the main persona unreachable from Codex.
+  Baseline injection did not know which platform had been asked for. Without `--platform`
+  the previous policy stands (refresh the baselines a project already has, create CLAUDE.md
+  only when it has none), so no project gains baselines for hosts it does not use.
+- **Fix: a persona with no `state.json` renders instead of blanking the view.** Every
+  freshly created sub-persona is in that state, and `readState` throwing took the whole
+  Persona view down to an empty screen. It now degrades to "not initialized yet" with the
+  command that fixes it.
+
+### Feat: a consolidated command surface, and an aura that is a character (V7.B, V7.D)
+- **The command surface is now fourteen**, in four groups (Talk / Identity / Build / Run),
+  plus `/sandbox`, `/bg`, `/help` and `/exit`: eighteen entries when you browse the palette. Everything else became a tab or an action and is
+  documented, not hidden: `/help moved` prints where each old verb lives now, typing an
+  absorbed verb still runs it, and the palette lists them after the primary ones with an
+  arrow to their new home. `/mode` became `/sandbox` (matching the status bar) and now says
+  what each posture actually permits. `/audit` is one Ledger miniapp: Timeline (mutation
+  rate chart, clamps, blocks, most-moved coordinate, and the rewind), Integrity (hash chain
+  plus the real replay that rebuilds state from the log and names anything it cannot
+  explain), Self-edits and Evaluations, each opening with a plain-language line saying what
+  it proves.
+- **The aura is a character now**: a PORTRAIT, drawn part by part from the identity hash.
+  A full body at real proportions and a legible face are incompatible in a terminal (a head
+  at 1/7.5 of the figure would need 25+ rows), which is why avatar generators frame a bust,
+  and so do we: crown, side locks, ears, brows, eyes with lids, nose, mouth, jaw, a neck of
+  its own, solid shoulders and a filled torso, plus an orbiting mark. Two archetypes, human
+  and android, each with its own bank, so an android never wears a human hairstyle. Every
+  slot is drawn from its own stream of the hash, so personas differ in anatomy rather than
+  in glyphs, and each gets a four-color palette placed by the golden-ratio sequence with a
+  harmony scheme of its own: **5000 personas produce 5000 distinct shape+color identities**,
+  measured, not asserted.
+- **The aura moves, and moves visibly.** Five motions run on independent short rhythms
+  (gaze, brows, mouth, hair sway, breath), so something changes in most consecutive frames
+  rather than once every few seconds. Two things had to be fixed for this to be true: the
+  Persona view asked for frame 0 on every render, and the miniapp host repainted once a
+  second regardless, which capped the frame rate no matter what the drawing did. Providers
+  now declare their own cadence (`tickMs`), so Persona animates at 250 ms while text-only
+  views stay at 1 s instead of being repainted four times a second for nothing. Live state
+  still shows through: affect brightens the face, drift past the thresholds flares the mark.
+  `PERSONAXIS_NO_ANIM=1` pins frame 0.
+
+### Feat: /skills actually does something (V7.A5)
+- The miniapp listed rows and nothing more: `pull` only printed a hint and there was no way
+  to add, update or remove anything, so with no skills declared every key was a no-op. It
+  now has a real engine, shared with the external subcommands: `a` declares a skill from a
+  local path, a `github:` ref or a registry coordinate (typed inline), `p` materializes it
+  next to the spec, `u` refreshes it from its source and says whether anything changed, `d`
+  stops declaring it (two-key confirm, files kept), and Enter applies it. Every action is
+  scoped to the persona selected in the sub-nav (main or any sub), and writes touch only
+  `extensions.skills`, leaving the rest of the document untouched.
+
+### Fix: resuming a session rebuilds that conversation (V7.A6)
+- `/resume` used to continue a saved session underneath whatever was already on screen, so
+  two different conversations shared one view. Resuming now closes the outgoing session
+  (distilling it properly), clears the screen and scrollback, and re-prints the chosen
+  conversation in full, so you land inside it exactly as you left it.
+
+### Fix: the terminal no longer corrupts itself on resize (V7.A3)
+- Resizing the window used to repeat the output "hundreds of times". Two causes: the
+  transcript re-rendered every committed line whenever the width changed, and long lines
+  were left for the terminal to wrap, which breaks Ink's line-count based erase so the old
+  frame is never fully cleared. Lines are now word-wrapped ONCE, at the width they are
+  printed at (ANSI-aware, colors survive the break), and committed history never reflows,
+  exactly like real terminal scrollback. The live region still follows the current width.
+
+### Fix + feat: the Genesis interview behaves like an interview (V7.A4)
+- Keystrokes already queued when the wizard opened (the Enter that launched `/create`) were
+  eaten by the first question, which is why typing needed an extra Enter and "any key"
+  seemed to advance. Input is now armed a beat after mount. **Esc no longer skips**: it asks
+  whether to leave, and only `y` leaves; skipping is `s` (on an empty field for text
+  answers). **You can go back** with the left arrow, or `b` where the arrows already drive a
+  scale; going back clears that answer so it can be given again. Every question shows a
+  short example, and invalid keys (including out-of-range digits) are ignored instead of
+  advancing.
+
+### Feat: a clearer turn (V7.E1-E3)
+- Your prompt is no longer painted with a background fill, and the persona's reply no longer
+  sits in a box that visually merged with the input frame: one visual language per role
+  (you: cyan caret + bold; persona: its own colored name prefix). The header dropped the
+  redundant "personaxis" wordmark and reads as the input's chrome (persona · project ·
+  posture). The status bar gained a proportional context meter that shifts amber then red,
+  session spend, the answering model, reply time, improve mode, posture, and any running
+  daemon, dropping segments from the right as the terminal narrows.
+
+### Fix: four behaviour bugs found in the third dogfood (V7.A)
+- **The persona thanked you "for restoring my access" out of nowhere.** A sandbox-posture
+  change was glued in front of your message, so the model answered the environment note as
+  if you had written it. It now travels as its own ephemeral system message (`envNote`), and
+  your turn reaches the model exactly as typed.
+- **shift+tab did nothing until the next turn.** The posture was snapshotted when the agent
+  was built and the header lived outside React. The policy now reads the posture live (so a
+  mid-turn change applies to the next tool call) and the header repaints immediately.
+- **The persona could not answer "what is your goal".** Two defects: `/goal` advertised
+  "set / show / clear" but only understood `clear`, so `/goal set X` stored the literal text
+  "set X"; and the goal sat buried mid-prompt. All three verbs work now, and the goal is
+  rendered last in the runtime context, where the model actually reads it.
+- **The registry filled with ghost projects.** Test runs registered throwaway temp
+  directories in the real user registry (26 projects, 25 of them deleted temp dirs, while
+  "personas" read 0). Temp paths and non-existent paths are now refused, paths are stored
+  canonically, dead entries are pruned on read, and the view reports personas across
+  projects (main + subs), which is the number a human expects.
+- The stickman emblem is commented out of the startup banner (kept in the module).
+
+### Feat: a global home, like the best agent CLIs (V6.10)
+- `~/.personaxis` gains a cross-project `history.jsonl` (one line per user turn: when,
+  where, which persona, what was asked) and a `stats-cache.json` (per-day, per-model
+  tokens/turns/spend, fed at session close), so Settings > Stats draws tokens/day per
+  model instantly across every project. `file-history/` is reserved as the seam for
+  artifact-level rewind. The full personaxis <-> claude-code layout map:
+  `docs/architecture/home-layout.md`. All home writes are best-effort by construction.
+
+### Feat: the baseline reaches every host the project actually uses (V4.3/V6.9)
+- `personaxis compile --root` now also refreshes the `PERSONA:BASELINE` block in
+  `GEMINI.md` (Gemini CLI) and `.github/copilot-instructions.md` (GitHub Copilot) WHEN
+  those files exist, and never creates them (no litter). The audit behind the choice,
+  including why AGENTS.md already covers Cursor/Zed/Amp and the 60K+ ecosystem, lives in
+  `docs/architecture/target-matrix.md`. The public README moves to the v4 positioning
+  (the discovery chain over every default-read file) and documents `attest --format`.
+
+### Feat: the credential in the stack's own formats (V4.1/V6.9)
+- `personaxis attest --format vc` emits the behavioral attestation as a W3C Verifiable
+  Credential (Data Model 2.0): `@context` `credentials/v2`, type
+  `PersonaBehavioralAttestation`, `validFrom`/`validUntil`, claims under
+  `credentialSubject`, and a locally re-derivable integrity proof (the hosted attestation
+  service upgrades issuer + proof to KMS-signed). `--format a2a` emits an A2A Agent Card
+  `capabilities.extensions[]` entry (`personaxis.com/ext/attestation/v1`), so signed Agent
+  Card hosts can carry the attestation without knowing personaxis. Bonus fix: attesting a
+  just-created persona no longer fails on a missing `state.json` (it attests the canonical
+  baseline). The injected CLAUDE.md/AGENTS.md baseline now says, in one human-readable
+  line, what PERSONA.md is and where it comes from (V4.2).
+
+### Feat: complete per-command docs + a parity gate (V6.7)
+- 13 new pages under `docs/commands/` (list, template, edit, config, model, credential,
+  menu, onboard, sign, verify, mcp, ps, card), `dash.md`/`sigil.md` rewritten to the V6
+  reality (drift view absorbs /dash; the aura), and `repl.md` rewritten around the V5/V6
+  layout. New CI gate: every subcommand registered in `src/index.ts` must have a docs page
+  (`test/docs-parity.test.ts`), so the docs can never fall behind the CLI again.
+
+### Feat: where-you-are is always visible (V6.6)
+- The REPL header now reads `◉ personaxis · <name> (main|@sub) · <project> · <posture>`.
+  Persona > Sub-personas became actionable rows: where you are first, then each sub with a
+  drill-down card (spec path, assigned model profile, state, and exactly how to talk to it
+  or assign it a model), plus a create-new row.
+
+### Feat: real charts + responsive views (V6.4, V6.5)
+- New tested chart module (`@personaxis/tui` charts): a multi-series ASCII line chart with
+  a labeled Y axis, X date marks and a per-series legend, plus a GitHub-contributions
+  heatmap (month labels on top, Mon/Wed/Fri gutter, Less..More legend). Settings > Stats
+  now draws both (activity heatmap + turns/day); the rewind/history view opens with
+  mutations-per-day, clamp/block counts and the most-touched coordinate, so WHY to rewind
+  is visible before choosing where. All view lines now clip to the terminal width with
+  ANSI-aware, word-boundary truncation (`fitAnsi`), so long values never wrap and corrupt
+  the frame on narrow terminals.
+
+### Feat: aura v2, a generated being instead of a template (V6.3)
+- The persona's aura now GENERATES its body from independent random draws seeded by the
+  persona's identity hash: head shape and width, optional antennae, torso width/height/
+  texture, arm pose, leg stance with its own gait, and a 1-3 particle crown orbiting with
+  its own direction and phase. Over 10^7 distinct beings, and every persona breathes,
+  blinks and walks at its OWN rhythm (breath period, blink period and starting phase are
+  per-seed), so no two personas look or move alike. Live state still shows through:
+  intensity brightens the face, drift past thresholds flares the crown. Deterministic and
+  snapshot-tested, including a 200-seed no-collision guarantee.
+
+### Feat: interactive miniapps, the host stops being passive text (V6.1)
+- The tabbed host now takes typed rows next to plain lines: a cursor (❯) moves over
+  selectable rows only, Enter runs the row's action (edit-in-place with a toast, or a
+  stackable DRILL-DOWN with a breadcrumb), Esc/← pops the drill before leaving the view,
+  and each row can declare its own footer hint. Settings > Config gains an Actions block
+  that edits real state in place (sandbox posture, improvement mode via the real
+  governance-gated `runMode`, global default model profile persisted to
+  `~/.personaxis/config.json`); Settings > Status drills into per-coordinate live-state
+  detail (value, envelope, u, band); Settings > Usage drills into the per-model breakdown;
+  Persona > Anatomy turns the ten layers into drillable rows showing each layer exactly as
+  declared in the spec. Pipes keep printing the same collector text (single source of
+  truth). Tests: `test/tabbed-interactive.test.tsx`.
+
+### Fix: the "press Enter twice to enter a menu" bug (V6.2)
+- Root cause: suspensions (`/menu`, `/model`, `/config model`, `/create`, `/proof`) spawned
+  a SECOND full CLI on the same console while the parent's stdin stayed in flowing mode
+  with no listeners, so the two processes split keystrokes (Windows distributes console
+  input among active readers: every other key vanished). Two-part fix: `withConsoleYielded`
+  pauses the parent's stdin for the child's whole lifetime (covers `/create` and `/proof`),
+  and `/menu` / `/model` / `/config model` now open the Command Center IN-PROCESS (no child
+  process, no per-open Node boot, no race). Tests: `test/console-yield.test.ts` +
+  `test/view-first-key.test.tsx`.
+
+### Feat: generalized view system + miniapp components (V5.P1.1)
+- `InkScreen.openView(name, params)` now opens ANY registered full-height view
+  (`registerReplView`), rendered as an overlay that never erases the scrollback; new
+  `NavBar`/`SubNavBar`/`Table` components (`@personaxis/tui/ink`) and a generic tabbed host
+  (`cli/src/repl/views/tabbed.tsx`: ←/→ tabs, ↑/↓ scroll, 1-9 jump, Esc back, 1 s live
+  refresh disabled under PERSONAXIS_NO_ANIM).
+
+### Feat: the Settings miniapp (V5.P1.2, absorbs /state and /cost)
+- /status /state /usage /cost /config open ONE Settings miniapp with tabs Status (session
+  snapshot + envelopes + self-edits + proposals), Config (effective config and where each
+  value comes from), Usage (session spend, context bar, per-model breakdown via the new
+  `ctx.usage.byModel`), Stats (12-week activity heatmap + streaks from local sessions).
+  In pipes each command prints the same data as a text panel (one source of truth:
+  `views/settings-data.ts`). Test: `cli/test/settings-views.test.ts`.
+
+### Feat: /resume session picker (V5.P1.3, absorbs /sessions)
+- /resume with no args opens a picker ordered by LAST MESSAGE (not last open), with a
+  "Xm/h/d ago" column, live marker, Enter resumes, Esc backs out. /resume <id|name> and
+  pipe listing unchanged; /sessions is now a hidden alias.
+
+### Feat: /memory browser (V5.P1.4)
+- /memory opens a two-level menu (kinds → entries) over the real memory files; Enter opens
+  the file in the default editor cross-OS ($VISUAL/$EDITOR, else start/open -t/xdg-open);
+  c/p run consolidate/prune in place; search stays as /memory search <q>.
+
+### Feat: /improve minimenu + /review queue view (V5.P1.5-6)
+- /improve opens a three-option menu that states what each mode REALLY does before choosing;
+  /review opens the pending self-edits with a/r per item, A for all, and schedules the
+  recompile after approvals. Textual forms unchanged for pipes.
+
+### Feat: /doctor consolidated and offline by default (V5.P1.7)
+- /doctor absorbs /validate (spec validity) and /lint (tier-aware findings), adds
+  recompile-pending detection and a persona selector (/doctor @sub). It never touches the
+  network unless asked: /doctor net runs the provider ping. /validate and /lint remain.
+
+### Feat: personaxis model, per-persona and per-project (V5.P1.8)
+- New external `personaxis model` shows the resolved model for the main persona and every
+  sub; `personaxis model set <name> [--persona <slug|main>] [--project]` scopes overrides
+  (writes `personas.<slug>` in the chosen config). Inside the app /model opens the provider
+  menu; textual set stays for pipes. Test: `cli/test/model-set.test.ts`.
+
+### Feat: /hooks and /skill menus (V5.P1.9-10)
+- /hooks opens a per-host status menu (installed ●/○, project/global scope, what the hook
+  does, exact path; install/uninstall in place, new `hookStatus`/`uninstallHook`); /skill
+  opens a per-persona skills list (main + subs, materialization status, Enter applies).
+
+### Fix: memory never records infrastructure failures, and "recalled" reads like language (V5.FIX.3)
+- A provider failure (401, unreachable endpoint) is not the persona's lived experience: the
+  session distiller, the previous-session recap and the agent-run ledger now skip
+  infra-error replies (`isInfraErrorReply`); the session transcript keeps them, memory does
+  not. The per-turn "recalled" block drops the cryptic `kind×N` for human phrasing
+  ("2 user preferences: user.name, interlocutor.role"), shows EVERYTHING the persona read
+  (no "+N more" cap on recalls), and snips details at word boundaries with an ellipsis.
+  Test: `core/test/infra-error-memory.test.ts`.
+
+### Fix: model resolution can no longer strand a session (V5.FIX.2)
+- Any provider, any mode, same three fields: the engine speaks OpenAI-compatible
+  chat/completions (OpenAI, Anthropic, Cohere, Hugging Face router, Ollama, LM Studio,
+  llama.cpp/vLLM; local endpoints need no key, and the resolver knows it). When the DEFAULT
+  layer is broken (e.g. it points at a profile whose key env var is unset), resolution now
+  falls back to the first USABLE profile (real-key profiles first, local-no-key second) and
+  says so; explicit assignments (env vars, the spec's runtime block, per-persona) are never
+  silently switched. Provider failures render as ACTIONABLE messages (what failed + the /model
+  fix) instead of raw HTTP dumps, across the agent, the responder and headless. Tests:
+  `core/test/model-fallback.test.ts`; provider matrix in `docs/guides/configuration.md`.
+
+### Fix: the test suite can never touch your real config again (V5.FIX.1)
+- Incident: a Command Center test sandboxed `PERSONAXIS_HOME` by mutating `process.env`
+  around async UI work; a deferred write escaped the restore and clobbered the developer's
+  real `~/.personaxis/config.json` (defaultProfile flipped to a keyless test profile, so
+  every model call answered 401 "no api key supplied"). Fix: a vitest setup file (cli AND
+  core) now assigns every test worker a throwaway `PERSONAXIS_HOME` before any test module
+  loads, with no restore step by design. Verified: the real config's hash is byte-identical
+  across a full suite run.
+
+### Docs: full command reference + TUI↔external parity (V5.P5)
+- `docs/commands/README.md` rewritten for the miniapp era (what each command opens in the
+  TUI and what it prints in pipes); new `docs/commands/parity.md` mapping every capability
+  to its TUI door, its scriptable door and its machine-readable surface, with the honest
+  gaps named. New `personaxis model --json` (model + endpoint per persona; keys never
+  included).
+
+### Feat: research-backed compiled document, the "Above all" closing (V5.P4)
+- New `docs/architecture/persona-prompting.md`: the dated 2026 research behind PERSONA.md's
+  shape (persona conditioning helps behavior and hurts knowledge claims; structural
+  boundaries lift compliance 16-24%; the attention U-curve; per-turn re-injection as the
+  strongest drift mitigation, which validates the runtime's architecture). The audit found
+  one real defect: the hard limits sat mid-document. The assembler now closes every compiled
+  doc with "## Above all", a recency echo of the hard limits in the final position (echo,
+  never new content; the faithfulness gate still forbids dropping any limit). Propagated to
+  the canonical PERSONA template (sync-mirror byte-identical) and the golden CMO recompiled
+  with the new closing. Test: `core/test/compile-assemble.test.ts`.
+
+### Fix: the startup banner can no longer corrupt (V5.P3.1)
+- Root cause: the logo animation repainted in place with raw `\x1b[s`/`\x1b[u` cursor
+  save/restore, which Windows Terminal and tmux do not honor reliably, cascading the emblem
+  and half-built wordmark down the screen. The reveal is now strictly append-only (each line
+  prints exactly once), identical scrollback to the static render, on every terminal. The
+  emblem is now the personaxis STICKMAN (the real logo). `awaken()` had the same bug and got
+  the same fix.
+
+### Feat: the aura, the persona's living mark (V5.P3.2)
+- The abstract sigil grid is replaced (in startup, /persona) by the AURA: a small creature
+  with a face, body, arms, legs and a particle crown, every feature derived
+  deterministically from the persona's identity hash, breathing across frames, brightening
+  with live affect, and flaring its crown when drift crosses thresholds. Named, explained in
+  place ("aura #hash, unique to this persona"). The sigil remains for cards/hashes. Test:
+  `tui/test/aura.test.ts`.
+
+### Feat: the Persona miniapp (V5.P3.3)
+- /persona opens a real miniapp: Identity (with the aura), Anatomy (the TEN canonical layers,
+  one summary line each), Resources, Sub-personas, Evolution (governed edits per layer),
+  Values (the arbitration ranking, honestly framed). Pipes keep the inline summary.
+
+### Feat: Command Center, global scope + easier navigation (V5.P3.4)
+- The Command Center always shows WHERE you are (persona · cwd); left/right arrows now
+  enter/back everywhere; the Fleet section gains a scope switch (g): "This project" or
+  "All my projects", the latter reading the machine-wide registry (projects self-register on
+  open) with per-project presence (● awake / ○ idle via .live.json) and the exact command to
+  open any persona.
+
+### UX: readable per-turn telemetry (V5.P3.5)
+- The end-of-turn block opens with a dim "this turn" title and multi-value facts (recalled,
+  evolved, evaluated, self-edits) render one line per item instead of a comma run.
+
+### Feat: two-plane drift (V5.P2.1)
+- /drift now shows BOTH planes with a human legend: the continuous plane (u per envelope
+  coordinate, bands, steps-to-cross) and a qualitative plane derived from existing ledgers
+  (governed self-edits per layer applied/pending, spec-hash vs the compile manifest,
+  recompile-pending). No spec change; the evidence was already there, now it is visible.
+  Test: `cli/test/qualitative-drift.test.ts`.
+
+### Feat: /proof runs on YOUR persona (V5.P2.2)
+- The proof scenes now run on the ACTIVE persona's real coordinates (on a throwaway copy,
+  seeded from its live state; the header says so), with `--demo` keeping the embedded one.
+  Root-cause fix in the evidence scene: band boundaries live on the coordinate's natural
+  scale and an envelope can stop short of them (the canCross geometry), so the scene now
+  picks a coordinate whose next boundary is actually reachable and counts from the LIVE
+  value. Verified: demo crossing 6 = certified minimum 6; a real persona passes 12/12.
+
+### Feat: visual state history for /rewind and /replay (V5.P2.3)
+- /rewind (and /replay) open a timeline of the mutation_log: pick a point, see exactly which
+  fields a rewind would restore and to what, confirm with a second Enter. Pure math over the
+  log (offline, no LLM); the rewind is recorded, history is never rewritten.
+
+### Feat: honest /arbitrate (V5.P2.4)
+- /arbitrate now says what it IS: a deterministic oracle over the declared value order
+  (governance ≻ weight ≻ name) with a generated concrete example, and states plainly that
+  runtime enforcement happens via protected fields + hard virtues, not per-turn arbitration.
+
+### Feat: create finishes the job (V5.P2.5)
+- `personaxis create` now runs the LLM polish automatically whenever a model is configured
+  (`--no-polish` opts out); offline results carry a visible "pending polish" marker that the
+  next compile clears. `--from-project` is bounded by design (default-read files only, 6K
+  chars each, 24K total, cost printed up front). The interview grew to cover metacognition
+  (uncertainty posture), memory (what persists) and governance (who approves change), item
+  bank 1.1.0, every answer mapped by a named deterministic rule with evidence. /init stays as
+  the quick-template alias. Test: `core/test/genesis-interview-layers.test.ts`.
+
+### Security: /serve hardened (V5.P2.6)
+- serve binds to 127.0.0.1 by default; a non-local `--host` refuses to start without
+  `--token`, and the token enforces `Authorization: Bearer` on every route (401 otherwise).
+  Port validation and a clear one-server-per-port message. Test:
+  `cli/test/serve-security.test.ts`.
+
+### Feat: structured background tasks (V5.P2.7)
+- /bg records structured stream-json events plus a state snapshot; /tasks <id> shows the
+  reply, event count and "N mutations since start", and the FIRST consult of a finished task
+  joins the conversation exactly once (context and /compact see it; later consults only
+  display). The list shows status, elapsed minutes and whether it already joined.
+
+### UX: /goal /loop /overseer explained in place (V5.P2.8)
+- /goal shows a concrete example of why you would set one; /loop validates its argument and
+  explains what a governed tick actually does; /overseer introduces itself as the read-only
+  cross-project registry behind the all-projects view.
+
+### UX: consolidations (V5.P1.11 partial)
+- The command chip is now a neutral `›` (no platform glyphs); the startup line explains
+  addressing with the REAL sub-persona slugs (the literal "@address" placeholder is gone);
+  /help groups every command (rewind/skill/bg/tasks/goal/loop/mode placed) and hides
+  /dash + /sessions as aliases.
+
+
+### Feat: runtime context block (V5.P0.1)
+- The agent now KNOWS what defines it: every session injects a generated "Runtime context"
+  block into the system prompt (never written into `personaxis.md`/`PERSONA.md`): who it is
+  (main or sub, display name), the spec_version/apiVersion it operates under, its defining
+  files (spec, compiled doc, state.json), its resource space, the project cwd, addressable
+  sub-personas, the improve mode, the sandbox posture and the answering model.
+  `repl/awareness.ts` (expanded), wired into the agent turn, the offline responder and
+  headless `-p`. Test: `cli/test/awareness.test.ts` (4). Dogfooded live (Cohere): the CMO
+  names its exact spec path, compiled path, resource space and spec_version.
+- Fix (root cause): `LlmResponder` capped the identity at 6,000 chars, so anything appended
+  to a long compiled doc was silently truncated. The runtime context now travels as its own
+  `awareness` field, injected AFTER the cap (`core/src/responder.ts`).
+
+### Feat: /context by category + /context all (V5.P0.3)
+- `/context` now shows an estimated breakdown of WHAT fills the window (system prompt,
+  compiled persona, runtime context, memory, skills on-demand, messages, free space) with a
+  usage bar; `/context all` expands memory files, declared skills and the message mix.
+
+### Feat: structured /compact with a before/after report (V5.P0.4)
+- The compaction summary is a structured handoff (Decisions taken / Current task state /
+  Files touched / Facts / Open items, identifiers preserved verbatim) and `/compact` reports
+  tokens before → after (freed amount). Checkpoint persistence unchanged (survives /resume).
+
+### Feat: home persona onboarding + global project registry (V5.P0.2)
+- Starting `personaxis` at the user's HOME with no persona now offers to create the MAIN
+  personal persona in `~/.personaxis/` (inherited by projects without one). Every project
+  session best-effort registers its root + sub slugs in `~/.personaxis/registry.json`, the
+  backbone for the Command Center's all-projects scope.
+
+## [0.13.0] - 2026-07-17: Claude Code parity (FASE 3/4), the persona wedge, persona language
+
+### Feat: SOUL.md / SoulSpec import (V3.3, embrace-extend)
+- **`personaxis create --from-import SOUL.md`** (or a SoulSpec package directory) turns the
+  ecosystem's soft persona file into a governed, validated 10-layer persona. Deterministic
+  mapping with per-coordinate provenance: the name (from `soul.json` > `IDENTITY.md` > the first
+  heading), the identity section into the self-concept, and boundary/never bullets onto the REAL
+  refusal surface (`self_regulation.prohibited_behaviors`); all prose still flows to the LLM
+  extractor, and numbers are never invented from the file (the jacobian gate still applies).
+  Export back to SOUL.md was already supported (`compile --platform openclaw|hermes`), so a
+  persona can live inside OpenClaw both ways. Tests: `core/test/genesis-soul-import.test.ts` (4),
+  `cli/test/soul-attest.e2e.test.ts`.
+
+### Feat: `personaxis attest`, the local behavioral credential (V3.3)
+- **`attest`** mints `personaxis.attest.json`: the spec signature (as `sign`) PLUS the behavior
+  around it: global drift and per-layer state vs `governance.drift_thresholds`, the tamper-evident
+  memory-chain head, mutation count, and an expiry (`--ttl <hours>`, default 24). Minting over an
+  invalid persona is refused (exit 2). **`attest --check`** re-derives every claim NOW and answers
+  "is this persona still provably who it declares, within bounds?": exit 0 live / 1 not live
+  (tampered, over thresholds, chain broken, expired) / 2 error. This is the engine seam the hosted
+  attestation service extends with cryptographic signing + revocation (doc 10 v3). Docs:
+  `docs/commands/attest.md`. Test: `cli/test/soul-attest.e2e.test.ts` (3, full lifecycle).
+
+### Feat: real TUI chrome (V3.2)
+- **The REPL transcript is role-aware.** Persona replies render inside a rounded bubble, each turn
+  opens with a horizontal rule, the header sits on a bordered bar, and the input lives in its own
+  rounded box (yellow while busy or awaiting an approval). `TranscriptItem { text, role }` carries
+  the role through `InkScreen.print` (plain strings stay accepted).
+- **Verification presentation upgraded, never silenced** (explicit request: verify is not noise).
+  A shield badge opens the run (`⛨ verify · running N gates…`), each gate reports `✓/✗ name`, and
+  the verdict closes it (`⛨ verify ok (n/q gates)` or an inverse red `⛨ verify FAILED`).
+- **`/status`, `/context`, `/cost`, `/usage`, `/doctor` render as titled panels** via a new pure
+  `panel()` helper (left-rail box chrome, ANSI-safe, identical output in Ink and non-TTY line
+  mode). Test: `cli/test/panel.test.ts`.
+- **Command Center chrome:** the fullscreen frame is now a real window (rounded outer border,
+  bordered header bar, chip-style keybar with inverse key caps); windowed lists budget the new
+  frame height. Tests: `tui` chrome test in `ink-repl.test.tsx`, `command-center.test.tsx` green.
+
+### Fixed
+- **Sub-persona resources now resolve against the persona's own home, not just the process CWD**
+  (V3.1). File tools resolved every relative path against `policy.workspaceRoot`, so a compiled
+  doc's `./memory.md` only worked when the REPL happened to run from the persona's folder; off-home
+  the read failed and the failed read aborted the run with `no_progress` and no reply. Three
+  general fixes: `Policy.resourceRoots` + `personaResourceRoots()` derive the ACTIVE persona's
+  read roots at every level (sub / root / home) and read tools fall back through them (writes stay
+  confined to the workspace); a missing file on `read_file`/`list_dir` is now an observation
+  ("note: … does not exist"), never an "error" that zeroes step progress and trips the
+  `no_progress`/`execution_error` stop conditions; and compiled docs state that memory is already
+  injected at session start so agents stop burning steps re-reading it. Wired in the REPL policy
+  and the SDK (`agentRun`, `evaluateCmd`). Test: `core/test/tools-resource-roots.test.ts` (8).
+- **Band labels no longer leak into the compiled doc for band-invariant expressions** (found by
+  the PB-J property test, which failed ~1 in 19 runs on random seeds; it was a real assembler bug,
+  not test flakiness). `- **warmth** (low): …` printed the CURRENT band label even when the
+  coordinate's prose was identical across bands, so the artifact changed with the value while
+  `staticallyDecorative` correctly said it could not: J_compile measured a phantom σ > 0 and the
+  static check contradicted the measurement. The assembler now prints the band label only when the
+  expression actually varies by band. PB-J passes 30/30 seeded runs.
+- **Regex verifiers with PCRE/Python inline flags no longer crash.** A gate like
+  `(?i)(api[_-]?key|secret|password)…` threw "Invalid regular expression: Invalid group" (JS RegExp
+  rejects `(?i)`). `compileRegex` now strips inline flag groups and lifts their supported flags
+  (i, m, s, u, y) to the JS flags argument.
+- **Predicate verifiers gained `negate`** so a `no-secret-leak` regex passes when the pattern is
+  ABSENT (the CMO golden now sets `negate: true`). Additive schema field, backward-compatible.
+
+Lockstep 0.13.0 across all eight packages. Highlights this release: the Mode 1 wedge (scan / sign /
+verify / SDK guardInput), Claude Code parity (headless `-p`, markdown render, `@file` mentions,
+`/skill`, persistent permissions, `/rewind`, auto-compact, user hooks, MCP client registry,
+background tasks, opt-in telemetry, streaming, statusline template), the fleet view (`personaxis ps`,
+presence) and persona card, plus the additive `persona.voice.language` spec field. Interactive TUI
+polish (input queue, multiline/image, statusline wiring) and web tools are tracked as follow-ups.
+
+### Feat: persona card `personaxis card` (V2-F4.3c)
+- `personaxis card` prints a shareable card: the deterministic sigil glyph plus verifiable stats
+  (name, role, spec version, sigil seed, mutation count, content SHA-256). `--json` for the data.
+  An SVG/image export is a follow-up.
+
+### Feat: fleet view `personaxis ps` (V2-F4.1/F4.2)
+- `personaxis ps` shows every persona in the project as awake or idle (from the `.live.json`
+  presence marker, refreshed within 30s), with its mutation count, current tone, and last activity.
+  The Command Center Fleet section and an explicit periodic heartbeat are follow-ups.
+
+### Feat: configurable statusline template (V2-F3.D20)
+- `config.statusline` accepts a template with `{persona}`, `{model}`, `{posture}`, `{drift}`,
+  `{tokens}` placeholders, rendered by `renderStatusline`. Wiring it into the live Ink status line
+  and a `keybindings.json` are follow-ups.
+
+### Feat: opt-in telemetry (V2-F3.D21)
+- `config.telemetry.enabled` (default OFF) turns on a lightweight span log appended as JSONL to
+  `.personaxis/telemetry.jsonl`. A full OpenTelemetry SDK/OTLP exporter is a follow-up; the sink
+  never throws.
+
+### Feat: background tasks (V2-F3.B10)
+- `/bg <prompt>` runs a prompt as a detached background task (a headless `-p` run whose output
+  streams to `.personaxis/tasks/<id>.out`); `/tasks` lists tasks with live status and `/tasks <id>`
+  shows the output.
+
+### Feat: streaming replies (V2-F3.E23)
+- The LLM responder can stream: pass `onToken` and it sends `stream: true`, parses the SSE deltas,
+  and emits each chunk as it arrives (still returning the full string). `personaxis -p` streams live
+  for `--output-format text` (tokens) and `stream-json` (per-token events); `json` buffers. The
+  in-REPL incremental Ink render is a follow-up.
+
+### Feat: MCP client registry (V2-F3.B11, config)
+- `personaxis mcp add|list|remove` manages the stdio MCP servers this persona can mount as tools
+  (stored in `config.mcpServers`, project or `--global`). This is the client inverse of the
+  `@personaxis/mcp` server. Mounting the registered servers' tools into the live agent loop (with a
+  `server:` prefix) is the follow-up.
+
+### Feat: user hooks lifecycle (V2-F3.C14)
+- Persona lifecycle hooks (`.personaxis/hooks.json`) now fire on `UserPromptSubmit` (blocking, in the
+  REPL and `-p` headless) and `SessionStart` (REPL startup), alongside the existing `PreToolUse` /
+  `PostToolUse`. A hook receives the event JSON on stdin; blocking hooks can veto a prompt, and a
+  timeout fails open. Documented in `docs/guides/configuration.md`.
+
+### Feat: auto-compact (V2-F3.A3)
+- When the model's context window fills past ~85%, older turns are auto-summarized once (with a
+  visible notice) instead of waiting for a manual `/compact`. Best-effort: needs a model and never
+  breaks the turn on failure.
+
+### Feat: /rewind state checkpointing (V2-F3.D19)
+- `/rewind [n]` undoes the last N state mutations by restoring the prior values (envelope means plus
+  a replay of the truncated log) and appending the restoring mutations. The hash-chained
+  mutation_log is never truncated, so the rewind is itself audited and tamper-evidence survives.
+
+### Feat: persistent tool permissions (V2-F3.B9)
+- `config.permissions.{allow,deny}` glob rules (project rules concatenate onto global) are consulted
+  before the human is asked: a `deny` match blocks a tool, an `allow` match auto-approves it, deny
+  wins. Patterns match the tool name, `name detail`, and `name:detail` (e.g. `bash`, `bash rm *`).
+
+### Feat: /skill command (V2-F3.C13)
+- `/skill` lists the persona's declared skills with their status; `/skill <name> [args]` reads
+  `skills/<name>/SKILL.md` and applies it as a persona turn.
+
+### Feat: headless one-shot + markdown rendering (V2-F3 A6, E22)
+- `personaxis -p "<prompt>"` runs a single governed turn and prints the reply, then exits
+  (non-interactive, no Ink, reads stdin if no prompt is given). `--output-format text | json |
+  stream-json`, so a developer or CI can script the persona.
+- Persona replies in the REPL now render markdown (headers, bullet/numbered lists, fenced code
+  blocks, inline bold/italic/code) with a hanging indent for multi-line answers.
+- `@path` file mentions (V2-F3.A5): a message like `review @src/app.ts` inlines that file's content
+  for the persona (works in the REPL and in `-p`), without colliding with `@slug` persona routing.
+
+### Feat: persona signing + verification (V2-F8 wedge)
+- `personaxis sign` writes `personaxis.sig.json`, a local integrity attestation over the source
+  `personaxis.md` (SHA-256 content hash + deterministic sigil fingerprint + canonical_id, spec_version).
+- `personaxis verify` recomputes the hash and reports tamper-evidence (exit 0 verified, 1
+  mismatch/tampered, 2 error), a CI-gateable check. This is the free, self-hostable seam the hosted
+  verifier extends into a cryptographically attestable, agent-to-agent credential (Mode 1 wedge).
+- Pairs with the existing `personaxis scan` (injection/jailbreak audit) as the anti-tamper half of
+  the "ship an agent whose persona holds and is provable" story.
+
+### Feat: persona language (`persona.voice.language`, spec v1.1 additive)
+- A persona can declare `persona.voice.language` (SHOULD, BCP 47, e.g. `en`, `es`, `es-PE`) and
+  `persona.voice.languages` (MAY, array); the compiled `PERSONA.md` instructs the model to reply in
+  it. Optional and additive, every existing 1.0.0/1.1.0 document validates unchanged.
 
 ### Feat: custom slash commands (V2-F3.C12)
 - A persona can ship reusable prompt templates as `.personaxis/commands/<name>.md` (optional
@@ -45,7 +969,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   navigation, which kills the double-enter the old sequential-render config UI had.
 - **Model config is now a stable modal.** `/config` and `personaxis config` open the Center's Model
   section: provider picker → a single stateful form with a LIVE preview of answered steps and
-  per-field help (the default is labeled "enter = default: …", answering David's "is the bracketed
+  per-field help (the default is labeled "enter = default: …", answering "is the bracketed
   value a default or an example?"), → confirm → the profiles list. It reuses the pure, tested
   config builders (`config-wizard.ts`); the sequential-render `config-ui.ts` is removed, and the
   first-run onboarding opens the same Center Model section, so there is one config UX everywhere.
