@@ -46,7 +46,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`sync`](./sync.md) | Reconcile a persona's state across machines (merge, no clobber). |
 | [`lease`](./lease.md) | Optional exclusive write lease, for when you would rather serialise than merge. Off by default. |
 | [`ps`](./ps.md) | Fleet view for this project: which personas are awake/idle, mutation counts, tone, last activity. |
-| [`console`](./console.md) | Headless access to the Command Center scope tree (`ls`/`get`/`do`) for agents and CI; the same tree as `menu --tree`. |
+| [`console`](./console.md) | Headless access to the Command Center scope tree (`ls`/`get`/`do`) for agents and CI; the same tree `menu` opens by default. |
 | [`mcp`](./mcp.md) | Manage the MCP servers this persona mounts as tools (client side). |
 | [`card`](./card.md) | Print a shareable persona card: the aura plus verifiable stats (spec hash, drift, chain). |
 | [`serve`](./serve.md) | Expose the living persona over HTTP + `agents.md`. Binds 127.0.0.1 by default; a non-local `--host` REQUIRES `--token` (Bearer auth on every route). |

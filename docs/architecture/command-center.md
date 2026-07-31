@@ -115,7 +115,8 @@ drives the same management surface headlessly.
   announcing activity is a follow-up.)
 - **G.4a/b done**: the recursive navigator (`center/navigator.tsx`) with breadcrumb, effect badges,
   drill, and inline field editing wired to the SDK (`center/run.tsx` `applyNavigatorEdit`). Reachable
-  as `personaxis menu --tree`. `test/center-navigator.test.tsx`, `test/center-run.test.ts`.
+  as the default `personaxis menu` view (G.4c made the navigator the default; `--classic` keeps the
+  sectioned hub). `test/center-navigator.test.tsx`, `test/center-run.test.ts`.
 - **G.5 done**: the external `console` (`commands/console.ts`, `center/edit.ts`) serializes the same
   tree for agents: `ls`/`get`/`do`, honoring authority, `--persona` to target without the registry.
   `test/console.test.ts`.

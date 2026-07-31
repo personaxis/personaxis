@@ -1,8 +1,8 @@
 /**
  * Host for the ScopeNavigator (V9 / G.4b): opens it fullscreen and wires its edit action to the
  * engine via the SDK. Kept SEPARATE from the legacy `command-center.tsx` so the swap of `/menu`
- * to the navigator can happen incrementally without regressing the model wizard; today this is
- * reachable as `personaxis menu --tree`.
+ * to the navigator could happen incrementally without regressing the model wizard; since G.4c
+ * the navigator IS the default `personaxis menu` view (`--classic` keeps the sectioned hub).
  *
  * The navigator is Ink-free and testable on its own (`center/navigator.tsx`); this file is the
  * thin, untested-by-design shell that connects it to `runFullscreen` and to `Persona.adjust`.
