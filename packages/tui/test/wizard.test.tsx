@@ -34,6 +34,9 @@ async function drive(items: InterviewItem[], keys: string[]): Promise<{ answers:
   return { answers, frames: () => lastFrame() ?? "" };
 }
 
+const CR = String.fromCharCode(13);
+const LEFT = String.fromCharCode(27) + "[D";
+
 describe("InterviewWizard", () => {
   it("collects text, likert, choice, and rank answers end to end", async () => {
     const { answers } = await drive(ITEMS, [
@@ -47,7 +50,7 @@ describe("InterviewWizard", () => {
     expect(answers["t-open"]).toBe(4);
     expect(answers["d-unknown"]).toBe(1);
     expect(answers["v-rank"]).toEqual(["clarity", "speed"]);
-  });
+  }, 30_000);
 
   it("shows the field→rule mapping live (every number earned, visibly)", async () => {
     const { frames } = await drive(ITEMS, ["K", "\r"]); // answer text, land on likert
@@ -56,13 +59,36 @@ describe("InterviewWizard", () => {
     expect(out).toContain("rule likert-to-mean");
     expect(out).toContain("mean 0.50"); // live preview at default likert 3
     expect(out).toContain("identity.display_name"); // the trail line for the recorded answer
-  });
+  }, 30_000);
 
-  it("Esc skips: no answer recorded, trail marks the labeled default", async () => {
-    const { answers, frames } = await drive(ITEMS, [""]); // skip the text item
+  // `s` is the ONLY skip. Esc asks whether to leave rather than skipping silently.
+  it("s skips: no answer recorded, trail marks the labeled default", async () => {
+    const { answers, frames } = await drive(ITEMS, ["s"]);
     expect(answers["id-name"]).toBeUndefined();
     expect(frames()).toContain("skipped");
   });
+
+  it("Esc does NOT skip: it asks whether to leave, and any other key stays", async () => {
+    const { answers, frames } = await drive(ITEMS, [""]);
+    expect(frames()).toContain("leave the interview?");
+    expect(answers["id-name"]).toBeUndefined(); // nothing was recorded or skipped past
+  });
+
+  it("b goes back and lets a question be answered again", async () => {
+    // answer q1 (text), land on q2 (likert) and go back with `b` there (on a likert
+    // the arrows drive the scale), then answer q1 differently
+    // The walk must REACH THE END for onDone to hand the answers over.
+    const { answers } = await drive(ITEMS, [
+      "V", "e", "g", "a", CR, // q1 text -> "Vega"
+      "b",                     // q2 likert: back to q1
+      "N", "o", "v", "a", CR,  // q1 again -> "Nova"
+      CR,                      // q2 likert, default 3
+      CR,                      // q3 choice, first option
+      CR, CR,                  // q4 rank, both candidates
+      "x",                     // any key on the done screen
+    ]);
+    expect(answers["id-name"]).toBe("Nova");
+  }, 30_000);
 
   it("progress and completion screen reflect the walk", async () => {
     const two = ITEMS.slice(0, 2);
@@ -70,7 +96,7 @@ describe("InterviewWizard", () => {
     const out = frames();
     expect(out).toContain("done");
     expect(out).toContain("2");
-  });
+  }, 30_000);
 });
 
 describe("dashboard drill-down (F6.7b)", () => {

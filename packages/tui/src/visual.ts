@@ -17,11 +17,17 @@ import {
   themeIntensity,
   barIndex,
   displayName,
+  sigilParams,
+  liveIntensity,
   type PersonaTheme,
   type PersonaFrontmatter,
   type StateFile,
   type LoopEvent,
 } from "@personaxis/core";
+import { auraLines } from "./aura.js";
+
+export { auraRows, auraLines, auraFeatures, auraPalette, auraSpaceSize, AURA_WIDTH, type AuraState } from "./aura.js";
+export { lineChart, heatmapGitHub, type LineSeries } from "./charts.js";
 
 export const supportsAnim = (): boolean =>
   Boolean(process.stdout.isTTY) && !process.env.NO_COLOR && process.env.PERSONAXIS_NO_ANIM !== "1";
@@ -53,13 +59,12 @@ export function renderWordmark(word: string): string[] {
   return rows;
 }
 
-// The brand mark from logo.svg: a radiating sun/sigil with a bright core.
+// The brand mark: the personaxis STICKMAN (the real logo), small and alive.
 const EMBLEM = [
-  "      ·  ✶  ·      ",
-  "    ╲   ╲│╱   ╱    ",
-  "   ✶ ──  ◉  ── ✶   ",
-  "    ╱   ╱│╲   ╲    ",
-  "      ·  ✶  ·      ",
+  "   ◉   ",
+  "  /│\\  ",
+  "   │   ",
+  "  / \\  ",
 ];
 
 export const LOGO = renderWordmark("personaxis");
@@ -88,34 +93,43 @@ function compactLogo(): string {
   return chalk.bold("◉ personaxis") + chalk.dim("  ·  living, governed AI personas");
 }
 
-/** A quiet, premium reveal: the emblem settles, the wordmark wipes in once. Monochrome.
- *  Responsive: falls back to a one-line mark when the terminal is narrower than the block. */
+/**
+ * A quiet, premium reveal. V5.P3.1 ROOT-CAUSE FIX: the old animation repainted in
+ * place with raw `\x1b[s`/`\x1b[u` cursor save/restore, which many terminals
+ * (Windows Terminal, tmux) do not honor reliably: every frame then printed BELOW
+ * the last one, cascading the emblem and half-built wordmark down the screen.
+ * The reveal is now strictly append-only (each line is printed exactly once, top
+ * to bottom, with a small delay): it cannot corrupt on ANY terminal, and the
+ * final scrollback is identical to the static render. Responsive: a one-line
+ * mark when the terminal is narrower than the block.
+ */
 export async function animateLogo(): Promise<void> {
+  // The BLOCK WORDMARK is the logo and it stays. V7.E5 replaced it with a single
+  // line of text on the grounds that it was a billboard; what had actually been
+  // asked for was removing the STICKMAN emblem above it, not the wordmark, and the
+  // startup lost its identity in the process. The emblem stays commented out; the
+  // wordmark comes back, with the one-line mark kept for terminals too narrow to
+  // hold it (where the block would wrap and shred itself).
+  const oneLine = chalk.bold("personaxis") + chalk.dim("  ·  living, governed AI personas") + chalk.dim("  ·  /help");
   const cols = process.stdout.columns ?? 80;
-  if (cols < LOGO[0].length + 2) {
-    write("\n" + compactLogo() + "\n\n");
+  const wordmarkWidth = Math.max(...LOGO.map((l) => l.length));
+
+  if (cols < wordmarkWidth + 2) {
+    write("\n" + oneLine + "\n\n");
     return;
   }
   if (!supportsAnim()) {
-    write("\n" + paintEmblem(true) + "\n\n" + LOGO.map(word).join("\n") + "\n" + TAGLINE + "\n\n");
+    write("\n" + LOGO.map(word).join("\n") + "\n" + TAGLINE + "\n\n");
     return;
   }
+  // Append-only reveal, one row at a time, top to bottom: it cannot corrupt on any
+  // terminal (the old cursor save/restore version cascaded on Windows Terminal).
   write("\n");
-  // Emblem: a single gentle pulse on the core (dim → bright), not a loop.
-  for (const bright of [false, true]) {
-    write("\x1b[s" + paintEmblem(bright) + "\x1b[u");
-    await sleep(120);
+  for (const line of LOGO) {
+    write(word(line) + "\n");
+    await sleep(45);
   }
-  write(paintEmblem(true) + "\n\n");
-  // Wordmark: left-to-right wipe, revealed once, then static.
-  const width = LOGO[0].length;
-  for (let w = 4; w <= width; w += 4) {
-    write(`\x1b[s`);
-    for (const line of LOGO) write("\x1b[2K" + word(line.slice(0, w)) + "\n");
-    write("\x1b[u");
-    await sleep(28);
-  }
-  for (const line of LOGO) write("\x1b[2K" + word(line) + "\n");
+  await sleep(60);
   write(TAGLINE + "\n\n");
 }
 
@@ -138,27 +152,28 @@ export function sigilLines(theme: PersonaTheme, values: Record<string, number>, 
   return sig.grid.map((row) => "     " + paintGlyphRow(theme, row));
 }
 
-/** The persona materializing, sparse → full over a few frames. */
+/**
+ * The persona materializing (V5.P3.2): the AURA, its living creature form,
+ * unique per persona (seeded features), colored by its theme. Append-only
+ * reveal (line by line, printed once): the old center-out repaint used
+ * `\x1b[s`/`\x1b[u` and cascaded on terminals that ignore cursor save/restore,
+ * the same root cause as the banner bug.
+ */
 export async function awaken(fm: PersonaFrontmatter, state: StateFile): Promise<void> {
   const theme = personaTheme(fm);
   const name = displayName(fm);
-  write("  " + chalk.bold.ansi256(theme.palette.accent)(name) + chalk.dim(`  ·  sigil #${theme.seed.toString(16)}\n\n`));
-  const lines = sigilLines(theme, state.values, 0);
+  const params = sigilParams(fm);
+  const intensity = liveIntensity(state.values, 0);
+  write("  " + chalk.bold.ansi256(theme.palette.accent)(name) + chalk.dim(`  ·  aura #${theme.seed.toString(16)} (its unique living mark)\n\n`));
+  const lines = auraLines(params, 0, { intensity }).split("\n").map((l) => "     " + l);
   if (!supportsAnim()) {
     write(lines.join("\n") + "\n\n");
     return;
   }
-  // reveal mask: rows appear from the center outward
-  const order = [...lines.keys()].sort((a, b) => Math.abs(a - lines.length / 2) - Math.abs(b - lines.length / 2));
-  const shown = new Set<number>();
-  for (const idx of order) {
-    shown.add(idx);
-    write("\x1b[s"); // save cursor
-    for (let i = 0; i < lines.length; i++) write("\x1b[2K" + (shown.has(i) ? lines[i] : "") + "\n");
-    write("\x1b[u"); // restore cursor
-    await sleep(60);
+  for (const line of lines) {
+    write(line + "\n");
+    await sleep(50);
   }
-  write("\x1b[" + lines.length + "B");
   write("\n");
 }
 

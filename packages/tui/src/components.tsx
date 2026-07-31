@@ -20,7 +20,7 @@ import {
   type CoordinateDrift,
 } from "@personaxis/core";
 import { sigilLines, auraBar, envelopeBars, envelopeRow, sparkline } from "./visual.js";
-import { useTerminalSize, windowFor } from "./viewport.js";
+import { useTerminalSize, windowFor, wrapAnsi } from "./viewport.js";
 
 // ── brand components (pure wrappers over visual.ts) ─────────────────────────
 
@@ -43,22 +43,55 @@ export function EnvelopeBars(props: {
 // ── transcript (the streaming architecture) ─────────────────────────────────
 
 export interface TranscriptProps {
-  /** Committed lines, rendered ONCE into native scrollback via <Static>. */
-  committed: string[];
+  /** Committed entries, rendered ONCE into native scrollback via <Static>.
+   *  Plain strings stay accepted; `{ text, role }` entries drive the chrome
+   *  (V3.2: persona replies in a bubble, dividers as a rule). */
+  committed: Array<string | { text: string; role: string; raw?: string; width?: number }>;
   /** The bounded live region (in-flight tokens, spinner line, dials). */
   live?: string;
+  /**
+   * Bumped on each terminal resize. Used as the <Static> key so Ink drops its
+   * cached static output and re-emits the whole transcript: a resize clears the
+   * screen (the only erase a terminal's own re-wrapping cannot defeat), and this
+   * is what paints the conversation back instead of leaving it blank.
+   */
+  epoch?: number;
 }
 
 /**
  * `<Static>` for the terminated transcript (never re-rendered, the Ink-
  * documented mitigation for long histories) + a bounded live region below.
  * The CommitQueue decides WHEN a line moves from live to committed.
+ * V3.2 chrome: the role of each entry picks its frame, so the transcript reads
+ * as a conversation (persona bubbles, turn rules) instead of a flat log.
  */
 export function Transcript(props: TranscriptProps): React.JSX.Element {
+  const { columns } = useTerminalSize();
+  const width = Math.max(24, columns - 2);
   return (
     <Box flexDirection="column">
-      <Static items={props.committed}>{(line, i) => <Text key={i}>{line}</Text>}</Static>
-      {props.live ? <Text>{props.live}</Text> : null}
+      {/* Rendered at the CURRENT width, from each line's unwrapped text.
+          Ink only emits items it has not written yet, so this does not re-print
+          history on an ordinary render; a resize bumps `epoch`, which re-keys the
+          <Static> and re-emits everything at the new width. That is what makes
+          widening the window actually widen the conversation, instead of leaving
+          it wrapped at whatever width the session happened to start at. */}
+      <Static key={props.epoch ?? 0} items={props.committed}>
+        {(item, i) => {
+          const it = typeof item === "string" ? { text: item, role: "system", raw: item } : item;
+          if (it.role === "divider") {
+            return (
+              <Text key={i} dimColor>
+                {"─".repeat(width)}
+              </Text>
+            );
+          }
+          const source = (it as { raw?: string }).raw ?? it.text;
+          return <Text key={i}>{wrapAnsi(source, width).join("\n")}</Text>;
+        }}
+      </Static>
+      {/* The live region is ephemeral, so it DOES follow the current width. */}
+      {props.live ? <Text>{wrapAnsi(props.live, width).join("\n")}</Text> : null}
     </Box>
   );
 }
@@ -192,6 +225,8 @@ export function DriftView(props: {
   report: CoordinateDriftReport | null;
   active: boolean;
   onBack: () => void;
+  /** V5.P2.1: the qualitative plane (governed edits to non-numeric fields), pre-rendered lines. */
+  qualitative?: string[];
 }): React.JSX.Element {
   const [cursor, setCursor] = useState(0);
   const [detail, setDetail] = useState<string | null>(null);
@@ -251,6 +286,9 @@ export function DriftView(props: {
         {`  D ${global.toFixed(2)}`}
         {over.length ? <Text color="red">{`  ⚠ ${over.map((l) => l.layer).join(", ")}`}</Text> : <Text dimColor>{"  within all thresholds"}</Text>}
       </Text>
+      <Text dimColor>
+        {"  u = fraction of the declared envelope consumed (0 center, ±1 edge) · band = where the value sits (low/moderate/high) · steps = audited mutations needed to cross"}
+      </Text>
       <Text> </Text>
       {coords.length === 0 ? (
         <Text dimColor>{"  no drift data yet, say something and the loop will report after its tick"}</Text>
@@ -277,6 +315,13 @@ export function DriftView(props: {
           {coordWin.below > 0 ? <Text dimColor>{`  ▼ ${coordWin.below} more`}</Text> : null}
         </>
       )}
+      {props.qualitative && props.qualitative.length > 0 ? (
+        <Box flexDirection="column" marginTop={1}>
+          {props.qualitative.map((l, i) => (
+            <Text key={i}>{`  ${l}`}</Text>
+          ))}
+        </Box>
+      ) : null}
       <Text> </Text>
       <Text dimColor>{"  ↑/↓ select · Enter inspect · Esc back"}</Text>
     </Box>

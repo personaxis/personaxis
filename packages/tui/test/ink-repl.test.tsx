@@ -7,7 +7,8 @@
 import { describe, it, expect } from "vitest";
 import React from "react";
 import { render } from "ink-testing-library";
-import { ReplApp, createReplStore } from "../src/ink-repl.js";
+import { PassThrough } from "node:stream";
+import { ReplApp, createReplStore, InkScreen } from "../src/ink-repl.js";
 import type { ReplHooks } from "../src/screen.js";
 
 const hooks: ReplHooks = {
@@ -81,11 +82,90 @@ describe("InkScreen / ReplApp", () => {
     expect(end).toContain("▲ 15 more");
   });
 
+  it("renders persona replies in a bubble and dividers as a rule (V3.2 chrome)", async () => {
+    const store = createReplStore();
+    const { lastFrame } = render(<ReplApp store={store} hooks={hooks} />);
+    store.getState().append("", "divider");
+    store.getState().append("the boxed reply", "persona");
+    store.getState().append("plain system line");
+    await flush();
+    const out = lastFrame() ?? "";
+    expect(out).toContain("the boxed reply");
+    expect(out).toContain("╭"); // the bubble's rounded corner
+    expect(out).toContain("╰");
+    expect(out).toContain("─────"); // the turn rule
+    expect(out).toContain("plain system line");
+  });
+
   it("surfaces an approval prompt when asked", async () => {
     const store = createReplStore();
     const { lastFrame } = render(<ReplApp store={store} hooks={hooks} />);
     store.getState().setAsk({ prompt: "  approve run_command? [y/N]", resolve: () => {} });
     await flush();
     expect(lastFrame() ?? "").toContain("approve run_command?");
+  });
+});
+
+/**
+ * THE BUG THAT MADE /resume UNUSABLE: `clearScreen` unmounts the Ink instance to
+ * wipe the scrollback and mounts a fresh one. The REPL stays alive by awaiting
+ * `waitUntilExit()`, which was awaiting the INSTANCE, so the unmount resolved it,
+ * the REPL fell through its await and the process quit the moment a resumed
+ * conversation finished printing.
+ *
+ * The session must outlive any number of re-mounts and end only on a real exit.
+ */
+describe("InkScreen lifetime across re-mounts", () => {
+  const quietHooks: ReplHooks = { ...hooks, onSubmit: () => {} };
+  // Ink keeps ONE renderer per stdout, and its input layer needs raw mode. Under
+  // vitest, process.stdin has neither, so Ink throws inside render and its exit
+  // promise never settles. A private pair of streams makes the real mount/unmount
+  // path observable; production passes nothing and gets the terminal.
+  const fakeIo = (): { stdout: NodeJS.WriteStream; stdin: NodeJS.ReadStream } => {
+    const stdout = new PassThrough() as unknown as NodeJS.WriteStream;
+    Object.assign(stdout, { columns: 80, rows: 24 });
+    const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
+    Object.assign(stdin, { isTTY: true, setRawMode: () => stdin, ref: () => {}, unref: () => {} });
+    return { stdout, stdin };
+  };
+  const makeScreen = (h: ReplHooks = quietHooks): InkScreen =>
+    new InkScreen(h, { ...fakeIo(), patchConsole: false, exitOnCtrlC: false });
+
+  it("clearScreen does NOT end the session", async () => {
+    const screen = makeScreen();
+    let ended = false;
+    screen.start();
+    void screen.waitUntilExit().then(() => (ended = true));
+    screen.clearScreen();
+    await flush();
+    expect(ended, "a re-mount must not look like an exit").toBe(false);
+    screen.stop();
+    await flush();
+    expect(ended, "stop() is a real exit and must end it").toBe(true);
+  });
+
+  it("survives repeated clears (resume, then resume again)", async () => {
+    const screen = makeScreen();
+    let ended = false;
+    screen.start();
+    void screen.waitUntilExit().then(() => (ended = true));
+    for (let i = 0; i < 3; i++) {
+      screen.clearScreen();
+      await flush();
+    }
+    expect(ended).toBe(false);
+    screen.stop();
+  });
+
+  it("onExit fires once, on the real exit, not on every re-mount", async () => {
+    let exits = 0;
+    const screen = makeScreen({ ...quietHooks, onExit: () => void (exits += 1) });
+    screen.start();
+    screen.clearScreen();
+    await flush();
+    expect(exits).toBe(0);
+    screen.stop();
+    await flush();
+    expect(exits).toBe(1);
   });
 });

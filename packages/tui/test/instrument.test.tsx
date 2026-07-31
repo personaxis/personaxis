@@ -72,7 +72,9 @@ describe("living instrument (P2)", () => {
       crossings: [{ field: "affect.baseline.mood.tone", fromBand: "moderate", toBand: "high", prose: "Your register runs bright." }],
     });
     await flush();
-    const out = lastFrame() ?? "";
+    // V7.A3: committed lines are word-wrapped to the terminal width at commit time,
+    // so assert on CONTENT with line breaks normalized, not on a single-row layout.
+    const out = (lastFrame() ?? "").replace(/\s+/g, " ");
     expect(out).toContain("band crossing");
     expect(out).toContain("moderate ▸ high");
     expect(out).toContain("Your register runs bright.");

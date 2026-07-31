@@ -7,7 +7,7 @@
  * happen. Falls back to the CLI's readline path when Ink can't run (no TTY).
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import {
   likertToMean,
@@ -49,9 +49,30 @@ function preview(item: InterviewItem, sel: { likert: number; choice: number; ran
   }
 }
 
+/**
+ * A short, concrete example for the current question (V7.A4). Item-specific when the
+ * bank provides one, otherwise a sensible shape hint per question kind.
+ */
+function exampleFor(item: InterviewItem): string {
+  const own = (item as { example?: string }).example;
+  if (own) return own;
+  switch (item.kind) {
+    case "likert":
+      return "4 = agree · press 1-5 or use ←/→";
+    case "choice":
+      return "pick with ↑/↓, confirm with Enter";
+    case "rank":
+      return "Enter picks the next most important, u undoes, d finishes";
+    default:
+      return "a phrase or two, in your own words";
+  }
+}
+
 export interface InterviewWizardProps {
   items: InterviewItem[];
   onDone: (answers: InterviewAnswers) => void;
+  /** Called after every recorded answer, so a caller can persist progress as it happens. */
+  onProgress?: (answers: InterviewAnswers) => void;
 }
 
 export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element {
@@ -65,9 +86,31 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
   const [rankCursor, setRankCursor] = useState(0);
   const [text, setText] = useState("");
   const [finished, setFinished] = useState(false);
+  // V7.A4: leaving is a decision, never a slip. Esc asks; it no longer skips.
+  const [confirmQuit, setConfirmQuit] = useState(false);
+  /**
+   * V7.A4: keystrokes already sitting in the buffer when the wizard mounts (the Enter
+   * that launched `/create`, a stray key from the parent process) used to be consumed
+   * by the first question, which is why "cualquier tecla" seemed to advance it and why
+   * typing needed an extra Enter first. We ignore input for the first beat.
+   */
+  const [armed, setArmed] = useState(process.env.PERSONAXIS_NO_ANIM === "1");
+  useEffect(() => {
+    if (armed) return; // deterministic runs (tests/CI) have no stray buffer to drain
+    const t = setTimeout(() => setArmed(true), 120);
+    return () => clearTimeout(t);
+  }, [armed]);
 
   const item = props.items[idx];
   const sel = { likert, choice, rank: rankPicked, text };
+
+  const resetFields = (): void => {
+    setLikert(3);
+    setChoice(0);
+    setRankPicked([]);
+    setRankCursor(0);
+    setText("");
+  };
 
   const advance = (recorded: string | number | string[] | undefined): void => {
     if (item) {
@@ -77,32 +120,61 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
           ? { id: item.id, text: `${item.construct}, skipped (no evidence, default will be labeled)`, skipped: true }
           : { id: item.id, text: `${item.construct} ← ${preview(item, sel) || String(recorded)}  · rule ${item.rule}`, skipped: false };
       setTrail((t) => [...t.slice(-4), line]);
+      // Persist after every answer, not at the end: an interview abandoned at question 17
+      // should not cost the sixteen answers already given.
+      props.onProgress?.({ ...answers });
     }
-    setLikert(3);
-    setChoice(0);
-    setRankPicked([]);
-    setRankCursor(0);
-    setText("");
+    resetFields();
     if (idx + 1 >= props.items.length) setFinished(true);
     else setIdx(idx + 1);
   };
 
+  /** V7.A4: go back one question and drop what it recorded, so it can be re-answered. */
+  const goBack = (): void => {
+    if (idx === 0) return;
+    const prev = props.items[idx - 1];
+    if (prev) delete answers[prev.id];
+    setTrail((t) => t.slice(0, -1));
+    resetFields();
+    setIdx(idx - 1);
+  };
+
   useInput((input, key) => {
+    // V7.A4: swallow whatever was already queued when we mounted.
+    if (!armed) return;
     if (finished) {
       props.onDone(answers);
       exit();
       return;
     }
     if (!item) return;
-    if (key.escape) return advance(undefined);
+
+    // Esc = "do you want to leave?", answered with y/n. It never skips a question
+    // Esc must not silently skip a question; `s` is the only skip.
+    if (confirmQuit) {
+      if (input === "y" || input === "Y") {
+        props.onDone(answers);
+        exit();
+        return;
+      }
+      setConfirmQuit(false);
+      return;
+    }
+    if (key.escape) return setConfirmQuit(true);
+    // Going back: the left arrow works everywhere it is not already taken (likert uses
+    // it to move the scale); `b` is the shortcut ONLY where it cannot be a letter the
+    // user meant to type, so a text answer like "bien" still types normally.
+    if (key.leftArrow && item.kind !== "likert") return goBack();
+    if (input === "b" && item.kind !== "text") return goBack();
 
     if (item.kind === "likert") {
+      // ←/→ belong to the scale here; `b` is the way back (handled above).
       if (key.leftArrow) return setLikert((v) => Math.max(1, v - 1));
       if (key.rightArrow) return setLikert((v) => Math.min(5, v + 1));
       if (/^[1-5]$/.test(input)) return setLikert(Number(input));
       if (input === "s") return advance(undefined);
       if (key.return) return advance(likert);
-      return;
+      return; // every other key is ignored: nothing advances by accident
     }
     if (item.kind === "choice") {
       const n = item.options?.length ?? 0;
@@ -111,7 +183,7 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
       if (/^[1-9]$/.test(input) && Number(input) <= n) return setChoice(Number(input) - 1);
       if (input === "s") return advance(undefined);
       if (key.return) return advance(choice);
-      return;
+      return; // ignored, including digits out of range
     }
     if (item.kind === "rank") {
       const remaining = (item.candidates ?? []).filter((c) => !rankPicked.includes(c));
@@ -133,9 +205,11 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
       if (input === "d" && rankPicked.length) return advance(rankPicked);
       return;
     }
-    // text
+    // text: everything typable goes into the answer, so `s` alone on an empty field
+    // means skip, but "something" keeps its s.
     if (key.return) return advance(text.trim() ? text.trim() : undefined);
     if (key.backspace || key.delete) return setText((t) => t.slice(0, -1));
+    if (input === "s" && text.length === 0) return advance(undefined);
     if (input && !key.ctrl && !key.meta) setText((t) => t + input);
   });
 
@@ -178,6 +252,11 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
           {item.question}
         </Text>
       </Box>
+      {/* V7.A4: a short example under every question, so nobody has to guess the shape
+          of the answer (short example answers shown alongside each question). */}
+      {exampleFor(item) ? (
+        <Text dimColor>{`  e.g. ${exampleFor(item)}`}</Text>
+      ) : null}
 
       {item.kind === "likert" && (
         <Box flexDirection="column" marginTop={1}>
@@ -237,25 +316,36 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
       </Box>
       <Text dimColor>
         {"  "}
-        {item.kind === "likert"
-          ? "←/→ or 1-5 · Enter confirm · s/Esc skip"
-          : item.kind === "choice"
-            ? "↑/↓ · Enter confirm · s/Esc skip"
-            : item.kind === "rank"
-              ? "↑/↓ · Enter pick next rank · u undo · d done · s/Esc skip"
-              : "type · Enter confirm (empty = skip) · Esc skip"}
+        {confirmQuit
+          ? "leave the interview? y = leave (answers so far are kept) · any other key = stay"
+          : item.kind === "likert"
+            ? "1-5 or ←/→ · Enter confirm · s skip · b back · Esc leave"
+            : item.kind === "choice"
+              ? "↑/↓ · Enter confirm · s skip · b back · Esc leave"
+              : item.kind === "rank"
+                ? "↑/↓ · Enter pick next · u undo · d done · s skip · b back · Esc leave"
+                : "type your answer · Enter confirm · s (on an empty field) skip · ← back · Esc leave"}
       </Text>
     </Box>
   );
 }
 
 /** Render the wizard on the live TTY and resolve with the collected answers. */
-export async function runInterviewWizard(items: InterviewItem[]): Promise<InterviewAnswers> {
+/**
+ * @param onProgress called after each answer with everything recorded so far. The wizard
+ *        stays UI-only: WHERE progress is persisted is the caller's business, and this hook
+ *        is what makes a half-finished interview survive an abandoned run.
+ */
+export async function runInterviewWizard(
+  items: InterviewItem[],
+  onProgress?: (answers: InterviewAnswers) => void,
+): Promise<InterviewAnswers> {
   const { render } = await import("ink");
   let resolved: InterviewAnswers = {};
   const app = render(
     <InterviewWizard
       items={items}
+      onProgress={onProgress}
       onDone={(a) => {
         resolved = a;
       }}

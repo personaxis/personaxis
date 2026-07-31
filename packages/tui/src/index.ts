@@ -140,9 +140,10 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
 // The component itself is deep-importable ("@personaxis/tui/dist/wizard.js").
 export async function runInterviewWizard(
   items: import("@personaxis/core").InterviewItem[],
+  onProgress?: (answers: import("@personaxis/core").InterviewAnswers) => void,
 ): Promise<import("@personaxis/core").InterviewAnswers> {
   const { runInterviewWizard: run } = await import("./wizard.js");
-  return run(items);
+  return run(items, onProgress);
 }
 
 /**

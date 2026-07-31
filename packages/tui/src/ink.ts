@@ -12,4 +12,5 @@ export type { TranscriptProps, DashboardProps } from "./components.js";
 export { CommitQueue } from "./streaming/commit-queue.js";
 export { renderMarkdown, highlightCode, renderDiff } from "./markdown.js";
 export { createEngineStore, type EngineStore, type EngineUiState } from "./store.js";
-export { InkScreen, ReplApp, createReplStore, type ReplUiState } from "./ink-repl.js";
+export { InkScreen, ReplApp, createReplStore, registerReplView, hasReplView, paletteMatches, type ReplUiState, type ReplViewProps } from "./ink-repl.js";
+export { NavBar, SubNavBar, Table, type NavBarProps, type TableProps, type TableRow } from "./miniapp.js";

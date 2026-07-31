@@ -22,16 +22,32 @@ export interface KeyHint {
   label: string;
 }
 
-/** The footer keybar: `↑/↓ move · enter select · esc back`. */
+/** The footer keybar (V3.2 chrome): each key as an inverse chip + dim label. */
 export function KeyBar(props: { hints: KeyHint[] }): React.JSX.Element {
   const { columns } = useTerminalSize();
-  return <Text dimColor>{fitLine(props.hints.map((h) => `${h.key} ${h.label}`).join("  ·  "), Math.max(20, columns))}</Text>;
+  const flat = props.hints.map((h) => ` ${h.key} ${h.label}`).join("  ");
+  if (flat.length > columns - 4) {
+    // Narrow terminal: fall back to the compact single-line form.
+    return <Text dimColor>{fitLine(props.hints.map((h) => `${h.key} ${h.label}`).join("  ·  "), Math.max(20, columns - 4))}</Text>;
+  }
+  return (
+    <Text>
+      {props.hints.map((h, i) => (
+        <Text key={`${h.key}${i}`}>
+          {i > 0 ? "  " : ""}
+          <Text inverse>{` ${h.key} `}</Text>
+          <Text dimColor>{` ${h.label}`}</Text>
+        </Text>
+      ))}
+    </Text>
+  );
 }
 
 /**
- * The persistent app frame: wordmark + title + breadcrumb header, a divider,
- * the content area (flexGrow), and the keybar footer. Fills the terminal
- * height so the fullscreen buffer always looks composed, never half-drawn.
+ * The persistent app frame (V3.2 chrome): a real window. Rounded outer border,
+ * a header bar (wordmark + title + breadcrumb) separated by a rule, the content
+ * area (flexGrow), and the chip keybar footer above the bottom edge. Fills the
+ * terminal so the fullscreen buffer always looks composed, never half-drawn.
  */
 export function AppFrame(props: {
   title: string;
@@ -41,21 +57,35 @@ export function AppFrame(props: {
 }): React.JSX.Element {
   const { columns, rows } = useTerminalSize();
   return (
-    <Box flexDirection="column" width={columns} height={rows}>
-      <Text>
+    <Box flexDirection="column" width={columns} height={rows} borderStyle="round" borderColor="gray">
+      <Box
+        paddingX={1}
+        borderStyle="single"
+        borderTop={false}
+        borderLeft={false}
+        borderRight={false}
+        borderColor="gray"
+      >
         <Text bold>{"◉ personaxis"}</Text>
         <Text dimColor>{"  ·  "}</Text>
         <Text bold color="cyanBright">
           {props.title}
         </Text>
         {props.breadcrumb ? <Text dimColor>{`  ›  ${props.breadcrumb}`}</Text> : null}
-      </Text>
-      <Divider />
-      <Box flexDirection="column" flexGrow={1} paddingX={1} paddingY={0} overflow="hidden">
+      </Box>
+      <Box flexDirection="column" flexGrow={1} paddingX={2} paddingY={0} overflow="hidden">
         {props.children}
       </Box>
-      <Divider />
-      <KeyBar hints={props.hints} />
+      <Box
+        paddingX={1}
+        borderStyle="single"
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        borderColor="gray"
+      >
+        <KeyBar hints={props.hints} />
+      </Box>
     </Box>
   );
 }
@@ -75,7 +105,9 @@ export interface ListItem {
 export function SelectList(props: { items: ListItem[]; index: number; maxVisible?: number; dense?: boolean }): React.JSX.Element {
   const { columns, rows } = useTerminalSize();
   const linesPer = props.dense ? 1 : 2;
-  const max = props.maxVisible ?? Math.max(2, Math.floor((rows - 7) / linesPer));
+  // V3.2: the AppFrame window (outer border top+bottom) consumes 2 extra rows
+  // vs the old flat frame, budget rows-9 so lists never overflow it.
+  const max = props.maxVisible ?? Math.max(2, Math.floor((rows - 9) / linesPer));
   const i = Math.min(props.index, Math.max(0, props.items.length - 1));
   const win = windowFor(props.items.length, i, max);
   const width = Math.max(20, columns - 4);
@@ -103,7 +135,7 @@ export function SelectList(props: { items: ListItem[]; index: number; maxVisible
 /**
  * One form field: label + help + the live value. When `active`, an inline text
  * input owns the keyboard (the host's root useInput must yield while a field is
- * active). The DEFAULT is visibly labeled, the exact confusion David reported
+ * active). The DEFAULT is visibly labeled, removing the confusion reported
  * ("is the bracketed value a default or an example?") answered in the UI itself.
  */
 export function Field(props: {

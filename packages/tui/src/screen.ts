@@ -13,6 +13,12 @@ export type LineRole = "user" | "persona" | "activity" | "system" | "divider";
 export interface SlashItem {
   name: string;
   desc: string;
+  /**
+   * Absorbed into another command: it still RUNS when typed, but it does not
+   * belong in the palette's default list. Without this the consolidated surface
+   * was a lie: `/help` showed twelve commands while typing `/` offered forty.
+   */
+  hidden?: boolean;
 }
 
 export interface ReplHooks {
@@ -33,4 +39,6 @@ export interface ReplHooks {
   driftSegment?(report: unknown): string;
   /** FASE 7 P2, lets the in-app drift view read sparkline/log detail. */
   personaPath?: string;
+  /** V5.P2.1: the qualitative drift plane (governed non-numeric edits) as pre-rendered lines. */
+  qualitativeDrift?(): string[];
 }
