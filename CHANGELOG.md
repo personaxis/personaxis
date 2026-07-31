@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [0.15.0] - Unreleased: a production agent (V11/V12) + the Command Center as a control surface (V9)
+## [0.15.0] - 2026-07-31: a production agent (V11/V12) + the Command Center as a control surface (V9)
 
 > Version target for the V9-V12 arc (agent core, security, Command Center, sync backends).
 > The spec it implements is unchanged at 1.1.0; nothing here touches the persona schema.
@@ -123,7 +123,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   reachable via `--classic` / `--section`. The deep design docs live in
   `docs/architecture/agent-core.md` and `docs/security/` (the latter private for now).
 
-## [0.14.0] - Unreleased: the self-aware session (V5 P0) + real miniapps (V5 P1)
+## [0.14.0] - 2026-07-31 (first published with 0.15.0): the self-aware session (V5 P0) + real miniapps (V5 P1)
 
 > Version bumped in lockstep across all eight packages (2026-07-21). `personaxis --version`
 > reports 0.14.0; the spec it implements is unchanged at 1.1.0.
