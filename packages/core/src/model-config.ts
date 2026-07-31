@@ -59,6 +59,15 @@ export interface ResolvedModel {
   endpoint: string;
   model: string;
   apiKey?: string;
+  /** V5.FIX.2: set when resolution fell back to a usable profile (its name). */
+  profile?: string;
+  /** V5.FIX.2: true when the configured default was NOT usable and a fallback was taken. */
+  fallback?: boolean;
+}
+
+/** A local inference server (Ollama, LM Studio, llama.cpp, vLLM on this machine) needs no key. */
+export function isLocalEndpoint(endpoint: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|::1|0\.0\.0\.0)([:/]|$)/i.test(endpoint);
 }
 
 export function globalConfigPath(): string {
@@ -148,18 +157,69 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
     envSettings(),
   ]);
 
-  if (!merged.endpoint || !merged.model) return undefined;
+  const keyFor = (s: ModelSettings): string | undefined =>
+    (s.apiKeyEnv ? process.env[s.apiKeyEnv] : undefined) ?? process.env.PERSONAXIS_API_KEY ?? s.apiKey;
 
-  const apiKey =
-    (merged.apiKeyEnv ? process.env[merged.apiKeyEnv] : undefined) ??
-    process.env.PERSONAXIS_API_KEY ??
-    merged.apiKey;
+  const direct =
+    merged.endpoint && merged.model
+      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged) }
+      : undefined;
 
-  return { endpoint: merged.endpoint, model: merged.model, ...(apiKey ? { apiKey } : {}) };
+  // Usable = it can actually answer: a key resolves, or the endpoint is local (no key needed).
+  if (direct && (direct.apiKey || isLocalEndpoint(direct.endpoint))) {
+    return { endpoint: direct.endpoint, model: direct.model, ...(direct.apiKey ? { apiKey: direct.apiKey } : {}) };
+  }
+
+  // V5.FIX.2 fallback: when the configured default is broken (points at a keyless
+  // remote profile, or nothing is configured at all), fall back to the default
+  // profile if usable, else the FIRST usable profile, before giving up. Explicit
+  // env/runtime overrides are respected verbatim (no silent switching when the
+  // user forced an endpoint/model): in that case the direct result stands so the
+  // real error surfaces truthfully.
+  const env = envSettings();
+  // Forced = the user explicitly pointed THIS resolution somewhere: env vars, the
+  // spec's runtime block, or a per-persona assignment. Those are respected
+  // verbatim (their errors must surface); only a broken DEFAULT layer falls back.
+  const forced = Boolean(
+    env.endpoint || env.model || runtime?.endpoint || runtime?.model || personaLayer(global) || personaLayer(project),
+  );
+  if (!forced) {
+    const ordered = [
+      ...new Set(
+        [project.defaultProfile, global.defaultProfile, ...Object.keys(profiles)].filter(
+          (n): n is string => Boolean(n),
+        ),
+      ),
+    ];
+    // Two passes: a profile whose KEY actually resolves beats a local-no-key one
+    // (a local server may simply not be running; a key is a stronger guarantee).
+    for (const requireKey of [true, false]) {
+      for (const name of ordered) {
+        const s = profiles[name];
+        if (!s?.endpoint || !s.model) continue;
+        const k = keyFor(s);
+        const usable = requireKey ? Boolean(k) : Boolean(k) || isLocalEndpoint(s.endpoint);
+        if (!usable) continue;
+        return {
+          endpoint: s.endpoint,
+          model: s.model,
+          ...(k ? { apiKey: k } : {}),
+          profile: name,
+          ...(direct ? { fallback: true } : {}),
+        };
+      }
+    }
+  }
+
+  // Nothing usable: return the direct resolution as-is (so callers can show an
+  // actionable "this profile has no key" error) or undefined (offline).
+  return direct ? { endpoint: direct.endpoint, model: direct.model } : undefined;
 }
 
 /** A human-readable description of the resolved model (for `/model` and labels). */
 export function describeModel(opts: ResolveModelOptions = {}): string {
   const m = resolveModel(opts);
-  return m ? `${m.model} @ ${m.endpoint}${m.apiKey ? " (key set)" : " (no key)"}` : "heuristic (offline, configure a model)";
+  if (!m) return "heuristic (offline, configure a model)";
+  const via = m.fallback ? ` (fallback → profile "${m.profile}": the configured default has no usable key)` : m.profile ? ` (profile "${m.profile}")` : "";
+  return `${m.model} @ ${m.endpoint}${m.apiKey ? " (key set)" : isLocalEndpoint(m.endpoint) ? " (local, no key needed)" : " (no key)"}${via}`;
 }

@@ -55,11 +55,18 @@ export function sensitiveActionGate(
   justificationSources: ProvenanceSource[],
 ): GateResult {
   const minTrust = ACTION_MIN_TRUST[action];
+  // An UNRECOGNIZED source scores 0, explicitly. `TRUST[s]` returns undefined for one,
+  // and `Math.min(3, undefined)` is NaN; since `NaN >= minTrust` is false the gate did
+  // still refuse, but it refused by accident rather than by rule, and told the user
+  // "justification trust NaN < required 3", which explains nothing. Sources arrive from
+  // callers we do not control (MCP clients, agents, JSON on disk), so an unknown label is
+  // an expected input, and the untrusted answer must be the DESIGNED one.
+  const unknown = justificationSources.filter((s) => TRUST[s] === undefined);
+  const trustOf = (s: ProvenanceSource): number => TRUST[s] ?? 0;
   const justificationTrust =
-    justificationSources.length === 0
-      ? 0
-      : Math.min(...justificationSources.map((s) => TRUST[s]));
+    justificationSources.length === 0 ? 0 : Math.min(...justificationSources.map(trustOf));
   const allowed = justificationTrust >= minTrust;
+  const unknownNote = unknown.length ? ` (unrecognized source: ${[...new Set(unknown)].join(", ")})` : "";
   return {
     allowed,
     action,
@@ -67,7 +74,9 @@ export function sensitiveActionGate(
     justificationTrust,
     reason: allowed
       ? `justification trust ${justificationTrust} >= required ${minTrust}`
-      : `justification trust ${justificationTrust} < required ${minTrust} (untrusted provenance)`,
+      : justificationSources.length === 0
+        ? `no justification provenance given, and ${action} requires trust ${minTrust}`
+        : `justification trust ${justificationTrust} < required ${minTrust} (untrusted provenance)${unknownNote}`,
   };
 }
 

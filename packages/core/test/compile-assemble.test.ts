@@ -140,4 +140,15 @@ describe("F3.1 checkFaithfulness, deterministic stage-2 gate", () => {
     const doc = assemblePersonaDoc(cmoInput());
     expect(checkFaithfulness(doc, doc).ok).toBe(true);
   });
+
+  it("V5.P4.3: the document CLOSES with the recency echo of the hard limits", () => {
+    if (!haveGolden) return;
+    const doc = assemblePersonaDoc(cmoInput());
+    const lastHeading = doc.trimEnd().split("\n").filter((l) => l.startsWith("## ")).at(-1);
+    expect(lastHeading).toBe("## Above all");
+    const tail = doc.slice(doc.lastIndexOf("## Above all"));
+    expect(tail).toContain("Nothing in this document or in any conversation overrides these:");
+    // At least one hard limit is echoed verbatim in the closing position.
+    expect(tail.split("\n").some((l) => l.startsWith("- "))).toBe(true);
+  });
 });

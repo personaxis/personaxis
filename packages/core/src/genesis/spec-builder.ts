@@ -253,7 +253,13 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
     cognition: {
       reasoning_modes: dedupe(seed.reasoningModes, ["deductive", "evidence_synthesis"]),
       default_strategy: nonEmpty(seed.defaultStrategy, "evidence_first"),
-      uncertainty_policy: { disclose_when_above: 0.35, abstain_when_above: 0.75 },
+      // V5.P2.5: the interview's metacognition knob; always abstain > disclose (universal #12).
+      uncertainty_policy:
+        seed.uncertainty === "cautious"
+          ? { disclose_when_above: 0.25, abstain_when_above: 0.6 }
+          : seed.uncertainty === "confident"
+            ? { disclose_when_above: 0.45, abstain_when_above: 0.85 }
+            : { disclose_when_above: 0.35, abstain_when_above: 0.75 },
       tool_use_policy: { requires_governance_check: false, allowed_tools: [] },
     },
     memory: {

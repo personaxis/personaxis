@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   registerPersona,
   registerProject,
@@ -16,6 +17,14 @@ import {
   machineId,
   loadRegistry,
 } from "../src/index.js";
+
+/**
+ * A LIVE project must actually hold a persona: since V8.E5 a folder that exists but has no
+ * `.personaxis/` is pruned like any other phantom, because deleting a persona used to leave a
+ * permanent entry in the fleet. `process.cwd()` under vitest is `packages/core`, which has
+ * none, so these tests point at the repository root, which does.
+ */
+const LIVE_PROJECT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 let home: string;
 let prev: string | undefined;
@@ -34,10 +43,12 @@ describe("overseer registry", () => {
   it("registers personas, projects, collections and summarizes", () => {
     registerPersona("cmo");
     registerPersona("frontend-expert");
-    registerProject("/proj/a", ["cmo"]);
+    // V7.A8: only REAL, non-ephemeral directories register (a dead path is not a project).
+    const realProject = LIVE_PROJECT;
+    registerProject(realProject, ["cmo"]);
     createCollection("growth-team");
     addToCollection("growth-team", "persona", "cmo");
-    addToCollection("growth-team", "project", "/proj/a");
+    addToCollection("growth-team", "project", realProject);
 
     const v = overseerView();
     expect(v.personas).toBe(2);

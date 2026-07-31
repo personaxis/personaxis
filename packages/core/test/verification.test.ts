@@ -6,9 +6,24 @@ import {
   checkAgentBudget,
   estimateCostUsd,
   DEFAULT_POLICY,
+  compileRegex,
   type VerificationConfig,
   type JudgeConfig,
 } from "../src/index.js";
+
+describe("compileRegex (tolerates PCRE/Python inline flags, was a crash)", () => {
+  it("compiles `(?i)` instead of throwing, lifting it to the i flag", () => {
+    const re = compileRegex("(?i)(api[_-]?key|secret|password)\\s*[:=]");
+    expect(re.flags).toContain("i");
+    expect(re.test("here is API_KEY=x")).toBe(true);
+    expect(re.test("Hola, ¿cómo estás?")).toBe(false);
+  });
+
+  it("handles multiple inline flags and leaves plain patterns intact", () => {
+    expect(compileRegex("(?im)^a").flags.split("").sort().join("")).toBe("im");
+    expect(compileRegex("plain").test("plain")).toBe(true);
+  });
+});
 
 const base: VerificationConfig = { mode: "blocking", quorum: "all", onFail: "stop", maxRetries: 0, gates: [] };
 const ctx = (output: string) => ({ task: "t", output });

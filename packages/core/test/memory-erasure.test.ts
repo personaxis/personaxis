@@ -5,7 +5,7 @@
  * the content itself and must be re-anchored (migrateMemoryChain) first.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -40,10 +40,24 @@ function write(content: string): MemoryEntry {
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** Write a LEGACY-format entry (hash over content, no content_hash). */
+/**
+ * The log this persona actually writes to.
+ *
+ * V8.C gave each device its own episodic log (a hash chain has one writer), so the file
+ * name is no longer a constant. These tests are about erasure and tamper-evidence, not
+ * about the layout, so they ask where the entries are instead of assuming.
+ */
+function episodicLogFile(): string {
+  const dir = join(dirname(personaPath), "memory");
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^episodic(..+)?.jsonl$/.test(f)) : [];
+  return join(dir, files[0] ?? "episodic.jsonl");
+}
+
 function writeLegacy(content: string, prev: string): MemoryEntry {
   const base = { ts: new Date().toISOString(), content, source: "user" as const, tags: [], prev_hash: prev };
   const hash = sha256(JSON.stringify({ ts: base.ts, content, source: "user", tags: [], prev_hash: prev }));
   const entry = { ...base, hash };
+  // Deliberately the legacy path: this helper exists to simulate a pre-V8 history.
   const p = join(dirname(personaPath), "memory", "episodic.jsonl");
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(p, readFileSyncSafe(p) + JSON.stringify(entry) + "\n", "utf-8");
@@ -76,7 +90,7 @@ describe("v1.0 erasure-capable memory chain", () => {
     expect(redacted.content_hash).toBe(target.content_hash); // retained for the chain
 
     // The bytes are GONE from disk (real erasure, not tombstone-hiding).
-    const raw = readFileSync(join(dirname(personaPath), "memory", "episodic.jsonl"), "utf-8");
+    const raw = readFileSync(episodicLogFile(), "utf-8");
     expect(raw).not.toContain("alice@example.com");
 
     // Chain intact end-to-end, including entries AFTER the redacted one.
@@ -89,7 +103,7 @@ describe("v1.0 erasure-capable memory chain", () => {
 
   it("tampering with a NON-redacted entry's content still breaks the chain", () => {
     const e = write("original");
-    const p = join(dirname(personaPath), "memory", "episodic.jsonl");
+    const p = episodicLogFile();
     const lines = readFileSync(p, "utf-8").trim().split("\n");
     const parsed = JSON.parse(lines[0]) as MemoryEntry;
     parsed.content = "poisoned";
@@ -112,7 +126,7 @@ describe("v1.0 erasure-capable memory chain", () => {
     // Now redactable.
     redactMemory(personaPath, newHash, "erase");
     expect(verifyMemoryChain(personaPath).ok).toBe(true);
-    const raw = readFileSync(join(dirname(personaPath), "memory", "episodic.jsonl"), "utf-8");
+    const raw = readFileSync(episodicLogFile(), "utf-8");
     expect(raw).not.toContain("old-format secret");
   });
 

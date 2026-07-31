@@ -9,5 +9,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     pool: "forks",
+    // V5.FIX.1: hermetic PERSONAXIS_HOME per worker, before any test module
+    // loads; no core test can ever read or clobber the real ~/.personaxis
+    // (see test/setup-home.ts for the cli incident this prevents).
+    setupFiles: ["./test/setup-home.ts"],
   },
 });

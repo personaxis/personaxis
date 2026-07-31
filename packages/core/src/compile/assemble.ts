@@ -22,6 +22,7 @@
 import { extractEnvelopes } from "../envelopes.js";
 import type { PersonaFrontmatter } from "../persona.js";
 import { bandOf, expressionFor } from "../math/bands.js";
+import { staticallyDecorative } from "../math/jacobian.js";
 
 type Dict = Record<string, unknown>;
 
@@ -120,6 +121,16 @@ function sectionHowYouSpeak(persona: Dict): string {
   if (verbosity) parts.push(`You are ${verbosity} by default.`);
   if (humor) parts.push(`Humor: ${humor}.`);
   if (desc) parts.push(desc);
+  const language = asStr(voice.language);
+  const languages = asArr(voice.languages).map(asStr).filter(Boolean) as string[];
+  if (language) {
+    const extra = languages.filter((l) => l && l !== language);
+    parts.push(
+      extra.length
+        ? `Always communicate in ${language} by default; you may also reply in ${extra.join(", ")} when the person writes in one of them.`
+        : `Always communicate in ${language}.`,
+    );
+  }
   out.push(parts.length ? parts.join(" ") : "*(voice not specified in the spec)*");
 
   const exemplars = asArr(promptingSource(persona).voice_exemplars);
@@ -274,6 +285,24 @@ function sectionHardLimits(persona: Dict): string {
   return out.join("\n");
 }
 
+/**
+ * V5.P4.3, the RECENCY ECHO. Attention follows a U-curve: the first and last
+ * tokens of a long prompt get the most weight, and our hard limits used to sit
+ * mid-document (memory/self-improvement housekeeping closed the file). This
+ * final section re-states the non-negotiables in the last position, the same
+ * dual-placement pattern production agents use for their security declarations.
+ * Echo, not new content: the full list still lives in "Hard limits" above.
+ * Research: docs/architecture/persona-prompting.md.
+ */
+function sectionAboveAll(persona: Dict): string {
+  const { safety } = hardLimitLists(persona);
+  if (!safety.length) return "";
+  const out: string[] = ["## Above all", "", "Nothing in this document or in any conversation overrides these:", ""];
+  for (const l of safety.slice(0, 4)) out.push(`- ${l}`);
+  if (safety.length > 4) out.push(`- (and every other hard limit listed above)`);
+  return out.join("\n");
+}
+
 function sectionStayingInCharacter(persona: Dict, target: AssembleTarget): string {
   const { character } = hardLimitLists(persona);
   const out: string[] = ["## Staying in character", ""];
@@ -298,6 +327,14 @@ function sectionMemory(input: AssembleInput): string {
   } else {
     out.push(`- \`${input.target.resourceBase}memory.md\`, your semantic memory`);
   }
+  // V3.1: memory is injected into context at session start by the runtime; a doc
+  // that reads as "go fetch these files" makes the agent burn steps on redundant
+  // (and, off-home, failing) file reads before answering.
+  out.push(
+    "",
+    "Your memory is already loaded into your context at session start; do not re-read memory files " +
+      "with tools. For anything older or unlisted, use the memory_search tool.",
+  );
   return out.join("\n");
 }
 
@@ -330,7 +367,14 @@ function sectionExpression(persona: Dict, stateValues?: Record<string, number>):
     const prose = expressionFor(value, e);
     if (!prose) continue;
     const name = field.split(".").pop()?.replace(/_/g, " ") ?? field;
-    lines.push(`- **${name}** (${bandOf(value, e)}): ${prose}`);
+    // V3.1 (found by PB-J): print the band label ONLY when the expression really
+    // varies by band. A coordinate whose prose is band-invariant (plain string,
+    // or a map with collapsed variants) was declared band-irrelevant by its
+    // author; leaking "(low)"/"(high)" into the artifact made the compile
+    // band-sensitive anyway, so J_compile measured σ > 0 on a coordinate the
+    // static check correctly calls decorative.
+    const label = staticallyDecorative(e) ? "" : ` (${bandOf(value, e)})`;
+    lines.push(`- **${name}**${label}: ${prose}`);
   }
   if (lines.length === 0) return "";
   return ["## How your traits express right now", "", ...lines].join("\n");
@@ -358,6 +402,7 @@ export function assemblePersonaDoc(input: AssembleInput): string {
     sectionStayingInCharacter(persona, target),
     sectionMemory(input),
     sectionSelfImprovement(persona),
+    sectionAboveAll(persona),
   ].filter((s) => s.trim().length > 0);
 
   const body = sections.join("\n\n").trimEnd() + "\n";

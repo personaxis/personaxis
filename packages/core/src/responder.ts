@@ -18,10 +18,16 @@ export interface RespondInput {
   personaBody: string;
   /** Recent episodic memory lines for grounding (most recent last). */
   memory: string[];
+  /** Runtime context block (who/where/resources). Injected AFTER the identity cap so it
+   *  is never truncated away with a long compiled doc (V5.P0.1). */
+  awareness?: string;
   /** Current mood/affect values for tone. */
   state: Record<string, number>;
   /** Persona display name. */
   name: string;
+  /** V2-F3.E23: when set, the LLM responder streams the reply and calls this with
+   *  each text delta as it arrives (the full string is still returned). */
+  onToken?: (chunk: string) => void;
 }
 
 export interface Responder {
@@ -52,6 +58,7 @@ export class LlmResponder implements Responder {
       "# Identity",
       input.personaBody.slice(0, 6000),
       "",
+      input.awareness ? `${input.awareness}\n` : "",
       "# Current modeled state",
       Object.entries(input.state)
         .map(([k, v]) => `${k}=${v.toFixed(2)}`)
@@ -75,9 +82,13 @@ export class LlmResponder implements Responder {
         ],
         temperature: 0.7,
         max_tokens: this.cfg.maxTokens ?? 512,
+        ...(input.onToken ? { stream: true } : {}),
       }),
     });
     if (!res.ok) throw new Error(`responder HTTP ${res.status}`);
+    if (input.onToken && res.body) {
+      return this.readStream(res.body as ReadableStream<Uint8Array>, input.onToken);
+    }
     let json: { choices?: Array<{ message?: { content?: string } }> };
     try {
       json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -86,6 +97,41 @@ export class LlmResponder implements Responder {
     }
     const content = (json.choices?.[0]?.message?.content ?? "").trim();
     return content || "(the model returned an empty reply, try rephrasing, or check the model/endpoint)";
+  }
+
+  /** Parse an OpenAI-compatible SSE stream, emitting each delta via `onToken`. */
+  private async readStream(
+    body: ReadableStream<Uint8Array>,
+    onToken: (chunk: string) => void,
+  ): Promise<string> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let full = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith("data:")) continue;
+        const data = t.slice(5).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const j = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+          const delta = j.choices?.[0]?.delta?.content;
+          if (delta) {
+            full += delta;
+            onToken(delta);
+          }
+        } catch {
+          /* ignore a partial/non-JSON SSE line */
+        }
+      }
+    }
+    return full.trim() || "(the model returned an empty reply, try rephrasing, or check the model/endpoint)";
   }
 }
 

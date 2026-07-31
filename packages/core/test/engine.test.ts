@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -183,7 +183,10 @@ describe("memory chain (lineage / tamper-evidence)", () => {
     writeFileSync(personaPath, fixture("autonomous"));
     const e1 = prepareMemoryEntry(personaPath, { content: "a", source: "user" });
     commitMemoryEntry(personaPath, e1);
-    const memFile = join(dir, "memory", "episodic.jsonl");
+    // V8.C: one episodic log per device, so find the one that was written rather than
+    // assuming a fixed name. The test is about tamper-evidence, not about the layout.
+    const memDir = join(dir, "memory");
+    const memFile = join(memDir, readdirSync(memDir).find((f) => f.startsWith("episodic")) ?? "episodic.jsonl");
     writeFileSync(memFile, readFileSync(memFile, "utf-8").replace('"a"', '"poisoned"'));
     expect(verifyMemoryChain(personaPath).ok).toBe(false);
   });

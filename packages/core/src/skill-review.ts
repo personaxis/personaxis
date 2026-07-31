@@ -65,18 +65,21 @@ function collectFiles(dir: string): string[] {
   return out.sort();
 }
 
-export function reviewSkill(skillPath: string): SkillReview {
-  if (!existsSync(skillPath)) {
-    throw new Error(`skill path not found: ${skillPath}`);
-  }
-  const isDir = statSync(skillPath).isDirectory();
-  const files = isDir ? collectFiles(skillPath) : [skillPath];
-
+/**
+ * Scan a set of already-loaded {file, content} pairs. Shared core so the exact same
+ * rules + hashing back both the on-disk `reviewSkill` and the in-memory
+ * `reviewSkillContent` (used to vet a self-written skill BEFORE it ever touches disk,
+ * J.3). Files are hashed in the order given.
+ */
+export function reviewSkillFiles(entries: { file: string; content: string }[]): {
+  files: string[];
+  hash: string;
+  findings: SkillFinding[];
+  verdict: SkillReview["verdict"];
+} {
   const findings: SkillFinding[] = [];
   const hasher = createHash("sha256");
-
-  for (const file of files) {
-    const content = readFileSync(file, "utf-8");
+  for (const { file, content } of entries) {
     hasher.update(file).update(content);
     const lines = content.split("\n");
     for (let i = 0; i < lines.length; i++) {
@@ -88,10 +91,27 @@ export function reviewSkill(skillPath: string): SkillReview {
       }
     }
   }
-
   const hasDanger = findings.some((f) => f.severity === "danger");
   const hasWarn = findings.some((f) => f.severity === "warn");
   const verdict: SkillReview["verdict"] = hasDanger ? "danger" : hasWarn ? "review" : "ok";
+  return { files: entries.map((e) => e.file), hash: hasher.digest("hex"), findings, verdict };
+}
 
-  return { skillPath, files, hash: hasher.digest("hex"), findings, verdict };
+export function reviewSkill(skillPath: string): SkillReview {
+  if (!existsSync(skillPath)) {
+    throw new Error(`skill path not found: ${skillPath}`);
+  }
+  const isDir = statSync(skillPath).isDirectory();
+  const files = isDir ? collectFiles(skillPath) : [skillPath];
+  const entries = files.map((file) => ({ file, content: readFileSync(file, "utf-8") }));
+  return { skillPath, ...reviewSkillFiles(entries) };
+}
+
+/**
+ * Vet skill CONTENT that is not yet on disk, against the same danger/warn rules as
+ * `reviewSkill`. A self-written skill (post-mortem → skill-writer, J.3) is code that
+ * WILL run later, so it must pass this before it is written anywhere.
+ */
+export function reviewSkillContent(content: string, name = "SKILL.md"): SkillReview {
+  return { skillPath: name, ...reviewSkillFiles([{ file: name, content }]) };
 }

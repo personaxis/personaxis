@@ -26,8 +26,21 @@ const TRAIT_BY_ITEM: Record<string, string> = {
 };
 
 /** Items still worth asking given the answers/evidence collected so far. */
-export function pendingItems(answers: InterviewAnswers): InterviewItem[] {
-  return ITEM_BANK.filter((item) => answers[item.id] === undefined);
+/**
+ * The questions still to ask.
+ *
+ * @param depth "core" asks only the twelve that decide who the persona is; "deep" asks the
+ *              whole bank. Everything not asked falls back to a LABELED default, so the
+ *              creation report keeps saying which numbers the author chose and which the
+ *              tool assumed. Defaults to "deep" so existing callers are unchanged.
+ */
+export function pendingItems(
+  answers: InterviewAnswers,
+  depth: "core" | "deep" = "deep",
+): InterviewItem[] {
+  return ITEM_BANK.filter(
+    (item) => answers[item.id] === undefined && (depth === "deep" || item.depth === "core"),
+  );
 }
 
 function evidence(
@@ -145,6 +158,44 @@ export function applyAnswers(answers: InterviewAnswers): { seed: Partial<Persona
   if (never) {
     seed.prohibitedBehaviors!.push(never);
     trail.push(evidence("d-never", never, [{ path: "character.prohibited_behaviors", value: never, rule: "verbatim-list" }]));
+  }
+
+  // Metacognition: uncertainty posture → cognition.uncertainty_policy (V5.P2.5).
+  const unc = num(answers["mc-uncertainty"]);
+  const POSTURES = ["cautious", "balanced", "confident"] as const;
+  if (unc !== undefined && POSTURES[unc]) {
+    seed.uncertainty = POSTURES[unc];
+    trail.push(
+      evidence("mc-uncertainty", POSTURES[unc], [
+        { path: "cognition.uncertainty_policy", value: POSTURES[unc], rule: "uncertainty-posture" },
+      ]),
+    );
+  }
+
+  // Memory: what persists → memory.types (V5.P2.5).
+  const mem = num(answers["m-memory"]);
+  if (mem !== undefined) {
+    const presets: Array<NonNullable<PersonaSeed["memoryTypes"]>> = [
+      { episodic: true, semantic: true, procedural: true, autobiographical: true, user_preferences: true, evaluations: true },
+      { episodic: true, semantic: true, procedural: true, autobiographical: false, user_preferences: false, evaluations: true },
+      { episodic: false, semantic: true, procedural: false, autobiographical: false, user_preferences: false, evaluations: false },
+    ];
+    if (presets[mem]) {
+      seed.memoryTypes = presets[mem];
+      trail.push(
+        evidence("m-memory", ["everything", "professional", "minimal"][mem] ?? String(mem), [
+          { path: "memory.types", value: JSON.stringify(presets[mem]), rule: "choice-to-memory" },
+        ]),
+      );
+    }
+  }
+
+  // Governance: who approves change → improvement_policy.mode (V5.P2.5).
+  const gi = num(answers["g-improve"]);
+  const MODES = ["locked", "suggesting", "autonomous"] as const;
+  if (gi !== undefined && MODES[gi]) {
+    seed.improvementMode = MODES[gi];
+    trail.push(evidence("g-improve", MODES[gi], [{ path: "improvement_policy.mode", value: MODES[gi], rule: "choice-to-mode" }]));
   }
 
   const tone = str(answers["p-tone"]);

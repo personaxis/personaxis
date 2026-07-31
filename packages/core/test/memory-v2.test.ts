@@ -88,7 +88,7 @@ function seed(): void {
 
 describe("extractFacts (offline, es/en; entity-neutral)", () => {
   it("attributes an introduction to the neutral 'interlocutor' subject, never 'user'", () => {
-    expect(extractFacts("hola, me llamo David y trabajo en esto")[0]).toMatchObject({ key: "interlocutor.name", value: "David" });
+    expect(extractFacts("hola, me llamo Mara y trabajo en esto")[0]).toMatchObject({ key: "interlocutor.name", value: "Mara" });
     expect(extractFacts("Mi nombre es Ana Lucía.")[0]).toMatchObject({ key: "interlocutor.name", value: "Ana Lucía" });
     expect(extractFacts("hey, my name is Grace Hopper!")[0]).toMatchObject({ key: "interlocutor.name", value: "Grace Hopper" });
     expect(extractFacts("please call me Dave")[0]).toMatchObject({ key: "interlocutor.alias", value: "Dave" });
@@ -134,17 +134,17 @@ describe("a stable fact survives a session (V2-F1.1, generalized; name is one in
     writeFileSync(personaPath, fixture());
     seed();
     const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
-    await loop.tick({ observation: "hola, me llamo David", source: "user" });
+    await loop.tick({ observation: "hola, me llamo Mara", source: "user" });
     // The fact is in the preferences store as a subject-qualified key, ready for every later session.
-    expect(readPreferences(personaPath)["interlocutor.name"]?.value).toBe("David");
+    expect(readPreferences(personaPath)["interlocutor.name"]?.value).toBe("Mara");
     const view = factsView(personaPath);
-    expect(view.facts["interlocutor.name"].value).toBe("David");
+    expect(view.facts["interlocutor.name"].value).toBe("Mara");
     // The block groups by subject, and works for ANY subject, not just "user".
-    expect(renderFacts(view)).toContain("interlocutor: name = David");
+    expect(renderFacts(view)).toContain("interlocutor: name = Mara");
     // A general entity fact (e.g. project) lands in the same block, another subject.
     await loop.tick({ observation: "recuerda esto", source: "user" }); // salient, keeps the loop honest
     // And learning it the first time is an autobiographical milestone.
-    expect(readAutobiographical(personaPath).some((e) => e.event.includes("David"))).toBe(true);
+    expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(true);
   });
 
   it("non-salient chatter earns NO episodic entry (dedup with sessions/)", async () => {
@@ -182,15 +182,15 @@ describe("write_policy is honored (V2-F1.6)", () => {
 
 describe("session distillation (V2-F1.3)", () => {
   const turns = [
-    { type: "turn", role: "user", content: "me llamo David", ts: "t1" },
-    { type: "turn", role: "assistant", content: "un gusto, David", ts: "t2" },
+    { type: "turn", role: "user", content: "me llamo Mara", ts: "t1" },
+    { type: "turn", role: "assistant", content: "un gusto, Mara", ts: "t2" },
     { type: "turn", role: "user", content: "decidimos usar pnpm para todo el monorepo", ts: "t3" },
     { type: "turn", role: "assistant", content: "anotado, pnpm en todo", ts: "t4" },
   ] as never[];
 
   it("distillTurns extracts facts, decisions, and one event line", () => {
     const d = distillTurns(turns as never, "kickoff");
-    expect(d.find((x) => x.kind === "fact")?.content).toBe("interlocutor.name = David");
+    expect(d.find((x) => x.kind === "fact")?.content).toBe("interlocutor.name = Mara");
     expect(d.find((x) => x.kind === "decision")?.content).toContain("pnpm");
     expect(d.find((x) => x.kind === "event")?.content).toContain('session "kickoff"');
   });
@@ -198,7 +198,7 @@ describe("session distillation (V2-F1.3)", () => {
   it("distillSession writes back-referenced entries and is idempotent", () => {
     writeFileSync(personaPath, fixture());
     ensureSession(personaPath, { id: "s1", kind: "root", participants: ["(root)"], name: "kickoff", created: "2026-07-16", persona: "" });
-    appendTurn(personaPath, "s1", { role: "user", content: "me llamo David" });
+    appendTurn(personaPath, "s1", { role: "user", content: "me llamo Mara" });
     appendTurn(personaPath, "s1", { role: "assistant", content: "un gusto" });
     const first = distillSession(personaPath, "s1");
     expect(first.written).toBeGreaterThanOrEqual(2); // the fact + the event
@@ -225,14 +225,14 @@ describe("retention pruning (V2-F1.6)", () => {
     // Backdating an entry would break the hash chain, so age them the other way:
     // prune with a 'now' 40 days in the future against a 30-day window.
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "stale chatter", source: "user" }));
-    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "interlocutor.name = David", source: "user", tags: ["kind:fact"] }));
+    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "interlocutor.name = Mara", source: "user", tags: ["kind:fact"] }));
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "anchored truth", source: "user", tags: ["anchor"] }));
     const future = new Date(Date.now() + 40 * 24 * 3600 * 1000);
     const r = pruneMemory(personaPath, 30, future);
     expect(r.pruned).toBe(1);
     const live = readLiveMemory(personaPath).map((e) => e.content);
     expect(live).not.toContain("stale chatter");
-    expect(live).toContain("interlocutor.name = David");
+    expect(live).toContain("interlocutor.name = Mara");
     expect(live).toContain("anchored truth");
     expect(pruneMemory(personaPath, undefined).pruned).toBe(0); // no window declared → no-op
   });
@@ -242,7 +242,7 @@ describe("retrieval (V2-F1.4)", () => {
   function seedDocs(): void {
     writeFileSync(personaPath, fixture());
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "the deploy pipeline uses github actions", source: "user" }));
-    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "interlocutor.name = David", source: "user", tags: ["kind:fact"] }));
+    commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "interlocutor.name = Mara", source: "user", tags: ["kind:fact"] }));
     commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: "lunch was pasta", source: "internal" }));
   }
 
@@ -255,10 +255,10 @@ describe("retrieval (V2-F1.4)", () => {
 
   it("searchMemory (lexical) honors max_items and finds the name", async () => {
     seedDocs();
-    const r = await searchMemory(personaPath, "David name", { maxItems: 2, useEmbeddings: false, useReranker: false });
+    const r = await searchMemory(personaPath, "Mara name", { maxItems: 2, useEmbeddings: false, useReranker: false });
     expect(r.via).toBe("lexical");
     expect(r.results.length).toBeLessThanOrEqual(2);
-    expect(r.results[0].doc.text).toContain("David");
+    expect(r.results[0].doc.text).toContain("Mara");
   });
 
   it("memory_search / memory_get tools answer through the registry contract", async () => {

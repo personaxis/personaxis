@@ -15,9 +15,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { dirname, join, basename } from "node:path";
 import type { ProvenanceSource } from "./appraisal.js";
+import { deviceIdentity } from "./device.js";
 import { readEvaluations } from "./memory-kinds.js";
 
 /**
@@ -79,8 +80,67 @@ export interface MemoryWriteRequest {
   tags?: string[];
 }
 
+function memoryDir(personaPath: string): string {
+  return join(dirname(personaPath), "memory");
+}
+
+/**
+ * The pre-V8 single log. Still read, never written to again: it is simply the chain
+ * whose device is "the machine this persona lived on before devices existed".
+ */
+function legacyMemoryPath(personaPath: string): string {
+  return join(memoryDir(personaPath), "episodic.jsonl");
+}
+
+/**
+ * THIS device's episodic log (V8.C).
+ *
+ * Episodic memory is a hash chain, and a chain has exactly one writer. Two machines
+ * appending to one file produce links that do not follow from each other: the integrity
+ * check correctly reports tampering and cannot say which side is right, because from its
+ * point of view neither is. One file per device removes the question.
+ */
 function memoryPath(personaPath: string): string {
-  return join(dirname(personaPath), "memory", "episodic.jsonl");
+  return join(memoryDir(personaPath), `episodic.${deviceIdentity().id}.jsonl`);
+}
+
+/** Every episodic log present here: the legacy one plus one per device. */
+function memoryLogs(personaPath: string): string[] {
+  const dir = memoryDir(personaPath);
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  if (existsSync(legacyMemoryPath(personaPath))) out.push(legacyMemoryPath(personaPath));
+  try {
+    for (const f of readdirSync(dir).sort()) {
+      if (/^episodic\..+\.jsonl$/.test(f)) out.push(join(dir, f));
+    }
+  } catch {
+    /* unreadable directory: the legacy file (if any) is still returned */
+  }
+  return out;
+}
+
+/**
+ * The log file that contains a given entry hash.
+ *
+ * Redaction, tombstones and the chain migration rewrite a whole file. With one log that
+ * was unambiguous; with one log per device it is not, and rewriting the wrong file would
+ * silently drop the edit (or corrupt a chain that was fine). Falls back to THIS device's
+ * log so a fresh write still has somewhere to go.
+ */
+function logHolding(personaPath: string, hash: string): string {
+  for (const f of memoryLogs(personaPath)) {
+    if (readLog(f).some((e) => e.hash === hash)) return f;
+  }
+  return memoryPath(personaPath);
+}
+
+function readLog(file: string): MemoryEntry[] {
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf-8")
+    .split("\n")
+    .filter((l) => l.trim().length > 0)
+    .map((l) => JSON.parse(l) as MemoryEntry);
 }
 
 function sha256(s: string): string {
@@ -101,18 +161,33 @@ function hashEntryV1(e: Pick<MemoryEntry, "ts" | "content_hash" | "source" | "ta
   );
 }
 
+/**
+ * Every episodic entry this copy of the persona holds, from every device, in time order.
+ *
+ * Recall wants ONE history; integrity wants one chain per writer. So reading is a union
+ * across logs while verification stays per log. Sorting by timestamp is right here because
+ * recall is about what was learned when, not about causal ordering (which is what the
+ * mutation log's logical clock is for).
+ */
 export function readMemory(personaPath: string): MemoryEntry[] {
-  const p = memoryPath(personaPath);
-  if (!existsSync(p)) return [];
-  return readFileSync(p, "utf-8")
-    .split("\n")
-    .filter((l) => l.trim().length > 0)
-    .map((l) => JSON.parse(l) as MemoryEntry);
+  const logs = memoryLogs(personaPath);
+  if (logs.length === 0) return [];
+  if (logs.length === 1) return readLog(logs[0]);
+  return logs.flatMap((f) => readLog(f)).sort((a, b) => (a.ts ?? "").localeCompare(b.ts ?? ""));
 }
 
+/**
+ * The tail of THIS device's chain, and of nothing else.
+ *
+ * Every log is a chain that starts at "" and is verified on its own, so a device's first
+ * entry must NOT link to another log's tail, not even to the pre-V8 one on the same
+ * machine. An earlier attempt did exactly that, to keep one long history: it verified
+ * fine as a single sequence and failed the moment each log was checked independently,
+ * which is the check that has to hold once two machines are involved.
+ */
 function lastHash(personaPath: string): string {
-  const entries = readMemory(personaPath);
-  return entries.length > 0 ? entries[entries.length - 1].hash : "";
+  const own = readLog(memoryPath(personaPath));
+  return own.length > 0 ? own[own.length - 1].hash : "";
 }
 
 /** Build (but do not write) the next entry, the dry-run half of write-path audit.
@@ -273,19 +348,30 @@ export function readSemanticMemory(personaPath: string): string {
  * chain hash over content_hash AND, unless redacted, check the content still
  * matches its content_hash; legacy entries recompute over the content directly.
  */
-export function verifyMemoryChain(personaPath: string): { ok: boolean; brokenAt?: number } {
-  const entries = readMemory(personaPath);
-  let prev = "";
-  for (let i = 0; i < entries.length; i++) {
-    const e = entries[i];
-    if (e.prev_hash !== prev) return { ok: false, brokenAt: i };
-    if (typeof e.content_hash === "string") {
-      if (hashEntryV1(e) !== e.hash) return { ok: false, brokenAt: i };
-      if (!e.redacted && sha256(e.content) !== e.content_hash) return { ok: false, brokenAt: i };
-    } else {
-      if (hashEntryLegacy(e) !== e.hash) return { ok: false, brokenAt: i };
+/**
+ * Verify each device's chain INDEPENDENTLY (V8.C).
+ *
+ * A single chain cannot have two writers, so verifying the merged history would report a
+ * break the moment a second machine contributed. Each log is its own chain; the persona is
+ * intact when all of them are. The reported `brokenAt` is the index within its own log,
+ * which is where you would actually look.
+ */
+export function verifyMemoryChain(personaPath: string): { ok: boolean; brokenAt?: number; device?: string } {
+  for (const file of memoryLogs(personaPath)) {
+    const entries = readLog(file);
+    let prev = "";
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const bad = { ok: false as const, brokenAt: i, device: basename(file) };
+      if (e.prev_hash !== prev) return bad;
+      if (typeof e.content_hash === "string") {
+        if (hashEntryV1(e) !== e.hash) return bad;
+        if (!e.redacted && sha256(e.content) !== e.content_hash) return bad;
+      } else {
+        if (hashEntryLegacy(e) !== e.hash) return bad;
+      }
+      prev = e.hash;
     }
-    prev = e.hash;
   }
   return { ok: true };
 }
@@ -305,8 +391,8 @@ export function redactMemory(
   targetHash: string,
   reason: string,
 ): { redacted: MemoryEntry; audit: MemoryEntry } {
-  const p = memoryPath(personaPath);
-  const entries = readMemory(personaPath);
+  const p = logHolding(personaPath, targetHash);
+  const entries = readLog(p);
   const idx = entries.findIndex((e) => e.hash === targetHash);
   if (idx === -1) throw new Error(`no memory entry with hash ${targetHash}`);
   const target = entries[idx];
@@ -329,8 +415,29 @@ export function redactMemory(
  * the new hashes. One-time, deliberate migration, the old hashes are replaced.
  */
 export function migrateMemoryChain(personaPath: string): { migrated: number; remapped: Record<string, string> } {
-  const p = memoryPath(personaPath);
-  const entries = readMemory(personaPath);
+  // Each log is an independent chain, so migrate them one at a time; migrating the
+  // merged view would re-link entries across devices and invalidate every chain.
+  const logs = memoryLogs(personaPath);
+  if (logs.length > 1) {
+    let migrated = 0;
+    const remapped: Record<string, string> = {};
+    for (const f of logs) {
+      const r = migrateOneLog(personaPath, f);
+      migrated += r.migrated;
+      Object.assign(remapped, r.remapped);
+    }
+    // A tombstone can live in a DIFFERENT log from the entry it hides (one machine
+    // retracts what another wrote). Each log's own migration can only remap targets it
+    // holds, so a second pass rewrites cross-log `target:` tags with the complete map.
+    // Without it, migrating would resurrect exactly the entries someone chose to hide.
+    for (const f of logs) relinkTargets(f, remapped);
+    return { migrated, remapped };
+  }
+  return migrateOneLog(personaPath, logs[0] ?? memoryPath(personaPath));
+}
+
+function migrateOneLog(personaPath: string, p: string): { migrated: number; remapped: Record<string, string> } {
+  const entries = readLog(p);
   if (entries.length === 0) return { migrated: 0, remapped: {} };
   const remapped: Record<string, string> = {};
   let prev = "";
@@ -358,4 +465,38 @@ export function migrateMemoryChain(personaPath: string): { migrated: number; rem
   }
   writeFileSync(p, next.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf-8");
   return { migrated: next.length, remapped };
+}
+
+/**
+ * Rewrite `target:` tags in one log using a hash remap, then re-chain it.
+ *
+ * Used after a multi-log migration: a tombstone in device A can point at an entry in
+ * device B, and B's migration changed that hash. Re-chaining is required because editing
+ * a tag changes the entry's own hash, and every following link with it.
+ */
+function relinkTargets(file: string, remap: Record<string, string>): void {
+  const entries = readLog(file);
+  if (!entries.some((e) => e.tags.some((t) => t.startsWith("target:") && remap[t.slice("target:".length)]))) return;
+  let prev = "";
+  const out: MemoryEntry[] = [];
+  for (const e of entries) {
+    const tags = e.tags.map((t) =>
+      t.startsWith("target:") && remap[t.slice("target:".length)]
+        ? `target:${remap[t.slice("target:".length)]}`
+        : t,
+    );
+    const base = {
+      ts: e.ts,
+      content: e.content,
+      source: e.source,
+      tags,
+      content_hash: e.content_hash ?? sha256(e.content),
+      prev_hash: prev,
+      ...(e.redacted ? { redacted: true } : {}),
+    };
+    const entry: MemoryEntry = { ...base, hash: hashEntryV1(base) };
+    prev = entry.hash;
+    out.push(entry);
+  }
+  writeFileSync(file, out.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf-8");
 }

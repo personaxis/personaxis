@@ -105,6 +105,23 @@ function abs(path: string, policy: Policy): string {
   return resolve(policy.workspaceRoot, path);
 }
 
+/**
+ * V3.1 read-side resolution: `workspaceRoot` first, then the active persona's
+ * `resourceRoots`. A compiled persona doc references `./memory.md` relative to
+ * the persona's OWN home, which only equals the process CWD by coincidence;
+ * without the fallback those reads fail as "file not found". Reads/edits of
+ * existing files only; write-creates stay at `workspaceRoot`.
+ */
+function absRead(path: string, policy: Policy): string {
+  const first = abs(path, policy);
+  if (existsSync(first)) return first;
+  for (const root of policy.resourceRoots ?? []) {
+    const cand = resolve(root, path);
+    if (existsSync(cand)) return cand;
+  }
+  return first;
+}
+
 /** Overwrite/create a file with content (parent dirs created). */
 export function executeFileWrite(path: string, content: string, policy: Policy): FileResult {
   try {
@@ -120,7 +137,7 @@ export function executeFileWrite(path: string, content: string, policy: Policy):
 /** Replace the first occurrence of `find` with `replace` in an existing file. */
 export function executeFileEdit(path: string, find: string, replace: string, policy: Policy): FileResult {
   try {
-    const p = abs(path, policy);
+    const p = absRead(path, policy);
     if (!existsSync(p)) return { ok: false, path: p, error: "file not found" };
     const orig = readFileSync(p, "utf-8");
     if (!orig.includes(find)) return { ok: false, path: p, error: "find text not present (no change made)" };
@@ -134,7 +151,7 @@ export function executeFileEdit(path: string, find: string, replace: string, pol
 /** Read a file's contents (truncated to MAX_OUTPUT). */
 export function readFileSafe(path: string, policy: Policy): FileResult {
   try {
-    const p = abs(path, policy);
+    const p = absRead(path, policy);
     if (!existsSync(p)) return { ok: false, path: p, error: "file not found" };
     let content = readFileSync(p, "utf-8");
     if (content.length > MAX_OUTPUT) content = content.slice(0, MAX_OUTPUT) + "\n…[truncated]";
@@ -147,7 +164,7 @@ export function readFileSafe(path: string, policy: Policy): FileResult {
 /** List a directory (names + type marker). */
 export function listDirSafe(path: string, policy: Policy): FileResult {
   try {
-    const p = abs(path, policy);
+    const p = absRead(path, policy);
     if (!existsSync(p)) return { ok: false, path: p, error: "directory not found" };
     const entries = readdirSync(p).map((name) => {
       const isDir = statSync(resolve(p, name)).isDirectory();

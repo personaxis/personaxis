@@ -21,6 +21,7 @@ import {
   DEFAULT_GOVERNANCE,
 } from "./governance.js";
 import { applyMutation } from "./state-engine.js";
+import { mirrorMutationToLog } from "./multi-device.js";
 import {
   prepareMemoryEntry,
   readMemoryTypes,
@@ -221,6 +222,18 @@ export class LivingLoop {
             }
           }
           this.storage.state.write(this.handle.statePath, fresh);
+          // V8.C: the same change, appended to THIS device's log. state.json stays the
+          // fast local cache; the log is what merges with another machine's without one
+          // overwriting the other. Written here, at the single point where state is
+          // persisted, so no mutation path can forget to record itself.
+          for (const m of admitted) {
+            mirrorMutationToLog(this.handle.personaPath, {
+              field: m.field,
+              delta: m.delta,
+              actor: input.actor ?? "actor-llm",
+              reason: m.reason,
+            });
+          }
           postValues = { ...fresh.values };
         });
       }
@@ -288,7 +301,7 @@ export class LivingLoop {
       if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
         for (const pref of prefs) {
           // A subject-qualified FACT learned for the FIRST time is an autobiographical
-          // milestone (any entity, not just a user): "learned interlocutor.name = David".
+          // milestone (any entity, not just a user): "learned interlocutor.name = Mara".
           const firstTime = isFactKey(pref.key) && getPreference(this.handle.personaPath, pref.key) === undefined;
           setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale);
           if (firstTime && memTypesForPrefs.autobiographical) {

@@ -17,8 +17,8 @@
  * (deny-by-default for risky ops), never a silent full-access fallback.
  */
 
-import { platform } from "node:os";
-import { isAbsolute, normalize, relative } from "node:path";
+import { resolveIsolation } from "./security/isolation.js";
+import { dirname, isAbsolute, normalize, relative, resolve, sep } from "node:path";
 
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type ApprovalMode = "untrusted" | "on-failure" | "on-request" | "never";
@@ -42,6 +42,16 @@ export interface Policy {
    * `approval` knob (e.g. network commands always ask while plain writes flow).
    */
   approvals?: Partial<Record<"network" | "destructive" | "write", ApprovalMode>>;
+  /**
+   * V3.1: read-side resolution roots for the ACTIVE persona's resources. A
+   * compiled persona doc references its resources relative to its OWN home
+   * (`./memory.md` for a sub-persona, `./.personaxis/...` for a root persona),
+   * which only coincides with `workspaceRoot` when the process happens to run
+   * from that directory. Read tools resolve against `workspaceRoot` first and
+   * then fall back through these roots. Reads only; writes stay confined to
+   * `workspaceRoot`/`writableRoots`.
+   */
+  resourceRoots?: string[];
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -118,6 +128,24 @@ export function policyFromFrontmatter(
     deny: Array.isArray(p.deny) ? p.deny.filter((x): x is string => typeof x === "string") : [],
     workspaceRoot,
   };
+}
+
+/**
+ * V3.1: the read-resolution roots for the ACTIVE persona (see Policy.resourceRoots).
+ * Pure path derivation, works for every persona level the same way:
+ *  - sub-persona   `<proj>/.personaxis/personas/<slug>/personaxis.md` → its own folder
+ *  - root persona  `<proj>/.personaxis/personaxis.md`                → `.personaxis/`
+ *  - home persona  `~/.personaxis/personaxis.md`                     → `~/.personaxis/`
+ * plus the persona's PROJECT root (the directory containing `.personaxis`), so
+ * `./.personaxis/...`-style references resolve when the process CWD is elsewhere.
+ */
+export function personaResourceRoots(personaPath: string): string[] {
+  const dir = dirname(resolve(personaPath));
+  const roots = [dir];
+  const segs = dir.split(/[\\/]/);
+  const i = segs.lastIndexOf(".personaxis");
+  if (i > 0) roots.push(segs.slice(0, i).join(sep));
+  return roots;
 }
 
 export interface CommandClass {
@@ -320,25 +348,12 @@ export interface WrapResult {
 /**
  * Best-effort native sandbox wrapping for an ALLOWED command. Caller is
  * responsible for only wrapping commands that already passed evaluateCommand.
+ *
+ * Delegates to `security/isolation.ts`, which is availability-aware: a primitive that is not on
+ * PATH (bwrap on a bare Linux box, sandbox-exec on a stripped macOS) degrades to `none` with an
+ * honest note, never to a `bwrap ...` that would ENOENT and break every command (K.02, T9).
  */
 export function wrapCommand(cmd: string, policy: Policy = DEFAULT_POLICY): WrapResult {
-  const os = platform();
-  if (policy.sandbox === "danger-full-access") {
-    return { command: "sh", args: ["-c", cmd], sandbox: "none", note: "full access (no wrapping)" };
-  }
-  if (os === "darwin") {
-    // macOS Seatbelt: deny network, allow workspace writes only.
-    const profile =
-      `(version 1)(allow default)` +
-      (policy.sandbox === "read-only" ? `(deny file-write*)` : `(allow file-write* (subpath "${policy.workspaceRoot}"))(deny file-write*)`) +
-      `(deny network*)`;
-    return { command: "sandbox-exec", args: ["-p", profile, "sh", "-c", cmd], sandbox: "seatbelt", note: "macOS Seatbelt profile" };
-  }
-  if (os === "linux") {
-    // Linux bubblewrap: read-only bind of /, writable workspace, no network.
-    const args = ["--ro-bind", "/", "/", "--bind", policy.workspaceRoot, policy.workspaceRoot, "--unshare-net", "--dev", "/dev", "sh", "-c", cmd];
-    return { command: "bwrap", args, sandbox: "bubblewrap", note: "Linux bubblewrap (requires bwrap on PATH)" };
-  }
-  // Windows / other: no portable kernel sandbox here; rely on the policy decision.
-  return { command: "sh", args: ["-c", cmd], sandbox: "none", note: `${os}: no native sandbox wrapper; policy decision is the control` };
+  const r = resolveIsolation(cmd, policy);
+  return { command: r.command, args: r.args, sandbox: r.backend, note: r.note };
 }

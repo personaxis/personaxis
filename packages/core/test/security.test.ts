@@ -36,6 +36,34 @@ describe("sensitive-action gate (provenance)", () => {
     // external_api needs trust>=2; tool=1 caps it
     expect(r.allowed).toBe(false);
   });
+
+  /**
+   * Sources arrive from callers we do not control (MCP clients, agents, JSON on disk), so
+   * an unrecognized label is an EXPECTED input. It used to make `TRUST[s]` undefined and
+   * the computed trust NaN: the gate still refused, because `NaN >= min` is false, but it
+   * refused by accident rather than by rule and reported "justification trust NaN". A
+   * security decision must not rest on the comparison semantics of NaN.
+   */
+  it("scores an unrecognized source as untrusted BY RULE, and says so", () => {
+    const r = sensitiveActionGate("self_edit", ["evaluation" as never]);
+    expect(r.allowed).toBe(false);
+    expect(Number.isNaN(r.justificationTrust), "trust must be a number, never NaN").toBe(false);
+    expect(r.justificationTrust).toBe(0);
+    expect(r.reason).toContain("unrecognized source: evaluation");
+  });
+
+  it("an unrecognized source still caps an otherwise trusted chain", () => {
+    const r = sensitiveActionGate("self_edit", ["user", "made-up" as never]);
+    expect(r.allowed).toBe(false);
+    expect(r.justificationTrust).toBe(0);
+  });
+
+  it("no provenance at all is refused with a reason that names the requirement", () => {
+    const r = sensitiveActionGate("self_edit", []);
+    expect(r.allowed).toBe(false);
+    expect(r.justificationTrust).toBe(0);
+    expect(r.reason).toMatch(/no justification provenance/);
+  });
 });
 
 describe("memory anomaly detection", () => {

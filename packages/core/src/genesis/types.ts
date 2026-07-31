@@ -84,6 +84,10 @@ export interface PersonaSeed {
   behavioralAnchors?: { do?: string[]; dont?: string[]; examples?: string[] };
 
   improvementMode?: "locked" | "suggesting" | "autonomous";
+  /** V5.P2.5: metacognition knob → cognition.uncertainty_policy thresholds
+   *  (cautious 0.25/0.60 · balanced 0.35/0.75 · confident 0.45/0.85; always
+   *  abstain > disclose, universal #12). */
+  uncertainty?: "cautious" | "balanced" | "confident";
   /** FASE 7 P1 (G4): mood.tone half_life in turns; the interview's volatility
    *  item maps here (rule volatility-to-halflife). Builder default: 4. */
   moodHalfLife?: number;

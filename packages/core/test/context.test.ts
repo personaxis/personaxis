@@ -73,4 +73,19 @@ describe("compactMessages", () => {
     const r = await compactMessages(msgs(30), m, { llm: { endpoint: "http://x/v1", model: "m", fetchImpl: failing } });
     expect(r.compacted).toBe(false); // returned unchanged
   });
+
+  it("J.6: pinned task state survives compaction, as system speech before the summary", async () => {
+    const m = new ContextMeter(1000);
+    m.used = 900;
+    const summarizer = (async () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "CONDENSED" } }] }) })) as unknown as typeof fetch;
+    const pinned = "# Task state (authoritative, survives compaction)\nGoal: ship the release\nPlan:\n  1. build\n  2. publish";
+    const r = await compactMessages(msgs(30), m, { llm: { endpoint: "http://x/v1", model: "m", fetchImpl: summarizer }, keepLastN: 6, pinned });
+    expect(r.compacted).toBe(true);
+    // system(0) → pinned(1) → summary(2) → last 6
+    expect(r.messages[1].role).toBe("system");
+    expect(r.messages[1].content).toContain("Goal: ship the release");
+    expect(r.messages[1].content).toContain("1. build");
+    expect(r.messages[2].content).toContain("CONDENSED");
+    expect(r.messages.length).toBe(1 + 1 + 1 + 6); // system + pinned + summary + last 6
+  });
 });

@@ -17,7 +17,15 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { ChatMessage } from "./tool-calling.js";
 
-export type SessionKind = "root" | "sub" | "direct-sub" | "delegation";
+/**
+ * Where a session came from.
+ *
+ * "background" is a real session like any other: it has a transcript, it can evolve the
+ * persona through the same governance gate, and it can be RESUMED into a live conversation.
+ * It is labelled only so a reader can tell which turns happened while they were not
+ * watching; the label grants and removes nothing.
+ */
+export type SessionKind = "root" | "sub" | "direct-sub" | "delegation" | "background";
 
 export interface SessionHeader {
   type: "header";
@@ -44,6 +52,16 @@ export interface SessionTurn {
   uuid?: string;
   /** FR.6: the uuid this turn replies to, makes branches/regenerations explicit. */
   parent_uuid?: string;
+  /**
+   * What the persona DID on this turn, as the rendered evidence lines the session
+   * showed at the time: recalled memories, tool calls, mutations, drift.
+   *
+   * Persisted because a transcript of only the words is not the conversation you
+   * had: resuming a session used to reprint questions and answers with none of the
+   * work between them, which reads as if nothing had happened. Optional, so every
+   * session file written before this stays readable.
+   */
+  evidence?: string[];
 }
 
 export interface SessionSummary {
@@ -91,6 +109,7 @@ export function appendTurn(
     ts?: string;
     uuid?: string;
     parentUuid?: string;
+    evidence?: string[];
   },
 ): string | undefined {
   const p = sessionFile(personaPath, id);
@@ -104,6 +123,7 @@ export function appendTurn(
     uuid,
     ...(turn.parentUuid ? { parent_uuid: turn.parentUuid } : {}),
     ...(turn.from ? { from: turn.from } : {}),
+    ...(turn.evidence?.length ? { evidence: turn.evidence } : {}),
   };
   appendFileSync(p, JSON.stringify(entry) + "\n", "utf-8");
   return uuid;

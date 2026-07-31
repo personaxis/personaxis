@@ -31,6 +31,9 @@ export interface VerificationGate {
   // predicate
   kind?: "regex" | "jsonpath" | "contains";
   expr?: string;
+  /** Invert the predicate: pass when it does NOT match (e.g. a `no-secret-leak`
+   *  regex passes when the secret pattern is ABSENT). */
+  negate?: boolean;
   // llm_judge / rubric
   criteria?: string;
   model?: string;
@@ -107,6 +110,23 @@ async function verifyCommand(gate: VerificationGate, policy: Policy): Promise<Ve
   };
 }
 
+/**
+ * Compile a regex predicate, tolerating PCRE/Python inline flag groups like
+ * `(?i)`, `(?im)`, `(?s)` that JS's RegExp rejects ("Invalid group"). Any such
+ * group is stripped from the body and its supported flags (i, m, s, u, y) are
+ * lifted to the JS flags argument, so specs written in the common `(?i)…` style
+ * work unchanged instead of throwing at runtime.
+ */
+export function compileRegex(expr: string): RegExp {
+  let flags = "";
+  const body = expr.replace(/\(\?([a-z]+)\)/gi, (_m, f: string) => {
+    for (const ch of f.toLowerCase()) if ("imsuy".includes(ch)) flags += ch;
+    return "";
+  });
+  const uniq = Array.from(new Set(flags)).join("");
+  return new RegExp(body, uniq);
+}
+
 function verifyPredicate(gate: VerificationGate, output: string): VerifierResult {
   const name = gate.name ?? `predicate:${gate.kind}`;
   const expr = gate.expr ?? "";
@@ -114,7 +134,7 @@ function verifyPredicate(gate: VerificationGate, output: string): VerifierResult
   let reason = "";
   try {
     if (gate.kind === "regex") {
-      pass = new RegExp(expr).test(output);
+      pass = compileRegex(expr).test(output);
       reason = pass ? "regex matched" : "regex did not match";
     } else if (gate.kind === "contains") {
       pass = output.includes(expr);
@@ -128,6 +148,11 @@ function verifyPredicate(gate: VerificationGate, output: string): VerifierResult
     }
   } catch (e) {
     reason = `predicate error: ${(e as Error).message}`;
+    return { verifier: name, pass: false, reason };
+  }
+  if (gate.negate) {
+    pass = !pass;
+    reason = `${reason} (negated)`;
   }
   return { verifier: name, pass, reason };
 }

@@ -25,6 +25,16 @@ const GOAL_RE = /\b(mi meta|mi objetivo|el objetivo es|quiero lograr|my goal is|
 
 const trim1 = (s: string, n: number): string => s.replace(/\s+/g, " ").trim().slice(0, n);
 
+/**
+ * V5.FIX.3: infrastructure failures (provider 401s, unreachable endpoints, agent
+ * stops) are NOT the persona's lived experience: they must never distill into
+ * episodic memory or recaps. The session transcript keeps them (honest history);
+ * memory does not.
+ */
+const INFRA_ERROR_RE = /^\(?\s*(agent error:|responder error:|tool-calling HTTP)/i;
+export const isInfraErrorReply = (s: string): boolean =>
+  INFRA_ERROR_RE.test(s.trim()) || /HTTP (401|403|429|5\d\d)|no api key|ECONNREFUSED/i.test(s.slice(0, 120));
+
 /** Extract the durable items from a session's turns. Deterministic, offline. */
 export function distillTurns(turns: SessionTurn[], sessionName: string): Distillate[] {
   const out: Distillate[] = [];
@@ -37,7 +47,7 @@ export function distillTurns(turns: SessionTurn[], sessionName: string): Distill
     }
   };
   const user = turns.filter((t) => t.role === "user");
-  const assistant = turns.filter((t) => t.role === "assistant");
+  const assistant = turns.filter((t) => t.role === "assistant" && !isInfraErrorReply(t.content));
   for (const t of user) {
     for (const f of extractFacts(t.content)) push({ content: `${f.key} = ${f.value}`, kind: "fact", source: "user" });
     if (DECISION_RE.test(t.content)) push({ content: `decision: ${trim1(t.content, 200)}`, kind: "decision", source: "user" });
@@ -87,7 +97,7 @@ export function sessionBrief(personaPath: string, excludeId?: string): string {
   const summaries = turns.filter((t) => t.role === "summary");
   if (summaries.length) return `"${prior.name}" (${prior.updated.slice(0, 10)}): ${trim1(summaries[summaries.length - 1].content, 400)}`;
   const user = turns.filter((t) => t.role === "user");
-  const assistant = turns.filter((t) => t.role === "assistant");
+  const assistant = turns.filter((t) => t.role === "assistant" && !isInfraErrorReply(t.content));
   if (!user.length) return "";
   const first = trim1(user[0].content, 120);
   const last = assistant.length ? trim1(assistant[assistant.length - 1].content, 120) : "";

@@ -135,6 +135,12 @@ export interface CompactOptions {
   llm: ModelEndpoint;
   threshold?: number; // 0..0.95
   keepLastN?: number;
+  /**
+   * J.6: authoritative task state (goal, plan, decisions) rendered by the caller. It is
+   * pinned VERBATIM as a system message ahead of the summary, so the run's objective and
+   * plan survive compaction by construction, not at the mercy of the summarizer.
+   */
+  pinned?: string;
 }
 
 export interface CompactResult {
@@ -182,7 +188,12 @@ export async function compactMessages(
     role: "user",
     content: `<summary>\nEarlier conversation, condensed (decisions, facts, open tasks preserved):\n${summary}\n</summary>`,
   };
-  const next = [...(system ? [system] : []), summaryMsg, ...recent];
+  // J.6: the pinned task state goes in as SYSTEM speech ahead of the summary, so the goal and
+  // plan are authoritative and never diluted by summarization.
+  const pinnedMsg: ChatMessage[] = opts.pinned?.trim()
+    ? [{ role: "system", content: opts.pinned.trim() }]
+    : [];
+  const next = [...(system ? [system] : []), ...pinnedMsg, summaryMsg, ...recent];
   meter.used = estimateMessagesTokens(next);
   return { messages: next, compacted: true, summary, removed: older.length };
 }
@@ -195,11 +206,17 @@ async function summarize(cfg: ModelEndpoint, transcript: string): Promise<string
     body: JSON.stringify({
       model: cfg.model,
       messages: [
-        { role: "system", content: "You compress conversations. Preserve all decisions, facts, names, numbers, and open tasks. Drop pleasantries. Output ONLY the summary prose." },
+        {
+          role: "system",
+          content:
+            "You compress conversations into a structured handoff. Output ONLY the summary, using exactly these section headers, omitting any that would be empty:\n" +
+            "## Decisions taken\n## Current task state\n## Files and artifacts touched\n## Facts to remember\n## Open items and next steps\n" +
+            "Preserve names, numbers, paths, commands and identifiers VERBATIM. Drop pleasantries and dead ends. Be dense, not chatty.",
+        },
         { role: "user", content: `Summarize:\n${transcript}` },
       ],
       temperature: 0,
-      max_tokens: 700,
+      max_tokens: 900,
     }),
   });
   if (!res.ok) throw new Error(`summarizer HTTP ${res.status}`);
