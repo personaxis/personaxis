@@ -56,6 +56,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`diff <a> <b>`](./diff.md) | Field-by-field diff of two `PERSONA.md`; flags breaking changes (CI gate). |
 | `list` · `template` | Installed personas · authoring scaffolds (`--help` each). |
 | [`runtime`](./runtime.md) | **Requires a Personaxis backend account**: hosted sessions/traces/evaluate. |
+| [`connect`](./connect.md) | **Requires a Personaxis workspace**: link this machine (device flow) and stream its work to the browser. Consented directories only. |
 | [`trace`](./trace.md) | Inspect JSONL/OTLP traces (causal timeline). |
 | [_(no subcommand)_](./repl.md) | Enter the living **REPL**. |
 
