@@ -1,0 +1,391 @@
+/**
+ * The workspace wire: the vocabulary the browser, the control plane and the
+ * daemon all speak.
+ *
+ * One vocabulary is what allows a single surface over two execution locations.
+ * A persona running on a developer's laptop and one running in a hosted sandbox
+ * emit the same events, and nothing downstream knows or cares which produced
+ * them. The moment either side speaks a dialect, that stops being true.
+ *
+ * This module imports nothing from `node:*` on purpose: it runs in the browser,
+ * in a Cloudflare Worker and in the daemon alike. Keep it that way.
+ *
+ * Validation lives with the types rather than at each edge, so a message can
+ * never be trusted by one consumer and rejected by another. Every schema here
+ * has a `parse` that returns a result instead of throwing: a malformed frame
+ * from a socket is an expected event, not an exceptional one.
+ */
+
+// ─── Version ────────────────────────────────────────────────────────────────
+
+/**
+ * The wire's major version. The server speaks this and the one below it for at
+ * least two daemon releases, so an upgrade is never a flag day.
+ */
+export const WIRE_VERSION = 1;
+
+/** Oldest version the current server still accepts from a daemon. */
+export const MIN_SUPPORTED_WIRE_VERSION = 1;
+
+// ─── Envelope ───────────────────────────────────────────────────────────────
+
+export type WireSource = "daemon" | "hosted" | "system" | "user";
+
+export const WIRE_SOURCES: readonly WireSource[] = ["daemon", "hosted", "system", "user"];
+
+/**
+ * Wraps every event in the stream.
+ *
+ * `seq` is assigned by the JobRoom and by nothing else. A producer sends 0 and
+ * the room stamps the real number, which is what makes replay, gap-fill and
+ * reconnection possible: order is decided in one place or it is not decided at
+ * all.
+ */
+export interface WireEnvelope {
+	/** The job this event belongs to. */
+	job_id: string;
+	/** Strictly monotonic within a job, from 1. Zero means "not yet assigned". */
+	seq: number;
+	/** ISO-8601 in UTC. Producer clocks are never trusted for ordering. */
+	ts: string;
+	source: WireSource;
+}
+
+// ─── Events ─────────────────────────────────────────────────────────────────
+
+/**
+ * The normalised event vocabulary. Adding a kind here is a wire change and
+ * needs the version rules above; renaming one is a breaking change.
+ *
+ * Anything carrying free text (`args_preview`, `output_preview`, `text`) has
+ * already passed redaction at the producer. Nothing downstream redacts, which
+ * means nothing downstream can forget to.
+ */
+export type WireEventBody =
+	| {
+			kind: "persona.session.started";
+			persona_id: string;
+			persona_version_id: string;
+			execution_location: "daemon" | "hosted";
+			machine_id?: string;
+	  }
+	| {
+			kind: "persona.session.ended";
+			status: "completed" | "failed" | "stopped" | "orphaned";
+			reason?: string;
+	  }
+	| { kind: "persona.layer.applied"; layer: string }
+	| { kind: "agent.turn.started"; turn: number }
+	| { kind: "agent.turn.ended"; turn: number; summary?: string }
+	| { kind: "agent.thought.streamed"; text: string }
+	| { kind: "tool.call.requested"; call_id: string; tool: string; args_preview: string }
+	/** `rule` names the precedence rule that decided, so a verdict is explicable. */
+	| { kind: "tool.call.allowed"; call_id: string; rule: string }
+	| { kind: "tool.call.blocked"; call_id: string; rule: string; reason: string }
+	| { kind: "tool.call.completed"; call_id: string; ok: boolean; output_preview: string }
+	| {
+			kind: "gate.opened";
+			gate_id: string;
+			call_id: string;
+			tool: string;
+			args_preview: string;
+			reason: string;
+			required_approvals: number;
+			route: { roles?: string[]; user_ids?: string[] };
+			expires_at: string;
+	  }
+	| {
+			kind: "gate.resolved";
+			gate_id: string;
+			outcome: "approved" | "denied" | "expired";
+			decided_by: string[];
+	  }
+	| { kind: "envelope.clamped"; field: string; requested: number; applied: number }
+	| { kind: "band.crossed"; field: string; from_band: string; to_band: string; prose: string | null }
+	| { kind: "artifact.created"; artifact_id: string; artifact_kind: string; preview: string }
+	| { kind: "artifact.updated"; artifact_id: string; preview: string }
+	| { kind: "intervention.enqueued"; intervention_id: string; user_id: string; body: string }
+	| { kind: "intervention.applied"; intervention_id: string }
+	| { kind: "steering.granted"; user_id: string; expires_at: string }
+	| {
+			kind: "steering.released";
+			user_id: string;
+			reason: "released" | "expired" | "transferred";
+	  };
+
+export type WireEvent = WireEnvelope & WireEventBody;
+
+export type WireEventKind = WireEventBody["kind"];
+
+/**
+ * Every kind, as data.
+ *
+ * The adapter that maps the engine's events onto this vocabulary walks this
+ * list, so a kind added here without a mapping fails a test rather than
+ * silently never being emitted.
+ */
+export const WIRE_EVENT_KINDS = [
+	"persona.session.started",
+	"persona.session.ended",
+	"persona.layer.applied",
+	"agent.turn.started",
+	"agent.turn.ended",
+	"agent.thought.streamed",
+	"tool.call.requested",
+	"tool.call.allowed",
+	"tool.call.blocked",
+	"tool.call.completed",
+	"gate.opened",
+	"gate.resolved",
+	"envelope.clamped",
+	"band.crossed",
+	"artifact.created",
+	"artifact.updated",
+	"intervention.enqueued",
+	"intervention.applied",
+	"steering.granted",
+	"steering.released",
+] as const satisfies readonly WireEventKind[];
+
+// ─── Browser to server ──────────────────────────────────────────────────────
+
+/** Longest intervention the server accepts. Beyond this the frame is rejected. */
+export const MAX_INTERVENTION_LENGTH = 4000;
+
+/**
+ * Everything a browser may send, and nothing else.
+ *
+ * This list is a security boundary, not a convenience. A browser cannot start
+ * a job, cannot reach a shell, and cannot assign a sequence number. Anything
+ * outside this union is rejected and logged rather than ignored, because a
+ * client sending an unknown frame is either broken or probing.
+ */
+export type BrowserMsg =
+	| { type: "pause" }
+	| { type: "resume" }
+	| { type: "stop" }
+	| { type: "gate.approve"; gate_id: string }
+	| { type: "gate.deny"; gate_id: string }
+	| { type: "intervention.enqueue"; body: string }
+	| { type: "steering.request" }
+	| { type: "steering.release" }
+	/** Flow control and resume point, not per-event delivery confirmation. */
+	| { type: "ack"; seq: number };
+
+export type BrowserMsgType = BrowserMsg["type"];
+
+export const BROWSER_MSG_TYPES = [
+	"pause",
+	"resume",
+	"stop",
+	"gate.approve",
+	"gate.deny",
+	"intervention.enqueue",
+	"steering.request",
+	"steering.release",
+	"ack",
+] as const satisfies readonly BrowserMsgType[];
+
+// ─── Server to browser ──────────────────────────────────────────────────────
+
+export interface PresenceEntry {
+	user_id: string;
+	name: string;
+	joined_at: string;
+}
+
+export type ServerMsg =
+	/** Sent when a client is too far behind to catch up event by event. */
+	| {
+			type: "sync.snapshot";
+			events: WireEvent[];
+			presence: PresenceEntry[];
+			steering: { holder_user_id: string | null; expires_at: string | null };
+	  }
+	| { type: "sync.gap"; events: WireEvent[] }
+	| { type: "presence.changed"; entries: PresenceEntry[] }
+	/** `code` is stable and machine readable; `message` names what to do next. */
+	| { type: "error"; code: ServerErrorCode; message: string };
+
+export type ServerErrorCode =
+	| "wire_incompatible"
+	| "unauthorized"
+	| "forbidden"
+	| "malformed"
+	| "unknown_message"
+	| "too_large"
+	| "rate_limited"
+	| "gone";
+
+// ─── Daemon and server ──────────────────────────────────────────────────────
+
+export type HostAgentName = "claude-code" | "codex";
+
+export type DaemonMsg =
+	| {
+			type: "register";
+			wire_version: number;
+			machine_name: string;
+			os: string;
+			daemon_version: string;
+			host_agents: Array<{ name: HostAgentName; version: string }>;
+			/** Directories the operator consented to locally. Never set remotely. */
+			working_dirs: string[];
+			cached_policies: Array<{ persona_version_id: string; hash: string }>;
+	  }
+	| { type: "heartbeat"; running_jobs: string[] }
+	/** `seq` is 0 here; the room assigns the real one. */
+	| { type: "event"; event: WireEvent }
+	/** Only on a local cache miss. Allow and deny normally never leave the machine. */
+	| {
+			type: "enforcement.query";
+			call_id: string;
+			persona_version_id: string;
+			tool: string;
+			args_hash: string;
+	  }
+	/** Acknowledges durable storage, which is what makes resume gapless. */
+	| { type: "ack"; job_id: string; seq: number };
+
+export type ServerToDaemonMsg =
+	| { type: "registered"; machine_id: string }
+	| {
+			type: "job.assign";
+			job_id: string;
+			persona_version_id: string;
+			policy: CompiledPolicyRef;
+			trigger_context: Record<string, unknown>;
+	  }
+	| { type: "job.stop"; job_id: string }
+	| { type: "policy.push"; persona_version_id: string; policy: CompiledPolicyRef }
+	| {
+			type: "gate.resolved";
+			gate_id: string;
+			call_id: string;
+			outcome: "approved" | "denied" | "expired";
+	  }
+	| { type: "intervention.deliver"; job_id: string; intervention_id: string; body: string }
+	/** The daemon closes the socket and deletes its token. */
+	| { type: "revoke" };
+
+/**
+ * The compiled policy as it crosses the wire.
+ *
+ * Its shape is owned by the enforcement module, not by the protocol: this
+ * package carries it without interpreting it, so a change to how policies are
+ * compiled is not a wire change.
+ */
+export interface CompiledPolicyRef {
+	persona_version_id: string;
+	/** Content hash, so a daemon can tell whether its cache is current. */
+	hash: string;
+	rules: unknown;
+}
+
+// ─── Parsing ────────────────────────────────────────────────────────────────
+
+export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
+const isString = (v: unknown): v is string => typeof v === "string";
+
+/**
+ * Parses a frame from a browser socket.
+ *
+ * A frame that fails here is rejected and logged. It never throws, because a
+ * malformed frame arrives in the normal course of running a server and an
+ * uncaught exception would take the room down with it.
+ */
+export function parseBrowserMsg(raw: unknown): ParseResult<BrowserMsg> {
+	try {
+		return parseBrowserMsgUnsafe(raw);
+	} catch (error) {
+		// Frames off a socket come from JSON.parse and cannot carry a throwing
+		// accessor, but the contract above says this never throws, and a promise
+		// that holds only for the expected caller is not a contract.
+		return { ok: false, error: `frame could not be read: ${String(error)}` };
+	}
+}
+
+function parseBrowserMsgUnsafe(raw: unknown): ParseResult<BrowserMsg> {
+	if (!isObject(raw)) return { ok: false, error: "frame is not an object" };
+	const type = raw.type;
+	if (!isString(type)) return { ok: false, error: "frame has no string `type`" };
+
+	switch (type) {
+		case "pause":
+		case "resume":
+		case "stop":
+		case "steering.request":
+		case "steering.release":
+			return { ok: true, value: { type } as BrowserMsg };
+
+		case "gate.approve":
+		case "gate.deny":
+			return isString(raw.gate_id)
+				? { ok: true, value: { type, gate_id: raw.gate_id } as BrowserMsg }
+				: { ok: false, error: `${type} requires a string gate_id` };
+
+		case "intervention.enqueue": {
+			if (!isString(raw.body)) return { ok: false, error: "intervention requires a string body" };
+			if (raw.body.length === 0) return { ok: false, error: "intervention body is empty" };
+			if (raw.body.length > MAX_INTERVENTION_LENGTH) {
+				return {
+					ok: false,
+					error: `intervention body is ${raw.body.length} characters, over the ${MAX_INTERVENTION_LENGTH} limit`,
+				};
+			}
+			return { ok: true, value: { type, body: raw.body } };
+		}
+
+		case "ack":
+			return typeof raw.seq === "number" && Number.isInteger(raw.seq) && raw.seq >= 0
+				? { ok: true, value: { type, seq: raw.seq } }
+				: { ok: false, error: "ack requires a non-negative integer seq" };
+
+		default:
+			// Named rather than lumped into "malformed": a client sending an
+			// unknown type is either out of date or probing, and the two are worth
+			// telling apart in the log.
+			return { ok: false, error: `unknown message type: ${type}` };
+	}
+}
+
+/** True when a daemon reporting `version` can talk to this server. */
+export function isWireVersionSupported(version: unknown): boolean {
+	return (
+		typeof version === "number" &&
+		Number.isInteger(version) &&
+		version >= MIN_SUPPORTED_WIRE_VERSION &&
+		version <= WIRE_VERSION
+	);
+}
+
+/**
+ * The refusal a server sends a daemon it cannot talk to.
+ *
+ * It names the versions rather than saying "incompatible", so the operator
+ * learns what to do from the message instead of from a support thread.
+ */
+export function wireIncompatibleError(reported: unknown): Extract<ServerMsg, { type: "error" }> {
+	return {
+		type: "error",
+		code: "wire_incompatible",
+		message:
+			`This server speaks wire version ${WIRE_VERSION}` +
+			(MIN_SUPPORTED_WIRE_VERSION < WIRE_VERSION
+				? ` and accepts from ${MIN_SUPPORTED_WIRE_VERSION}`
+				: "") +
+			`. The daemon reported ${JSON.stringify(reported)}. Upgrade with: npm i -g personaxis`,
+	};
+}
+
+/** Narrows an event to a kind, for consumers switching on one. */
+export function isWireEventKind<K extends WireEventKind>(
+	event: WireEvent,
+	kind: K,
+): event is WireEvent & { kind: K } {
+	return event.kind === kind;
+}
