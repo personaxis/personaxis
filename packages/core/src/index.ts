@@ -85,5 +85,6 @@ export * from "./tool-calling.js";
 export * from "./agent.js";
 
 export * from "./wire/adapter.js";
+export * from "./wire/record.js";
 
 export { CORE_VERSION } from "./generated/version.js";
