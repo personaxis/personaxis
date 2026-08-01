@@ -57,6 +57,47 @@ Linux) and in `~/.personaxis/device.json` with mode `0600` where none can, which
 Windows. `connect status` tells you which of the two happened, because that is the kind of thing a
 tool must not be vague about.
 
+## What enforcement actually is
+
+While `connect` runs, this machine refuses tool calls that the persona's own
+limits refuse. Not by asking the model nicely: the host agent runs a hook before
+every tool call, the hook asks the daemon over a local socket, and a refused
+call never executes.
+
+`connect` installs that hook into `.claude/settings.json` of each `--dir`
+(`PreToolUse`, no matcher, so it covers every tool). Your own hooks are left
+alone and `connect logout` is not what removes it; the entry is recognised by
+its command and can be deleted by hand.
+
+The policy comes from the persona in that directory
+(`.personaxis/personaxis.md`): `permissions.deny` and `allow`,
+`self_regulation.hard_limits`, `character.prohibited_behaviors`, the sandbox
+posture, the approval posture. A directory with no persona has no policy, and
+calls made there are refused rather than allowed by default.
+
+Four things are refused without consulting a rule, and each says which one it
+was:
+
+| Situation | Rule named |
+|---|---|
+| The daemon is not running or not answering | the hook's own refusal, with the reason |
+| A directory that was never exposed with `--dir` | `out_of_scope` |
+| No persona, so no policy | `no_policy` |
+| A policy older than its lifetime, with the workspace unreachable | `stale_cache` |
+
+That last one is the one worth understanding. An expired policy is not
+"probably still right": its owner may have revoked something ten minutes ago. So
+a machine cut off from the workspace for longer than the policy's lifetime stops
+allowing, rather than keeping on with limits nobody can update.
+
+A gated call holds the hook open while a person decides in the workspace. That
+is the freeze you see there: the tool call has not run, the process is waiting,
+and the answer, or the timeout, decides it.
+
+Measured on the development machine: p50 101 ms, p95 114 ms end to end against a
+150 ms budget, nearly all of it Node starting up. That is why the hook is its
+own small binary (`personaxis-hook`) rather than a subcommand of this CLI.
+
 ## When the connection drops
 
 A dropped socket pauses reporting and nothing else. The job keeps running, its events queue

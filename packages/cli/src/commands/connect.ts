@@ -9,10 +9,20 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import type { Server } from "node:net";
 import chalk from "chalk";
 import { Command } from "commander";
+import matter from "gray-matter";
+import { readFileSync } from "node:fs";
+import { policyFromPersona } from "@personaxis/core";
 
 import { version } from "../generated/assets.js";
+import { enforcementSocketPath, serveEnforcement } from "../workspace/enforcement-endpoint.js";
+import { enforcementHandler } from "../workspace/enforcement-service.js";
+import { claudeCodeAdapter } from "../workspace/host-adapter.js";
+import { PolicyCache } from "../workspace/policy-cache.js";
 import {
 	claimDeviceToken,
 	startDeviceFlow,
@@ -69,7 +79,97 @@ async function runConnect(opts: ConnectOptions): Promise<void> {
 	}
 
 	printScope(scope);
-	await holdTheWire(device.token, scope);
+	const enforcement = startEnforcement(scope);
+	try {
+		await holdTheWire(device.token, scope, enforcement.cache);
+	} finally {
+		for (const server of enforcement.servers) server.close();
+	}
+}
+
+interface EnforcementRuntime {
+	cache: PolicyCache;
+	servers: Server[];
+}
+
+/**
+ * Puts the machine's limits in front of every tool call, before the wire is
+ * even up.
+ *
+ * The order matters. Enforcement is local and starts first, so a persona is
+ * governed on this machine whether or not the workspace is reachable. The
+ * socket comes up, the hook is installed, and only then does the daemon dial
+ * out. A design where the workspace had to answer first would mean an agent
+ * that runs unchecked whenever the network is down, which is exactly backwards.
+ */
+function startEnforcement(scope: string[]): EnforcementRuntime {
+	const cache = new PolicyCache();
+	const byRoot = new Map<string, string>();
+	const servers: Server[] = [];
+
+	for (const root of scope) {
+		const personaVersionId = loadLocalPolicy(root, cache);
+		if (personaVersionId) byRoot.set(root, personaVersionId);
+
+		const handler = enforcementHandler({
+			cache,
+			personaVersionFor: (cwd) => {
+				// Longest match, so a persona in a subdirectory wins over the one
+				// at the repository root.
+				let best: string | null = null;
+				let bestLength = -1;
+				for (const [candidate, id] of byRoot) {
+					if (cwd === candidate || cwd.replace(/\\/g, "/").startsWith(`${candidate.replace(/\\/g, "/")}/`)) {
+						if (candidate.length > bestLength) {
+							best = id;
+							bestLength = candidate.length;
+						}
+					}
+				}
+				return best;
+			},
+		});
+
+		try {
+			servers.push(serveEnforcement(enforcementSocketPath(root), handler));
+			claudeCodeAdapter.install(root);
+			console.log(chalk.dim("enforcing in"), root);
+		} catch (error) {
+			// Reported and not fatal: one unwritable project should not stop the
+			// others, and the operator needs to know which one it was.
+			console.error(
+				chalk.yellow(`could not enforce in ${root}: ${error instanceof Error ? error.message : String(error)}`),
+			);
+		}
+	}
+
+	return { cache, servers };
+}
+
+/**
+ * Compiles the persona that lives in a directory, so the machine can enforce
+ * without asking anyone.
+ *
+ * A directory with no persona is not an error. It means this machine has
+ * nothing to say about calls made there, and the handler refuses them rather
+ * than inventing a policy, because a made-up policy is worse than none: it
+ * would look like enforcement while enforcing something nobody wrote.
+ */
+function loadLocalPolicy(root: string, cache: PolicyCache): string | null {
+	const path = join(root, ".personaxis", "personaxis.md");
+	if (!existsSync(path)) return null;
+	try {
+		const spec = matter(readFileSync(path, "utf-8")).data as Record<string, unknown>;
+		const identity = spec.identity as { name?: string } | undefined;
+		const personaVersionId = `local:${identity?.name ?? "persona"}@${root}`;
+		cache.put(policyFromPersona(spec, { personaVersionId }));
+		return personaVersionId;
+	} catch (error) {
+		console.error(
+			chalk.yellow(`could not read the persona in ${root}: ${error instanceof Error ? error.message : String(error)}`),
+		);
+		return null;
+	}
 }
 
 /**
@@ -139,7 +239,7 @@ async function linkMachine(app: string, openBrowser: boolean): Promise<boolean> 
 }
 
 /** Holds the socket open until the operator stops it. */
-function holdTheWire(token: string, scope: string[]): Promise<void> {
+function holdTheWire(token: string, scope: string[], cache: PolicyCache): Promise<void> {
 	return new Promise((resolve) => {
 		const connection = new DaemonConnection({
 			url: daemonSocketUrl(),
@@ -148,7 +248,9 @@ function holdTheWire(token: string, scope: string[]): Promise<void> {
 				...describeMachine(version),
 				host_agents: detectHostAgents(),
 				working_dirs: scope,
-				cached_policies: [],
+				// What this machine already holds, so the workspace can push only
+				// what changed instead of every policy on every connection.
+				cached_policies: cache.summary(),
 			},
 			socketFactory: nodeSocketFactory,
 			forgetToken: () => forgetDevice(),
