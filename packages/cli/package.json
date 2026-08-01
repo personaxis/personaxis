@@ -26,7 +26,8 @@
   },
   "bin": {
     "personaxis": "dist/index.js",
-    "personaxis-scan": "dist/scan-bin.js"
+    "personaxis-scan": "dist/scan-bin.js",
+    "personaxis-hook": "dist/hook-bin.js"
   },
   "files": [
     "dist",

@@ -6,6 +6,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]: the machine on the wire
+
+> `personaxis connect`, and enforcement that happens before a tool call rather
+> than after a prompt. The spec is unchanged at 1.1.0.
+
+### Feat: `personaxis connect`, linking a machine without handling a password
+- The device authorization grant (RFC 8628) with the proof key of PKCE (RFC
+  7636). The daemon invents a secret and sends only its hash; a person approves
+  the machine in a browser, seeing what it claims to be; the daemon then proves
+  it holds the original. The approval link is therefore not a credential:
+  whoever sees it can approve a machine they can already see, and cannot walk
+  away with its token.
+- `connect status` and `connect logout`. `login` is an alias of `connect`.
+- The token goes to the OS credential store where one can be read and to a 0600
+  file where none can, which today means Windows, and `status` says which of the
+  two happened. `keytar` remains forbidden here for the reasons in
+  `credentials.ts`.
+- **Consent is local and only local.** The exposed scope is the directories
+  named with `--dir`, decided at that keyboard, stored on that machine. Nothing
+  the workspace sends can widen it. Empty means empty, and the command says so
+  rather than defaulting to a home directory.
+
+### Feat: a dropped connection pauses reporting and nothing else
+- The job keeps running, its events queue locally, and on reconnect the daemon
+  replays exactly what the workspace has not acknowledged as durable.
+- This needed one addition to the wire: an `ack` in the server to daemon
+  direction carrying the daemon's own per-job counter, and an outbound `seq`
+  that is that counter rather than zero. Without it, gapless resume rests on a
+  socket write having reached storage, which is how a job ends up with a record
+  that quietly misses a minute of its life. Additive; no deployed consumer reads
+  it yet.
+- Backoff with full jitter to a 30 second ceiling, because a gateway deploy
+  disconnects every daemon in the same second. A revoked machine deletes its
+  token and stops. A wire version refusal stops for good instead of hammering a
+  server that already said no.
+
+### Feat: enforcement in front of the tool call (`personaxis-hook`)
+- A `PreToolUse` hook, installed into each consented directory, that asks the
+  daemon over a local socket before every tool call. A refused call does not
+  execute. This is the difference between a limit and a request.
+- The policy is compiled from the persona itself (`policyFromPersona` in core,
+  so the daemon and the workspace produce the identical result and the hash
+  proves it): `permissions.deny` and `allow`, `self_regulation.hard_limits`,
+  `character.prohibited_behaviors`, the sandbox and approval postures.
+- **Fail closed on every path that is not a clear allow**, each naming itself:
+  no daemon, `out_of_scope`, `no_policy`, `stale_cache`. An expired policy is
+  not "probably still right", so a machine cut off for longer than its lifetime
+  stops allowing rather than acting on limits nobody can update.
+- A gated call holds the hook open while a person decides. That is the freeze
+  the workspace shows.
+- Its own binary rather than a subcommand, because this runs in front of every
+  call: measured p50 101 ms, p95 114 ms end to end against a 150 ms budget, and
+  nearly all of it is Node starting up.
+- A contract test spawns the real binary against a real socket and asserts on
+  the two things the host acts on, the exit code and stderr, plus an inline
+  snapshot of the field names we depend on. Claude Code itself is not in that
+  loop (CI has neither the host nor a key), which is stated in the test rather
+  than implied by a green tick.
+
+### Fix
+- The CLI test suite pins `FORCE_COLOR=0`. Seven TUI tests passed or failed on
+  the colour depth of whichever terminal launched them, which is a suite that
+  cannot tell an environment apart from a regression.
+
+---
+
 ## [0.16.0] - 2026-07-31: the workspace wire
 
 > The first release the workspace consumes. The spec is unchanged at 1.1.0;
