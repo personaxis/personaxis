@@ -27,7 +27,7 @@ This repo is a **pnpm monorepo** (eight lockstep packages) that turns the CLI in
 | `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): deterministic scenario suite + runner (no API key) proving the spec's guarantees against the real engine, categories **governance / security / spec-fidelity** (clamp holds, gate blocks, memory tamper-evident, injection can't steer evolution, budgets stop, verification catches), 15 scenarios; plus `experiments/` (preregistered E1–E6 runs: E3 scale + E4 bench recorded, behavioral runners BYOK). |
 | `packages/tui` (`@personaxis/tui`) | **ASCII dashboard + render lib**. Its `visual`/`screen` modules back the REPL and `sigil`; the live dashboard is surfaced as `personaxis dash` (and `/dash` in the REPL) plus the standalone bin `personaxis-dash`. Reads `state.json` each frame, reflecting evolution in another process. **FASE 7 (P2):** `driftGauge` (pure, per-layer `D` vs threshold) and an embeddable `DriftView` (drill-down consuming the `drift` event's full `DriftReport`, no disk re-read); `InkScreen` gains `setDrift`/`playMoment`/`openView`/`suspend` so the REPL renders the band-crossing moment and hosts full-screen sub-commands. |
 
-All eight publish at the same lockstep version (currently `0.15.0`, publish pending; latest on npm is `0.12.0`); the spec they implement is `spec_version 1.1.0` (1.0.0 validates unchanged, additive; 0.3.0–0.10.0 read-compat via the frozen legacy schema).
+All eight publish at the same lockstep version (currently `0.16.0`, published); the spec they implement is `spec_version 1.1.0` (1.0.0 validates unchanged, additive; 0.3.0–0.10.0 read-compat via the frozen legacy schema).
 
 **Build/test/run (from repo root):**
 ```bash
