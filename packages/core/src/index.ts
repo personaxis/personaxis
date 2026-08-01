@@ -86,5 +86,7 @@ export * from "./agent.js";
 
 export * from "./wire/adapter.js";
 export * from "./wire/record.js";
+export * from "./enforcement/action-classes.js";
+export * from "./enforcement/policy-compile.js";
 
 export { CORE_VERSION } from "./generated/version.js";
