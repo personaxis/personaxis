@@ -6,6 +6,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.16.0] - 2026-07-31: the workspace wire
+
+> The first release the workspace consumes. The spec is unchanged at 1.1.0;
+> nothing here touches the persona schema.
+
+### Feat: `@personaxis/protocol/workspace`, the shared vocabulary
+- A new subpath exporting the twenty normalised events, the nine messages a
+  browser may send, the daemon and server message unions, and wire version
+  negotiation. One vocabulary is what lets a single surface sit over two
+  execution locations: a persona on a laptop and one in a hosted sandbox emit
+  the same events, and nothing downstream knows which produced them.
+- **No `node:` imports**, verified against the build output, because it runs in
+  a Cloudflare Worker and a browser as well as here.
+- `seq` is assigned by the control plane and by nothing else. Producers send
+  zero. Order decided in one place is what makes replay, gap fill and
+  reconnection possible.
+- The nine browser messages are a security boundary rather than a convenience.
+  Anything outside the list is refused and named, because a client sending an
+  unknown type is either out of date or probing and the two are worth telling
+  apart. `parseBrowserMsg` returns a result and never throws: a malformed frame
+  is an ordinary event on a socket, not an exceptional one.
+- Version negotiation refuses by naming the versions and the upgrade command,
+  not by saying "incompatible".
+
+### Feat: `LoopEvent` maps onto the wire as a closed list (`@personaxis/core`)
+- Every engine event either maps or is dropped with a reason. The switch is
+  exhaustive, so a new event stops the build until someone decides what the
+  workspace does with it, and a test walks all thirty kinds because the
+  compiler cannot tell a deliberate drop from a hurried one. An event falling
+  through a default would vanish from the record.
+- A verdict of "ask" emits nothing: it is what opens a gate, and a gate carries
+  routing, quorum and a timeout the event does not have.
+- A mutation reaches the wire only when it was clamped, and a recompile only
+  when a band was crossed. Those are the moments a person can perceive.
+
+### Feat: the hash chained record (`@personaxis/core`)
+- Append only, chained per job, with `verify` reporting the first sequence that
+  does not add up rather than a bare false, because localising tampering is the
+  difference between an answer and an alarm.
+- Retention is handled head on: expiry drops the payload and keeps its hash, so
+  the chain still verifies end to end with the content gone. Entries are never
+  deleted, which would break verification for everything after them.
+- Twenty tests, and the ones that matter are the attacks: an edited payload, a
+  deleted row, a rewritten hash, an entry re-pointed at the wrong parent and one
+  moved to another position are each caught at the exact sequence.
+
+---
+
 ## [0.15.0] - 2026-07-31: a production agent (V11/V12) + the Command Center as a control surface (V9)
 
 > Version target for the V9-V12 arc (agent core, security, Command Center, sync backends).
