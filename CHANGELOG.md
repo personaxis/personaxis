@@ -6,7 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]: the machine on the wire
+## [Unreleased]
+
+_Nothing yet._
+
+---
+
+## [0.16.2] - 2026-08-01: the machine on the wire
 
 > `personaxis connect`, and enforcement that happens before a tool call rather
 > than after a prompt. The spec is unchanged at 1.1.0.
