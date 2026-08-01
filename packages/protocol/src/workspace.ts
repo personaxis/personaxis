@@ -234,7 +234,12 @@ export type DaemonMsg =
 			cached_policies: Array<{ persona_version_id: string; hash: string }>;
 	  }
 	| { type: "heartbeat"; running_jobs: string[] }
-	/** `seq` is 0 here; the room assigns the real one. */
+	/**
+	 * `seq` on an outbound event is the daemon's own per-job counter, not the
+	 * room's. The room assigns the authoritative sequence for fan-out and echoes
+	 * this one back in its `ack`, which is what lets a daemon know exactly how
+	 * much of what it sent is durable and where to resume after a drop.
+	 */
 	| { type: "event"; event: WireEvent }
 	/** Only on a local cache miss. Allow and deny normally never leave the machine. */
 	| {
@@ -244,7 +249,7 @@ export type DaemonMsg =
 			tool: string;
 			args_hash: string;
 	  }
-	/** Acknowledges durable storage, which is what makes resume gapless. */
+	/** Acknowledges what the daemon has applied of what the server sent it. */
 	| { type: "ack"; job_id: string; seq: number };
 
 export type ServerToDaemonMsg =
@@ -265,6 +270,16 @@ export type ServerToDaemonMsg =
 			outcome: "approved" | "denied" | "expired";
 	  }
 	| { type: "intervention.deliver"; job_id: string; intervention_id: string; body: string }
+	/**
+	 * Acknowledges durable storage, which is what makes resume gapless.
+	 *
+	 * `seq` is the daemon's own counter as it sent it, so the daemon can drop
+	 * everything up to it and replay only the rest. Without this the daemon
+	 * would either replay from the start of the job on every reconnect or trust
+	 * that a socket write reached a database, and the second one is how a job
+	 * ends up with a record that quietly misses a minute of its life.
+	 */
+	| { type: "ack"; job_id: string; seq: number }
 	/** The daemon closes the socket and deletes its token. */
 	| { type: "revoke" };
 

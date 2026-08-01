@@ -21,3 +21,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 process.env.PERSONAXIS_HOME = mkdtempSync(join(tmpdir(), "pxs-test-home-"));
+
+/**
+ * And a fixed colour depth, for the same class of reason.
+ *
+ * The TUI tests read rendered frames and assert on the glyphs in them. With
+ * colour enabled every glyph is wrapped in escape codes, so a substring that is
+ * plainly on screen is not in the string, and seven tests fail. They pass or
+ * fail on the terminal that happened to launch them, which makes a suite that
+ * cannot tell an environment apart from a regression. Pinned here rather than
+ * in each test: the whole suite asserts on text, so the whole suite wants text.
+ */
+process.env.FORCE_COLOR = "0";
