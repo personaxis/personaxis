@@ -16,7 +16,8 @@ import { runHooks, readHooksConfig, type HooksConfig } from "./hooks.js";
 import { EventBus } from "./events.js";
 import { DEFAULT_POLICY, type CommandVerdict, type Policy } from "./sandbox.js";
 import { FINISH_TOOL, toolByName, TOOLS, type ToolSpec } from "./tools/registry.js";
-import { selectActiveTools, type ActiveSkill } from "./skill-activation.js";
+import { activeSkillsFor, selectActiveTools, type ActiveSkill } from "./skill-activation.js";
+import { guidesFor, renderGuides, type SkillGuide } from "./skill-guide.js";
 import { describeMatches, expandActive, findTools, findToolsTool, FIND_TOOLS_TOOL } from "./tools/find-tools.js";
 import {
   requestToolCall,
@@ -107,6 +108,13 @@ export interface AgentOptions {
    * is used, unchanged.
    */
   skills?: ActiveSkill[];
+  /**
+   * J.2c: the `SKILL.md` of each skill, keyed by name. Delivered to the model as QUOTED
+   * reference material when its skill is active, never folded into the system prompt: a
+   * guide is text a third party wrote, and merging it with the persona's own limits would
+   * let it speak with the persona's authority.
+   */
+  skillGuides?: Map<string, SkillGuide>;
   /**
    * J.3: opt-in post-mortem. When present, a hard-won run reflects and may abstract its
    * method into a governed skill (skill-writer.ts: security floor → governance). The
@@ -394,6 +402,10 @@ export class PersonaAgent {
     // not given" instead of doing the wrong thing with a tool it has. Only offered when a
     // subset exists: with the full catalog there is nothing to find.
     const subsetting = Boolean(this.opts.skills?.length);
+    // Computed ONCE and shared by the tool subset and the guides. Two answers to "which
+    // skills are active" is how a model gets a tool from one skill and the instructions
+    // from another, and the transcript looks entirely reasonable.
+    const activeSkills = subsetting ? activeSkillsFor(task, this.opts.skills!) : [];
     let activeTools = subsetting
       ? [
           ...selectActiveTools(task, baseTools, this.opts.skills!, { alwaysNames: [FINISH_TOOL] }),
@@ -401,8 +413,16 @@ export class PersonaAgent {
         ]
       : baseTools;
 
+    // J.2c: the active skills' guides, as their own system message AFTER the identity.
+    // Separate on purpose: a reader of this transcript can see where the persona's own
+    // words end and quoted third-party material begins, and so can the model.
+    const guideBlock = this.opts.skillGuides?.size
+      ? renderGuides(guidesFor(activeSkills, this.opts.skillGuides))
+      : null;
+
     const messages: ChatMessage[] = [
       { role: "system", content: this.systemPrompt() },
+      ...(guideBlock ? [{ role: "system" as const, content: guideBlock }] : []),
       ...(this.opts.priorMessages ?? []),
       // V7.A1: environment changes are SYSTEM speech, not the user's words.
       ...(this.opts.envNote ? [{ role: "system" as const, content: this.opts.envNote }] : []),
