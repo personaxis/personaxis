@@ -1,4 +1,5 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { hashContent, isPinned, type ContentEntry } from "@personaxis/core";
 import { join } from "path";
 import matter from "gray-matter";
 import type { PersonaData } from "../load.js";
@@ -31,6 +32,61 @@ interface SkillsManifestEntry {
   kind: DeclaredSkillKind;
   ref?: string;
   status: SkillStatus;
+  /**
+   * sha256 over the skill's content, for a local skill that exists.
+   *
+   * A skill is code the persona runs and did not author, and the manifest is
+   * where a reviewer sees what they were looking at. Without this the manifest
+   * records that a skill was present, which is a weaker claim than recording
+   * what it was.
+   */
+  contentHash?: string;
+  fileCount?: number;
+  /**
+   * Whether the reference commits to a specific version.
+   *
+   * Not a refusal: refusing an unpinned reference would make the common case
+   * impossible before anyone has a lockfile. It is stated so the surface
+   * showing a persona's skills can say which of them can change without anyone
+   * acting.
+   */
+  pinned?: boolean;
+}
+
+/**
+ * Reads a skill directory into the entries the hash covers.
+ *
+ * Text only, and sorted by the hasher. A binary in a skill directory is a
+ * different problem from an edited script and is out of scope here; what this
+ * catches is the case that actually happens, which is a script changing under a
+ * reference that did not move.
+ */
+function contentOf(dir: string, prefix = "", depth = 0): ContentEntry[] {
+  // Bounded. A symlink loop in a fetched skill would otherwise walk forever,
+  // and the failure would look like a hang rather than a bad skill.
+  if (depth > 8 || !existsSync(dir)) return [];
+
+  const entries: ContentEntry[] = [];
+  for (const item of readdirSync(dir, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${item.name}` : item.name;
+    const full = join(dir, item.name);
+
+    if (item.isDirectory()) {
+      entries.push(...contentOf(full, relative, depth + 1));
+      continue;
+    }
+    if (!item.isFile()) continue;
+
+    try {
+      entries.push({ path: relative, content: readFileSync(full, "utf-8") });
+    } catch {
+      // Unreadable is not the same as absent, and it must not silently shrink
+      // the hash: a placeholder keeps the file in the count and changes the
+      // digest, so the mismatch is visible.
+      entries.push({ path: relative, content: "[unreadable]" });
+    }
+  }
+  return entries;
 }
 
 function asStringArray(value: unknown): string[] | undefined {
@@ -191,9 +247,30 @@ export function applySkillsToSubagent(
 export function writeSkillsManifest(skills: DeclaredSkill[], baseDir: string): void {
   const entries: SkillsManifestEntry[] = skills.map((skill) => {
     if (skill.kind === "local") {
-      return { name: skill.name, kind: skill.kind, status: skill.missing ? "missing-local" : "materialized" };
+      if (skill.missing || !skill.sourceDir) {
+        return { name: skill.name, kind: skill.kind, status: "missing-local" as SkillStatus };
+      }
+
+      const content = contentOf(skill.sourceDir);
+      return {
+        name: skill.name,
+        kind: skill.kind,
+        status: "materialized" as SkillStatus,
+        contentHash: hashContent(content),
+        fileCount: content.length,
+        // A local skill is as pinned as the working tree it sits in, which is
+        // the same trust level as the persona document beside it.
+        pinned: true,
+      };
     }
-    return { name: skill.name, kind: skill.kind, ref: skill.ref, status: "reference-only" };
+
+    return {
+      name: skill.name,
+      kind: skill.kind,
+      ref: skill.ref,
+      status: "reference-only" as SkillStatus,
+      pinned: skill.ref ? isPinned(skill.ref) : false,
+    };
   });
 
   writeFileSync(join(baseDir, "skills-manifest.json"), JSON.stringify({ skills: entries }, null, 2) + "\n", "utf-8");
