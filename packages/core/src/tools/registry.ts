@@ -10,6 +10,7 @@
  */
 
 import type { CommandVerdict, Policy } from "../sandbox.js";
+import type { ExecutionPort } from "../ports/execution.js";
 import { BUILTIN_TOOLS } from "./builtin/index.js";
 
 /**
@@ -36,7 +37,12 @@ export interface ToolSpec {
   /** Decide allow | ask | deny for these args under the policy. Pure. */
   gate(args: Record<string, unknown>, policy: Policy): CommandVerdict;
   /** Perform the action; returns a text observation for the model. */
-  execute(args: Record<string, unknown>, policy: Policy): Promise<string>;
+  /**
+   * F2: `execution` is WHERE the action happens, injected rather than assumed. A tool that
+   * reached for `spawn` itself would run on whatever machine hosts the process, which for a
+   * hosted job is the wrong one and fails silently by working.
+   */
+  execute(args: Record<string, unknown>, policy: Policy, execution: ExecutionPort): Promise<string>;
 }
 
 /**

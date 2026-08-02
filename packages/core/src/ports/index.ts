@@ -120,3 +120,8 @@ export const fsLedgerStore: LedgerStore = {
 export function defaultFsStorage(): Storage {
   return { lock: fsLockProvider, state: fsStateStore, memory: fsMemoryStore, ledger: fsLedgerStore };
 }
+
+// F2: where an ALLOWED action happens. Separate from the storage ports above because it
+// answers a different question (this machine or a container the workspace started), and
+// because it is emphatically not a security boundary: gating happens before it.
+export * from "./execution.js";

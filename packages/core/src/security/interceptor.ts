@@ -17,6 +17,7 @@ import { runHooks, type HooksConfig } from "../hooks.js";
 import type { ToolSpec } from "../tools/registry.js";
 import type { ToolCall } from "../tool-calling.js";
 import type { Policy } from "../sandbox.js";
+import { localExecution, type ExecutionPort } from "../ports/execution.js";
 import { ForensicLog, type ForensicRecord } from "./forensic-log.js";
 
 export interface InterceptOutcome {
@@ -32,6 +33,14 @@ export class ToolInterceptor {
     private readonly forensic: ForensicLog,
     private readonly bus: EventBus = new EventBus(),
     private readonly hooks: HooksConfig | null = null,
+    /**
+     * F2: WHERE an allowed action happens. Defaults to this machine, which is what every
+     * existing caller means; a hosted job passes the sandbox's port instead and nothing
+     * else about this class changes. The default lives here, in ONE place, rather than in
+     * each tool: a per-tool fallback is how one tool ends up running locally during a
+     * hosted job, and it would work perfectly, on the wrong machine.
+     */
+    private readonly execution: ExecutionPort = localExecution(),
   ) {}
 
   /**
@@ -51,7 +60,7 @@ export class ToolInterceptor {
     let output: string;
     let ok = true;
     try {
-      output = await tool.execute(call.args, this.policy);
+      output = await tool.execute(call.args, this.policy, this.execution);
     } catch (e) {
       output = `execution error: ${(e as Error).message}`;
       ok = false;
