@@ -17,6 +17,7 @@ import { EventBus } from "./events.js";
 import { DEFAULT_POLICY, type CommandVerdict, type Policy } from "./sandbox.js";
 import { FINISH_TOOL, toolByName, TOOLS, type ToolSpec } from "./tools/registry.js";
 import { selectActiveTools, type ActiveSkill } from "./skill-activation.js";
+import { describeMatches, expandActive, findTools, findToolsTool, FIND_TOOLS_TOOL } from "./tools/find-tools.js";
 import {
   requestToolCall,
   type ChatMessage,
@@ -389,8 +390,15 @@ export class PersonaAgent {
     // J.2: subset the tools shown to the model to what this task's skills need, so a large
     // catalog does not invite tool-overload. Opt-in: with no skills configured, the full set is
     // used unchanged. Uncategorized tools (memory) stay available; `finish` always does.
-    const activeTools = this.opts.skills?.length
-      ? selectActiveTools(task, baseTools, this.opts.skills, { alwaysNames: [FINISH_TOOL] })
+    // J.2b: with a subset in force, the model needs a way to say "I need something I was
+    // not given" instead of doing the wrong thing with a tool it has. Only offered when a
+    // subset exists: with the full catalog there is nothing to find.
+    const subsetting = Boolean(this.opts.skills?.length);
+    let activeTools = subsetting
+      ? [
+          ...selectActiveTools(task, baseTools, this.opts.skills!, { alwaysNames: [FINISH_TOOL] }),
+          findToolsTool,
+        ]
       : baseTools;
 
     const messages: ChatMessage[] = [
@@ -591,6 +599,25 @@ export class PersonaAgent {
           // Resolve from the tools this run actually offered (memory + output-store are per-run,
           // closured over their deps), falling back to the global registry. The old global-only
           // lookup could not find a per-run tool the model was shown.
+          // J.2b: searching is handled here rather than by the tool's own execute, because
+          // the result changes what the model may call next, and a tool cannot reach the
+          // loop's subset. It is a lookup with no side effect, so it runs before the gate:
+          // there is nothing to authorise. What it FINDS still faces its own gate when
+          // called, which is what keeps the narrowing from being decorative.
+          if (call.name === FIND_TOOLS_TOOL) {
+            const query = typeof call.args.query === "string" ? call.args.query : "";
+            const matches = findTools(query, baseTools, activeTools);
+            activeTools = expandActive(activeTools, baseTools, matches);
+            bus.emit({ type: "tool-result", tool: call.name, ok: true, output: `${matches.length} match(es)` });
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              name: call.name,
+              content: describeMatches(query, matches),
+            });
+            continue;
+          }
+
           const tool = activeTools.find((t) => t.name === call.name) ?? toolByName(call.name);
           if (!tool) {
             errorCount++;
