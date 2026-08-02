@@ -16,6 +16,7 @@ import chalk from "chalk";
 import { readRecompilePending, slugFromPersonaPath } from "@personaxis/core";
 import { runCompile } from "./compile.js";
 import { resolveObservePersona } from "./observe.js";
+import { holdPresence } from "../presence-session.js";
 
 async function recompile(personaPath: string, ifPending: boolean): Promise<boolean> {
   const slug = slugFromPersonaPath(personaPath);
@@ -54,6 +55,13 @@ export const watchCommand = new Command("watch")
     }
 
     console.log(chalk.green("✓"), `watching ${chalk.cyan(personaPath)}`, chalk.dim("· Ctrl+C to stop"));
+
+    // D6: a daemon that recompiles this persona is holding it, and the fleet said idle.
+    // `stop` below calls process.exit, so the hold has to be installed BEFORE it: the
+    // release runs on the `exit` event, and a listener registered later would never run.
+    // The recompiles it triggers take their own nested hold, so the activity says
+    // "compiling" while one runs and comes back here on its own afterwards.
+    holdPresence(personaPath, { host: "compile", activity: "watching for spec edits" });
 
     // 1. Debounced recompile when the human hand-edits the spec.
     let debounce: NodeJS.Timeout | undefined;

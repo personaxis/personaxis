@@ -26,6 +26,7 @@ import { runProviderOrExit } from "../provider-run.js";
 import { hashContent, saveManifest } from "../manifest.js";
 import { placeCompiledDocument, isSoulPlatform, PLACEMENT_PLATFORMS, type PlacementPlatform } from "../targets/placement.js";
 import { resolveDeclaredSkills, materializeLocalSkills, writeSkillsManifest, applySkillsToSubagent } from "../targets/skills.js";
+import { holdPresence } from "../presence-session.js";
 
 /** Values block of a state.json payload, or undefined when absent/malformed. */
 function parseStateValues(stateJson: string | undefined): Record<string, number> | undefined {
@@ -317,7 +318,18 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
   const assembled = assemblePersonaDoc(assembleInput);
 
   // F3.1, STAGE 2: optional LLM polish, gated by the faithfulness check.
-  const stage2 = await polishOrFallback(assembled, raw, target, opts);
+  //
+  // D6: this is the only part of a compile that holds the persona long enough for anyone to
+  // notice, so it is the only part that announces. Stage 1 and the writes around it are
+  // milliseconds, and a presence marker nobody can read in time is noise on disk. Nested
+  // under `watch`, this shows "compiling" and restores "watching for spec edits" by itself.
+  const presence = holdPresence(sourcePath, { host: "compile", activity: "compiling PERSONA.md" });
+  let stage2;
+  try {
+    stage2 = await polishOrFallback(assembled, raw, target, opts);
+  } finally {
+    presence.release();
+  }
   const result = { source: stage2.source, via: stage2.via, model: stage2.model };
   const compiledText = stage2.content;
 

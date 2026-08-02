@@ -26,6 +26,7 @@ import {
   type ProvenanceSource,
 } from "@personaxis/core";
 import { runCompile } from "./compile.js";
+import { holdPresence } from "../presence-session.js";
 
 /** Resolve the persona spec: explicit --persona, else the project root `.personaxis/personaxis.md`. */
 export function resolveObservePersona(personaOpt?: string): string | undefined {
@@ -61,6 +62,10 @@ export async function runObserve(
     recompile: makeRecompileHook(),
   });
   loop.bus.on((e) => events.push(e));
+  // D6: a tick runs a model and can rewrite the spec, so for its duration this process is a
+  // holder like any other. Host hooks fire this on every turn, which is precisely the case
+  // where the fleet claiming "idle" was furthest from the truth.
+  const presence = holdPresence(personaPath, { host: "loop", activity: "running a governed tick" });
   try {
     const report = await loop.tick({ observation, source });
     // Drift-gated recompile: only when a governed self-edit marked PERSONA.md stale.
@@ -73,6 +78,8 @@ export async function runObserve(
     return { ok: true, report, recompiled, events };
   } catch (e) {
     return { ok: false, recompiled: false, events, error: (e as Error).message };
+  } finally {
+    presence.release();
   }
 }
 
