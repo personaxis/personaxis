@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [0.16.6] - 2026-08-02: the daemon boundary, hardened
 
 ### Feat: the daemon boundary, hardened (D5 + S3)
 - **The consented scope, enforced on the way out.** The hook already refuses a tool call
@@ -39,6 +39,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   the derivations are published separately as a research report and the checkable
   obligations travel with the implementation as property tests over T1-T6.
 - `CLAUDE.md` claimed the lockstep version was `0.16.0`. It is `0.16.5`.
+
+### Test: red-team scenarios in the eval suite
+- Four adversarial scenarios, all C2, run against the real controls: exfiltration to an
+  address a prompt injection supplied, a lookalike host by suffix and by prefix, egress
+  denied by default, and a credential that must not survive into an event while the event
+  still says what happened. The suite is now 19 scenarios and needs no API key.
 
 ### Docs
 - `CLAUDE.md` gains **the daemon boundary**: consent is local and only local, enforcement
