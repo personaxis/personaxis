@@ -6,6 +6,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.16.10] - 2026-08-02: what the phase 2 craft gate found
+
+### Fix: five leaks, three of them months old
+- **`README.md` said `0.14.0`** in three places while the published version was `0.16.9`. It
+  is the first thing anyone reads on npm and on GitHub, and it ships inside the package. An
+  integration doc still named `0.12.0` for the MCP server.
+- `CLAUDE.md` said `0.16.5`, and **had already been corrected once** in the phase 1 gate,
+  from `0.16.0`. That reincidence is the finding: the problem was never the number, it was
+  writing it down. The README no longer states it and sends people to `personaxis --version`,
+  which is always right; `CLAUDE.md` points at the package manifests and says why it does not
+  repeat the value.
+- **Three public docs pointed at paths inside the private planning repo**
+  (`docs/architecture/agent-core.md`, `docs/architecture/command-center.md`,
+  `docs/security/00-threat-model.md`), and the plan they pointed at had already been
+  superseded. A reader gets a reference they cannot open, to a document that no longer says
+  what the sentence claims. The threat model also declared `audience: private` while being
+  published.
+
+### Test: the deny regex, proved unbeatable rather than asserted
+- A DONE condition of phase 2, and one the plan states as a failure mode rather than a
+  feature: **the input nobody enumerated that lets a forbidden call through.** Example-based
+  tests cannot rule that out, because the examples are the enumeration.
+- Eleven properties quantify over what an attacker controls (argument text, the surrounding
+  policy, both postures, the gates) and hold one sentence: if a deny matches, the call does
+  not run. An explicit allow for the same pattern loses; the loosest sandbox with approval
+  set to `never` and a gate on every class loses, because the gate never opens and there is
+  nothing to approve; moving the command to another tool does not help, since a pattern
+  describes what may not happen rather than who may not ask.
+- **Verified by mutation, not by passing.** Inverting precedence fails five of them; dropping
+  the case-insensitive flag fails one. A third mutation, an invalid pattern compiling to
+  `/.*/` instead of `/(?!)/`, passed every property, so an eleventh was written: a typo would
+  have become a policy refusing all work, which looks like enforcement working very well
+  until somebody turns the persona off to get anything done.
+
+### Docs
+- The five producer commands (`serve`, `watch`, `observe`, `compile`, `orchestrate --run`)
+  say that they announce presence, what they report doing, and where that shows.
+
+---
+
 ## [0.16.9] - 2026-08-02: the producers announce themselves
 
 ### Feat: presence from every surface that holds a persona (D6)

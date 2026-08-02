@@ -46,3 +46,9 @@ as the REPL/hooks.
 
 Inside the REPL, `/serve [port]` runs it **in the background** (it doesn't block the session);
 `/serve stop` (or `/exit`) stops it.
+
+## While it runs
+
+A server holds the persona for as long as it is listening, so it **announces its presence**:
+`personaxis ps` and the Command Center show it as held by `serve`, with the address it is
+serving on. It withdraws when stopped. See [presence](../architecture/presence.md).

@@ -62,3 +62,9 @@ PERSONAXIS_MODEL=command-a-03-2025 PERSONAXIS_API_KEY=… \
   personaxis compile cmo --provider local
 personaxis compile --root --if-pending            # only if a self-edit made it stale
 ```
+
+## While it runs
+
+The polish stage calls a model and can take a while, so it **announces its presence**
+(`compiling PERSONA.md`). Under `watch` it nests: the activity says `compiling` and returns to
+`watching for spec edits` on its own. See [presence](../architecture/presence.md).

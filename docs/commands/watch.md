@@ -52,3 +52,9 @@ Inside the REPL, `/watch` runs the daemon **in the background** (it doesn't bloc
 - [observe.md](./observe.md), the per-turn learning tick.
 - [hooks.md](./hooks.md), wire per-turn learning into a host.
 - [../architecture/deployment.md](../architecture/deployment.md), daemon vs serverless shapes.
+
+## While it runs
+
+The daemon holds the persona, so it **announces its presence** (`personaxis ps` shows it as
+held, `watching for spec edits`, and `compiling` while a recompile runs). A crashed daemon
+drops off by heartbeat age rather than lingering. See [presence](../architecture/presence.md).
