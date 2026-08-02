@@ -6,6 +6,7 @@ import {
 	MAX_INTERVENTION_LENGTH,
 	MIN_SUPPORTED_WIRE_VERSION,
 	parseBrowserMsg,
+	parseServerMsg,
 	WIRE_EVENT_KINDS,
 	WIRE_VERSION,
 	wireIncompatibleError,
@@ -161,6 +162,68 @@ describe("the module's portability", () => {
 		// node:crypto or node:net the way the JSON-RPC transport next door does.
 		const module = await import("../src/workspace.js");
 		expect(module.WIRE_VERSION).toBe(1);
+	});
+});
+
+describe("the server message boundary", () => {
+	// The symmetric half of the browser boundary. A client that trusts whatever
+	// JSON arrives on its socket builds its interface out of whatever it got,
+	// and a proxy, an extension or a stale deployment can put a frame there.
+	const event = { job_id: "job_1", seq: 1, ts: "2026-08-02T10:00:00.000Z", source: "daemon", kind: "agent.turn.started", turn: 1 };
+
+	it("reads a gap frame off the wire, as the string a socket delivers", () => {
+		const result = parseServerMsg(JSON.stringify({ type: "sync.gap", events: [event] }));
+		expect(result.ok).toBe(true);
+		if (result.ok) expect(result.value).toMatchObject({ type: "sync.gap" });
+	});
+
+	it("reads an already parsed value too", () => {
+		expect(parseServerMsg({ type: "sync.gap", events: [] }).ok).toBe(true);
+	});
+
+	it("refuses an event with no assigned sequence", () => {
+		// seq 0 means "not yet assigned". A reducer that accepted it would hold a
+		// permanent gap at the head of the job.
+		const result = parseServerMsg({ type: "sync.gap", events: [{ ...event, seq: 0 }] });
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toContain("seq");
+	});
+
+	it.each([["job_id"], ["kind"]])("refuses an event with no %s", (field) => {
+		const broken = { ...event, [field]: undefined };
+		const result = parseServerMsg({ type: "sync.gap", events: [broken] });
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toContain(field);
+	});
+
+	it("requires steering on a snapshot", () => {
+		// Without it a client cannot say whether anyone is driving, which reads
+		// as "nobody" and lets two people act at once.
+		const result = parseServerMsg({ type: "sync.snapshot", events: [], presence: [] });
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toContain("steering");
+	});
+
+	it("names an unknown type rather than lumping it into malformed", () => {
+		const result = parseServerMsg({ type: "sync.telepathy" });
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toContain("sync.telepathy");
+	});
+
+	it.each([["not json at all"], ['{"broken":'], ["null"], ["[]"]])(
+		"never throws on %s",
+		(raw) => {
+			// A malformed frame is an ordinary event on a long-lived socket. An
+			// uncaught exception in onmessage takes the view down with it.
+			expect(() => parseServerMsg(raw)).not.toThrow();
+			expect(parseServerMsg(raw).ok).toBe(false);
+		},
+	);
+
+	it("carries an error frame through with its code", () => {
+		const result = parseServerMsg({ type: "error", code: "forbidden", message: "no access" });
+		expect(result.ok).toBe(true);
+		if (result.ok && result.value.type === "error") expect(result.value.code).toBe("forbidden");
 	});
 });
 

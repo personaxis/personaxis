@@ -368,6 +368,104 @@ function parseBrowserMsgUnsafe(raw: unknown): ParseResult<BrowserMsg> {
 	}
 }
 
+/**
+ * Parses a frame arriving at a browser from the control plane.
+ *
+ * The symmetric counterpart of `parseBrowserMsg`, and it exists for the same
+ * reason. A browser that trusts whatever JSON arrives on its socket is the same
+ * gap as a server that trusts whatever a client sends: a proxy, an extension,
+ * or a stale deployment can put a frame on that wire, and the client that
+ * reads it without checking will build its interface out of whatever it got.
+ *
+ * Also never throws. A malformed frame is an ordinary event on a long-lived
+ * socket, and an uncaught exception in an onmessage handler takes the view down
+ * with it.
+ *
+ * Accepts either a JSON string, which is what a WebSocket delivers, or an
+ * already-parsed value, so a caller that has one does not have to re-encode it.
+ */
+export function parseServerMsg(raw: unknown): ParseResult<ServerMsg> {
+	try {
+		return parseServerMsgUnsafe(typeof raw === "string" ? JSON.parse(raw) : raw);
+	} catch (error) {
+		return { ok: false, error: `frame could not be read: ${String(error)}` };
+	}
+}
+
+function parseServerMsgUnsafe(raw: unknown): ParseResult<ServerMsg> {
+	if (!isObject(raw)) return { ok: false, error: "frame is not an object" };
+	const type = raw.type;
+	if (!isString(type)) return { ok: false, error: "frame has no string `type`" };
+
+	switch (type) {
+		case "sync.snapshot": {
+			const events = parseEvents(raw.events);
+			if (!events.ok) return events;
+			if (!Array.isArray(raw.presence)) {
+				return { ok: false, error: "sync.snapshot requires a presence array" };
+			}
+			if (!isObject(raw.steering)) {
+				// A snapshot without steering would leave a client unable to say
+				// whether anyone is driving, which reads as "nobody" and lets two
+				// people act at once.
+				return { ok: false, error: "sync.snapshot requires steering" };
+			}
+			return {
+				ok: true,
+				value: {
+					type,
+					events: events.value,
+					presence: raw.presence as ServerMsg extends { presence: infer P } ? P : never,
+					steering: raw.steering as { holder_user_id: string | null; expires_at: string | null },
+				},
+			};
+		}
+
+		case "sync.gap": {
+			const events = parseEvents(raw.events);
+			return events.ok ? { ok: true, value: { type, events: events.value } } : events;
+		}
+
+		case "presence.changed":
+			return Array.isArray(raw.entries)
+				? { ok: true, value: { type, entries: raw.entries as PresenceEntry[] } }
+				: { ok: false, error: "presence.changed requires an entries array" };
+
+		case "error":
+			return isString(raw.code) && isString(raw.message)
+				? {
+						ok: true,
+						value: { type, code: raw.code as ServerErrorCode, message: raw.message },
+					}
+				: { ok: false, error: "error requires a string code and message" };
+
+		default:
+			return { ok: false, error: `unknown message type: ${type}` };
+	}
+}
+
+/**
+ * Events carried inside a sync frame.
+ *
+ * Each one needs a job, a sequence and a kind, because those three are what
+ * every consumer indexes on: an event missing any of them cannot be ordered,
+ * cannot be attributed, and would sit in a reducer as a permanent gap.
+ */
+function parseEvents(raw: unknown): ParseResult<WireEvent[]> {
+	if (!Array.isArray(raw)) return { ok: false, error: "events is not an array" };
+
+	for (const [index, event] of raw.entries()) {
+		if (!isObject(event)) return { ok: false, error: `event ${index} is not an object` };
+		if (!isString(event.job_id)) return { ok: false, error: `event ${index} has no job_id` };
+		if (!isString(event.kind)) return { ok: false, error: `event ${index} has no kind` };
+		if (typeof event.seq !== "number" || !Number.isInteger(event.seq) || event.seq < 1) {
+			return { ok: false, error: `event ${index} has no assigned seq` };
+		}
+	}
+
+	return { ok: true, value: raw as WireEvent[] };
+}
+
 /** True when a daemon reporting `version` can talk to this server. */
 export function isWireVersionSupported(version: unknown): boolean {
 	return (
