@@ -21,6 +21,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { checkEgressIn } from "./egress.js";
 
 import type { SandboxPosture } from "../security/consent.js";
 
@@ -51,6 +52,14 @@ export interface CompiledPolicy {
 	allow: string[];
 	hard_limits: string[];
 	prohibited_behaviors: string[];
+	/**
+	 * Hosts this persona may reach, from its connector grants.
+	 *
+	 * Absence is denial: a persona with an empty list reaches nothing. That is
+	 * the only default that makes a new connector safe before anyone has thought
+	 * about which hosts it needs.
+	 */
+	egress_allowlist: string[];
 	sandbox: SandboxPosture;
 	approval: ApprovalPosture;
 	gate_rules: GateRule[];
@@ -184,7 +193,20 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 		}
 	}
 
-	// 3. Prohibited behaviours.
+	// 3. Egress. Before the postures, because where data goes is not a matter of
+	//    posture: a read-only sandbox does not stop a persona from POSTing what
+	//    it read, and a persona doing exactly what it was asked can still be
+	//    sending it somewhere a prompt injection chose.
+	const egress = checkEgressIn(subject, policy.egress_allowlist ?? []);
+	if (!egress.allowed) {
+		return {
+			verdict: "deny",
+			rule: "egress_allowlist",
+			reason: egress.reason,
+		};
+	}
+
+	// 4. Prohibited behaviours.
 	for (let i = 0; i < executable.prohibitedKeywords.length; i++) {
 		if (matchesKeywords(subject, executable.prohibitedKeywords[i])) {
 			return {
@@ -195,7 +217,7 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 		}
 	}
 
-	// 4. Sandbox posture.
+	// 5. Sandbox posture.
 	if (policy.sandbox === "read-only") {
 		const writing = call.action_classes.find((cls) => WRITING_CLASSES.includes(cls));
 		if (writing) {

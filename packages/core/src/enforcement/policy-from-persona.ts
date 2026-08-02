@@ -32,6 +32,14 @@ export interface PersonaPolicySource {
 }
 
 export interface PolicyFromPersonaOptions {
+	/**
+	 * Hosts this persona may reach, from `persona_connector.egressDomains`.
+	 *
+	 * Omitted means an empty list, which means nothing. Absence is denial here,
+	 * and a persona that could reach anything because nobody passed a list would
+	 * be the one default this file must not have.
+	 */
+	egressAllowlist?: readonly string[];
 	personaVersionId: string;
 	/** Gates are a workspace concept: a persona file cannot name approvers. */
 	gateRules?: GateRule[];
@@ -70,6 +78,11 @@ export function policyFromPersona(
 		allow: strings(permissions.allow),
 		hard_limits: strings(persona.self_regulation?.hard_limits),
 		prohibited_behaviors: strings(persona.character?.prohibited_behaviors),
+		// From the caller rather than the persona document: the hosts a persona
+		// may reach are a property of the workspace's connector grants, not of
+		// the persona itself. The same persona pulled into two workspaces gets
+		// each one's grants and neither one's by default.
+		egress_allowlist: options.egressAllowlist ? [...options.egressAllowlist] : [],
 		// An unrecognised value falls to the conservative default rather than
 		// through. A persona that said `sandbox: "full"` (not a spec value) must
 		// not end up with more freedom than one that said nothing.
