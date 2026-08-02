@@ -12,14 +12,23 @@
  * be in flight. Correlating propose, verdict and result into one id is this
  * file's whole job, and getting it wrong means a gate freezing the wrong call.
  *
+ * It also holds the last check before content crosses the machine boundary: the
+ * consented scope. That is not duplicated work either, because it answers a
+ * different question from the hook. The hook refuses a tool call that touches an
+ * unconsented path; this catches a path that reaches an event with no call
+ * refused, which is what happens when a model quotes a filename or a library
+ * error names a config it could not open.
+ *
  * Everything else is deliberately absent. No buffering, because the connection
- * already does it and doing it twice would reorder on reconnect. No redaction,
- * because the adapter already did it and doing it twice means two places that
- * can drift.
+ * already does it and doing it twice would reorder on reconnect. No secret
+ * redaction, because the adapter already did it and doing it twice means two
+ * places that can drift.
  */
 
 import { mapLoopEvent, type LoopEvent, type WireEmission } from "@personaxis/core";
 import type { WireEvent, WireSource } from "@personaxis/protocol/workspace";
+
+import { guardDeep } from "./scope-guard.js";
 
 export interface ReporterSink {
 	emit: (event: WireEvent) => void;
@@ -35,14 +44,29 @@ export interface JobReporterOptions {
 	source?: WireSource;
 	/** Told when an engine event does not reach the wire, and why. */
 	onDrop?: (kind: string, reason: string) => void;
+	/**
+	 * The directories the operator consented to expose.
+	 *
+	 * Paths outside them are replaced on the way out. This is defence in depth
+	 * rather than the primary control: the hook already refuses a tool call
+	 * touching an unconsented path. What this catches is a path reaching an
+	 * event with no call refused, which is what happens when a model quotes a
+	 * filename or a library error names a config it could not open.
+	 *
+	 * Absent means no guard. Passing an empty array is a different thing: it
+	 * means nothing was consented to, and everything absolute is replaced.
+	 */
+	scope?: readonly string[];
 }
 
 /** Events after which the job is over and the connection can release its queue. */
 const TERMINAL_KINDS = new Set(["persona.session.ended"]);
 
 export class JobReporter {
-	private readonly options: Required<Omit<JobReporterOptions, "onDrop">> &
-		Pick<JobReporterOptions, "onDrop">;
+	// `scope` stays optional rather than defaulted, because absent and empty mean
+	// different things here: no guard at all, versus nothing was consented to.
+	private readonly options: Required<Omit<JobReporterOptions, "onDrop" | "scope">> &
+		Pick<JobReporterOptions, "onDrop" | "scope">;
 
 	/**
 	 * The call currently in flight.
@@ -108,9 +132,21 @@ export class JobReporter {
 		// borrow the previous call's id.
 		if (event.type === "tool-result") this.currentCallId = null;
 
-		this.options.sink.emit(this.envelope(result.emit));
+		this.options.sink.emit(this.envelope(this.guard(result.emit)));
 
 		if (TERMINAL_KINDS.has(result.emit.kind)) this.finish();
+	}
+
+	/**
+	 * Replaces filesystem paths the operator did not consent to expose.
+	 *
+	 * Redacts rather than drops. A run whose events vanish because a message
+	 * mentioned /etc/hosts is a run nobody can audit, and the record is worth
+	 * more complete than pristine.
+	 */
+	private guard(emission: WireEmission): WireEmission {
+		const scope = this.options.scope;
+		return scope === undefined ? emission : (guardDeep(emission, scope) as WireEmission);
 	}
 
 	/**

@@ -8,6 +8,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Feat: the daemon boundary, hardened (D5 + S3)
+- **The consented scope, enforced on the way out.** The hook already refuses a tool call
+  that touches an unconsented path. This catches the other direction: a path reaching an
+  event with **no call refused**, which is what happens when a model quotes a filename, a
+  library error names a config it could not open, or a stack trace carries the source tree.
+  None is a policy violation and all of them put the operator's filesystem layout into a
+  record nobody can edit afterwards.
+- It **redacts the path and lets the event through**. Dropping the event would be worse: a
+  run whose events vanish because a message mentioned `/etc/hosts` is a run nobody can
+  audit, and the record's value is that it is complete.
+- The boundary is a separator, not a prefix, so a scope of `/work` does not admit
+  `/work-of-someone-else`. Case folding follows the platform, because a scope of `C:\Work`
+  that refused `C:\work` would redact the operator's own files.
+- **Egress allowlist**, in the enforcement decision itself, before the postures. A
+  read-only sandbox does not stop a persona from POSTing what it read, and a persona doing
+  exactly what it was asked can still be sending it to an address a prompt injection chose.
+  Absence is denial: a persona with no list reaches nothing.
+- A subdomain of a listed host is allowed, because a workspace naming a vendor means the
+  vendor. `evil-googleapis.com` is not, which is the single most likely way an allowlist
+  turns out never to have been one.
+- The allowlist comes from the workspace's connector grants rather than from the persona
+  document: the same persona pulled into two workspaces gets each one's grants and neither
+  one's by default.
+
 ### Fix
 - `SPEC.md` §15 pointed at `research/MATH_CORE.md`, a path in a private repository, and
   SPEC.md ships inside the published package: anyone installing `personaxis` read a

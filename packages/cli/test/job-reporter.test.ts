@@ -161,6 +161,42 @@ describe("ending", () => {
 	});
 });
 
+describe("the consented scope, on the way out", () => {
+	const scope = process.platform === "win32" ? ["C:\\work"] : ["/work"];
+	const outside =
+		process.platform === "win32" ? "C:\\Users\\ana\\.ssh\\id_rsa" : "/home/ana/.ssh/id_rsa";
+
+	it("replaces a path the operator did not expose", () => {
+		const { reporter, emitted } = makeReporter({ scope });
+		reporter.report({ type: "agent-error", message: `could not read ${outside}` } as LoopEvent);
+		expect(JSON.stringify(emitted)).not.toContain(".ssh");
+	});
+
+	it("keeps a path inside the scope", () => {
+		const inside = process.platform === "win32" ? "C:\\work\\a.ts" : "/work/a.ts";
+		const { reporter, emitted } = makeReporter({ scope });
+		reporter.report({ type: "agent-error", message: `could not read ${inside}` } as LoopEvent);
+		expect(JSON.stringify(emitted)).toContain("a.ts");
+	});
+
+	it("does not drop the event, only the path", () => {
+		// A run whose events vanish because a message mentioned /etc/hosts is a
+		// run nobody can audit.
+		const { reporter, emitted } = makeReporter({ scope });
+		reporter.report({ type: "agent-error", message: `could not read ${outside}` } as LoopEvent);
+		expect(emitted).toHaveLength(1);
+		expect(String((emitted[0] as { reason?: string }).reason)).toContain("could not read");
+	});
+
+	it("guards nothing when no scope is given", () => {
+		// Absent means no guard. An empty array means nothing was consented to,
+		// which is a different thing.
+		const { reporter, emitted } = makeReporter();
+		reporter.report({ type: "agent-error", message: `could not read ${outside}` } as LoopEvent);
+		expect(JSON.stringify(emitted)).toContain(".ssh");
+	});
+});
+
 describe("subscribing", () => {
 	it("reports what the source emits, and stops when unsubscribed", () => {
 		const listeners: ((event: LoopEvent) => void)[] = [];

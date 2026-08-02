@@ -88,6 +88,7 @@ export * from "./wire/adapter.js";
 export * from "./wire/record.js";
 export * from "./wire/redact.js";
 export * from "./enforcement/action-classes.js";
+export * from "./enforcement/egress.js";
 export * from "./enforcement/policy-compile.js";
 export * from "./enforcement/policy-from-persona.js";
 
