@@ -12,6 +12,42 @@ _Nothing yet._
 
 ---
 
+## [0.16.5] - 2026-08-02: a run, end to end
+
+### Feat: `JobReporter`, the bridge from a running persona to the workspace
+- The engine speaks about a loop and the workspace about a job a team is
+  watching. `mapLoopEvent` translates; `DaemonConnection` carries. This is the
+  piece between them, and it holds the one thing neither has: **the call id**.
+- Correlating propose, verdict and result into one id is its whole job, and
+  getting it wrong means a gate freezing a different call from the one a person
+  is looking at. The id is cleared at the result rather than at the next
+  proposal, so a stray event between calls cannot borrow an id that already
+  closed.
+- Never throws. A reporter that could would take down the run it reports on, and
+  a job that dies because nobody could watch it is the worst trade available.
+- `seq` stays zero: the control plane assigns the authoritative sequence, and a
+  producer numbering its own events would give two daemons on one job two
+  conflicting orders.
+
+### Fix: the wire was quadratic in the length of a run
+- `flush` re-sent the entire pending queue on **every** emit, so a job producing
+  a thousand events before its first acknowledgement put roughly half a million
+  frames on the wire. Nothing failed and nothing was lost; it was quietly
+  quadratic, and the symptom would have been a bandwidth bill and a slow room.
+- Each event is now written once per socket. A reconnection clears the marker,
+  which is exactly what makes resume work: on a new socket everything
+  unacknowledged is unsent again. Regression test included.
+
+### Test: the daemon side, end to end
+- A contract test runs a realistic session through the **real** reporter, the
+  real adapter and the real connection, with only the network faked. It asserts
+  that every event that belongs on the wire is there in order, that sequence
+  numbers are dense from 1 so a gap means a real gap, that a token typed into a
+  tool call never leaves the machine, and that a disconnection mid-run resends
+  exactly what was not acknowledged and nothing that was.
+
+---
+
 ## [0.16.4] - 2026-08-02: nothing leaves with a secret in it
 
 ### Feat: secret redaction at the producer (`@personaxis/core`)

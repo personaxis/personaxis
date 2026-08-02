@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/core",
-  "version": "0.16.4",
+  "version": "0.16.5",
   "description": "Personaxis engine: governed Living Loop, bounded memory, state/envelope mutation, persona sigil. Spec-faithful, framework-agnostic.",
   "license": "MIT",
   "type": "module",

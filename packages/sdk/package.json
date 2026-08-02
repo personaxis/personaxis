@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/sdk",
-  "version": "0.16.4",
+  "version": "0.16.5",
   "description": "Ergonomic SDK for embedding a living, governed persona in a Node/TypeScript backend (Mode 2 self-host). A thin wrapper over @personaxis/core.",
   "license": "MIT",
   "type": "module",
