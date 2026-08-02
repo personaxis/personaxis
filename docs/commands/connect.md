@@ -64,10 +64,24 @@ limits refuse. Not by asking the model nicely: the host agent runs a hook before
 every tool call, the hook asks the daemon over a local socket, and a refused
 call never executes.
 
-`connect` installs that hook into `.claude/settings.json` of each `--dir`
-(`PreToolUse`, no matcher, so it covers every tool). Your own hooks are left
-alone and `connect logout` is not what removes it; the entry is recognised by
-its command and can be deleted by hand.
+`connect` installs that hook into every host it has an adapter for, in each `--dir`
+(`PreToolUse`, no matcher, so it covers every tool). Arming only the agent you happened to
+wire first would leave the other one running unchecked in the same directory, and running
+two agents against one repository is the normal case.
+
+| Host | File | How far it is checked |
+|---|---|---|
+| Claude Code | `.claude/settings.json` | **verified**: a call has been observed being refused before it ran, against the real binary |
+| Codex | `.codex/hooks.json` | **documented**: written in the shape Codex specifies, and nobody here has watched it fire |
+
+That distinction is printed while `connect` runs, and it is not decoration. A settings file
+cannot tell you whether a host actually executes the hook, and believing calls are refused
+while nothing intercepts them is worse than knowing there is no hook at all. When Codex's
+pre-tool-call event is exercised end to end, the row changes; until then it says what is
+true.
+
+Your own hooks are left alone and `connect logout` is not what removes ours; the entry is
+recognised by its command and can be deleted by hand.
 
 The policy comes from the persona in that directory
 (`.personaxis/personaxis.md`): `permissions.deny` and `allow`,

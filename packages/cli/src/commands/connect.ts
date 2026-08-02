@@ -21,7 +21,7 @@ import { policyFromPersona } from "@personaxis/core";
 import { version } from "../generated/assets.js";
 import { enforcementSocketPath, serveEnforcement } from "../workspace/enforcement-endpoint.js";
 import { enforcementHandler } from "../workspace/enforcement-service.js";
-import { claudeCodeAdapter } from "../workspace/host-adapter.js";
+import { HOST_ADAPTERS } from "../workspace/host-adapter.js";
 import { PolicyCache } from "../workspace/policy-cache.js";
 import {
 	claimDeviceToken,
@@ -132,15 +132,36 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 
 		try {
 			servers.push(serveEnforcement(enforcementSocketPath(root), handler));
-			claudeCodeAdapter.install(root);
-			console.log(chalk.dim("enforcing in"), root);
 		} catch (error) {
 			// Reported and not fatal: one unwritable project should not stop the
 			// others, and the operator needs to know which one it was.
 			console.error(
 				chalk.yellow(`could not enforce in ${root}: ${error instanceof Error ? error.message : String(error)}`),
 			);
+			continue;
 		}
+
+		// D4: every adapter, not a named host. Arming only the agent somebody happened to
+		// wire first would leave the other one running unchecked in the same directory, and
+		// running two agents against one repository is the normal case.
+		const armed: string[] = [];
+		for (const adapter of HOST_ADAPTERS) {
+			try {
+				adapter.install(root);
+				// The assurance travels with the host, because "installed" means something
+				// different for a host whose hook nobody has watched fire.
+				armed.push(adapter.assurance === "verified" ? adapter.name : `${adapter.name} (unverified)`);
+			} catch (error) {
+				// One host's unreadable settings file must not disarm the others in the
+				// same project, and it has to be named rather than counted.
+				console.error(
+					chalk.yellow(
+						`could not arm ${adapter.name} in ${root}: ${error instanceof Error ? error.message : String(error)}`,
+					),
+				);
+			}
+		}
+		console.log(chalk.dim("enforcing in"), root, chalk.dim(`· ${armed.join(", ") || "no host armed"}`));
 	}
 
 	return { cache, servers };
