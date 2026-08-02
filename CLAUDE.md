@@ -21,13 +21,13 @@ This repo is a **pnpm monorepo** (eight lockstep packages) that turns the CLI in
 | `packages/spec` (`@personaxis/spec`) | **The spec as a package**: canonical JSON Schemas (v1.0 + frozen `legacy/persona-0.10` for the 1.x read-compat window), the five-state validator with version dispatch, and the 12 universal invariants. Single source consumed by cli/mcp/sdk/SaaS, replaces the manual byte-identical schema mirror inside the monorepo (the persona.md repo mirror remains, now pointed at `packages/spec/schema/`). |
 | `packages/core` (`@personaxis/core`) | Framework-agnostic engine: persona/state IO, envelope extraction, **clamp+audit state engine**, appraisal signals + JSON schema, **governance gate** (locked/suggesting/autonomous), **append-only hash-chained episodic memory**, the **Living Loop** (`observe→appraise→evolve→recompile→memory`), event bus, deterministic per-persona **sigil**, heuristic + **LLM (constrained-decoding) appraisers**; the **math core** (`src/math/`: u-space Π_B, bands, drift+T3 evidence cost, homeostasis, arbitration, compile Jacobian, see `docs/architecture/math-core.md`); **Genesis** (`src/genesis/`: seed→valid-by-construction spec, psychometric item bank, card V2/V3 import, creation report with per-number provenance). **FASE 7 (P1):** `genesis/expression-synth.ts` deterministically fills per-band `expression` prose from a psychological-construct table (rule `construct-band-prose@v1`, ledger `kind:"synthesis"`, same seed gives same prose) plus `half_life` from volatility cues, so every trait and affect coordinate is born load-bearing; the report distinguishes earned / synthesized / default per coordinate. `math/bands.ts` exports `canCross` (a crossing is geometrically possible) with an FP guard for subnormal-width envelopes. |
 | `packages/protocol` (`@personaxis/protocol`) | **Op/EventMsg protocol + transport** (FR.2): typed discriminated unions (submission `Op`s / `EventMsg`s, carrying core `LoopEvent`s verbatim) over **JSON-RPC 2.0** on `node:net` (UDS + Windows named pipes via one API). The CLI's `EngineHost` binds ops 1:1 onto core, so one seam serves TUI / headless / MCP / serve. |
-| `packages/cli` (`personaxis`) | The existing CLI (validate/lint/compile/decompile/state/...) **plus** F6 surface: **`create`** (Genesis: interview / --from-prompt / --from-project / --from-import / --from-transcript), **`proof`** (live offline guarantee demo), **`state drift`**, **`jacobian`**, **`arbitrate`**: and the interactive **REPL** (`personaxis` with no subcommand; NL + `/commands`, incl. `/drift`, `/arbitrate`, `/replay`). F3.6 split the REPL into `repl/{types,config,render,daemons,session,turn,commands}.ts` with `index.ts` as the entry point. **FASE 7:** `create` adds a hard **jacobian gate** (`staticallyDecorative` over `canCross` coordinates), so `create` in any mode produces 0 decorative numbers or fails as a bug; the REPL turns slash-commands into full-height **views** (`/drift`, `/dash`, `/audit`) and full-screen **suspensions** (`/proof`, `/create` via `runCliInteractive`), with a live drift gauge, a persistent header, and an animated **band-crossing moment** (`PERSONAXIS_NO_ANIM=1` for CI). |
+| `packages/cli` (`personaxis`) | The existing CLI (validate/lint/compile/decompile/state/...) **plus** F6 surface: **`create`** (Genesis), **`proof`**, **`state drift`**, **`jacobian`**, **`arbitrate`**, and the interactive **REPL**. **Workspace surface (`src/workspace/`):** **`connect`** links a machine with the device authorization grant (RFC 8628 + PKCE) and never handles a password; **`personaxis-hook`** is a separate binary that answers a `PreToolUse` hook over a local socket **before** a tool call runs, fail-closed on every path that is not a clear allow; `DaemonConnection` dials out to the gateway, queues per job, and resumes from the last acknowledged sequence; **`JobReporter`** bridges engine `LoopEvent`s onto the wire and owns the call id that ties a proposal, its verdict and its result into one gate-able call. |
 | `packages/mcp` (`@personaxis/mcp`) | stdio **MCP server** (bin `personaxis-mcp`) exposing **16 persona tools** (`persona_compiled`, `persona_state`, `adjust_persona_state`, `persona_observe`, `persona_audit`, `persona_propose_edit`, `agent_run`, `skill_review`, `scan_text`, …) to any host (Claude Code, Codex, Cursor). Persona paths are confined to `--root` (default cwd); `persona_decide_edit` requires the explicit `--allow-decide` flag (proposer≠approver). |
 | `packages/sdk` (`@personaxis/sdk`) | The **single engine façade** (F3.5), the `Persona` class (`compiledIdentity` / `state` / `envelopes` / `observe` / `adjust` / `agentRun` / `audit` / `forget` / `proposeEdit` / `listProposals` / `decideEdit` / `recompileStatus` / `reload`) + `scanText`/`scanConfig`/`skillReview`/`evaluateCmd`, wrapping `core`. **mcp and serve consume it** (they add only host concerns, MCP `--root` confinement, HTTP shaping, not engine logic); an app backend embeds it directly (Mode 2 self-host). |
 | `packages/evals` (`@personaxis/evals`) | **Evaluation harness** (bin `personaxis-evals`): deterministic scenario suite + runner (no API key) proving the spec's guarantees against the real engine, categories **governance / security / spec-fidelity** (clamp holds, gate blocks, memory tamper-evident, injection can't steer evolution, budgets stop, verification catches), 15 scenarios; plus `experiments/` (preregistered E1–E6 runs: E3 scale + E4 bench recorded, behavioral runners BYOK). |
 | `packages/tui` (`@personaxis/tui`) | **ASCII dashboard + render lib**. Its `visual`/`screen` modules back the REPL and `sigil`; the live dashboard is surfaced as `personaxis dash` (and `/dash` in the REPL) plus the standalone bin `personaxis-dash`. Reads `state.json` each frame, reflecting evolution in another process. **FASE 7 (P2):** `driftGauge` (pure, per-layer `D` vs threshold) and an embeddable `DriftView` (drill-down consuming the `drift` event's full `DriftReport`, no disk re-read); `InkScreen` gains `setDrift`/`playMoment`/`openView`/`suspend` so the REPL renders the band-crossing moment and hosts full-screen sub-commands. |
 
-All eight publish at the same lockstep version (currently `0.16.0`, published); the spec they implement is `spec_version 1.1.0` (1.0.0 validates unchanged, additive; 0.3.0–0.10.0 read-compat via the frozen legacy schema).
+All eight publish at the same lockstep version (currently `0.16.5`, published); the spec they implement is `spec_version 1.1.0` (1.0.0 validates unchanged, additive; 0.3.0–0.10.0 read-compat via the frozen legacy schema).
 
 **Build/test/run (from repo root):**
 ```bash
@@ -39,6 +39,32 @@ node packages/cli/dist/index.js --persona <path>   # enter the living REPL
 ```
 
 **Path note:** `schema/` lives under `packages/spec/` (single monorepo copy, embedded at build); `templates/` lives under `packages/cli/`. The byte-identity sync rule below still holds against the sibling `persona.md` repo. The five-state validator, 12 universals, and envelope clamping are unchanged and still the source of truth.
+
+## The daemon, and what crosses the machine boundary
+
+The CLI is no longer only a set of commands run by hand. `personaxis connect` turns it into a
+daemon: a persona runs on the operator's machine, and a workspace elsewhere watches, approves and
+corrects it. Three rules govern that boundary, and each is enforced in exactly one place.
+
+**Consent is local and only local.** The exposed scope is the directories named with `--dir`,
+decided at that keyboard and stored on that machine. Nothing the workspace sends can widen it.
+Empty means empty, and `connect` says so rather than defaulting to a home directory.
+
+**Enforcement happens before the call, not after the prompt.** `personaxis-hook` answers a
+`PreToolUse` hook over a local socket; a refused call does not execute. Every path that is not a
+clear allow denies and names itself: no daemon, `out_of_scope`, `no_policy`, `stale_cache`. An
+expired policy is not "probably still right".
+
+**Nothing leaves with a secret in it.** Redaction runs at the producer, in one place
+(`preview()` in `packages/core/src/wire/adapter.ts`), because the protocol promises every consumer
+that it already happened. It redacts **before** truncating, since cutting first can slice a key in
+half and leave a fragment that matches no pattern. This matters more than in an ordinary log:
+anything reaching the record is hash chained and cannot be edited, so a leaked key has to be
+rotated and the chain still holds the old one forever.
+
+The daemon's own numbers, measured rather than estimated: the hook decision is p95 0.0011 ms over
+20k calls against a 150 ms budget, and end to end through a real socket p50 101 ms / p95 114 ms,
+nearly all of it Node starting up.
 
 ## Three-artifact model (v0.7)
 

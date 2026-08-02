@@ -8,7 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fix
+- `SPEC.md` §15 pointed at `research/MATH_CORE.md`, a path in a private repository, and
+  SPEC.md ships inside the published package: anyone installing `personaxis` read a
+  reference to a file that cannot exist for them. It now says what is true and useful, that
+  the derivations are published separately as a research report and the checkable
+  obligations travel with the implementation as property tests over T1-T6.
+- `CLAUDE.md` claimed the lockstep version was `0.16.0`. It is `0.16.5`.
+
+### Docs
+- `CLAUDE.md` gains **the daemon boundary**: consent is local and only local, enforcement
+  happens before the call rather than after the prompt, and nothing leaves with a secret in
+  it. Each of the three names the single place it is enforced, with the measured numbers
+  rather than estimates.
 
 ---
 
