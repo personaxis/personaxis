@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/mcp",
-  "version": "0.16.9",
+  "version": "0.16.10",
   "description": "Personaxis MCP server, expose a living, governed persona as tools any MCP host (Claude Code, Codex, Cursor) can call.",
   "license": "MIT",
   "type": "module",

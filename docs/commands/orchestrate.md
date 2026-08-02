@@ -17,3 +17,9 @@ personaxis orchestrate "review the auth code" --team eng         # restrict rout
 
 With no registered personas it tells you to run `personaxis overseer register <slug>` first. See
 [overseer.md](./overseer.md) for the registry model and [team.md](./team.md) for teams.
+
+## While it runs
+
+With `--run`, the assignee is being driven by somebody who is not sitting in front of it. That
+is the presence a second operator most needs to see, so the persona is **announced as held by a
+task**, naming it. See [presence](../architecture/presence.md).

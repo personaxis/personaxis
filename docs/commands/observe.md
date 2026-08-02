@@ -63,3 +63,10 @@ REPL passthrough).
 - [hooks.md](./hooks.md), install the host Stop hook that calls this every turn (all four hosts).
 - [watch.md](./watch.md), the daemon for idle / manual-edit recompiles.
 - [../architecture/deployment.md](../architecture/deployment.md), where per-turn learning fits.
+
+## While it runs
+
+A tick runs a model and can rewrite the spec, so for its duration this process **announces its
+presence** (`running a governed tick`). Host hooks fire this on every turn, which is exactly
+when a second person needs to know somebody is already driving. See
+[presence](../architecture/presence.md).
