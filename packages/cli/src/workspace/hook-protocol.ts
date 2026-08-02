@@ -72,6 +72,19 @@ export function parseHookInput(raw: string): HookInput | null {
  * `{"command"}` and not `rm -rf /` would be unable to deny anything worth
  * denying.
  */
+/**
+ * The text a rule is matched against.
+ *
+ * Deliberately NOT redacted, and the distinction is worth keeping straight.
+ * Redaction happens on the way to the wire, because that is where content
+ * leaves the machine the secret lives on and lands in a chain nobody can edit.
+ * This string never leaves the process: it exists so a deny rule can see the
+ * command it is refusing, and redacting it would blind the enforcement to
+ * exactly the arguments it is there to inspect.
+ *
+ * The hook's own output goes to the operator's terminal, which already showed
+ * them what they typed.
+ */
 export function argsTextFor(toolInput: unknown): string {
 	if (toolInput == null) return "";
 	if (typeof toolInput === "string") return toolInput;

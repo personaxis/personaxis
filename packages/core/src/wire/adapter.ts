@@ -14,6 +14,7 @@
  */
 
 import type { LoopEvent } from "../events.js";
+import { redactDeep, redactSecrets } from "./redact.js";
 
 /** The subset of the envelope a producer fills. `seq` belongs to the JobRoom. */
 export interface WireEmission {
@@ -37,13 +38,30 @@ export type MappingResult =
 /** Truncates a preview, since the wire carries summaries and not payloads. */
 const PREVIEW_LIMIT = 512;
 
+/**
+ * The one place free text becomes a wire preview, and therefore the one place
+ * secrets are removed.
+ *
+ * Redaction runs here rather than at each call site because the protocol
+ * promises that everything downstream has already been redacted, and a promise
+ * kept in five places is a promise that will be broken in one of them. Anything
+ * that reaches the record is hash chained and cannot be edited afterwards: a
+ * leaked key there has to be rotated, and the old one stays in the chain
+ * forever.
+ *
+ * Redaction happens BEFORE truncation. Cutting first can slice a secret in half
+ * and leave a fragment that matches no pattern, which is how a redactor reports
+ * success on a preview that still carries the first 400 characters of a key.
+ */
 export function preview(value: unknown): string {
 	let text: string;
 	if (typeof value === "string") {
 		text = value;
 	} else {
 		try {
-			text = JSON.stringify(value ?? null) ?? String(value);
+			// Structure-aware first, so a key called `password` is caught by its
+			// name even when its value looks like ordinary text.
+			text = JSON.stringify(redactDeep(value) ?? null) ?? String(value);
 		} catch {
 			// Tool arguments come from a model and can be anything, including a
 			// structure that does not serialise. Losing the preview is a small
@@ -52,7 +70,9 @@ export function preview(value: unknown): string {
 			text = "[unserialisable]";
 		}
 	}
-	return text.length > PREVIEW_LIMIT ? `${text.slice(0, PREVIEW_LIMIT - 1)}…` : text;
+
+	const redacted = redactSecrets(text);
+	return redacted.length > PREVIEW_LIMIT ? `${redacted.slice(0, PREVIEW_LIMIT - 1)}…` : redacted;
 }
 
 /**
@@ -93,15 +113,19 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 			// gate is opened by the daemon with the routing and timeout the
 			// policy declares, which this event does not carry.
 			if (event.decision === "allow") {
-				return { emit: { kind: "tool.call.allowed", call_id: callId, rule: event.reason } };
+				return {
+					emit: { kind: "tool.call.allowed", call_id: callId, rule: redactSecrets(event.reason) },
+				};
 			}
 			if (event.decision === "deny") {
 				return {
 					emit: {
 						kind: "tool.call.blocked",
 						call_id: callId,
-						rule: event.reason,
-						reason: event.reason,
+						rule: redactSecrets(event.reason),
+						// A block reason quotes the call it refused, so it carries
+						// whatever the call carried.
+						reason: redactSecrets(event.reason),
 					},
 				};
 			}
@@ -125,7 +149,15 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 			return { emit: { kind: "agent.thought.streamed", text: preview(event.text) } };
 
 		case "agent-finish":
-			return { emit: { kind: "agent.turn.ended", turn: event.steps, summary: event.summary } };
+			return {
+				emit: {
+					kind: "agent.turn.ended",
+					turn: event.steps,
+					// A summary is written by the model about what it just did,
+					// which is exactly when it repeats a value it just used.
+					summary: event.summary === undefined ? undefined : redactSecrets(event.summary),
+				},
+			};
 
 		// ─── State the workspace surfaces as behaviour ───────────────────────
 		case "mutate": {
@@ -155,20 +187,42 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 					field: first.field,
 					from_band: first.fromBand,
 					to_band: first.toBand,
-					prose: first.prose,
+					// Band prose is authored in the persona rather than by a model,
+					// so it is the least likely of these to carry anything. Redacted
+					// anyway: "least likely" is not a security property.
+					prose: first.prose === null ? null : redactSecrets(first.prose),
 				},
 			};
 		}
 
 		// ─── Ends of a session ───────────────────────────────────────────────
 		case "agent-error":
-			return { emit: { kind: "persona.session.ended", status: "failed", reason: event.message } };
+			return {
+				emit: {
+					kind: "persona.session.ended",
+					status: "failed",
+					// An error message is where a connection string ends up.
+					reason: redactSecrets(event.message),
+				},
+			};
 
 		case "error":
-			return { emit: { kind: "persona.session.ended", status: "failed", reason: event.message } };
+			return {
+				emit: {
+					kind: "persona.session.ended",
+					status: "failed",
+					reason: redactSecrets(event.message),
+				},
+			};
 
 		case "agent-stop-condition":
-			return { emit: { kind: "persona.session.ended", status: "stopped", reason: event.reason } };
+			return {
+				emit: {
+					kind: "persona.session.ended",
+					status: "stopped",
+					reason: redactSecrets(event.reason),
+				},
+			};
 
 		// ─── Deliberately not on the wire ────────────────────────────────────
 		//
