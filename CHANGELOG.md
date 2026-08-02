@@ -12,6 +12,41 @@ _Nothing yet._
 
 ---
 
+## [0.16.4] - 2026-08-02: nothing leaves with a secret in it
+
+### Feat: secret redaction at the producer (`@personaxis/core`)
+- The protocol says free text on the wire "has already passed redaction at the
+  producer" and that "nothing downstream redacts". That sentence was true of the
+  design and not of the code. `redactSecrets`, `redactSecretsVerbose` and
+  `redactDeep` make it true.
+- It runs in **one place**, `preview()` in the wire adapter, because a promise
+  kept in five places is a promise that will be broken in one of them. Every
+  remaining free-text field on the wire (a block reason, a turn summary, an
+  error message, band prose) is redacted at its emission.
+- **Redaction happens before truncation.** Cutting first can slice a key in half
+  and leave a fragment that matches no pattern, which is how a redactor reports
+  success on a preview still carrying most of a credential.
+- `redactDeep` walks structures rather than serialising them, so a key literally
+  named `password` is caught by its name even when its value is `hunter2` and
+  matches nothing. Bounded depth, so a cyclic or pathological argument from a
+  model fails closed instead of hanging.
+- Why this matters more here than in an ordinary log: anything reaching the
+  record is hash chained and cannot be edited afterwards. A leaked key there has
+  to be rotated, and the chain still holds the old one forever.
+- Over-redaction is the chosen direction. A preview with `[redacted]` in it is
+  still readable; a leaked key is not recoverable. A test asserts the events
+  still say what happened, so the redactor cannot pass by emptying them.
+- **Not** applied to the hook's rule-matching text, deliberately and with the
+  reason in the code: that string never leaves the process, and redacting it
+  would blind enforcement to the arguments it exists to inspect.
+
+### Test
+- A contract sweep walks every `LoopEvent` that reaches the wire, plants a real
+  secret in each of its string fields, and asserts none survives. A new event
+  with a new text field fails there without anyone remembering to add a case.
+
+---
+
 ## [0.16.3] - 2026-08-02: the other half of the boundary
 
 ### Feat: `parseServerMsg` (`@personaxis/protocol/workspace`)

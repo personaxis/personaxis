@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/tui",
-  "version": "0.16.3",
+  "version": "0.16.4",
   "description": "Personaxis TUI, Ink 7 components (living dashboard, streaming transcript with commit queue, brand sigil/aura) + the pre-Ink REPL line editor (until F3.6).",
   "license": "MIT",
   "type": "module",
