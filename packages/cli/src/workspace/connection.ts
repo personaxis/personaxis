@@ -129,6 +129,8 @@ export class DaemonConnection {
 	/** Per job: the next counter to stamp, and what has not been acknowledged. */
 	private nextSeq = new Map<string, number>();
 	private pending = new Map<string, QueuedEvent[]>();
+	/** Highest seq written to the CURRENT socket, per job. Cleared on reconnect. */
+	private sentUpTo = new Map<string, number>();
 
 	constructor(options: ConnectionOptions) {
 		this.options = {
@@ -195,11 +197,18 @@ export class DaemonConnection {
 		if ((this.pending.get(jobId)?.length ?? 0) === 0) {
 			this.pending.delete(jobId);
 			this.nextSeq.delete(jobId);
+			this.sentUpTo.delete(jobId);
 		}
 	}
 
 	private open(): void {
 		this.transition("connecting");
+
+		// A new socket has sent nothing. Clearing the marker is what makes
+		// resume work: everything still unacknowledged is unsent again, which is
+		// exactly the set the room needs replayed.
+		this.sentUpTo.clear();
+
 		const socket = this.options.socketFactory(this.options.url, this.options.token);
 		this.socket = socket;
 
@@ -256,6 +265,7 @@ export class DaemonConnection {
 				if (remaining.length === 0 && !this.runningJobs.has(message.job_id)) {
 					this.pending.delete(message.job_id);
 					this.nextSeq.delete(message.job_id);
+					this.sentUpTo.delete(message.job_id);
 				} else {
 					this.pending.set(message.job_id, remaining);
 				}
@@ -282,14 +292,33 @@ export class DaemonConnection {
 		}
 	}
 
+	/**
+	 * Sends what this socket has not sent yet.
+	 *
+	 * Entries stay in the queue after sending, because a write the socket
+	 * accepted is not a write that reached storage and only the ack says
+	 * otherwise. But they are not sent AGAIN on this socket: an earlier version
+	 * re-sent the whole queue on every emit, so a job producing a thousand
+	 * events before its first ack put half a million frames on the wire, and the
+	 * cost grew with the square of a run's length.
+	 *
+	 * A reconnection clears the marker, which is what makes resume work: on a
+	 * new socket everything unacknowledged is unsent again.
+	 */
 	private flush(jobId: string): void {
 		const queue = this.pending.get(jobId);
 		if (!queue || this.state !== "online") return;
+
+		const alreadySent = this.sentUpTo.get(jobId) ?? 0;
+		let highest = alreadySent;
+
 		for (const entry of queue) {
-			// Left in the queue after sending. A write that the socket accepted is
-			// not a write that reached storage, and only the ack says otherwise.
+			if (entry.seq <= alreadySent) continue;
 			this.rawSend(entry.frame);
+			if (entry.seq > highest) highest = entry.seq;
 		}
+
+		this.sentUpTo.set(jobId, highest);
 	}
 
 	private startHeartbeat(): void {
