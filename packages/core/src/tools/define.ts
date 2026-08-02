@@ -16,6 +16,7 @@
  */
 
 import type { CommandVerdict, Policy } from "../sandbox.js";
+import type { ExecutionPort } from "../ports/execution.js";
 import type { ToolSpec, ToolCategory } from "./registry.js";
 
 /** The primitive JSON types a flat tool schema may use (FR.7: primitives only). */
@@ -71,7 +72,7 @@ export interface ToolDefinition<S extends FlatSchema> {
   isReadOnly: boolean;
   isConcurrencySafe: boolean;
   gate(args: InferArgs<S>, policy: Policy): CommandVerdict;
-  execute(args: InferArgs<S>, policy: Policy): Promise<string>;
+  execute(args: InferArgs<S>, policy: Policy, execution: ExecutionPort): Promise<string>;
 }
 
 /**
@@ -93,6 +94,6 @@ export function defineTool<const S extends FlatSchema>(def: ToolDefinition<S>): 
     // The registry calls these with untyped args (validated first by validateToolArgs);
     // the cast is the single boundary where the runtime's untyped shape meets the type.
     gate: (args, policy) => def.gate(args as InferArgs<S>, policy),
-    execute: (args, policy) => def.execute(args as InferArgs<S>, policy),
+    execute: (args, policy, execution) => def.execute(args as InferArgs<S>, policy, execution),
   };
 }

@@ -44,13 +44,44 @@ export function executeCommand(
   policy: Policy,
   opts: { timeoutMs?: number; spawnImpl?: typeof spawn } = {},
 ): Promise<ExecResult> {
+  // An empty command makes `spawn` THROW rather than fail, and a throw here escapes into
+  // the agent loop: the difference between a failed step the model can react to and a run
+  // that dies mid-way. A model emitting an empty command is not rare, it is what happens
+  // when a tool call comes back with a field it did not fill in.
+  if (!cmd.trim()) {
+    return Promise.resolve({
+      ok: false,
+      code: null,
+      stdout: "",
+      stderr: "empty command: nothing to run",
+      truncated: false,
+      timedOut: false,
+    });
+  }
+
   const wrapped = wrapCommand(cmd, policy);
   const useShell = wrapped.sandbox === "none";
   const spawnFn = opts.spawnImpl ?? spawn;
   return new Promise((resolveExec) => {
-    const child = useShell
-      ? spawnFn(cmd, { cwd: policy.workspaceRoot, shell: true })
-      : spawnFn(wrapped.command, wrapped.args, { cwd: policy.workspaceRoot, shell: false });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = useShell
+        ? spawnFn(cmd, { cwd: policy.workspaceRoot, shell: true })
+        : spawnFn(wrapped.command, wrapped.args, { cwd: policy.workspaceRoot, shell: false });
+    } catch (error) {
+      // `spawn` throws synchronously for a handful of argument shapes, so the async error
+      // handler below never sees them. Reported in the same shape as every other failure,
+      // because a caller that has to handle two kinds of failure eventually handles one.
+      resolveExec({
+        ok: false,
+        code: null,
+        stdout: "",
+        stderr: `could not start the command: ${error instanceof Error ? error.message : String(error)}`,
+        truncated: false,
+        timedOut: false,
+      });
+      return;
+    }
 
     let stdout = "";
     let stderr = "";

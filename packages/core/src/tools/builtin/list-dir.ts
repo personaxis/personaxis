@@ -1,6 +1,6 @@
 /** `list_dir` (J.1): list a directory's entries relative to the workspace root. */
 import { defineTool } from "../define.js";
-import { listDirSafe } from "../exec.js";
+
 import { readGate } from "../gates.js";
 
 export const listDirTool = defineTool({
@@ -16,8 +16,8 @@ export const listDirTool = defineTool({
     properties: { path: { type: "string" } },
   },
   gate: (args, policy) => readGate(args.path, policy),
-  execute: async (args, policy) => {
-    const r = listDirSafe(args.path, policy);
+  execute: async (args, policy, execution) => {
+    const r = await execution.listDir(args.path, policy);
     if (r.ok) return `${r.path}:\n${r.content ?? "(empty)"}`;
     return r.error === "directory not found"
       ? `note: ${r.path} does not exist. Continue with what you have.`
