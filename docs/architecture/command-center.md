@@ -9,8 +9,8 @@ component: packages/cli/src/center/
 # Command Center
 
 A single surface to see and manage everything, at every level, down to one coordinate of one
-persona: this machine → a project → a persona → a layer → a field. This is the design contract;
-the phased build is `plan/MASTER_PLAN_2026-07-21.md` PARTE G.
+persona: this machine → a project → a persona → a layer → a field. This document is the design
+contract; what has been built against it is recorded in the build status below.
 
 ## The problem it replaces
 

@@ -162,15 +162,17 @@ They are independent on purpose, so read them separately:
 
 | Number | Example | What it versions | Where you see it |
 |---|---|---|---|
-| Package / CLI | `0.14.0` | the software (all eight packages move together, lockstep) | `personaxis --version` |
+| Package / CLI | see `personaxis --version` | the software (all eight packages move together, lockstep) | `personaxis --version` |
 | Spec | `1.1.0` | the `personaxis.md` file format the software implements | `spec_version:` in every persona |
 | apiVersion | `personaxis.com/v1` | the stable API namespace of the spec | `apiVersion:` in every persona |
 
-The software at `0.14.0` implements spec `1.1.0`. The CLI can keep releasing while still targeting
-spec `1.1.0`, and a persona written for spec `1.0.0` keeps validating because `1.1.0` only adds
-optional fields.
+The package version is deliberately not written out here. It moves every release, a number in
+prose does not, and a README claiming a version the software left behind months ago is worse
+than one that does not claim it: `personaxis --version` is always right. The CLI can keep
+releasing while still targeting spec `1.1.0`, and a persona written for spec `1.0.0` keeps
+validating because `1.1.0` only adds optional fields.
 
-**New in 0.14.0** (the terminal app grows up):
+**What the terminal app grew into** (see [CHANGELOG.md](./CHANGELOG.md) for what landed when):
 
 - **Fourteen commands, not forty.** The slash surface is four groups (Talk / Identity /
   Build / Run), eighteen entries in the palette once you count `/sandbox`, `/bg`, `/help` and

@@ -175,6 +175,7 @@ summarizer already emits section headers; the pin carries the load-bearing state
 
 ## Build order
 
-Per `plan/MASTER_PLAN_2026-07-21.md` (interleaved): the low-risk, high-value base (typed tools,
-plan+breaker, security enforcement base) ships first; skills→tools, the post-mortem loop, and
-structured context follow after the Command Center.
+Interleaved rather than layered: the low-risk, high-value base (typed tools, plan+breaker,
+security enforcement base) ships first; skills→tools, the post-mortem loop, and structured
+context follow after the Command Center. The order is a judgement about which failures are
+cheapest to discover early, not a dependency graph.
