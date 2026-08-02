@@ -47,7 +47,10 @@ removing them.
 
 So:
 
-- Writers refresh their heartbeat every 20 seconds.
+- Writers refresh their heartbeat every 30 seconds, a third of the window below. The
+  interval is **derived** from the window, never written down twice: two numbers that have
+  to agree and live apart is how a writer ends up beating slower than readers expire, which
+  drops a running instance off the fleet.
 - Readers ignore anything older than 90 seconds, and **delete it as they pass**.
 - Unreadable files are discarded the same way. A half-written or corrupt entry is not an
   instance.
@@ -56,6 +59,47 @@ So:
 The window is generous on purpose: a persona sitting at a prompt while somebody thinks is
 idle, not gone, and dropping it from the list because nobody typed for a minute would be
 worse than showing it slightly too long.
+
+## Who announces, and who deliberately does not
+
+For a long time only the REPL did. Everything else held a persona in silence, so a `serve`
+running for an hour, a `watch` daemon recompiling it, and an MCP host driving it all read as
+**idle**. A presence view that is wrong in the direction of "nobody is here" is worse than
+no view at all, because avoiding exactly that collision is its entire job.
+
+The rule is one line: **announce if you hold the persona long enough for someone else to
+collide with you.**
+
+| Surface | `host` | What it reports doing |
+|---|---|---|
+| the REPL | `repl` | `idle`, `answering` |
+| `personaxis -p` | `headless` | `answering` |
+| `serve` | `serve` | `serving http on <addr>:<port>` |
+| `watch` | `compile` | `watching for spec edits` |
+| `compile` | `compile` | `compiling PERSONA.md` |
+| `observe`, and host hooks | `loop` | `running a governed tick` |
+| `orchestrate --run` | `task` | `assigned task: …` |
+| the MCP server | `mcp` | `driven by an MCP host` |
+
+The `host` says through what the persona is being used; `activity` says what it is doing.
+Keeping those apart is why `watch` and a one-shot `compile` share a host: both hold it to
+produce the compiled document, and the activity tells them apart. A host per command would
+grow a vocabulary nobody could read at a glance.
+
+Read-only and instant commands (`validate`, `lint`, `ps`, `dash`) announce **nothing**. A
+marker that appears and vanishes inside a few milliseconds is noise on disk that no reader
+can see in time. `dash` is the pointed case: it watches a persona rather than using one.
+
+**One process is one holder.** Presence is keyed by device and pid, so a nested operation
+(`watch` calling `compile`) does not announce twice. It takes the same holder's line, and
+gives it back on release, so the activity returns to `watching for spec edits` on its own.
+Announcing twice was never an option the file layout could represent.
+
+**The MCP server is driven by use, not by a timer.** It holds no persona of its own, it is
+handed one per call, and it cannot know when the host walked away. So each call refreshes
+(throttled to one write per heartbeat) and silence lets the entry expire, which says the
+true thing: nobody is driving this persona right now. A timer would have kept claiming
+otherwise while the host sat idle.
 
 ## Where it shows
 

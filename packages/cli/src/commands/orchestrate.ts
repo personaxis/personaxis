@@ -22,6 +22,7 @@ import {
   type Agent,
   type LoopEvent,
 } from "@personaxis/core";
+import { holdPresence } from "../presence-session.js";
 
 function registeredAgents(): { agents: Agent[]; paths: Record<string, string> } {
   const reg = loadRegistry();
@@ -81,7 +82,15 @@ export const orchestrateCommand = new Command("orchestrate")
       const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
       const events: LoopEvent[] = [];
       loop.bus.on((e) => events.push(e));
-      const report = await loop.tick({ observation: task, source: "user", actor: "actor-llm" });
+      // D6: the assignee is being driven by someone who is not sitting in front of it. That
+      // is the presence a second operator most needs to see, and it names the task.
+      const presence = holdPresence(personaPath, { host: "task", activity: `assigned task: ${task.slice(0, 60)}` });
+      let report;
+      try {
+        report = await loop.tick({ observation: task, source: "user", actor: "actor-llm" });
+      } finally {
+        presence.release();
+      }
       console.log(
         chalk.dim(
           `  ${displayName(loop.persona.frontmatter)} ran a governed cycle: ` +

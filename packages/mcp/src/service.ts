@@ -16,7 +16,7 @@ import {
   skillReview as sdkSkillReview,
   evaluateCmd as sdkEvaluateCmd,
 } from "@personaxis/sdk";
-import { loadPersona, ensureState, extractEnvelopes, type ProvenanceSource } from "@personaxis/core";
+import { loadPersona, ensureState, extractEnvelopes, touchPresence, type ProvenanceSource } from "@personaxis/core";
 import { resolve as presolve, relative, isAbsolute } from "node:path";
 
 // ── Path confinement (ADR-011: --root) ──────────────────────────────────────
@@ -45,9 +45,24 @@ export function confine(p: string): string {
   return abs;
 }
 
+/**
+ * Confine a path that names a PERSONA, and record that this server is driving it.
+ *
+ * D6: the MCP server holds no persona of its own, it is handed one per call, so presence is
+ * driven by use rather than by a timer (`touchPresence` throttles the write, and silence
+ * lets the entry expire, which is the truthful answer once the host stops calling). Every
+ * persona path enters through here, so this is the one place that can say it, the same
+ * reason confinement itself lives here.
+ */
+function personaPath(p: string): string {
+  const abs = confine(p);
+  touchPresence(abs, { host: "mcp", project: confineRoot ?? process.cwd(), activity: "driven by an MCP host" });
+  return abs;
+}
+
 /** Confine a path and bind an SDK Persona to it. */
 function persona(p: string): Persona {
-  return new Persona(confine(p));
+  return new Persona(personaPath(p));
 }
 
 export function compiledDocument(p: string): string {
@@ -55,7 +70,7 @@ export function compiledDocument(p: string): string {
 }
 
 export function stateSummary(p: string): unknown {
-  const abs = confine(p);
+  const abs = personaPath(p);
   const h = loadPersona(abs);
   const st = ensureState(h);
   return {
@@ -68,7 +83,7 @@ export function stateSummary(p: string): unknown {
 }
 
 export function envelopes(p: string): unknown {
-  const abs = confine(p);
+  const abs = personaPath(p);
   const { envelopes, hardEnforcedVirtues } = extractEnvelopes(loadPersona(abs).frontmatter);
   return { mutable_fields: envelopes, hard_enforced_virtues: hardEnforcedVirtues };
 }
@@ -167,5 +182,5 @@ export function evaluateCmd(
   approval: "untrusted" | "on-failure" | "on-request" | "never",
   p?: string,
 ): unknown {
-  return sdkEvaluateCmd(command, sandbox, approval, p ? confine(p) : undefined);
+  return sdkEvaluateCmd(command, sandbox, approval, p ? personaPath(p) : undefined);
 }

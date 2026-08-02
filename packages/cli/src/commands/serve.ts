@@ -27,6 +27,7 @@ import {
   type ProvenanceSource,
 } from "@personaxis/core";
 import { Persona } from "@personaxis/sdk";
+import { holdPresence } from "../presence-session.js";
 
 const AGENTS_MD = (name: string) => `# ${name}, personaxis agent tools
 
@@ -200,6 +201,10 @@ export const serveCommand = new Command("serve")
       process.exit(1);
     });
     server.listen(port, opts.host, () => {
+      // D6: a server holding the persona for hours used to show as idle in the fleet, which
+      // is the collision presence exists to reveal. Announced only once it is actually
+      // listening: a bind that failed never held anything.
+      holdPresence(personaPath, { host: "serve", activity: `serving http on ${opts.host}:${port}` });
       console.log(chalk.green("✓"), `persona serving on ${chalk.cyan(`http://${opts.host}:${port}`)}${opts.token ? chalk.dim(" (Bearer token required)") : ""}`);
       console.log(chalk.dim(`  curl ${opts.token ? `-H "Authorization: Bearer …" ` : ""}http://${opts.host}:${port}/agents.md`));
     });

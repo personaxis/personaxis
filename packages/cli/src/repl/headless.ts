@@ -14,6 +14,7 @@ import { expandFileMentions } from "./mentions.js";
 import { COMMANDS } from "./commands.js";
 import { loadMergedConfig } from "../config.js";
 import { recordSpan } from "../telemetry.js";
+import { holdPresence } from "../presence-session.js";
 
 export type HeadlessFormat = "text" | "json" | "stream-json";
 
@@ -104,6 +105,10 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
       }
     : undefined;
 
+  // D6: a headless turn is a session like any other, just without a screen. The vocabulary
+  // already had a name for this surface and nothing was emitting it, so an agent driving
+  // the CLI in a loop held the persona while every fleet view reported nobody there.
+  const presence = holdPresence(personaPath, { host: "headless", sessionId: ctx.sessionId, activity: "answering" });
   const reply = await ctx.responder
     .respond({
       message: expandFileMentions(prompt),
@@ -115,6 +120,7 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
       ...(onToken ? { onToken } : {}),
     })
     .catch((e) => `(responder error: ${friendlyProviderError((e as Error).message)})`);
+  presence.release();
 
   if (format === "json") {
     process.stdout.write(

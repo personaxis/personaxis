@@ -14,7 +14,7 @@ import { stdin, stdout } from "node:process";
 import { join, relative, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import chalk from "chalk";
-import { readState, writeState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease } from "@personaxis/core";
+import { readState, writeState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
@@ -216,7 +216,10 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     // Renewing on the same beat as presence keeps the two from disagreeing about whether
     // this instance is still alive.
     if (wantsLease && !readOnly) acquireLease(ctx.handle.personaPath, { sessionId: ctx.sessionId, reason: "repl session" });
-  }, 20_000);
+    // D6: the interval is DERIVED from the staleness window core enforces, never a second
+    // literal. This one read 20s while the window said 90s; two numbers that must agree and
+    // live apart is how a writer ends up beating slower than readers expire.
+  }, PRESENCE_HEARTBEAT_MS);
   beat.unref?.();
   try {
     if (stdin.isTTY) {

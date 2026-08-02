@@ -6,6 +6,101 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.16.9] - 2026-08-02: the producers announce themselves
+
+### Feat: presence from every surface that holds a persona (D6)
+- Only the REPL ever announced itself. Everything else held a persona **in silence**: a
+  `serve` running for an hour, a `watch` daemon recompiling it, a `compile` calling a model,
+  a governed tick fired by a host hook on every turn, an MCP host driving it. All of them
+  read as **idle** in the fleet and in the Command Center. A presence view that is wrong in
+  the direction of "nobody is here" is worse than no view, because avoiding exactly that
+  collision is its whole job.
+- One rule decides who announces: **hold the persona long enough for someone else to
+  collide with you.** The daemons (`serve`, `watch`, MCP) and the operations that run a
+  model (`compile`, `observe`, `orchestrate --run`, `personaxis -p`). Read-only and instant
+  commands (`validate`, `lint`, `ps`, `dash`) announce nothing, because a marker that
+  appears and vanishes in milliseconds is noise no reader can see in time.
+- The `host` says through what the persona is being used and `activity` says what it is
+  doing, so `watch` and a one-shot `compile` share a host and are still told apart. A host
+  per command would grow a vocabulary nobody could read at a glance.
+- **One process is one holder.** Presence is keyed by device and pid, so `watch` calling
+  `compile` does not announce twice; the nested operation takes the same holder's line and
+  gives it back on release, returning the activity to `watching for spec edits` by itself.
+  Announcing twice was never something the file layout could represent, and the earlier
+  shape would have installed a fresh heartbeat and exit hooks on **every** recompile, which
+  Node starts warning about after ten.
+- Releasing covers the way long-running commands actually end. A `finally` block is not
+  enough for a process that stops because someone pressed Ctrl+C, so the exit path is
+  handled too, and it decides **when the signal arrives** whether another handler owns the
+  exit. Deciding at install time would have made `watch` unstoppable, since it registers its
+  own handler afterwards.
+- **The MCP server is driven by use, not by a timer.** It holds no persona of its own, it is
+  handed one per call, and it cannot know the host walked away. Each call refreshes
+  (throttled to one write per heartbeat) and silence lets the entry expire, which says the
+  true thing. A timer would have kept claiming otherwise while the host sat idle.
+
+### Fix
+- **`personaxis ps` reported a different question than the one its column asked.** "Awake"
+  came from the marker the loop writes when state **drifts**, so a `serve` holding a persona
+  without a single observation read as idle, and a persona whose state had just moved read
+  as awake with nothing attached to it. The column now reads live presence and says who is
+  holding it, through what surface; the state marker keeps answering what it always
+  answered, when the state last moved, under its own column.
+- The presence heartbeat is now **derived** from the staleness window instead of being a
+  second literal. The REPL beat every 20s while readers expired at 90s: two numbers that
+  must agree and lived apart, which is how a writer ends up beating slower than readers
+  expire and a running instance drops off the fleet.
+
+### Docs
+- `docs/architecture/presence.md` gained the table of who announces, who deliberately does
+  not, and why; `docs/commands/ps.md` shows the real output and separates the two questions
+  its columns answer.
+- CHANGELOG entries for **0.16.7** and **0.16.8**, which shipped without one.
+
+---
+
+## [0.16.8] - 2026-08-02: provenance for an MCP server, and the limit stated with it
+
+### Feat: K.12, the half that is a process rather than a directory
+- A skill is a directory, so its integrity is the hash of its files. An MCP server is a
+  **command**, and that difference changes what can honestly be promised. **The declaration
+  is pinned**: `npx -y @acme/mcp@1.2.3` with its arguments and its environment variable
+  names is something somebody approved, and a change to `@latest --allow-write` is caught.
+- **What the command does when it executes is not pinned**, and every surface says so. `npx`
+  fetches at run time, a binary on PATH can be replaced, a pinned version can be republished
+  on a registry that permits it. A control that overclaims teaches people to trust something
+  that was never checked, which is worse than an absent control known to be absent.
+- Environment variable **names** are hashed, never values: that is where credentials live,
+  and hashing them would put a credential's digest in a file we write to disk. Argument
+  order counts (on a command line, order is meaning); the order environment names arrived in
+  does not. An unrecognised launcher is reported as **not pinned**.
+
+---
+
+## [0.16.7] - 2026-08-02: integrity for what a persona did not author
+
+### Feat: K.12 for skills
+- A skill is code the persona runs and did not write. A persona declaring
+  `github:org/repo` received whatever was at that path when it was downloaded, and nothing
+  recorded what that was.
+- The answer is **deliberately modest**, because an ambitious one would be worse than none.
+  It does **not** verify that a skill is safe, which nothing can. It records exactly what
+  was materialized and **refuses content that no longer matches what was approved**, which
+  is the one property that turns a review into a control.
+- The hash covers **the content, not the reference**. A reference promises where something
+  lives; a hash asserts what it is. **A tag that moved is precisely the case this catches**,
+  so `github:acme/skills@v1.0.0` is reported as **not pinned**: a tag is not a pin, and
+  calling it one would defeat both controls at once.
+- Sorted and length-prefixed, so the digest does not depend on the order a directory walk
+  returned (it varies by platform) and two different file sets cannot collide by shifting a
+  byte. `skills-manifest.json` carries `contentHash`, `fileCount` and `pinned`.
+- An unpinned reference is **reported, not refused**: refusing would make the common case
+  impossible before a lockfile exists, and the message says what it means. A reference that
+  resolves to nothing is named, because a silent empty download is the failure that looks
+  like success.
+
+---
+
 ## [0.16.6] - 2026-08-02: the daemon boundary, hardened
 
 ### Feat: the daemon boundary, hardened (D5 + S3)
