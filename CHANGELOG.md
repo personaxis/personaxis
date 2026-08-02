@@ -12,6 +12,29 @@ _Nothing yet._
 
 ---
 
+## [0.16.3] - 2026-08-02: the other half of the boundary
+
+### Feat: `parseServerMsg` (`@personaxis/protocol/workspace`)
+- The symmetric counterpart of `parseBrowserMsg`, and it exists for the same
+  reason. A browser that trusts whatever JSON arrives on its socket is the same
+  gap as a server that trusts whatever a client sends: a proxy, an extension or
+  a stale deployment can put a frame on that wire, and a client that reads it
+  unchecked builds its interface out of whatever it got.
+- Never throws, for the same reason its counterpart does not: a malformed frame
+  is an ordinary event on a long-lived socket, and an uncaught exception in an
+  `onmessage` handler takes the view down with it. Takes either the JSON string
+  a WebSocket delivers or an already-parsed value.
+- Every event inside a sync frame needs a job, a kind and an **assigned**
+  sequence. `seq: 0` means "not yet assigned", and a reducer that accepted one
+  would hold a permanent gap at the head of the job.
+- A snapshot without `steering` is refused rather than defaulted: a client that
+  cannot say whether anyone is driving reads it as nobody, and lets two people
+  act at once.
+- An unknown type is named in the error rather than lumped into "malformed",
+  because a client sending one is either out of date or probing.
+
+---
+
 ## [0.16.2] - 2026-08-01: the machine on the wire
 
 > `personaxis connect`, and enforcement that happens before a tool call rather
