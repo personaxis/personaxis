@@ -82,6 +82,7 @@ export * from "./security/ingest.js";
 export * from "./security/isolation.js";
 export * from "./security/consent.js";
 export * from "./security/provenance.js";
+export * from "./security/mcp-provenance.js";
 export * from "./tool-calling.js";
 export * from "./agent.js";
 
