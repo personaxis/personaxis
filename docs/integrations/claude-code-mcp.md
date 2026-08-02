@@ -35,7 +35,7 @@ Not published yet (from the repo):
 
 ## 2. Tools it exposes (16)
 
-> Short list below; the full reference is in [claude-code.md](./claude-code.md). The MCP server is 0.12.0.
+> Short list below; the full reference is in [claude-code.md](./claude-code.md). The MCP server ships at the same lockstep version as the CLI.
 
 | Tool | Why the host calls it |
 |---|---|
