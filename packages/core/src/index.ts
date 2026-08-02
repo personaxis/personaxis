@@ -70,6 +70,9 @@ export * from "./tools/define.js";
 export * from "./tools/mcp-adapter.js";
 export * from "./loop-breaker.js";
 export * from "./planner.js";
+// J.4c: reading a model plan and deciding what the run does with the verdict. Separate from
+// the planner, which only answers whether the steps would be allowed.
+export * from "./plan-phase.js";
 export * from "./skill-activation.js";
 export * from "./skill-writer.js";
 export * from "./postmortem.js";
