@@ -53,6 +53,27 @@ export interface AdapterStatus {
  */
 export type EnforcementAssurance = "verified" | "documented";
 
+/**
+ * How a host is started for a job the workspace sent, and how it is recognised on a machine.
+ *
+ * Here rather than beside the process that spawns it, for the same reason the settings path
+ * is: this is the file that owns what differs between vendors, and the runner should not
+ * learn anything new when a second host arrives.
+ *
+ * `bin` is also what the machine probe looks for, so the binary's name is written once.
+ *
+ * `streamArgs` absent means this host cannot be driven programmatically by us yet. That is a
+ * refusal with a reason rather than a guess: starting a host with flags taken from memory
+ * produces either an error nobody can read or, worse, an agent running in a mode we did not
+ * intend, in a real directory, with real tools.
+ */
+export interface HostLaunchSpec {
+	/** The executable, as it is found on PATH. */
+	bin: string;
+	/** Everything before the prompt: the flags that make it print a machine-readable stream. */
+	streamArgs?: readonly string[];
+}
+
 export interface HostAdapter {
 	name: HostAgentName;
 	/** Where this host reads project settings from, given a working directory. */
@@ -60,6 +81,7 @@ export interface HostAdapter {
 	/** The host's name for the event that fires BEFORE a tool call runs. */
 	preToolUseEvent: string;
 	assurance: EnforcementAssurance;
+	launch: HostLaunchSpec;
 	install(root: string): AdapterStatus;
 	uninstall(root: string): AdapterStatus;
 	status(root: string): AdapterStatus;
@@ -138,10 +160,12 @@ function jsonHookAdapter(spec: {
 	settingsPath(root: string): string;
 	event: string;
 	assurance: EnforcementAssurance;
+	launch: HostLaunchSpec;
 }): HostAdapter {
 	return {
 		name: spec.name,
 		preToolUseEvent: spec.event,
+		launch: spec.launch,
 		assurance: spec.assurance,
 		settingsPath: spec.settingsPath,
 
@@ -219,6 +243,10 @@ export const claudeCodeAdapter: HostAdapter = jsonHookAdapter({
 	name: "claude-code",
 	settingsPath: (root) => join(root, ".claude", "settings.json"),
 	event: "PreToolUse",
+	// Print mode with a machine-readable stream. --verbose is required alongside
+	// stream-json: without it the host prints only the final result, and the room
+	// would show a job that started, went silent, and finished.
+	launch: { bin: "claude", streamArgs: ["-p", "--output-format", "stream-json", "--verbose"] },
 	// Measured: the hook binary refuses a call before it runs, p95 0.0011 ms over 20k
 	// decisions, and end to end through a real socket in the contract test.
 	assurance: "verified",
@@ -241,6 +269,11 @@ export const codexAdapter: HostAdapter = jsonHookAdapter({
 	name: "codex",
 	settingsPath: (root) => join(root, ".codex", "hooks.json"),
 	event: "PreToolUse",
+	// No streamArgs, deliberately. The flags that make Codex emit a machine-readable
+	// stream have not been checked against the real binary here, and inventing them
+	// starts an agent in a mode nobody intended, in a real directory, with real tools.
+	// The runner refuses with that reason, which is worth more than a guess.
+	launch: { bin: "codex" },
 	assurance: "documented",
 });
 
@@ -248,4 +281,19 @@ export const HOST_ADAPTERS: HostAdapter[] = [claudeCodeAdapter, codexAdapter];
 
 export function adapterFor(name: HostAgentName): HostAdapter | undefined {
 	return HOST_ADAPTERS.find((adapter) => adapter.name === name);
+}
+
+/**
+ * How to start a host, or null when this build cannot start it.
+ *
+ * Null is a real answer and the runner reports it as a refusal with a reason. The two ways
+ * to get it are an unknown host and one whose stream flags have not been checked against
+ * the real binary, and both should stop a run rather than produce a guess.
+ */
+export function launchCommandFor(
+	name: HostAgentName,
+): { command: string; args: string[] } | null {
+	const adapter = adapterFor(name);
+	if (!adapter?.launch.streamArgs) return null;
+	return { command: adapter.launch.bin, args: [...adapter.launch.streamArgs] };
 }

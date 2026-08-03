@@ -21,16 +21,24 @@ import { isAbsolute, resolve } from "node:path";
 
 import type { HostAgentName } from "@personaxis/protocol/workspace";
 
+import { HOST_ADAPTERS } from "./host-adapter.js";
+
 export interface DetectedHostAgent {
 	name: HostAgentName;
 	version: string;
 }
 
-/** The commands that answer for each host agent, in the order we try them. */
-const HOST_AGENT_PROBES: Array<{ name: HostAgentName; bin: string }> = [
-	{ name: "claude-code", bin: "claude" },
-	{ name: "codex", bin: "codex" },
-];
+/**
+ * Derived from the adapters, not written again here.
+ *
+ * The binary's name is a fact about a host, and the adapter already owns every other fact
+ * about one. Two lists would agree until somebody added a host to one of them, and the
+ * failure that produces is a machine that reports it has no agent installed while the
+ * runner is perfectly able to start it.
+ */
+const HOST_AGENT_PROBES: Array<{ name: HostAgentName; bin: string }> = HOST_ADAPTERS.map(
+	(adapter) => ({ name: adapter.name, bin: adapter.launch.bin }),
+);
 
 /**
  * Asks each known host agent for its version.
