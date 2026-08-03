@@ -111,6 +111,33 @@ export class JobReporter {
 		}
 	}
 
+	/**
+	 * Report an event that is already in the wire vocabulary.
+	 *
+	 * The other entry point. `report` takes what our own engine emits and
+	 * translates it; this takes what a host agent's stream has already been
+	 * translated into, by `HostStreamTranslator`.
+	 *
+	 * It exists so that path gets the same treatment rather than its own copy of
+	 * it: the scope guard, the envelope with `seq` left at zero, the terminal
+	 * kind releasing the queue, and the promise never to throw. A second emitter
+	 * that wrapped its own envelopes would be a second place for those four
+	 * things to drift.
+	 *
+	 * No call id is assigned here, and that is the point: the host names its own
+	 * calls and the hook is handed the same name, so an id minted on this side
+	 * would give one call two names.
+	 */
+	reportWire(body: WireEmission): void {
+		try {
+			this.options.sink.emit(this.envelope(this.guard(body)));
+			if (TERMINAL_KINDS.has(body.kind)) this.finish();
+		} catch (error) {
+			this.droppedCount++;
+			this.options.onDrop?.(body.kind, `reporter error: ${String(error)}`);
+		}
+	}
+
 	private reportUnsafe(event: LoopEvent): void {
 		// A new call starts at the proposal. Assigning the id here, before the
 		// mapping, is what lets the verdict and the result reuse it.
