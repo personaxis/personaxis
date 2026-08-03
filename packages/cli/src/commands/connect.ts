@@ -30,6 +30,8 @@ import {
 	type StartedFlow,
 } from "../workspace/device-flow.js";
 import { DaemonConnection, type ConnectionState } from "../workspace/connection.js";
+import { launchCommandFor } from "../workspace/host-adapter.js";
+import { JobRunner } from "../workspace/job-runner.js";
 import { consentedDirs, describeMachine, detectHostAgents } from "../workspace/machine.js";
 import { nodeSocketFactory, socketSupported, unsupportedSocketMessage } from "../workspace/socket.js";
 import {
@@ -262,6 +264,11 @@ async function linkMachine(app: string, openBrowser: boolean): Promise<boolean> 
 /** Holds the socket open until the operator stops it. */
 function holdTheWire(token: string, scope: string[], cache: PolicyCache): Promise<void> {
 	return new Promise((resolve) => {
+		// What turns an assignment into a running agent. Constructed before the connection
+		// because the connection can deliver a job the moment it registers, and a runner
+		// built afterwards would miss it.
+		let runner: JobRunner;
+
 		const connection = new DaemonConnection({
 			url: daemonSocketUrl(),
 			token,
@@ -291,7 +298,20 @@ function holdTheWire(token: string, scope: string[], cache: PolicyCache): Promis
 				onDropped: (jobId, count) => {
 					console.error(chalk.yellow(`dropped ${count} queued events for job ${jobId} (offline too long)`));
 				},
+				onServerMessage: (message) => runner.handle(message),
 			},
+		});
+
+		// The host is chosen here, on the machine, from what is installed. The workspace
+		// does not get to name it: which agent runs on somebody's laptop is theirs to
+		// decide, and a message that could pick it would be a message that picks which
+		// binary this daemon executes.
+		const installed = detectHostAgents();
+		runner = new JobRunner({
+			sink: connection,
+			scope,
+			host: installed[0]?.name ?? "claude-code",
+			launcher: launchCommandFor,
 		});
 
 		const stop = () => {
