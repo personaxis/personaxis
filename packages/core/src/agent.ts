@@ -70,6 +70,7 @@ import { LoopBreaker, toolSignature } from "./loop-breaker.js";
 import { ForensicLog, type ForensicRecord } from "./security/forensic-log.js";
 import { ToolInterceptor } from "./security/interceptor.js";
 import { Watchdog } from "./security/watchdog.js";
+import { runPlanPhase, type PlanPhaseConfig } from "./plan-run.js";
 import { tightenVerdict, maxTaint, type ContextTaint, type SandboxPosture } from "./security/consent.js";
 
 export type ApprovalDecision = "approve" | "deny" | "always";
@@ -139,6 +140,19 @@ export interface AgentOptions {
   compactThreshold?: number;
   /** Prior conversation (excluding the system message) for chat continuity. */
   priorMessages?: ChatMessage[];
+  /**
+   * J.4c: think before acting.
+   *
+   * Off unless asked for. A planning turn costs a model call before any work starts, which
+   * is pure overhead for a one-step task, and switching it on by default would change what
+   * every existing run does. "The agent now plans first" is a change an operator should
+   * choose rather than discover.
+   *
+   * When a plan cannot survive its own gates, the run does not start. Proceeding anyway
+   * would spend the planning turn, report that the plan was refused, and then do the work
+   * regardless, which teaches everybody that the gate is decorative.
+   */
+  plan?: PlanPhaseConfig;
   bus?: EventBus;
 }
 
@@ -429,6 +443,56 @@ export class PersonaAgent {
       { role: "user", content: task },
     ];
     this.lastMessages = messages; // reference; reflects the final state after the run
+
+    // J.4c: plan before acting, when asked to. The anchor goes in as system speech so the
+    // model is held to what it said it would do; a refused plan stops the run here, before
+    // any tool has been called.
+    if (this.opts.plan?.enabled) {
+      const planning = await runPlanPhase(
+        messages,
+        {
+          ask: async (planMessages) => {
+            // No tools offered: this turn is for text, and a model handed tools during
+            // planning calls one, which is the acting this phase exists to precede.
+            const res = await requestToolCall(this.opts.llm, [...planMessages], [], this.preferFallback);
+            tokens += res.usage?.total_tokens ?? 0;
+            return res.text;
+          },
+          tools: activeTools,
+          policy: this.policy,
+          onOutcome: (outcome, attempt) =>
+            bus.emit({
+              type: "agent-think",
+              text:
+                outcome.kind === "proceed"
+                  ? `[plan] accepted on attempt ${attempt}`
+                  : `[plan] attempt ${attempt} ${outcome.kind}: ${outcome.feedback}`,
+            }),
+        },
+        this.opts.plan,
+      );
+
+      if (!planning.ok) {
+        // Stopped before the first tool call, and said so. `finished: false` with the reason
+        // as the summary, because a caller that only reads `summary` must not be told the
+        // work was done.
+        watchdog.stop();
+        bus.emit({ type: "agent-think", text: `[plan] run abandoned: ${planning.reason}` });
+        return {
+          summary: planning.reason,
+          steps: 0,
+          finished: false,
+          budget: {
+            steps: 0,
+            tokens,
+            costUsd: Number(estimateCostUsd(this.opts.llm.model, tokens).toFixed(4)),
+            wallSeconds: Number(((Date.now() - startTime) / 1000).toFixed(1)),
+            stoppedBy: "plan",
+          },
+        };
+      }
+      messages.push({ role: "system", content: planning.anchor });
+    }
 
     const spent = (steps: number, goalMet = false, confidence?: number): AgentBudgetSpent => ({
       steps,
