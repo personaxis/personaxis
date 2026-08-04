@@ -35,7 +35,14 @@ export interface DeviceRecord {
 	app_url: string;
 	machine_name: string;
 	machine_id: string | null;
-	organization_id: string | null;
+	/**
+	 * The workspace this machine was linked to: an organisation or one person.
+	 *
+	 * Stored as the prefixed key (`org:<id>` or `usr:<id>`) because that is what the
+	 * gateway and the policies compare against, and because a bare id cannot say which
+	 * of the two it is. Null on a machine linked before this field existed.
+	 */
+	space: string | null;
 	linked_at: string;
 	/** Where the secret went. Never the secret itself. */
 	storage: TokenStorage;
@@ -149,7 +156,15 @@ export function readRecord(io: TokenStoreIO = defaultIO): DeviceRecord | null {
 		app_url,
 		machine_name,
 		machine_id: typeof raw.machine_id === "string" ? raw.machine_id : null,
-		organization_id: typeof raw.organization_id === "string" ? raw.organization_id : null,
+		// `organization_id` is what this field was called before a workspace could belong
+		// to a person. Read for the machines already linked under the old name: the
+		// alternative is telling somebody their working machine is unlinked.
+		space:
+			typeof raw.space === "string"
+				? raw.space
+				: typeof raw.organization_id === "string"
+					? `org:${raw.organization_id}`
+					: null,
 		linked_at: typeof raw.linked_at === "string" ? raw.linked_at : "",
 		storage: storage === "os" || storage === "file" || storage === "env" ? storage : "file",
 	};
@@ -210,7 +225,7 @@ function unlinkedRecord(io: TokenStoreIO): DeviceRecord {
 		app_url: io.env.PERSONAXIS_BASE_URL ?? "",
 		machine_name: "",
 		machine_id: null,
-		organization_id: null,
+		space: null,
 		linked_at: "",
 		storage: "env",
 	};

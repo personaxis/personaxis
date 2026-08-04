@@ -52,8 +52,10 @@ export interface StartedFlow {
 export interface ClaimedToken {
 	token: string;
 	machine_id: string;
-	organization_id: string;
-	organization_name: string;
+	/** `org:<id>` or `usr:<id>`. The same spelling the gateway compares against. */
+	space: string;
+	/** What to print, so the operator sees where their machine landed. */
+	space_name: string;
 }
 
 export type ClaimOutcome =
@@ -156,17 +158,22 @@ export async function claimDeviceToken(
 		}
 
 		if (response.status === 200) {
-			const body = (await response.json().catch(() => null)) as Partial<ClaimedToken> | null;
-			if (!body?.token || !body.machine_id || !body.organization_id) {
+			const body = (await response.json().catch(() => null)) as
+				| { token?: string; machine_id?: string; space?: { kind?: string; id?: string }; space_name?: string }
+				| null;
+			const kind = body?.space?.kind;
+			const id = body?.space?.id;
+			if (!body?.token || !body.machine_id || !id || (kind !== "org" && kind !== "user")) {
 				return { status: "failed", reason: "the workspace approved the machine but returned no token" };
 			}
+			const space = `${kind === "org" ? "org" : "usr"}:${id}`;
 			return {
 				status: "approved",
 				value: {
 					token: body.token,
 					machine_id: body.machine_id,
-					organization_id: body.organization_id,
-					organization_name: body.organization_name ?? body.organization_id,
+					space,
+					space_name: body.space_name ?? space,
 				},
 			};
 		}
