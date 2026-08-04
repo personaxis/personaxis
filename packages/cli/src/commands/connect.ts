@@ -245,12 +245,12 @@ async function linkMachine(app: string, openBrowser: boolean): Promise<boolean> 
 			app_url: app,
 			machine_name: machine.machine_name,
 			machine_id: outcome.value.machine_id,
-			organization_id: outcome.value.organization_id,
+			space: outcome.value.space,
 		},
 	});
 
 	console.log(chalk.green("machine linked"));
-	console.log(chalk.dim("workspace:"), outcome.value.organization_name);
+	console.log(chalk.dim("workspace:"), outcome.value.space_name);
 	console.log(chalk.dim("machine:  "), outcome.value.machine_id);
 	console.log(
 		chalk.dim("token:    "),
@@ -383,7 +383,7 @@ const statusCmd = new Command("status")
 		try {
 			const me = await new WorkspaceClient().whoami();
 			console.log(chalk.green("token accepted by the workspace"));
-			console.log(chalk.dim("org:      "), me.organization_name);
+			console.log(chalk.dim("workspace:"), me.space_name);
 			console.log(chalk.dim("scopes:   "), me.scopes.join(", ") || "(none)");
 		} catch (error) {
 			// Reported, not swallowed: a token the workspace no longer accepts is

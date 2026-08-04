@@ -113,8 +113,9 @@ export class WorkspaceClient {
 	whoami(): Promise<{
 		machine_id?: string;
 		machine_name?: string;
-		organization_id: string;
-		organization_name: string;
+		/** `org:<id>` or `usr:<id>`. A workspace is an organisation or one person. */
+		space: string;
+		space_name: string;
 		scopes: string[];
 	}> {
 		return this.request("GET", "/api/v1/me");

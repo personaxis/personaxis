@@ -123,8 +123,8 @@ describe("the device flow", () => {
 			return jsonResponse(200, {
 				token: "pxis_live",
 				machine_id: "mach_1",
-				organization_id: "org_1",
-				organization_name: "Acme",
+				space: { kind: "org", id: "org_1" },
+				space_name: "Acme",
 			});
 		});
 
@@ -154,7 +154,8 @@ describe("the device flow", () => {
 			return jsonResponse(200, {
 				token: "pxis_live",
 				machine_id: "mach_1",
-				organization_id: "org_1",
+				space: { kind: "user", id: "usr_1" },
+				space_name: "Ana",
 			});
 		});
 		const outcome = await claimDeviceToken("https://app.example", startedFlow(flowIO), flowIO);
@@ -206,7 +207,7 @@ describe("where the token is kept", () => {
 		app_url: "https://app.example",
 		machine_name: "studio",
 		machine_id: "mach_1",
-		organization_id: "org_1",
+		space: "org:org_1",
 	};
 
 	it("puts the secret in the OS store and keeps it out of the file", () => {
@@ -279,5 +280,41 @@ describe("where the token is kept", () => {
 		expect(forgetDevice(io).removed).toBe(true);
 		expect(loadDevice(io)).toBeNull();
 		expect(forgetDevice(io).removed).toBe(false);
+	});
+});
+
+describe("a machine linked before a workspace could belong to a person", () => {
+	it("reads its old organization_id rather than reporting itself unlinked", () => {
+		// The field was called `organization_id` until a workspace could also be one
+		// person's. A machine linked under the old name is still linked, and telling
+		// its operator otherwise would send them to re-run `personaxis connect` on a
+		// machine that is working.
+		const home = mkdtempSync(join(tmpdir(), "pxis-legacy-"));
+		try {
+			const io: TokenStoreIO = {
+				home: () => home,
+				env: {} as NodeJS.ProcessEnv,
+				readSecret: () => undefined,
+				writeSecret: () => {},
+				now: () => new Date("2026-08-01T00:00:00.000Z"),
+			};
+
+			mkdirSync(join(home, ".personaxis"), { recursive: true });
+			writeFileSync(
+				devicePath(io),
+				JSON.stringify({
+					app_url: "https://app.example",
+					machine_name: "studio",
+					machine_id: "mach_1",
+					organization_id: "org_1",
+					linked_at: "2026-08-01T00:00:00.000Z",
+					storage: "file",
+				}),
+			);
+
+			expect(readRecord(io)?.space).toBe("org:org_1");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 });
