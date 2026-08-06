@@ -15,7 +15,7 @@ jobs:
   publish-npm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -49,7 +49,7 @@ jobs:
           - { os: macos-latest, target: bun-darwin-arm64, name: darwin-arm64 }
           - { os: windows-latest, target: bun-windows-x64, name: windows-x64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10

@@ -19,7 +19,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: [20, 22]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
         with:
@@ -51,7 +51,7 @@ jobs:
     name: test suite (ubuntu / node 22)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -76,14 +76,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout cli
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: cli
 
       # The golden persona lives in the sibling spec repo. Checked out side-by-side
       # so the relative path used by CLAUDE.md (../persona.md) resolves in CI too.
       - name: Checkout persona.md spec
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: personaxis/persona.md
           path: persona.md
@@ -126,7 +126,7 @@ jobs:
     name: governance evals (deterministic, no API keys)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10
