@@ -11,19 +11,44 @@ import {
 	REGISTRY_UA_PREFIX,
 } from "../registry-config.js";
 
-function isValidSlug(slug: string): boolean {
-	return slug.length > 0 && slug.length <= 100 && /^[a-z0-9][a-z0-9_-]*$/.test(slug);
+const NAME = /^[a-z0-9][a-z0-9_-]*$/;
+
+function isValidName(value: string): boolean {
+	return value.length > 0 && value.length <= 100 && NAME.test(value);
+}
+
+/**
+ * `maven` is the official catalogue; `@david/maven` is somebody's own.
+ *
+ * The bare form keeps meaning what it has always meant. A `personaxis pull
+ * maven` already exists in installs out there, and quietly resolving it
+ * somewhere else would break them.
+ *
+ * Returns the path segments to request, or null if the reference is malformed.
+ */
+export function parsePersonaRef(reference: string): string[] | null {
+	if (!reference.startsWith("@")) {
+		return isValidName(reference) ? [reference] : null;
+	}
+
+	const [namespace, slug, ...rest] = reference.slice(1).split("/");
+	if (rest.length > 0 || !namespace || !slug) return null;
+	if (!isValidName(namespace) || !isValidName(slug)) return null;
+	return [`@${namespace}`, slug];
 }
 
 export const pullCommand = new Command("pull")
 	.description("Download a published persona from the Personaxis registry")
-	.argument("<slug>", "Persona slug in the personaxis registry (e.g. 'maven')")
+	.argument("<persona>", "'maven' for the official catalogue, or '@namespace/slug' for anybody's")
 	.option("-o, --out <path>", "Destination path (defaults to ./PERSONA.md)")
 	.option("-f, --force", "Overwrite existing file")
 	.action(async (slug: string, opts: { out?: string; force?: boolean }) => {
-		if (!isValidSlug(slug)) {
-			console.error(chalk.red("Invalid slug:"), slug);
-			console.error(chalk.dim("Slugs must be lowercase, alphanumeric with - or _, max 100 chars."));
+		const segments = parsePersonaRef(slug);
+		if (!segments) {
+			console.error(chalk.red("Invalid persona reference:"), slug);
+			console.error(
+				chalk.dim("Expected 'slug' or '@namespace/slug', lowercase alphanumeric with - or _, max 100 chars each."),
+			);
 			process.exit(1);
 		}
 
@@ -34,7 +59,10 @@ export const pullCommand = new Command("pull")
 			process.exit(1);
 		}
 
-		const url = `${REGISTRY_BASE_URL}/${encodeURIComponent(slug)}`;
+		// Segment by segment, not one encoded string. `@david%2Fmaven` would depend
+		// on every proxy in between leaving the encoded slash alone, and one that
+		// normalised it would turn a working pull into a 404 nobody can reproduce.
+		const url = `${REGISTRY_BASE_URL}/${segments.map(encodeURIComponent).join("/")}`;
 		console.log(chalk.dim("→"), url);
 
 		let res: Response;

@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Feature: `pull` can reach what `push` writes
+
+`personaxis push` has always written a version into the namespace of whoever
+called it. The registry served one namespace, the official catalogue, fixed in
+the source. So you could publish a persona and then nobody, including you, could
+download it.
+
+```
+personaxis pull maven           # the official catalogue, unchanged
+personaxis pull @david/maven    # anybody's published persona
+```
+
+The bare form still resolves to the official catalogue. That is deliberate and
+not tidiness: `personaxis pull maven` exists in installs that work today, and
+quietly resolving it somewhere else would break them.
+
+The namespace is the same name that addresses the workspace and the public
+profile. One space of names across the product, so a word does not mean two
+things depending on where it was typed.
+
+Private personas are not served by this endpoint, and an unknown reference and a
+private one answer identically: telling a caller that a persona exists but is
+not theirs is an oracle for enumerating what a competitor has published.
+
+---
+
 ## [0.16.10] - 2026-08-02: what the phase 2 craft gate found
 
 ### Fix: five leaks, three of them months old
