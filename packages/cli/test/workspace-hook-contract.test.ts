@@ -76,6 +76,22 @@ function runHook(payload: string, socketPath?: string): Promise<HookResult> {
 	});
 }
 
+/**
+ * The same spawn, running an empty program.
+ *
+ * The floor the hook is measured against. Identical path on purpose: same
+ * executable, same stdio, same promise, so the difference between the two is the
+ * hook and nothing else about how a process gets started on this machine.
+ */
+function runNode(args: string[]): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(process.execPath, args, { stdio: ["pipe", "pipe", "pipe"] });
+		child.on("error", reject);
+		child.on("close", () => resolve());
+		child.stdin.end();
+	});
+}
+
 let server: Server | null = null;
 
 function serve(reply: (request: EnforceRequest) => EnforceReply): string {
@@ -91,6 +107,17 @@ afterEach(() => {
 
 const built = existsSync(HOOK_BIN);
 
+/**
+ * Every test here spawns the hook as a process, several times.
+ *
+ * Vitest allows five seconds by default and a single spawn costs most of a second
+ * on Windows, so the timing test that runs it five times was failing on the clock
+ * rather than on the budget, and a different subset failed on every run. A gate on
+ * the enforcement path that fails at random is worse than no gate: people learn to
+ * re-run it. The budget itself is asserted inside the test and is unchanged.
+ */
+const SPAWNS = 30_000;
+
 describe.skipIf(!built)("the hook, as the host runs it", () => {
 	it("blocks a refused call with exit 2 and the reason on stderr", async () => {
 		// This is the assertion the product rests on. Exit 2 is what prevents the
@@ -104,7 +131,7 @@ describe.skipIf(!built)("the hook, as the host runs it", () => {
 		const result = await runHook(hostPayload(), socket);
 		expect(result.code).toBe(2);
 		expect(result.stderr).toContain("permissions.deny matched: rm -rf");
-	});
+	}, SPAWNS);
 
 	it("lets an allowed call through with exit 0 and the documented decision", async () => {
 		const socket = serve(() => ({ verdict: "allow", rule: "approval:never", reason: "" }));
@@ -115,7 +142,7 @@ describe.skipIf(!built)("the hook, as the host runs it", () => {
 			hookEventName: "PreToolUse",
 			permissionDecision: "allow",
 		});
-	});
+	}, SPAWNS);
 
 	it("passes the call through to the daemon as the daemon expects it", async () => {
 		let seen: EnforceRequest | null = null;
@@ -128,7 +155,7 @@ describe.skipIf(!built)("the hook, as the host runs it", () => {
 		expect(seen).toMatchObject({ tool_name: "Bash", cwd: "/work/repo", tool_use_id: "toolu_1" });
 		// The arguments have to arrive as text a policy can match, values and all.
 		expect(seen?.args_text).toContain("rm -rf /");
-	});
+	}, SPAWNS);
 
 	it("refuses when no daemon is listening", async () => {
 		// The most common failure in the world: the machine is not connected. It
@@ -136,33 +163,58 @@ describe.skipIf(!built)("the hook, as the host runs it", () => {
 		const result = await runHook(hostPayload(), enforcementSocketPath("nothing-here"));
 		expect(result.code).toBe(2);
 		expect(result.stderr).toContain("refused");
-	});
+	}, SPAWNS);
 
 	it("refuses a payload it cannot read", async () => {
 		const result = await runHook("not json at all", enforcementSocketPath("nothing-here"));
 		expect(result.code).toBe(2);
-	});
+	}, SPAWNS);
 
-	it("answers inside the budget a person would notice", async () => {
-		// The decision itself is microseconds (measured in the core suite). What
-		// the operator feels is this: process start, one socket round trip, exit.
+	it("adds almost nothing to the cost of starting a process", async () => {
+		// What the operator feels is process start, one socket round trip, exit.
 		// Measured on the development machine at p50 101 ms, p95 114 ms against a
-		// 150 ms budget, and almost all of it is Node starting up. That is the
+		// 150 ms budget, and ALMOST ALL OF IT IS NODE STARTING UP. That is the
 		// reason the hook is its own binary rather than a subcommand.
 		//
-		// The bound here is wide on purpose: it asserts the shape of the work,
-		// not the speed of whatever runs CI. What it catches is the change that
-		// starts importing the engine into this path.
+		// So the wall clock is measured against a baseline instead of against a
+		// constant, and that is not a softening. This same test asserted "under
+		// 1500 ms" and failed on a machine where `node -e "0"` took 3.1 seconds:
+		// it was reporting on the machine, not on the hook, and a red that means
+		// "your laptop is busy" teaches people to re-run the enforcement gate.
+		//
+		// What it catches is unchanged and is the only thing worth catching here:
+		// the change that starts importing the engine into this path. That would
+		// show up as hundreds of milliseconds ON TOP of starting Node, whatever
+		// the machine.
 		const socket = serve(() => ({ verdict: "allow", rule: "ok", reason: "" }));
-		const samples: number[] = [];
-		for (let i = 0; i < 5; i++) {
+
+		// Interleaved, and the MINIMUM of each rather than the median.
+		//
+		// Both matter under load. Measuring five baselines and then five hooks lets
+		// the two halves meet different machines when twenty other test files are
+		// spawning processes beside them, and the difference then reports on the
+		// contention rather than on the hook. The minimum is the sample that got the
+		// least interference, which is the one that says what the work actually costs.
+		const time = async (run: () => Promise<unknown>) => {
 			const started = Date.now();
-			await runHook(hostPayload({ tool_input: { command: "npm test" } }), socket);
-			samples.push(Date.now() - started);
+			await run();
+			return Date.now() - started;
+		};
+
+		const baseline: number[] = [];
+		const withHook: number[] = [];
+		for (let i = 0; i < 3; i++) {
+			baseline.push(await time(() => runNode(["-e", "0"])));
+			withHook.push(
+				await time(() => runHook(hostPayload({ tool_input: { command: "npm test" } }), socket)),
+			);
 		}
-		samples.sort((a, b) => a - b);
-		expect(samples[samples.length - 1]).toBeLessThan(1500);
-	});
+
+		const floor = Math.min(...baseline);
+		const fastest = Math.min(...withHook);
+		const overhead = fastest - floor;
+		expect(overhead, `hook cost ${fastest}ms over a ${floor}ms floor`).toBeLessThan(400);
+	}, SPAWNS);
 
 	it("refuses a payload with no tool name, which is what a changed contract looks like", async () => {
 		// If the host renames `tool_name`, this is the shape we would receive.
@@ -171,7 +223,7 @@ describe.skipIf(!built)("the hook, as the host runs it", () => {
 		const result = await runHook(JSON.stringify({ hook_event_name: "PreToolUse", cwd: "/work/repo" }));
 		expect(result.code).toBe(2);
 		expect(result.stderr).toContain("tool name");
-	});
+	}, SPAWNS);
 });
 
 describe("the contract this pins", () => {

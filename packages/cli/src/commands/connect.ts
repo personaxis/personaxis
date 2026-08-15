@@ -312,6 +312,12 @@ function holdTheWire(token: string, scope: string[], cache: PolicyCache): Promis
 			scope,
 			host: installed[0]?.name ?? "claude-code",
 			launcher: launchCommandFor,
+			// The policy that arrives with a job goes into the cache the hook reads.
+			// Until now the cache held only what `connect` found in a local
+			// `.personaxis/personaxis.md`, so a persona created in the workspace had
+			// no policy on this machine at all and every one of its calls was refused
+			// for having none.
+			onPolicy: (policy) => cache.put(policy),
 		});
 
 		const stop = () => {
