@@ -5,17 +5,42 @@
 // that is not reported looks exactly like that same silence.
 
 import type { ServerToDaemonMsg, WireEvent } from "@personaxis/protocol/workspace";
+import { hashPolicy } from "@personaxis/core";
 import { describe, expect, it, vi } from "vitest";
 
 import type { HostSession } from "../src/workspace/host-session.js";
 import { JobRunner } from "../src/workspace/job-runner.js";
+
+/**
+ * A policy ref the daemon will accept.
+ *
+ * Built through  rather than with a made-up hash, because the runner
+ * recomputes it and refuses a mismatch. A fixture with a fake hash would make every
+ * test below assert the refusal path instead of the one it names.
+ */
+function policyRef(personaVersionId = "pv_1") {
+	const rules = {
+		persona_version_id: personaVersionId,
+		compiled_at: "2026-08-15T00:00:00.000Z",
+		ttl_seconds: 900,
+		deny: [],
+		allow: [],
+		hard_limits: [],
+		prohibited_behaviors: [],
+		egress_allowlist: [],
+		sandbox: "workspace-write",
+		approval: "on-request",
+		gate_rules: [],
+	};
+	return { persona_version_id: personaVersionId, hash: hashPolicy(rules as never), rules };
+}
 
 function assign(overrides: Partial<Extract<ServerToDaemonMsg, { type: "job.assign" }>> = {}) {
 	return {
 		type: "job.assign" as const,
 		job_id: "job_1",
 		persona_version_id: "pv_1",
-		policy: { persona_version_id: "pv_1", hash: "h", body: {} } as never,
+		policy: policyRef(),
 		trigger_context: { prompt: "write the brief" },
 		...overrides,
 	};
@@ -26,7 +51,10 @@ function runner(options: {
 	launcher?: () => { command: string; args: string[] } | null;
 	maxConcurrent?: number;
 	sessionRuns?: () => Promise<"completed" | "failed" | "stopped">;
-}) {
+	onPolicy?: () => void;
+	/** Called when a session is constructed, to observe the order of things. */
+	onStart?: () => void;
+} = {}) {
 	const events: WireEvent[] = [];
 	const started: Array<{ cwd: string; prompt: string; command: string }> = [];
 	const stopped = vi.fn();
@@ -37,7 +65,9 @@ function runner(options: {
 		host: "claude-code",
 		launcher: options.launcher ?? (() => ({ command: "claude", args: ["-p"] })),
 		...(options.maxConcurrent ? { maxConcurrent: options.maxConcurrent } : {}),
+		...(options.onPolicy ? { onPolicy: options.onPolicy } : {}),
 		createSession: (opts) => {
+			options.onStart?.();
 			started.push({ cwd: opts.cwd, prompt: opts.prompt, command: opts.command });
 			return {
 				run: options.sessionRuns ?? (() => Promise.resolve("completed")),
@@ -183,5 +213,143 @@ describe("refusing out loud", () => {
 
 		expect(started).toHaveLength(2);
 		expect(instance.activeCount).toBe(0);
+	});
+});
+
+describe("the project's directory, proposed and verified", () => {
+	// A project is a boundary for memory and for history, and it stopped being one at
+	// the exact moment the work happened: every project ran in `scope[0]`, so two
+	// clients' work landed in the same folder and edited each other's files. The
+	// workspace may now say which folder. It still may not choose one.
+
+	it("runs where the workspace asked, when that is inside the consented scope", () => {
+		const { instance, started } = runner({ scope: ["/work/acme", "/work/globex"] });
+		instance.handle(assign({ working_dir: "/work/globex" }));
+
+		expect(started[0].cwd).toBe("/work/globex");
+	});
+
+	it("refuses a directory outside the scope instead of quietly using another", () => {
+		// Clamping would be worse than refusing. The job would run, in the wrong
+		// project's folder, and look like it worked.
+		const { instance, started, events } = runner({ scope: ["/work/acme"] });
+		instance.handle(assign({ working_dir: "/etc" }));
+
+		expect(started).toHaveLength(0);
+		expect(JSON.stringify(events)).toContain("did not consent");
+	});
+
+	it("is not fooled by a directory that merely starts with a consented one", () => {
+		// The classic way a scope check turns out never to have been one.
+		const { instance, started } = runner({ scope: ["/work/acme"] });
+		instance.handle(assign({ working_dir: "/work/acme-other" }));
+
+		expect(started).toHaveLength(0);
+	});
+
+	it("falls back to the first consented directory when nothing is proposed", () => {
+		// What every daemon written before this field did, and what an older
+		// workspace still sends.
+		const { instance, started } = runner({ scope: ["/work/acme"] });
+		instance.handle(assign());
+
+		expect(started[0].cwd).toBe("/work/acme");
+	});
+});
+
+describe("who is doing the work", () => {
+	// Without this the daemon starts a host agent with an instruction and nothing
+	// else: a generic agent doing a task, with the persona a row in a database that
+	// no process ever saw.
+
+	it("puts the persona in front of the instruction", () => {
+		const { instance, started } = runner();
+		instance.handle(
+			assign({
+				persona_document: "# You are Clio\n\nYou are terse and you never write marketing copy.",
+				trigger_context: { prompt: "summarise the inbox" },
+			}),
+		);
+
+		expect(started[0].prompt).toContain("You are Clio");
+		expect(started[0].prompt).toContain("summarise the inbox");
+		expect(started[0].prompt.indexOf("You are Clio")).toBeLessThan(
+			started[0].prompt.indexOf("summarise the inbox"),
+		);
+	});
+
+	it("marks which half is the instruction", () => {
+		// Two blocks of prose with no marking are read as one, which is nearly right
+		// and fails on the persona document that contains an imperative sentence.
+		const { instance, started } = runner();
+		instance.handle(
+			assign({
+				persona_document: "You always ship the changelog entry.",
+				trigger_context: { prompt: "write the release notes" },
+			}),
+		);
+
+		expect(started[0].prompt).toContain("What you have been asked to do in this run:");
+	});
+
+	it("runs the instruction alone when no persona travelled", () => {
+		// An older workspace sends no document. Refusing would take the machine
+		// offline for every job until both sides ship.
+		const { instance, started } = runner();
+		instance.handle(assign({ trigger_context: { prompt: "just this" } }));
+
+		expect(started[0].prompt).toBe("just this");
+	});
+
+	it("hands the policy over before the agent starts, never after", () => {
+		// The hook decides every call against the cache. A session that began before
+		// its policy landed would enforce whatever was cached from something else.
+		const order: string[] = [];
+		const { instance } = runner({
+			onPolicy: () => order.push("policy"),
+			onStart: () => order.push("start"),
+		});
+		instance.handle(assign());
+
+		expect(order).toEqual(["policy", "start"]);
+	});
+});
+
+describe("a policy that is not what it claims to be", () => {
+	// The hook decides every call against this. Enforcing a policy nobody wrote is
+	// worse than enforcing none, because it looks exactly like enforcement and
+	// reports every decision with complete confidence.
+
+	it("refuses a job whose policy does not match its own hash", () => {
+		const ref = policyRef();
+		const { instance, started, events } = runner();
+		instance.handle(assign({ policy: { ...ref, hash: "0".repeat(64) } }));
+
+		expect(started).toHaveLength(0);
+		expect(JSON.stringify(events)).toContain("does not match its own hash");
+	});
+
+	it("refuses a policy that is missing rules the hook enforces", () => {
+		// Filling a missing deny list with an empty one turns "this policy is broken"
+		// into "this persona may do anything".
+		const ref = policyRef();
+		const { rules, ...rest } = ref;
+		const { deny: _dropped, ...withoutDeny } = rules as Record<string, unknown>;
+		const { instance, started, events } = runner();
+		instance.handle(assign({ policy: { ...rest, rules: withoutDeny } as never }));
+
+		expect(started).toHaveLength(0);
+		expect(JSON.stringify(events)).toContain("missing rules");
+	});
+
+	it("refuses a policy that names a different persona than the envelope", () => {
+		// Two answers to "whose policy is this" is one too many, and the wrong one
+		// caches a policy under a version it does not govern.
+		const ref = policyRef("pv_other");
+		const { instance, started, events } = runner();
+		instance.handle(assign({ policy: { ...ref, persona_version_id: "pv_1" } }));
+
+		expect(started).toHaveLength(0);
+		expect(JSON.stringify(events)).toContain("different persona");
 	});
 });

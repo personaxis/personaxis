@@ -9,11 +9,16 @@
  *
  * ## The consented scope is not negotiable, and this is where that is enforced
  *
- * The directory an agent runs in comes from what the operator typed at `connect`, never
- * from the message. `job.assign` carries a trigger context written elsewhere, and a
- * workspace, or anything that has compromised one, must not be able to pick the directory
- * a process starts in. That is the whole daemon boundary in one line of code, so it is
- * written once, here, and the test that proves it names the attack.
+ * The workspace may now PROPOSE a directory, because a project is a boundary and one that
+ * stops at the folder is not a boundary: every project ran in `scope[0]`, so two clients'
+ * work landed in the same folder and edited each other's files.
+ *
+ * What it may not do is CHOOSE one. Every proposal is checked against what the operator
+ * typed at `connect`, and anything outside it is refused rather than quietly clamped to a
+ * directory nobody asked for. A workspace, or anything that has compromised one, must not
+ * be able to pick where a process starts on somebody else's machine. That is the whole
+ * daemon boundary, it lives in `directoryFor` below, and the test that proves it names the
+ * attack.
  *
  * ## Refusing is an event, not silence
  *
@@ -23,9 +28,12 @@
  * will not, which is indistinguishable from a machine that went offline.
  */
 
+import type { CompiledPolicy } from "@personaxis/core";
 import type { HostAgentName, ServerToDaemonMsg } from "@personaxis/protocol/workspace";
 
 import { HostSession } from "./host-session.js";
+import { describePolicyProblem, policyFromRef } from "./policy-from-ref.js";
+import { withinScope } from "./scope-guard.js";
 import { JobReporter, type ReporterSink } from "./job-reporter.js";
 
 /** How a given host agent is started. Absent means it is not installed here. */
@@ -48,6 +56,14 @@ export interface JobRunnerOptions {
 	 * run afterwards. Raising this is a decision about a machine, made at that machine.
 	 */
 	maxConcurrent?: number;
+	/**
+	 * Where the policy that came with a job goes.
+	 *
+	 * The runner does not own the cache: the hook answers from it, `connect` builds
+	 * it, and this only hands over what arrived. Passing the cache itself would let a
+	 * job runner evict or rewrite policies for jobs that are not its own.
+	 */
+	onPolicy?: (policy: CompiledPolicy) => void;
 	timeoutMs?: number;
 	now?: () => Date;
 	/** Injected for tests. */
@@ -109,12 +125,13 @@ export class JobRunner {
 			);
 		}
 
-		// Never from the message. See the note at the top of the file.
-		const cwd = this.options.scope[0];
+		const cwd = this.directoryFor(message.working_dir);
 		if (!cwd) {
 			return this.refuse(
 				reporter,
-				"this machine exposed no directories at connect, so there is nowhere to run",
+				message.working_dir
+					? `the workspace asked for ${message.working_dir}, which this machine did not consent to expose`
+					: "this machine exposed no directories at connect, so there is nowhere to run",
 			);
 		}
 
@@ -123,12 +140,27 @@ export class JobRunner {
 			return this.refuse(reporter, `no ${this.options.host} agent is installed on this machine`);
 		}
 
-		const prompt = readPrompt(message.trigger_context);
-		if (!prompt) {
+		const instruction = readPrompt(message.trigger_context);
+		if (!instruction) {
 			// An agent started with an empty prompt does something arbitrary, in a real
 			// directory, with real tools.
 			return this.refuse(reporter, "the job carried no prompt");
 		}
+
+		// The policy reaches the hook before the agent starts, never after.
+		//
+		// The hook decides every tool call against the cache, so a session that began
+		// before its policy landed would be a session enforcing whatever was cached
+		// from something else, or nothing at all. The order here is the guarantee.
+		//
+		// And a policy that does not match its own hash is refused rather than used.
+		// Enforcing one nobody wrote is worse than enforcing none, because the hook
+		// would report every decision it made with complete confidence.
+		const policy = policyFromRef(message.policy);
+		if (!policy.ok) return this.refuse(reporter, describePolicyProblem(policy.problem));
+		this.options.onPolicy?.(policy.policy);
+
+		const prompt = withPersona(message.persona_document, instruction);
 
 		const create = this.options.createSession ?? ((options) => new HostSession(options));
 		const session = create({
@@ -142,6 +174,27 @@ export class JobRunner {
 
 		this.running.set(jobId, { session, reporter });
 		void session.run().finally(() => this.running.delete(jobId));
+	}
+
+	/**
+	 * Where this job runs.
+	 *
+	 * The workspace may PROPOSE a directory, because a project is a boundary and a
+	 * boundary that stops at the folder is not one: every project ran in `scope[0]`,
+	 * so two clients' work landed in the same folder and edited each other's files.
+	 *
+	 * What it may not do is choose one. The proposal is checked against what this
+	 * machine consented to at its own keyboard, and anything outside is refused
+	 * rather than clamped to a directory nobody asked for. Silently falling back
+	 * would be worse than refusing: the job would run, in the wrong place, and look
+	 * like it worked.
+	 *
+	 * No proposal means the first consented directory, which is what every daemon
+	 * did before this field existed.
+	 */
+	private directoryFor(proposed: string | undefined): string | null {
+		if (!proposed) return this.options.scope[0] ?? null;
+		return withinScope(proposed, this.options.scope) ? proposed : null;
 	}
 
 	private stop(jobId: string): void {
@@ -163,6 +216,35 @@ export class JobRunner {
  * its fields was meant to be the instruction is how an agent ends up acting on a webhook
  * payload somebody else wrote.
  */
+/**
+ * The instruction, preceded by who is carrying it out.
+ *
+ * A host agent takes one prompt. Without the persona in it, what runs is a generic
+ * agent doing a task: the character, the way of working and the things it never does
+ * are all in a document nothing ever read. The limits would still hold, because the
+ * hook enforces those before each call, but the difference between a worker and a
+ * task runner is exactly this text.
+ *
+ * The separator is explicit and the instruction is labelled. An agent handed two
+ * blocks of prose with no marking treats the first as context for the second, which
+ * is nearly right and fails in the case that matters: a persona document that
+ * happens to contain an imperative sentence.
+ */
+function withPersona(document: string | undefined, instruction: string): string {
+	const identity = document?.trim();
+	if (!identity) return instruction;
+
+	return [
+		identity,
+		"",
+		"---",
+		"",
+		"What you have been asked to do in this run:",
+		"",
+		instruction,
+	].join("\n");
+}
+
 function readPrompt(context: Record<string, unknown>): string | null {
 	const value = context?.prompt;
 	if (typeof value !== "string") return null;

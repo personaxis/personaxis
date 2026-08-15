@@ -260,6 +260,42 @@ export type ServerToDaemonMsg =
 			persona_version_id: string;
 			policy: CompiledPolicyRef;
 			trigger_context: Record<string, unknown>;
+			/**
+			 * Which consented directory this job's project works in.
+			 *
+			 * A PROPOSAL and never an instruction. The daemon ran everything in the
+			 * first directory the operator consented to, whatever the project, so a
+			 * project was a boundary for memory and for history and stopped being one
+			 * at the exact moment the work happened: two clients' work in one folder,
+			 * editing each other's files.
+			 *
+			 * The daemon checks it against what IT consented to and refuses if it
+			 * falls outside. That check is not a formality: without it this field is
+			 * the workspace choosing where a process starts on somebody else's
+			 * machine, which is the one thing the daemon boundary exists to prevent.
+			 *
+			 * Absent means "wherever you would have run it", which is what every
+			 * daemon written before this field did.
+			 */
+			working_dir?: string;
+			/**
+			 * Who is doing this: the compiled persona document.
+			 *
+			 * Without it the daemon starts a host agent with an instruction and nothing
+			 * else, which is a generic agent doing a task. The persona would be a row in
+			 * a database that no process ever saw, and the identity this product sells
+			 * would be decoration.
+			 *
+			 * It travels in the message rather than being written into a file on the
+			 * operator's disk. Writing into somebody's repository to make a run behave
+			 * is invasive, it collides with whatever they already have there, and it
+			 * leaves the machine dirty when the job ends. The document is a few kilobytes
+			 * of prose and this is what it was compiled for.
+			 *
+			 * Absent means the daemon runs the instruction alone, which is what it did
+			 * before this field existed.
+			 */
+			persona_document?: string;
 	  }
 	| { type: "job.stop"; job_id: string }
 	| { type: "policy.push"; persona_version_id: string; policy: CompiledPolicyRef }
