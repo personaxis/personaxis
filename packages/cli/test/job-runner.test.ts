@@ -6,6 +6,10 @@
 
 import type { ServerToDaemonMsg, WireEvent } from "@personaxis/protocol/workspace";
 import { hashPolicy } from "@personaxis/core";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { HostSession } from "../src/workspace/host-session.js";
@@ -351,5 +355,105 @@ describe("a policy that is not what it claims to be", () => {
 
 		expect(started).toHaveLength(0);
 		expect(JSON.stringify(events)).toContain("different persona");
+	});
+});
+
+describe("naming what the step left behind", () => {
+	/**
+	 * A session that writes a file and then ends, the way a real agent does.
+	 *
+	 * The default harness above never emits an ending, because `HostSession` is what
+	 * emits one and it is faked there. This one does, and the ordering it produces is
+	 * the whole point of these tests.
+	 */
+	function runnerWritingInto(dir: string, writes: () => Promise<void>) {
+		const events: WireEvent[] = [];
+		const finished: string[] = [];
+
+		const instance = new JobRunner({
+			sink: { emit: (event) => events.push(event), finishJob: (id) => finished.push(id) },
+			scope: [dir],
+			host: "claude-code",
+			launcher: () => ({ command: "claude", args: ["-p"] }),
+			createSession: (opts) =>
+				({
+					run: async () => {
+						await writes();
+						opts.emit({ kind: "persona.session.ended", status: "completed", reason: null });
+						return "completed" as const;
+					},
+					stop: () => {},
+					turns: 0,
+				}) as unknown as HostSession,
+		});
+
+		return { instance, events, finished };
+	}
+
+	it("names a file the step wrote, with a relative path and its size", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "runner-"));
+		try {
+			const { instance, events } = runnerWritingInto(dir, async () => {
+				await writeFile(join(dir, "brief.md"), "twelve chars");
+			});
+
+			instance.handle(assign({ working_dir: dir }));
+			await vi.waitFor(() => expect(endings(events)).toHaveLength(1));
+
+			const artifacts = events.filter((event) => event.kind === "artifact.created");
+			expect(artifacts).toHaveLength(1);
+			expect(artifacts[0]).toMatchObject({
+				kind: "artifact.created",
+				artifact_kind: "markdown",
+				path: "brief.md",
+				bytes: 12,
+			});
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("names them BEFORE the ending, because the ending closes the job", async () => {
+		// The bug this was written after. `persona.session.ended` is the reporter's
+		// terminal event: it releases the connection's queue for this job and the
+		// workspace moves the row to its final status on it. An artifact emitted after
+		// it is a late event arriving at a job that is already over, which the record
+		// writer correctly ignores, so naming the files afterwards was naming them
+		// into nothing.
+		const dir = await mkdtemp(join(tmpdir(), "runner-"));
+		try {
+			const { instance, events, finished } = runnerWritingInto(dir, async () => {
+				await writeFile(join(dir, "out.json"), "{}");
+			});
+
+			instance.handle(assign({ working_dir: dir }));
+			await vi.waitFor(() => expect(endings(events)).toHaveLength(1));
+
+			const order = events.map((event) => event.kind);
+			expect(order.indexOf("artifact.created")).toBeGreaterThan(-1);
+			expect(order.indexOf("artifact.created")).toBeLessThan(
+				order.indexOf("persona.session.ended"),
+			);
+			// And the job is only released once, after all of it.
+			expect(finished).toEqual(["job_1"]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("ends the job even when there is nothing to name", async () => {
+		// A step that wrote nothing is a normal outcome, and it must not look like a
+		// run that never finished.
+		const dir = await mkdtemp(join(tmpdir(), "runner-"));
+		try {
+			const { instance, events } = runnerWritingInto(dir, async () => {});
+
+			instance.handle(assign({ working_dir: dir }));
+			await vi.waitFor(() => expect(endings(events)).toHaveLength(1));
+
+			expect(events.filter((event) => event.kind === "artifact.created")).toEqual([]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });

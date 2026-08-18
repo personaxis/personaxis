@@ -33,8 +33,21 @@ import type { HostAgentName, ServerToDaemonMsg } from "@personaxis/protocol/work
 
 import { HostSession } from "./host-session.js";
 import { describePolicyProblem, policyFromRef } from "./policy-from-ref.js";
+import { describeFile, kindOf, producedBetween, scanDirectory } from "./produced-files.js";
 import { withinScope } from "./scope-guard.js";
 import { JobReporter, type ReporterSink } from "./job-reporter.js";
+
+/**
+ * How long the daemon will spend naming what a step produced before ending it
+ * anyway.
+ *
+ * Two seconds is generous for a bounded walk of a project directory and short
+ * enough that nobody watching a run wonders whether it hung. What it protects
+ * against is a network drive or a directory this scan's skip list does not know
+ * about yet: the file list is worth having and is never worth holding a finished
+ * job open for.
+ */
+const NAMING_BUDGET_MS = 2_000;
 
 /** How a given host agent is started. Absent means it is not installed here. */
 export type HostLauncher = (host: HostAgentName) => { command: string; args: string[] } | null;
@@ -168,11 +181,41 @@ export class JobRunner {
 			args: launch.args,
 			prompt,
 			cwd,
-			emit: (body) => reporter.reportWire(body),
+			emit: (body) => {
+				// Everything except the ending goes straight through.
+				if (body.kind !== "persona.session.ended") {
+					reporter.reportWire(body);
+					return;
+				}
+
+				// The ending is HELD until the files are named, and the order is not
+				// cosmetic. `persona.session.ended` is the reporter's terminal event:
+				// it releases the connection's queue for this job, and the workspace
+				// moves the row to its final status on it. Anything emitted after is
+				// a late event arriving at a job that is already over, which the
+				// record writer correctly ignores. Naming the files afterwards would
+				// have meant naming them into nothing.
+				void this.endAfterNamingFiles(reporter, cwd, before, body);
+			},
 			...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
 		});
 
 		this.running.set(jobId, { session, reporter });
+
+		// What the step leaves behind, named after it finishes.
+		//
+		// Taken before and after rather than watched: a watcher on somebody else's
+		// repository is a file handle per directory for as long as the job runs, and
+		// what this needs is the difference between two moments, not every event in
+		// between.
+		//
+		// The scan is fired and not awaited before the run, so a large project does
+		// not delay the agent starting. If it has not finished by the time the run
+		// ends, the comparison waits for it, which is the only ordering that can be
+		// correct: without a "before" there is no way to tell a file the step wrote
+		// from a file that was already there.
+		const before = scanDirectory(cwd);
+
 		void session.run().finally(() => this.running.delete(jobId));
 	}
 
@@ -201,6 +244,71 @@ export class JobRunner {
 		// A stop for a job that is not running is not an error: the workspace may have sent
 		// it while the run was already ending. Answering would be inventing an event.
 		this.running.get(jobId)?.session.stop();
+	}
+
+	/**
+	 * Says which files appeared, and never sends one.
+	 *
+	 * The bytes stay on this machine. That is the decision and not a limitation:
+	 * the connected mode is sold on nothing leaving the operator's computer, and a
+	 * delivery that quietly uploaded a client's work would make that sentence
+	 * false. So what crosses the wire is that a file exists, what kind it is and
+	 * how big, which is enough for a person to know the step produced something
+	 * and to go and open it.
+	 *
+	 * Failures here are swallowed on purpose, and this is the one place in this
+	 * file where that is right: the run has already ended and been reported. A
+	 * scan that throws on an unreadable directory must not turn a finished job
+	 * into a crash after the fact.
+	 */
+	/**
+	 * Names the files, then ends the job.
+	 *
+	 * A ceiling on the scan, because this now sits between a finished run and the
+	 * event that tells the workspace it finished. A directory that takes forever
+	 * to walk must not be able to hold a job open: past the deadline the ending
+	 * goes out without the file list, which loses a nice-to-have rather than the
+	 * fact that the work is done.
+	 */
+	private async endAfterNamingFiles(
+		reporter: JobReporter,
+		cwd: string,
+		before: Promise<Awaited<ReturnType<typeof scanDirectory>>>,
+		ending: Parameters<JobReporter["reportWire"]>[0],
+	): Promise<void> {
+		const deadline = new Promise<void>((resolve) => {
+			setTimeout(resolve, NAMING_BUDGET_MS).unref?.();
+		});
+
+		await Promise.race([this.reportProduced(reporter, cwd, before), deadline]);
+		reporter.reportWire(ending);
+	}
+
+	private async reportProduced(
+		reporter: JobReporter,
+		cwd: string,
+		before: Promise<Awaited<ReturnType<typeof scanDirectory>>>,
+	): Promise<void> {
+		try {
+			const [was, now] = await Promise.all([before, scanDirectory(cwd)]);
+			const produced = producedBetween(was, now);
+
+			for (const file of produced) {
+				reporter.reportWire({
+					kind: "artifact.created",
+					// Derived from the path, so the same file written twice by two runs
+					// is two events that can be told apart by their job and matched to
+					// each other by their id.
+					artifact_id: `file:${file.path}`,
+					artifact_kind: kindOf(file.path),
+					preview: describeFile(file),
+					path: file.path,
+					bytes: file.bytes,
+				});
+			}
+		} catch {
+			// See above: the job is already finished and already reported.
+		}
 	}
 
 	private refuse(reporter: JobReporter, reason: string): void {
