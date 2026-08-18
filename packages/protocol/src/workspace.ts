@@ -102,7 +102,33 @@ export type WireEventBody =
 	  }
 	| { kind: "envelope.clamped"; field: string; requested: number; applied: number }
 	| { kind: "band.crossed"; field: string; from_band: string; to_band: string; prose: string | null }
-	| { kind: "artifact.created"; artifact_id: string; artifact_kind: string; preview: string }
+	/**
+	 * A file the step left behind, named and measured and NOT sent.
+	 *
+	 * The bytes stay on the operator's machine, and that is the decision rather
+	 * than a limitation: the connected mode is sold on nothing leaving that
+	 * computer, and a delivery that quietly uploaded a client's files would make
+	 * that sentence false. So this carries what a person needs to know a file
+	 * exists and how big it is, and the file itself stays where it was written.
+	 *
+	 * `path` is RELATIVE to the project directory, always. An absolute path names
+	 * the operator's home directory, their username and often their employer, none
+	 * of which the workspace asked for or needs.
+	 *
+	 * `preview` describes rather than quotes, for the same reason: the first
+	 * kilobyte of a file is the file's contents, and the contents are the thing
+	 * that does not travel.
+	 */
+	| {
+			kind: "artifact.created";
+			artifact_id: string;
+			artifact_kind: string;
+			preview: string;
+			/** Relative to the project directory. Never absolute. */
+			path: string;
+			/** Size on disk, as stored, so nothing on screen is an estimate. */
+			bytes: number;
+	  }
 	| { kind: "artifact.updated"; artifact_id: string; preview: string }
 	| { kind: "intervention.enqueued"; intervention_id: string; user_id: string; body: string }
 	| { kind: "intervention.applied"; intervention_id: string }
