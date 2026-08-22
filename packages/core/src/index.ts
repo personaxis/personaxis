@@ -103,3 +103,14 @@ export * from "./enforcement/policy-compile.js";
 export * from "./enforcement/policy-from-persona.js";
 
 export { CORE_VERSION } from "./generated/version.js";
+
+/**
+ * The kernel, under a name of its own.
+ *
+ * A namespace rather than a flat re-export, for two reasons. It runs beside the
+ * existing engine and does not replace anything yet, so a reader should be able to
+ * tell at the call site which world a symbol comes from. And its vocabulary is
+ * generic on purpose (`event`, `Component`, `serviceKey`), which is exactly the
+ * vocabulary that collides with everything when it is spread flat.
+ */
+export * as kernel from "./kernel/index.js";
