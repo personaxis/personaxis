@@ -19,7 +19,7 @@ const ROOT = process.cwd();
 const PHASES = join(ROOT, "plan", "runtime", "phases");
 const OUT = join(ROOT, "plan", "NEXT_STEPS.md");
 
-const ROW = /^\|\s*([A-Z]+\d+)\s*\|([^|]*)\|\s*(todo|doing|blocked|done)\s*\|([^|]*)\|([^|]*)\|/;
+const ROW = /^\|\s*([A-Z]+\d+)\s*\|([^|]*)\|\s*(todo|doing|blocked|deferred|done)\s*\|([^|]*)\|([^|]*)\|/;
 const TITLE = /^title:\s*"?(.+?)"?$/m;
 
 const phases = readdirSync(PHASES)
@@ -46,8 +46,14 @@ const done = all.filter((task) => task.state === "done");
 const doing = all.filter((task) => task.state === "doing");
 const blocked = all.filter((task) => task.state === "blocked");
 
-/** The first thing that is not finished, in ledger order. */
-const next = all.find((task) => task.state !== "done");
+/**
+ * The first thing that is not finished, in ledger order.
+ *
+ * `deferred` is skipped. A task parked on purpose is not what somebody resuming
+ * should pick up, and a handoff that pointed at one would send every session to
+ * the work that was deliberately postponed.
+ */
+const next = all.find((task) => task.state !== "done" && task.state !== "deferred");
 const nextPhase = phases.find((phase) => phase.tasks.some((task) => task === next));
 
 const today = new Date().toISOString().slice(0, 10);

@@ -208,7 +208,7 @@ if (actives.length === 0) {
 
 // ── the ledger ───────────────────────────────────────────────────────────────
 
-const LEDGER_ROW = /^\|\s*([A-Z]+\d+)\s*\|([^|]*)\|\s*(todo|doing|blocked|done)\s*\|([^|]*)\|([^|]*)\|/;
+const LEDGER_ROW = /^\|\s*([A-Z]+\d+)\s*\|([^|]*)\|\s*(todo|doing|blocked|deferred|done)\s*\|([^|]*)\|([^|]*)\|/;
 
 for (const file of files.filter((path) => path.includes(`${join("runtime", "phases")}`))) {
 	const name = relative(PLAN, file).replace(/\\/g, "/");
