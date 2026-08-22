@@ -111,16 +111,35 @@ function frontMatter(raw) {
 	return block;
 }
 
-/** Whether a commit exists in this repository. */
-function commitExists(sha) {
-	if (seen.has(sha)) return true;
+/**
+ * The repositories a task may close in.
+ *
+ * The work spans two: the engine and the CLI live here, the platform lives in the
+ * sibling. A gate that only knew about one would force every task that closed
+ * over there to be marked with no commit, which is the exact hole it exists to
+ * shut. The sibling is optional, so a checkout with only this repo still works.
+ */
+const REPOS = [ROOT, join(ROOT, "..", "personaxis")].filter((dir) => {
 	try {
-		execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: ROOT, stdio: "ignore" });
-		seen.add(sha);
-		return true;
+		return statSync(join(dir, ".git")) !== null;
 	} catch {
 		return false;
 	}
+});
+
+/** Whether a commit exists in either repository. */
+function commitExists(sha) {
+	if (seen.has(sha)) return true;
+	for (const cwd of REPOS) {
+		try {
+			execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd, stdio: "ignore" });
+			seen.add(sha);
+			return true;
+		} catch {
+			// Try the next one. A sha that is in neither is the failure.
+		}
+	}
+	return false;
 }
 
 // ── the documents ────────────────────────────────────────────────────────────
