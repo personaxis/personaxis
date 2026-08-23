@@ -263,10 +263,18 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 			return {
 				verdict: "gate",
 				rule: `approval:${policy.approval}`,
+				// Invented, because the persona asked for a person and no rule said who.
+				// So it invents as little as possible.
+				//
+				// The route is EMPTY, meaning anyone entitled to act here. It used to name
+				// `member`, which reads as a sensible default and is not one: it locked out
+				// the owner of the workspace, and in a personal workspace, where there are
+				// no members, it made the gate unanswerable by anybody. A posture that says
+				// "ask a person" means a person, not a rank.
 				gate: {
 					action_class: call.action_classes[0] ?? "external_write",
 					required_approvals: 1,
-					route: { roles: ["member"] },
+					route: {},
 					timeout_seconds: 3600,
 				},
 			};
