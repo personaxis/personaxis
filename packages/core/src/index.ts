@@ -121,3 +121,6 @@ export * as kernel from "./kernel/index.js";
  * `derive`, `chain`) is generic enough to collide with half the tree if spread flat.
  */
 export * as record from "./record/index.js";
+
+/** The two-axis gate, namespaced for the same reasons as the two above. */
+export * as gate from "./gate/index.js";
