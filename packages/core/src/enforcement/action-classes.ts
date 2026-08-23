@@ -71,13 +71,23 @@ const RULES: readonly Rule[] = [
 		because: "a shell command that publishes somewhere outside",
 	},
 	{
-		tool: /^(write|edit|create|delete|remove)[_-]?file$|^str_replace|^apply_patch/i,
+		// The `_file` suffix is OPTIONAL, and that is the whole of this edit.
+		//
+		// The hosts this ships with name their file tools `Write`, `Edit` and
+		// `NotebookEdit`, with no suffix, so a pattern anchored on `file$` matched
+		// none of them. Every write by the agents we actually run classified as
+		// nothing, which meant no gate rule could fire on one: a policy saying "ask
+		// before writing" was silent for the only tools doing the writing.
+		//
+		// Found by opening a gate for real and noticing it could only ever be
+		// reached through a shell command.
+		tool: /^(write|edit|create|update|patch)([_-]?file)?$|^notebook[_-]?edit$|^str_replace|^apply_patch/i,
 		classes: ["external_write"],
 		because: "writes to the working tree",
 	},
 	{
-		tool: /^(delete|remove)[_-]?file$/i,
-		classes: ["file_delete"],
+		tool: /^(delete|remove)([_-]?file)?$/i,
+		classes: ["file_delete", "external_write"],
 		because: "removes from the working tree",
 	},
 	{

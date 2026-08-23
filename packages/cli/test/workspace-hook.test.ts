@@ -10,7 +10,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CompiledPolicy } from "@personaxis/core";
 import { hashPolicy, policyFromPersona } from "@personaxis/core";
@@ -607,5 +607,108 @@ describe("a directory the operator did expose", () => {
 		})({ ...call, cwd: "/work/repo-other" });
 
 		expect(reply.rule).toBe("out_of_scope");
+	});
+});
+
+/**
+ * What a gated call is told now that there is somewhere to ask.
+ *
+ * The refusal these replace was honest and permanent: "this machine cannot reach
+ * the workspace to ask for it", returned because `openGate` was never provided.
+ * A persona whose posture is `on-request` therefore ran and could do nothing.
+ *
+ * The four endings are kept apart on purpose. Three are answers; the fourth is the
+ * absence of anyone to answer, and telling an operator that nobody replied in time
+ * to a question that was never asked sends them looking in the wrong place.
+ */
+describe("a call that needs a person", () => {
+	const gated = () => {
+		const cache = new PolicyCache();
+		cache.put(
+			policy({
+				gate_rules: [
+					{ action_class: "file_delete", required_approvals: 1, route: {}, timeout_seconds: 600 },
+				],
+			}),
+		);
+		return cache;
+	};
+
+	const call = { tool_name: "Bash", args_text: "rm -rf /", cwd: "/work/repo" };
+
+	it("hands the gate everything a person needs, including where it happened", async () => {
+		// The directory travels because a gate is an event on a run and a call
+		// names none. Without it the relay has nothing to look up.
+		const openGate = vi.fn().mockResolvedValue("approved");
+
+		await enforcementHandler({
+			cache: gated(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => "pv_1",
+			openGate,
+		})(call);
+
+		expect(openGate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tool: "Bash",
+				action_class: "file_delete",
+				required_approvals: 1,
+				cwd: "/work/repo",
+				reason: expect.stringContaining("file_delete"),
+			}),
+		);
+	});
+
+	it("lets it through when a person says yes", async () => {
+		const reply = await enforcementHandler({
+			cache: gated(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => "pv_1",
+			openGate: async () => "approved",
+		})(call);
+
+		expect(reply.verdict).toBe("allow");
+	});
+
+	it("names a decline as a decline", async () => {
+		const reply = await enforcementHandler({
+			cache: gated(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => "pv_1",
+			openGate: async () => "denied",
+		})(call);
+
+		expect(reply.verdict).toBe("deny");
+		expect(reply.reason).toContain("declined");
+	});
+
+	it("names nobody-to-ask apart from nobody-answered", async () => {
+		const unreachable = await enforcementHandler({
+			cache: gated(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => "pv_1",
+			openGate: async () => "unreachable",
+		})(call);
+		const expired = await enforcementHandler({
+			cache: gated(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => "pv_1",
+			openGate: async () => "expired",
+		})(call);
+
+		expect(unreachable.reason).toContain("no run is in flight");
+		expect(expired.reason).toContain("in time");
+		expect(unreachable.reason).not.toBe(expired.reason);
+	});
+
+	it("still refuses when nothing was wired to ask with", async () => {
+		// The state this whole path was in. It has to keep failing closed.
+		const reply = await enforcementHandler({
+			cache: gated(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => "pv_1",
+		})(call);
+
+		expect(reply.verdict).toBe("deny");
 	});
 });

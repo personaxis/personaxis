@@ -31,6 +31,7 @@ import {
 } from "../workspace/device-flow.js";
 import { DaemonConnection, type ConnectionState } from "../workspace/connection.js";
 import { launchCommandFor } from "../workspace/host-adapter.js";
+import { GateRelay } from "../workspace/gate-relay.js";
 import { JobRunner } from "../workspace/job-runner.js";
 import { consentedDirs, describeMachine, detectHostAgents } from "../workspace/machine.js";
 import { nodeSocketFactory, socketSupported, unsupportedSocketMessage } from "../workspace/socket.js";
@@ -83,7 +84,7 @@ async function runConnect(opts: ConnectOptions): Promise<void> {
 	printScope(scope);
 	const enforcement = startEnforcement(scope);
 	try {
-		await holdTheWire(device.token, scope, enforcement.cache, enforcement.bind);
+		await holdTheWire(device.token, scope, enforcement);
 	} finally {
 		for (const server of enforcement.servers) server.close();
 	}
@@ -93,6 +94,14 @@ interface EnforcementRuntime {
 	cache: PolicyCache;
 	servers: Server[];
 	/**
+	 * Where a gated call goes to find a person.
+	 *
+	 * Built here, before the socket, because the hook can be asked the moment a
+	 * host starts and a relay built afterwards would refuse the first call of the
+	 * session for want of itself.
+	 */
+	relay: GateRelay;
+	/**
 	 * Records which persona acts in a directory.
 	 *
 	 * `connect` fills this from a local spec when it finds one. A persona created in
@@ -100,6 +109,8 @@ interface EnforcementRuntime {
 	 * assigns it, and until something does the hook refuses there by name.
 	 */
 	bind(root: string, personaVersionId: string): void;
+	/** Hands over the runner once the socket exists, so a gate can find its run. */
+	attachRuns(lookup: (cwd: string) => { jobId: string; reporter: unknown } | null): void;
 }
 
 /**
@@ -117,6 +128,13 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 	const byRoot = new Map<string, string>();
 	const servers: Server[] = [];
 
+	// The runner arrives later, with the socket. Until it does, and whenever no run
+	// is in flight, there is genuinely nobody to ask and the relay says so rather
+	// than inventing somebody.
+	let runFor: (cwd: string) => { jobId: string; reporter: { reportWire(body: never): void } } | null =
+		() => null;
+	const relay = new GateRelay({ runFor: (cwd) => runFor(cwd) as never });
+
 	for (const root of scope) {
 		const personaVersionId = loadLocalPolicy(root, cache);
 		if (personaVersionId) byRoot.set(root, personaVersionId);
@@ -126,6 +144,9 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 			// What the operator typed, and the only authority on whether a call is in
 			// scope. Whether a persona is known there is the next question, not this one.
 			scope,
+			// The half of the gate that was missing. Without it every call a policy
+			// gated was refused for want of anyone to ask, forever.
+			openGate: (gate) => relay.open(gate),
 			personaVersionFor: (cwd) => {
 				// Longest match, so a persona in a subdirectory wins over the one
 				// at the repository root.
@@ -177,7 +198,15 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 		console.log(chalk.dim("enforcing in"), root, chalk.dim(`· ${armed.join(", ") || "no host armed"}`));
 	}
 
-	return { cache, servers, bind: (root, personaVersionId) => byRoot.set(root, personaVersionId) };
+	return {
+		cache,
+		servers,
+		relay,
+		bind: (root, personaVersionId) => byRoot.set(root, personaVersionId),
+		attachRuns: (lookup) => {
+			runFor = lookup as never;
+		},
+	};
 }
 
 /**
@@ -273,12 +302,8 @@ async function linkMachine(app: string, openBrowser: boolean): Promise<boolean> 
 }
 
 /** Holds the socket open until the operator stops it. */
-function holdTheWire(
-	token: string,
-	scope: string[],
-	cache: PolicyCache,
-	bindPersona: (root: string, personaVersionId: string) => void,
-): Promise<void> {
+function holdTheWire(token: string, scope: string[], enforcement: EnforcementRuntime): Promise<void> {
+	const { cache, relay } = enforcement;
 	return new Promise((resolve) => {
 		// What turns an assignment into a running agent. Constructed before the connection
 		// because the connection can deliver a job the moment it registers, and a runner
@@ -333,16 +358,27 @@ function holdTheWire(
 			// `.personaxis/personaxis.md`, so a persona created in the workspace had
 			// no policy on this machine at all and every one of its calls was refused
 			// for having none.
+			// A person's answer comes down this socket and has to reach the hook that
+			// is still holding its call open.
+			onGateResolved: (gateId, outcome) => relay.resolve(gateId, outcome),
+			// And a run that ended answers nothing more, so its gates stop waiting.
+			onJobEnded: (jobId) => relay.abandon(jobId),
 			onPolicy: (policy, cwd) => {
 				cache.put(policy);
 				// Without this the machine holds the policy and still cannot say who it
 				// belongs to in that directory, so every call there is refused for having
 				// no persona while the policy sits in the cache unused.
-				bindPersona(cwd, policy.persona_version_id);
+				enforcement.bind(cwd, policy.persona_version_id);
 			},
 		});
 
+		// Now the relay can find a run. Before this the lookup answered "none", which
+		// is the honest answer while there is no runner rather than a missing case.
+		enforcement.attachRuns((cwd) => runner.runFor(cwd));
+
 		const stop = () => {
+			// A gate waiting on a person cannot be answered once the wire is down.
+			relay.abandon();
 			connection.stop();
 			console.log(chalk.dim("disconnected"));
 			resolve();
