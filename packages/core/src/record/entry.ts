@@ -147,6 +147,25 @@ export type RecordBody =
 			readonly verdict: "allowed" | "denied";
 			readonly reason?: string;
 	  }
+	/**
+	 * Which tools were put in front of the model on one request, and why.
+	 *
+	 * The set a model can see decides what it can try, so it is a fact about what the
+	 * persona could reach, not an implementation detail. Both references recompute it
+	 * and keep it in a process global, which means the question "what could this agent
+	 * try on Tuesday at three" has no answer once the process is gone.
+	 *
+	 * `reason` is what makes the entry useful rather than a list. A tool absent
+	 * because the persona is read-only, absent because a probe failed, and absent
+	 * because nobody installed it are three different situations that a bare list
+	 * renders identically.
+	 */
+	| {
+			readonly type: "surface";
+			readonly turn: string;
+			readonly tools: readonly string[];
+			readonly reason: string;
+	  }
 	/** Something went wrong, with a code so it can be routed and not just read. */
 	| {
 			readonly type: "failure";
