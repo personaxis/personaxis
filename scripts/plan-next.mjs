@@ -47,13 +47,22 @@ const doing = all.filter((task) => task.state === "doing");
 const blocked = all.filter((task) => task.state === "blocked");
 
 /**
- * The first thing that is not finished, in ledger order.
+ * The first thing that is not finished AND can actually be picked up.
  *
- * `deferred` is skipped. A task parked on purpose is not what somebody resuming
- * should pick up, and a handoff that pointed at one would send every session to
- * the work that was deliberately postponed.
+ * Two states are skipped, for the same reason spelled differently.
+ *
+ * `deferred` is parked on purpose, and a handoff that pointed at one would send
+ * every session straight to the work that was deliberately postponed.
+ *
+ * `blocked` is worse, because it looks like ordinary work. Something else has to
+ * happen first, so naming it as next sends somebody to a task they cannot do and
+ * makes them work out why on their own. Blocked tasks still get their own section
+ * below, which is where they belong: they are what a reader needs to SEE, not what
+ * a reader needs to START.
  */
-const next = all.find((task) => task.state !== "done" && task.state !== "deferred");
+const startable = (task) =>
+	task.state !== "done" && task.state !== "deferred" && task.state !== "blocked";
+const next = all.find(startable);
 const nextPhase = phases.find((phase) => phase.tasks.some((task) => task === next));
 
 const today = new Date().toISOString().slice(0, 10);
@@ -78,7 +87,21 @@ lines.push(`Avance: **${done.length} de ${all.length}** tareas cerradas.`);
 lines.push("");
 
 if (!next) {
-	lines.push("Todas las tareas del libro están cerradas.");
+	// "Everything is closed" is the wrong sentence when something is blocked, and it is
+	// the wrong sentence in the most expensive direction: somebody reads it, believes
+	// the work is finished, and the blocked rows sit there because nobody was told they
+	// were the remaining work. Nothing startable left is a different fact from nothing
+	// left, and the handoff says which one this is.
+	if (blocked.length > 0) {
+		lines.push("**No queda nada que se pueda empezar, y no es lo mismo que no quedar nada.**");
+		lines.push("");
+		lines.push(
+			`Hay ${blocked.length} ${blocked.length === 1 ? "tarea bloqueada" : "tareas bloqueadas"}, ` +
+				"listadas abajo con lo que las bloquea. Eso es el trabajo que queda.",
+		);
+	} else {
+		lines.push("Todas las tareas del libro están cerradas.");
+	}
 } else {
 	lines.push("## Lo siguiente");
 	lines.push("");
