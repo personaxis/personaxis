@@ -114,3 +114,10 @@ export { CORE_VERSION } from "./generated/version.js";
  * vocabulary that collides with everything when it is spread flat.
  */
 export * as kernel from "./kernel/index.js";
+
+/**
+ * The record, under a name of its own, for the same reasons as the kernel: it runs
+ * beside the stored copy rather than replacing it yet, and its vocabulary (`verify`,
+ * `derive`, `chain`) is generic enough to collide with half the tree if spread flat.
+ */
+export * as record from "./record/index.js";

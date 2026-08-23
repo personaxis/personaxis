@@ -230,23 +230,43 @@ describe("a permission behaves exactly like a service", () => {
 				narrowed.delete(PERMS[victim]!.id);
 				kernel.replace(PERMISSIONS, sourceOf(narrowed));
 
-				for (const spec of list) {
-					const dependsOnVictim = spec.requires.includes(victim);
-					const after = kernel.stateOf(spec.name);
-					if (dependsOnVictim) {
-						// It cannot still be active on a permission that was taken away.
-						expect(after).not.toBe("active");
-					} else if (before.get(spec.name) === "active") {
-						// Everything else keeps running. This is the half that makes hot
-						// withdrawal usable: no restart, no collateral suspension, except
-						// where a suspended component was the one providing a key.
-						const providerLost = list.some(
+				// Who falls, worked out to a fixed point rather than one level deep.
+				//
+				// The first version of this property checked only whether a component
+				// directly required the victim, or directly needed a key provided by one
+				// that did. A generated case with a chain of three showed that wrong: a
+				// withdrawal three hops upstream still takes a component down, and it
+				// should. The kernel was right and the property was lazy.
+				const casualties = new Set(
+					list.filter((spec) => spec.requires.includes(victim)).map((spec) => spec.name),
+				);
+				let grew = true;
+				while (grew) {
+					grew = false;
+					for (const spec of list) {
+						if (casualties.has(spec.name)) continue;
+						const lost = list.some(
 							(other) =>
-								other.requires.includes(victim) &&
+								casualties.has(other.name) &&
 								other.provides >= 0 &&
 								spec.needs.includes(other.provides),
 						);
-						if (!providerLost) expect(after).toBe("active");
+						if (lost) {
+							casualties.add(spec.name);
+							grew = true;
+						}
+					}
+				}
+
+				for (const spec of list) {
+					const after = kernel.stateOf(spec.name);
+					if (casualties.has(spec.name)) {
+						// Nothing downstream of a withdrawn permission may still be running.
+						expect(after).not.toBe("active");
+					} else if (before.get(spec.name) === "active") {
+						// And everything else keeps running. That half is what makes hot
+						// withdrawal usable at all: no restart, no collateral suspension.
+						expect(after).toBe("active");
 					}
 				}
 			}),
