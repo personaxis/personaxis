@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
 	GuardSet,
 	ask,
+	budgetGuard,
 	capabilityGuard,
 	decide,
 	deny,
@@ -20,7 +21,10 @@ import {
 	meet,
 	postureFor,
 	requirePolicy,
+	resolvedCall,
 	runGuards,
+	skillLoadCall,
+	turnBudgetGuard,
 	type Guard,
 	type IdentityPolicy,
 } from "../src/gate/index.js";
@@ -303,5 +307,62 @@ describe("a guard set is something a component can add to and have cleaned up", 
 describe("with no guards at all there is no gate", () => {
 	it("allows, and that is the composition's problem rather than this loop's", () => {
 		expect(decide([]).verdict).toBe("allow");
+	});
+});
+
+describe("the things that were not guards and decide what a persona can do", () => {
+	it("refuses the next call once the budget is spent, and names every cap that is over", () => {
+		// Whoever raises the first limit needs to know the second is also spent, or they
+		// raise a ceiling and are surprised the run still will not move.
+		const guard = budgetGuard(
+			() => ({ steps: 100, tokens: 999_999, costUsd: 0, wallSeconds: 0 }),
+			{ maxSteps: 10, maxTokens: 1000, stopConditions: [] } as never,
+		);
+
+		const outcome = guard.check(call());
+
+		expect(outcome?.reduce).toBe("deny");
+		expect(outcome?.reason).toContain("steps");
+		expect(outcome?.reason).toContain("tokens");
+	});
+
+	it("says nothing while there is budget left", () => {
+		const guard = budgetGuard(
+			() => ({ steps: 1, tokens: 10, costUsd: 0, wallSeconds: 0 }),
+			{ maxSteps: 10, maxTokens: 1000, stopConditions: [] } as never,
+		);
+
+		expect(guard.check(call())).toBeUndefined();
+	});
+
+	it("counts turns as its own axis, because money and turns are not the same limit", () => {
+		// An agent can burn a monthly budget in one afternoon's loop, and it can go
+		// round a hundred cheap times without approaching the money limit.
+		const guard = turnBudgetGuard(() => 30, 30);
+
+		expect(guard.check(call())?.rule).toBe("budget:turns");
+	});
+
+	it("makes loading a skill a call, because a skill body executes on load", () => {
+		// The correction the study forced. A skill looks like prose and is not: its
+		// inline shell runs before the model has seen a word of it.
+		const draft = skillLoadCall("deploy", "/repo/.hermes/skills/deploy", "t1");
+		const frozen = freezeCall(draft);
+
+		expect(frozen.tool).toBe("skill.load");
+		expect(frozen.actionClasses).toContain("process_spawn");
+	});
+
+	it("judges what will run rather than the wrapper that resolved it", () => {
+		// A caller with permission to invoke a bridge has not thereby got permission for
+		// whatever the bridge resolved.
+		const outer = call({ tool: "tool_call", argsText: "shell" });
+		const inner = freezeCall(
+			resolvedCall(outer, { tool: "shell", argsText: "rm -rf /", actionClasses: ["file_delete"] }),
+		);
+
+		expect(inner.tool).toBe("shell");
+		expect(inner.turn).toBe(outer.turn);
+		expect(inner.callId).not.toBe(outer.callId);
 	});
 });

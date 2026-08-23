@@ -38,6 +38,14 @@ export interface DerivedState {
 	readonly turns: readonly { id: string; outcome: string; synthetic: boolean }[];
 	/** Calls the gate refused, which is the half an audit reads first. */
 	readonly denials: readonly { turn: string; callId: string; tool: string; reason?: string }[];
+	/**
+	 * The last set of tools put in front of the model, and why.
+	 *
+	 * Last rather than every, because this is the state fold: what a persona could
+	 * reach *now*. Every surface it ever had is in the entries, which is where an
+	 * audit reading history goes.
+	 */
+	readonly surface?: { turn: string; tools: readonly string[]; reason: string };
 	/** How many entries this state is a fold over. */
 	readonly through: number;
 }
@@ -71,6 +79,7 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 	const turns: { id: string; outcome: string; synthetic: boolean }[] = [];
 	const denials: { turn: string; callId: string; tool: string; reason?: string }[] = [];
 	let openTurn: string | undefined;
+	let surface: { turn: string; tools: readonly string[]; reason: string } | undefined;
 
 	for (const entry of entries) {
 		const body = entry.body;
@@ -102,6 +111,9 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 					});
 				}
 				break;
+			case "surface":
+				surface = { turn: body.turn, tools: body.tools, reason: body.reason };
+				break;
 			case "message":
 			case "failure":
 				// Facts worth keeping and not part of the persona's current position.
@@ -117,6 +129,7 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 			...(openTurn === undefined ? {} : { openTurn }),
 			turns,
 			denials,
+			...(surface === undefined ? {} : { surface }),
 			through: entries.length,
 		},
 	};

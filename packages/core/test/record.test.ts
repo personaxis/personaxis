@@ -517,3 +517,39 @@ describe("the head is what the next entry points at", () => {
 		expect(head([])).toBe("");
 	});
 });
+
+describe("what the model was allowed to see is a fact too", () => {
+	it("records the surface with the reason it looked like that", () => {
+		// A tool absent because the persona is read-only, absent because a probe failed,
+		// and absent because nobody installed it are three different situations that a
+		// bare list renders identically.
+		const journal = journalAt();
+		journal.append(
+			{ kind: "runtime", mechanism: "surface", reason: "assembled for this request" },
+			{
+				type: "surface",
+				turn: "t1",
+				tools: ["read_file", "shell"],
+				reason: "read-only posture removed the writing tools",
+			},
+		);
+
+		const result = journal.state();
+		expect(result.ok && result.state.surface).toEqual({
+			turn: "t1",
+			tools: ["read_file", "shell"],
+			reason: "read-only posture removed the writing tools",
+		});
+	});
+
+	it("keeps the latest surface in the fold and every one of them in the entries", () => {
+		const journal = journalAt();
+		const author: Author = { kind: "runtime", mechanism: "surface", reason: "assembled" };
+		journal.append(author, { type: "surface", turn: "t1", tools: ["a"], reason: "first" });
+		journal.append(author, { type: "surface", turn: "t2", tools: ["a", "b"], reason: "second" });
+
+		const result = journal.state();
+		expect(result.ok && result.state.surface?.reason).toBe("second");
+		expect(journal.all().filter((entry) => entry.body.type === "surface")).toHaveLength(2);
+	});
+});
