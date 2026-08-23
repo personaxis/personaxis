@@ -130,3 +130,6 @@ export * as run from "./run/index.js";
 
 /** Compaction that respects the envelope, namespaced like the rest. */
 export * as compaction from "./compaction/index.js";
+
+/** Where a run happens and what it may touch there, namespaced like the rest. */
+export * as worlds from "./worlds/index.js";
