@@ -31,3 +31,26 @@ export {
 export { breakerGuard, nudgeFor, type Nudge } from "./breaker-guard.js";
 
 export { defaultLoop, productOf } from "./default-provider.js";
+
+export {
+	EFFORT_LADDER,
+	forDestination,
+	mayReplay,
+	resolveEffort,
+	type DestinationCapabilities,
+	type Effort,
+	type ModelRequest,
+	type Transport,
+} from "./model-seam.js";
+
+export {
+	deepen,
+	delegate,
+	delegationAuthor,
+	ledgerForChild,
+	scopeStatement,
+	type DelegatedScope,
+	type DelegationRequest,
+	type DelegationResult,
+	type ExplicitScope,
+} from "./delegation.js";
