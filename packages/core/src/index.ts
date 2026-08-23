@@ -127,3 +127,6 @@ export * as gate from "./gate/index.js";
 
 /** Running turns: the loop as a seam, namespaced like the three above. */
 export * as run from "./run/index.js";
+
+/** Compaction that respects the envelope, namespaced like the rest. */
+export * as compaction from "./compaction/index.js";
