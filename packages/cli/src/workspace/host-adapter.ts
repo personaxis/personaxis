@@ -14,13 +14,33 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { HostAgentName } from "@personaxis/protocol/workspace";
 
-import { enforcementSocketPath } from "./enforcement-endpoint.js";
+import { enforcementEndpointToken } from "./enforcement-endpoint.js";
 
 /** Recognises our hook among a project's others, across versions. */
 export const HOOK_MARKER = "personaxis-hook";
+
+/**
+ * The other half of recognising it, and the half that survives how it is spawned.
+ *
+ * A hook written when the CLI was installed globally names `personaxis-hook`; one
+ * written from a checkout names a Node binary and a script path, and neither string
+ * contains the other. Recognising only the first would make an upgrade install a
+ * SECOND hook beside the first, so every tool call would be gated twice, and would
+ * make uninstall leave one behind.
+ *
+ * The endpoint is in both, because a hook that does not name an endpoint is not ours
+ * whatever it is called.
+ */
+export const HOOK_ENDPOINT_MARKER = "personaxis-enforce-";
+
+/** Whether a command in somebody's settings file is one of ours, in any form. */
+export function isOurHook(command: string | undefined): boolean {
+	return Boolean(command && (command.includes(HOOK_MARKER) || command.includes(HOOK_ENDPOINT_MARKER)));
+}
 
 /**
  * The host's own ceiling on how long a hook may take, in seconds.
@@ -129,10 +149,56 @@ function readSettings(path: string): Settings {
 	}
 }
 
+/**
+ * Brings any hook of ours up to the command we would write today.
+ *
+ * Returns whether one was found, so the caller knows not to add a second. The
+ * timeout is rewritten too: it is part of what makes a gate answerable by a
+ * person, and a machine that upgraded should not keep an old ceiling.
+ */
+function replaceOurHookIn(settings: Settings, event: string, command: string): boolean {
+	let found = false;
+	for (const group of settings.hooks?.[event] ?? []) {
+		for (const hook of group.hooks ?? []) {
+			if (!isOurHook(hook.command)) continue;
+			hook.command = command;
+			hook.timeout = HOOK_TIMEOUT_SECONDS;
+			found = true;
+		}
+	}
+	return found;
+}
+
 function hasOurHookIn(settings: Settings, event: string): boolean {
 	return (settings.hooks?.[event] ?? []).some((group) =>
-		(group.hooks ?? []).some((hook) => hook.command?.includes(HOOK_MARKER)),
+		(group.hooks ?? []).some((hook) => isOurHook(hook.command)),
 	);
+}
+
+/**
+ * How the host is told to start our hook: this Node, this script, both absolute.
+ *
+ * The bare name only resolves when the package was installed globally. A daemon
+ * started from a checkout, from `npx`, or from a workspace link writes a settings
+ * file naming a command the host cannot run, and every host we support treats a
+ * hook that fails to start as a hook that said nothing: the tool call proceeds.
+ *
+ * That is precisely the state the note at the top of this file calls the most
+ * dangerous one, an operator believing calls are refused while nothing intercepts
+ * them, and it is reached not by a bug but by how somebody installed the package.
+ * It was found by running a real job on a machine with no global install and
+ * watching the agent's first `Bash` call run unchecked.
+ *
+ * `process.execPath` is the Node already running this daemon, so the command needs
+ * no PATH at all. The bare marker stays as the fallback for a build where the
+ * script cannot be located, because a hook that might resolve beats none.
+ */
+export function hookScriptPath(): string {
+	return fileURLToPath(new URL("../hook-bin.js", import.meta.url));
+}
+
+export function hookInvocation(script: string = hookScriptPath()): string {
+	return existsSync(script) ? `"${process.execPath}" "${script}"` : HOOK_MARKER;
 }
 
 /**
@@ -143,7 +209,7 @@ function hasOurHookIn(settings: Settings, event: string): boolean {
  * quietly reaching the wrong one.
  */
 export function hookCommandFor(root: string): string {
-	return `${HOOK_MARKER} --socket "${enforcementSocketPath(root)}"`;
+	return `${hookInvocation()} --endpoint "${enforcementEndpointToken(root)}"`;
 }
 
 /**
@@ -182,14 +248,24 @@ function jsonHookAdapter(spec: {
 			}
 
 			const settings = readSettings(path);
-			if (hasOurHookIn(settings, spec.event)) {
+			const command = hookCommandFor(root);
+
+			// Idempotent means converging on the command we would write now, not
+			// leaving whatever is there. Returning early on any hook of ours meant an
+			// upgrade that changed how the hook is started never took effect: the
+			// machine kept running the old command forever, and the only symptom was
+			// enforcement quietly not happening.
+			if (replaceOurHookIn(settings, spec.event, command)) {
+				mkdirSync(dirname(path), { recursive: true });
+				writeFileSync(path, `${JSON.stringify(settings, null, 2)}
+`, "utf-8");
 				return { host: this.name, settingsPath: path, installed: true };
 			}
 
 			settings.hooks = settings.hooks ?? {};
 			settings.hooks[spec.event] = settings.hooks[spec.event] ?? [];
 			settings.hooks[spec.event].push({
-				hooks: [{ type: "command", command: hookCommandFor(root), timeout: HOOK_TIMEOUT_SECONDS }],
+				hooks: [{ type: "command", command, timeout: HOOK_TIMEOUT_SECONDS }],
 			});
 
 			mkdirSync(dirname(path), { recursive: true });
@@ -206,7 +282,7 @@ function jsonHookAdapter(spec: {
 			const kept = groups
 				.map((group) => ({
 					...group,
-					hooks: (group.hooks ?? []).filter((hook) => !hook.command?.includes(HOOK_MARKER)),
+					hooks: (group.hooks ?? []).filter((hook) => !isOurHook(hook.command)),
 				}))
 				.filter((group) => (group.hooks ?? []).length > 0);
 

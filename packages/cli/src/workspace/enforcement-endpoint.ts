@@ -50,10 +50,44 @@ export const ENFORCE_METHOD = "enforce";
  * serving both answers on both.
  */
 export function enforcementSocketPath(root: string): string {
+	return endpointAddress(enforcementEndpointToken(root));
+}
+
+/**
+ * The same endpoint, in a form that survives being written into a shell command.
+ *
+ * The address itself does not. A Windows named pipe is `\\.\pipe\NAME`, and every host
+ * we support starts a hook through a shell: a POSIX shell collapses that leading pair
+ * into one backslash, so the hook connects to `\.\pipe\NAME`, which does not exist. It
+ * then fails closed and refuses every call, which is the safe direction and still
+ * means enforcement never works on that platform.
+ *
+ * That is not a hypothesis. A real job on Windows had every one of its tool calls
+ * refused with `connect ENOENT \.\pipe\personaxis-enforce-...` while the daemon was running and listening
+ * on that pipe, one character away.
+ *
+ * So what travels is a TOKEN with no backslash in it, and the address is rebuilt on
+ * the other side. The digest is still computed here, by the daemon, and written in,
+ * so a hook that ends up in a copied repository still carries the endpoint of the
+ * directory it was written for: it fails to reach a daemon rather than quietly
+ * reaching the wrong one, which is the property this was always for.
+ */
+export function enforcementEndpointToken(root: string): string {
 	const digest = createHash("sha256").update(root.replace(/\\/g, "/")).digest("hex").slice(0, 12);
-	if (process.platform === "win32") return `\\\\.\\pipe\\personaxis-enforce-${digest}`;
+	if (process.platform === "win32") return `personaxis-enforce-${digest}`;
 	const runtimeDir = process.env.XDG_RUNTIME_DIR ?? tmpdir();
 	return join(runtimeDir, `personaxis-enforce-${digest}.sock`);
+}
+
+/**
+ * The address a token names.
+ *
+ * A token carrying a separator is already an address: every POSIX socket path is one,
+ * and so is a `--socket` written by an older version. One without a separator is a
+ * Windows pipe name, and gets its prefix back here, where no shell can reach it.
+ */
+export function endpointAddress(token: string): string {
+	return /[\\/]/.test(token) ? token : `\\\\.\\pipe\\${token}`;
 }
 
 export type EnforceHandler = (request: EnforceRequest) => Promise<EnforceReply>;

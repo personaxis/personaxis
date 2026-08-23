@@ -76,7 +76,7 @@ export interface JobRunnerOptions {
 	 * it, and this only hands over what arrived. Passing the cache itself would let a
 	 * job runner evict or rewrite policies for jobs that are not its own.
 	 */
-	onPolicy?: (policy: CompiledPolicy) => void;
+	onPolicy?: (policy: CompiledPolicy, cwd: string) => void;
 	timeoutMs?: number;
 	now?: () => Date;
 	/** Injected for tests. */
@@ -171,7 +171,9 @@ export class JobRunner {
 		// would report every decision it made with complete confidence.
 		const policy = policyFromRef(message.policy);
 		if (!policy.ok) return this.refuse(reporter, describePolicyProblem(policy.problem));
-		this.options.onPolicy?.(policy.policy);
+		// With the directory, because a policy the machine cannot place is a policy it
+		// cannot apply: the hook asks by working directory, not by persona.
+		this.options.onPolicy?.(policy.policy, cwd);
 
 		const prompt = withPersona(message.persona_document, instruction);
 

@@ -15,7 +15,11 @@
  */
 
 import { argsTextFor, failClosed, parseHookInput, type HookResponse } from "./workspace/hook-protocol.js";
-import { askDaemon, enforcementSocketPath } from "./workspace/enforcement-endpoint.js";
+import {
+	askDaemon,
+	endpointAddress,
+	enforcementSocketPath,
+} from "./workspace/enforcement-endpoint.js";
 
 /**
  * How long to wait for the daemon.
@@ -30,9 +34,17 @@ const ASK_TIMEOUT_MS = 5000;
 /** A gate is a person deciding. The wait is theirs, not ours. */
 const GATE_TIMEOUT_MS = 30 * 60 * 1000;
 
+/** One flag, read positionally, because that is the whole of this argument surface. */
+function flag(name: string): string | undefined {
+	const at = process.argv.indexOf(name);
+	return at === -1 ? undefined : process.argv[at + 1];
+}
+
 async function main(): Promise<void> {
-	const socketFlag = process.argv.indexOf("--socket");
-	const socketArg = socketFlag === -1 ? undefined : process.argv[socketFlag + 1];
+	// `--endpoint` carries a token the daemon computed; `--socket` carried the
+	// address itself and is still accepted, because a settings file written by an
+	// older version is on somebody's disk right now and must keep working.
+	const endpointArg = flag("--endpoint") ?? flag("--socket");
 
 	const raw = await readStdin();
 	const input = parseHookInput(raw);
@@ -44,7 +56,7 @@ async function main(): Promise<void> {
 	}
 
 	const cwd = typeof input.cwd === "string" && input.cwd ? input.cwd : process.cwd();
-	const socketPath = socketArg ?? enforcementSocketPath(cwd);
+	const socketPath = endpointArg ? endpointAddress(endpointArg) : enforcementSocketPath(cwd);
 
 	// The wait is the gate's, because the daemon holds the connection open while
 	// a person decides. The shorter timeout only covers reaching it at all.

@@ -83,7 +83,7 @@ async function runConnect(opts: ConnectOptions): Promise<void> {
 	printScope(scope);
 	const enforcement = startEnforcement(scope);
 	try {
-		await holdTheWire(device.token, scope, enforcement.cache);
+		await holdTheWire(device.token, scope, enforcement.cache, enforcement.bind);
 	} finally {
 		for (const server of enforcement.servers) server.close();
 	}
@@ -92,6 +92,14 @@ async function runConnect(opts: ConnectOptions): Promise<void> {
 interface EnforcementRuntime {
 	cache: PolicyCache;
 	servers: Server[];
+	/**
+	 * Records which persona acts in a directory.
+	 *
+	 * `connect` fills this from a local spec when it finds one. A persona created in
+	 * the workspace has no local spec, so the first thing that can say is the job that
+	 * assigns it, and until something does the hook refuses there by name.
+	 */
+	bind(root: string, personaVersionId: string): void;
 }
 
 /**
@@ -115,6 +123,9 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 
 		const handler = enforcementHandler({
 			cache,
+			// What the operator typed, and the only authority on whether a call is in
+			// scope. Whether a persona is known there is the next question, not this one.
+			scope,
 			personaVersionFor: (cwd) => {
 				// Longest match, so a persona in a subdirectory wins over the one
 				// at the repository root.
@@ -166,7 +177,7 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 		console.log(chalk.dim("enforcing in"), root, chalk.dim(`· ${armed.join(", ") || "no host armed"}`));
 	}
 
-	return { cache, servers };
+	return { cache, servers, bind: (root, personaVersionId) => byRoot.set(root, personaVersionId) };
 }
 
 /**
@@ -262,7 +273,12 @@ async function linkMachine(app: string, openBrowser: boolean): Promise<boolean> 
 }
 
 /** Holds the socket open until the operator stops it. */
-function holdTheWire(token: string, scope: string[], cache: PolicyCache): Promise<void> {
+function holdTheWire(
+	token: string,
+	scope: string[],
+	cache: PolicyCache,
+	bindPersona: (root: string, personaVersionId: string) => void,
+): Promise<void> {
 	return new Promise((resolve) => {
 		// What turns an assignment into a running agent. Constructed before the connection
 		// because the connection can deliver a job the moment it registers, and a runner
@@ -317,7 +333,13 @@ function holdTheWire(token: string, scope: string[], cache: PolicyCache): Promis
 			// `.personaxis/personaxis.md`, so a persona created in the workspace had
 			// no policy on this machine at all and every one of its calls was refused
 			// for having none.
-			onPolicy: (policy) => cache.put(policy),
+			onPolicy: (policy, cwd) => {
+				cache.put(policy);
+				// Without this the machine holds the policy and still cannot say who it
+				// belongs to in that directory, so every call there is refused for having
+				// no persona while the policy sits in the cache unused.
+				bindPersona(cwd, policy.persona_version_id);
+			},
 		});
 
 		const stop = () => {

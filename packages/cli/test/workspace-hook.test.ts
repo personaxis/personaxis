@@ -7,9 +7,9 @@
  * have been a refusal is the product not working.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { CompiledPolicy } from "@personaxis/core";
@@ -17,7 +17,19 @@ import { hashPolicy, policyFromPersona } from "@personaxis/core";
 
 import { enforcementHandler } from "../src/workspace/enforcement-service.js";
 import { argsTextFor, failClosed, hookResponseFor, parseHookInput } from "../src/workspace/hook-protocol.js";
-import { claudeCodeAdapter, HOOK_MARKER } from "../src/workspace/host-adapter.js";
+import {
+	claudeCodeAdapter,
+	hookCommandFor,
+	hookInvocation,
+	hookScriptPath,
+	HOOK_MARKER,
+	isOurHook,
+} from "../src/workspace/host-adapter.js";
+import {
+	endpointAddress,
+	enforcementEndpointToken,
+	enforcementSocketPath,
+} from "../src/workspace/enforcement-endpoint.js";
 import { PolicyCache } from "../src/workspace/policy-cache.js";
 
 function policy(overrides: Partial<CompiledPolicy> = {}): CompiledPolicy {
@@ -146,7 +158,11 @@ describe("the daemon deciding for a call", () => {
 	const call = { tool_name: "Bash", args_text: "rm -rf /", cwd: "/work/repo" };
 
 	it("refuses a directory the operator never exposed", () => {
-		const handle = enforcementHandler({ cache: new PolicyCache(), personaVersionFor: () => null });
+		const handle = enforcementHandler({
+			cache: new PolicyCache(),
+			scope: ["/somewhere-else"],
+			personaVersionFor: () => "pv_1",
+		});
 		return expect(handle(call)).resolves.toMatchObject({ verdict: "deny", rule: "out_of_scope" });
 	});
 
@@ -161,7 +177,7 @@ describe("the daemon deciding for a call", () => {
 				],
 			}),
 		);
-		const handle = enforcementHandler({ cache, personaVersionFor: () => "pv_1" });
+		const handle = enforcementHandler({ cache, scope: ["/work/repo"], personaVersionFor: () => "pv_1" });
 		await expect(handle(call)).resolves.toMatchObject({ verdict: "deny" });
 	});
 
@@ -176,6 +192,7 @@ describe("the daemon deciding for a call", () => {
 		);
 		const handle = enforcementHandler({
 			cache,
+			scope: ["/work/repo"],
 			personaVersionFor: () => "pv_1",
 			openGate: async () => "approved",
 		});
@@ -193,6 +210,7 @@ describe("the daemon deciding for a call", () => {
 		);
 		const denied = await enforcementHandler({
 			cache,
+			scope: ["/work/repo"],
 			personaVersionFor: () => "pv_1",
 			openGate: async () => "denied",
 		})(call);
@@ -200,6 +218,7 @@ describe("the daemon deciding for a call", () => {
 
 		const expired = await enforcementHandler({
 			cache,
+			scope: ["/work/repo"],
 			personaVersionFor: () => "pv_1",
 			openGate: async () => "expired",
 		})(call);
@@ -261,7 +280,7 @@ describe("installing the hook in a project", () => {
 		const groups = settings().hooks.PreToolUse;
 		expect(groups).toHaveLength(1);
 		expect(groups[0].matcher).toBeUndefined();
-		expect(groups[0].hooks[0].command).toContain(HOOK_MARKER);
+		expect(isOurHook(groups[0].hooks[0].command)).toBe(true);
 		expect(groups[0].hooks[0].timeout).toBeGreaterThan(600);
 	});
 
@@ -303,5 +322,290 @@ describe("installing the hook in a project", () => {
 		expect(claudeCodeAdapter.status(root).installed).toBe(false);
 		claudeCodeAdapter.install(root);
 		expect(claudeCodeAdapter.status(root).installed).toBe(true);
+	});
+});
+
+/**
+ * The gap between writing a hook and a host running one.
+ *
+ * The file this lives beside has said since it was written that the most dangerous
+ * state here is an operator believing calls are refused while nothing intercepts
+ * them. What it did not say is that the ordinary way to reach that state is not a
+ * bug: it is installing the package any way other than globally, because the command
+ * named a bare `personaxis-hook` and nothing else.
+ *
+ * That was found by running a real job on this machine, where there is no global
+ * install, and watching the agent's first `Bash` call run with no decision behind it.
+ */
+describe("the command the host is actually told to run", () => {
+	let root: string;
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "personaxis-hook-command-"));
+	});
+	afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+	it("names this Node and an absolute script, so PATH is not in the way", () => {
+		const command = hookInvocation(hookScriptPathThatExists());
+
+		expect(command).toContain(process.execPath);
+		expect(command).toContain(hookScriptPathThatExists());
+	});
+
+	it("falls back to the bare name when the script cannot be found", () => {
+		// A hook that might resolve beats none. What it must not do is throw and
+		// leave `connect` unable to install anything at all.
+		expect(hookInvocation(join(root, "nothing", "hook-bin.js"))).toBe(HOOK_MARKER);
+	});
+
+	it("looks for the script where the package publishes it", () => {
+		// A string compared against the filesystem, so moving the binary breaks this
+		// rather than breaking enforcement quietly on somebody else's machine.
+		const declared = JSON.parse(
+			readFileSync(join(import.meta.dirname, "..", "package.json"), "utf-8"),
+		).bin["personaxis-hook"];
+
+		expect(basename(hookScriptPath())).toBe(basename(declared));
+		// It resolves next to the module, which is `src/` here and `dist/` when built.
+		expect(existsSync(hookScriptPath()) || existsSync(hookScriptPath().replace(/\.js$/, ".ts"))).toBe(
+			true,
+		);
+	});
+});
+
+describe("recognising our own hook, however it was written", () => {
+	let root: string;
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "personaxis-hook-forms-"));
+	});
+	afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+	it("knows the bare form a global install wrote", () => {
+		// The upgrade path. Failing here would install a second hook beside the first,
+		// so every call would be gated twice, and would leave one behind on uninstall.
+		expect(isOurHook('personaxis-hook --socket "/tmp/personaxis-enforce-abc.sock"')).toBe(true);
+	});
+
+	it("knows the absolute form, which contains none of the old name", () => {
+		expect(isOurHook('"/usr/bin/node" "/opt/app/dist/hook-bin.js" --socket "/tmp/personaxis-enforce-abc.sock"')).toBe(
+			true,
+		);
+	});
+
+	it("does not claim somebody else's hook", () => {
+		expect(isOurHook('./scripts/my-own-check.sh')).toBe(false);
+		expect(isOurHook(undefined)).toBe(false);
+	});
+
+	it("takes back out a hook written in the old form", () => {
+		mkdirSync(join(root, ".claude"), { recursive: true });
+		writeFileSync(
+			claudeCodeAdapter.settingsPath(root),
+			JSON.stringify({
+				hooks: {
+					PreToolUse: [
+						{ hooks: [{ type: "command", command: `${HOOK_MARKER} --socket "old"` }] },
+						{ hooks: [{ type: "command", command: "./their-own.sh" }] },
+					],
+				},
+			}),
+		);
+
+		claudeCodeAdapter.uninstall(root);
+		const groups = JSON.parse(readFileSync(claudeCodeAdapter.settingsPath(root), "utf-8")).hooks
+			.PreToolUse;
+
+		expect(JSON.stringify(groups)).toContain("their-own.sh");
+		expect(JSON.stringify(groups)).not.toContain(HOOK_MARKER);
+	});
+
+	it("does not install a second one over the old form", () => {
+		mkdirSync(join(root, ".claude"), { recursive: true });
+		writeFileSync(
+			claudeCodeAdapter.settingsPath(root),
+			JSON.stringify({
+				hooks: {
+					PreToolUse: [{ hooks: [{ type: "command", command: `${HOOK_MARKER} --socket "old"` }] }],
+				},
+			}),
+		);
+
+		claudeCodeAdapter.install(root);
+		const groups = JSON.parse(readFileSync(claudeCodeAdapter.settingsPath(root), "utf-8")).hooks
+			.PreToolUse;
+
+		expect(groups).toHaveLength(1);
+	});
+});
+
+/** A path that exists in both the source tree and the built one. */
+function hookScriptPathThatExists(): string {
+	return join(import.meta.dirname, "workspace-hook.test.ts");
+}
+
+/**
+ * Surviving the shell that starts the hook.
+ *
+ * Every host we support runs a PreToolUse hook through a shell, and a Windows named
+ * pipe address does not survive one: a POSIX shell turns the leading pair of
+ * backslashes into a single one, so the hook connects to an address that does not
+ * exist, fails closed, and refuses every call the agent makes.
+ *
+ * That was found in a real job on this machine and not by reading. All three of its
+ * tool calls, including the one the policy allowed, came back with
+ * `connect ENOENT` while the daemon was listening on the pipe next door.
+ *
+ * So the test is the shell, imitated: take the argument the way it is written, undo
+ * what a shell does to it, and require the address to still be the right one.
+ */
+describe("what survives being written into a shell command", () => {
+	const root = "C:@@Users@@daqc@@Documents@@GitHub@@cli".split("@@").join(BACKSLASH);
+
+	/** What a POSIX shell leaves of a double-quoted argument. */
+	function throughAShell(argument: string): string {
+		return argument.split(BACKSLASH + BACKSLASH).join(BACKSLASH);
+	}
+
+	function endpointIn(command: string): string {
+		const match = /--endpoint "([^"]*)"/.exec(command);
+		expect(match, `no --endpoint in: ${command}`).not.toBeNull();
+		return match![1];
+	}
+
+	it("carries a token with no backslash in it", () => {
+		// The whole fix in one assertion: nothing for a shell to eat.
+		const token = endpointIn(hookCommandFor(root));
+
+		expect(token.includes(BACKSLASH)).toBe(process.platform !== "win32");
+	});
+
+	it("still names the same endpoint after a shell has had it", () => {
+		const token = endpointIn(hookCommandFor(root));
+
+		expect(endpointAddress(throughAShell(token))).toBe(enforcementSocketPath(root));
+	});
+
+	it("rebuilds exactly the address the daemon listens on", () => {
+		expect(endpointAddress(enforcementEndpointToken(root))).toBe(enforcementSocketPath(root));
+	});
+
+	it("leaves an address alone when it is already one", () => {
+		// `--socket` from an older version, and every POSIX path.
+		const posix = "/run/user/1000/personaxis-enforce-abc.sock";
+
+		expect(endpointAddress(posix)).toBe(posix);
+	});
+
+	it("gives two directories two endpoints", () => {
+		// A machine serving two consented directories answers on both, and a hook in
+		// one must not reach the daemon serving the other.
+		expect(enforcementEndpointToken(root)).not.toBe(enforcementEndpointToken(root + BACKSLASH + "other"));
+	});
+});
+
+describe("an upgrade that changes how the hook is started", () => {
+	let root: string;
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "personaxis-hook-upgrade-"));
+	});
+	afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+	it("rewrites the command instead of leaving the old one", () => {
+		// Returning early on any hook of ours meant a machine kept running the command
+		// it was first installed with, forever. The only symptom is enforcement quietly
+		// not happening, which is the symptom nobody sees.
+		mkdirSync(join(root, ".claude"), { recursive: true });
+		writeFileSync(
+			claudeCodeAdapter.settingsPath(root),
+			JSON.stringify({
+				hooks: {
+					PreToolUse: [
+						{ hooks: [{ type: "command", command: `${HOOK_MARKER} --socket "ancient"`, timeout: 5 }] },
+					],
+				},
+			}),
+		);
+
+		claudeCodeAdapter.install(root);
+		const groups = JSON.parse(readFileSync(claudeCodeAdapter.settingsPath(root), "utf-8")).hooks
+			.PreToolUse;
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0].hooks[0].command).toBe(hookCommandFor(root));
+		expect(groups[0].hooks[0].timeout).toBeGreaterThan(600);
+	});
+});
+
+/** One backslash, spelled out, because this file is about what happens to them. */
+const BACKSLASH = "\\";
+
+/**
+ * Consent and identity are two questions, and were one.
+ *
+ * The guard asked whether a persona was registered for the directory and answered
+ * `out_of_scope` when it was not. Those come apart the moment a persona arrives from
+ * the workspace rather than from a local file: the operator had typed `--dir` for
+ * exactly that folder, every call in it was refused, and the message told them to
+ * add it with `--dir`. Advice somebody has already followed is worse than none.
+ *
+ * Found by assigning a real job to a real daemon and watching all four of its tool
+ * calls come back refused for a directory that was in `connect`'s own output.
+ */
+describe("a directory the operator did expose", () => {
+	const call = { tool_name: "Bash", args_text: "ls", cwd: "/work/repo" };
+
+	it("is not called out of scope just because no persona is known there", async () => {
+		const reply = await enforcementHandler({
+			cache: new PolicyCache(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => null,
+		})(call);
+
+		expect(reply.rule).not.toBe("out_of_scope");
+		expect(reply.reason).not.toContain("connect --dir");
+	});
+
+	it("is still refused, under a name that says what is actually missing", async () => {
+		// Fail-closed either way. What changes is where it sends the operator.
+		const reply = await enforcementHandler({
+			cache: new PolicyCache(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => null,
+		})(call);
+
+		expect(reply.verdict).toBe("deny");
+		expect(reply.rule).toBe("no_persona");
+	});
+
+	it("covers what is under it, not only the directory itself", async () => {
+		const reply = await enforcementHandler({
+			cache: new PolicyCache(),
+			scope: ["/work"],
+			personaVersionFor: () => null,
+		})({ ...call, cwd: "/work/repo/src" });
+
+		expect(reply.rule).toBe("no_persona");
+	});
+
+	it("refuses everywhere when nothing was consented to", async () => {
+		// Empty means empty, which is the same direction `connect` takes.
+		const reply = await enforcementHandler({
+			cache: new PolicyCache(),
+			scope: [],
+			personaVersionFor: () => "pv_1",
+		})(call);
+
+		expect(reply.rule).toBe("out_of_scope");
+	});
+
+	it("does not let a neighbouring name in", async () => {
+		// `/work/repo-other` starts with `/work/repo` as a string and is a different
+		// directory. A prefix check without the separator would expose it.
+		const reply = await enforcementHandler({
+			cache: new PolicyCache(),
+			scope: ["/work/repo"],
+			personaVersionFor: () => "pv_1",
+		})({ ...call, cwd: "/work/repo-other" });
+
+		expect(reply.rule).toBe("out_of_scope");
 	});
 });

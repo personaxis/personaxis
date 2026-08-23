@@ -44,6 +44,7 @@ function handler(extra: Record<string, unknown> = {}) {
 	cache.put(policy((extra.policy as Record<string, unknown>) ?? {}));
 	return enforcementHandler({
 		cache,
+		scope: ["/work"],
 		personaVersionFor: () => "pv_1",
 		...(extra.deps as Record<string, unknown>),
 	} as never);
@@ -51,9 +52,13 @@ function handler(extra: Record<string, unknown> = {}) {
 
 describe("the words a refusal uses have not moved", () => {
 	it("still names out_of_scope, and still tells the operator the flag to use", async () => {
+		// Out of scope now means what it says: a directory the operator never named.
+		// It used to fire for a consented directory whose persona was not registered,
+		// which sent somebody to add a `--dir` they had already added.
 		const handle = enforcementHandler({
 			cache: new PolicyCache(),
-			personaVersionFor: () => null,
+			scope: ["/work"],
+			personaVersionFor: () => "pv_1",
 		});
 
 		const reply = await handle({ tool_name: "Bash", args_text: "ls", cwd: "/elsewhere" });
