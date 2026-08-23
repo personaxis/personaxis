@@ -12,10 +12,11 @@
  * to be real, and why running out of it is a refusal.
  */
 
-import type { PolicyCall, PolicyDecision } from "@personaxis/core";
-import { actionClassesFor } from "@personaxis/core";
+import type { PolicyDecision } from "@personaxis/core";
+import { gate } from "@personaxis/core";
 
 import type { EnforceReply, EnforceRequest } from "./enforcement-endpoint.js";
+import { callFor, cachedPolicyGuard, scopeGuard } from "./enforcement-guards.js";
 import type { PolicyCache } from "./policy-cache.js";
 
 /** How long a person has, before the gate answers for them. */
@@ -44,6 +45,14 @@ export interface EnforcementDeps {
 	/** Reports the decision, so the record holds allows as well as refusals. */
 	report?: (decision: PolicyDecision, request: EnforceRequest) => void;
 	now?: () => number;
+	/**
+	 * Extra guards this deployment mounts, judged alongside the built-in ones.
+	 *
+	 * The identity axis arrives through here, and so does anything a component adds
+	 * while it is active. They cannot loosen anything: the type they return has no
+	 * allow case, so mounting one can only ever make the daemon refuse more.
+	 */
+	guards?: readonly gate.Guard[];
 }
 
 /**
@@ -56,32 +65,64 @@ export interface EnforcementDeps {
 export function enforcementHandler(deps: EnforcementDeps) {
 	return async function handle(request: EnforceRequest): Promise<EnforceReply> {
 		const personaVersionId = deps.personaVersionFor(request.cwd);
-		if (!personaVersionId) {
-			// A directory the operator never consented to is not a directory this
-			// daemon speaks for. Refusing is the honest answer: allowing would
-			// mean enforcing nothing in a place the workspace cannot see.
+		const call = callFor(request, request.tool_use_id ?? "hook");
+
+		// Every guard runs, so a call refused twice reports both reasons. The old chain
+		// returned at the first one, and somebody who widened a scope then found the
+		// call still refused with no hint why concluded enforcement was broken.
+		let policyDecision: PolicyDecision | undefined;
+		const guards: gate.Guard[] = [scopeGuard(deps.personaVersionFor, request.cwd)];
+		if (personaVersionId) {
+			guards.push(
+				cachedPolicyGuard(deps.cache, personaVersionId, (seen) => {
+					policyDecision = seen;
+				}),
+			);
+		}
+		guards.push(...(deps.guards ?? []));
+
+		const result = gate.runGuards(guards, call);
+
+		// The report keeps the old shape, because it is what the workspace already
+		// reads. What it reports is the strongest contribution, which for an allow is
+		// nothing and for anything else is the reason that decided it.
+		const strongest = result.contributions[0];
+		deps.report?.(policyDecision ?? reportable(result.verdict, strongest), request);
+
+		if (result.verdict === "allow") {
+			// The policy's own rule, not a flattened "allow". Something downstream shows
+			// it, and a refactor that quietly replaced `approval:never` with a bare word
+			// would take information off a screen without anybody deciding to.
+			return { verdict: "allow", rule: policyDecision?.rule ?? "allow", reason: "" };
+		}
+
+		if (result.verdict === "deny") {
 			return {
 				verdict: "deny",
-				rule: "out_of_scope",
-				reason: `${request.cwd} is not one of the directories this machine exposed. Add it with \`personaxis connect --dir\`.`,
+				rule: strongest?.rule ?? "deny",
+				// Both reasons when there are two, because widening one leaves the other.
+				reason: result.contributions.map((entry) => entry.reason).join("; "),
 			};
 		}
 
-		const call: PolicyCall = {
-			tool: request.tool_name,
-			args_text: request.args_text,
-			action_classes: actionClassesFor(request.tool_name, request.args_text),
-		};
-
-		const decision = deps.cache.decide(personaVersionId, call);
-		deps.report?.(decision, request);
-
-		if (decision.verdict === "allow") {
-			return { verdict: "allow", rule: decision.rule, reason: "" };
-		}
-
-		if (decision.verdict === "deny") {
-			return { verdict: "deny", rule: decision.rule, reason: decision.reason };
+		// An ask, which only the policy raises today. The rule it named is carried
+		// through so the gate that opens is traceable to what asked for it.
+		// The decision the guard actually saw, rather than a second lookup. Asking the
+		// cache again could return a different answer, and the gate that opened would
+		// then not be the one that asked for it.
+		const decision = policyDecision;
+		if (decision?.verdict !== "gate") {
+			// Only the policy raises an ask today, so reaching here without its gate rule
+			// means something else did, and there is no configured gate to open. Refusing
+			// is the honest answer: inventing one would open a gate nobody set up.
+			const asking = result.contributions.find((entry) => entry.verdict === "ask");
+			return {
+				verdict: "deny",
+				rule: asking?.rule ?? "gate",
+				reason: asking
+					? `${asking.reason}, and this machine has no gate rule to open for it`
+					: "this call needs approval and there is no gate rule for it",
+			};
 		}
 
 		// A gate with nobody to ask is a refusal, not a pause. Without this, a
@@ -97,7 +138,7 @@ export function enforcementHandler(deps: EnforcementDeps) {
 		}
 
 		const outcome = await deps.openGate({
-			call_id: request.tool_use_id ?? `${request.tool_name}:${deps.now?.() ?? Date.now()}`,
+			call_id: call.callId,
 			tool: request.tool_name,
 			args_text: request.args_text,
 			action_class: decision.gate.action_class,
@@ -117,5 +158,32 @@ export function enforcementHandler(deps: EnforcementDeps) {
 					? "a person declined this call in the workspace"
 					: "nobody answered the approval in time, so the call was refused",
 		};
+	};
+}
+
+/**
+ * The old decision shape, for the report the workspace already reads.
+ *
+ * Rebuilt rather than threaded through, because the cascade's result is richer and
+ * the wire is not. Changing the wire is a separate decision with its own migration,
+ * and doing it quietly inside a refactor is how a workspace starts showing blanks.
+ */
+function reportable(
+	verdict: gate.Verdict,
+	strongest: gate.Contribution | undefined,
+): PolicyDecision {
+	if (verdict === "allow" || !strongest) return { verdict: "allow", rule: "allow" };
+	if (strongest.verdict === "deny") {
+		return { verdict: "deny", rule: strongest.rule, reason: strongest.reason };
+	}
+	return {
+		verdict: "gate",
+		rule: strongest.rule,
+		gate: {
+			action_class: "external_write",
+			required_approvals: 1,
+			route: {},
+			timeout_seconds: Math.floor(DEFAULT_GATE_TIMEOUT_MS / 1000),
+		},
 	};
 }
