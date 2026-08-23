@@ -29,3 +29,5 @@ export {
 } from "./service.js";
 
 export { breakerGuard, nudgeFor, type Nudge } from "./breaker-guard.js";
+
+export { defaultLoop, productOf } from "./default-provider.js";
