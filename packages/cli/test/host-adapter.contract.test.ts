@@ -21,7 +21,7 @@ import { join, dirname } from "node:path";
 
 import {
 	describeAssurance,
-	HOOK_MARKER,
+	isOurHook,
 	HOST_ADAPTERS,
 	adapterFor,
 	claudeCodeAdapter,
@@ -60,7 +60,9 @@ describe.each(HOST_ADAPTERS)("$name meets the adapter contract", (adapter) => {
 
 		expect(groups).toHaveLength(1);
 		expect(groups[0].matcher).toBeUndefined();
-		expect(groups[0].hooks[0].command).toContain(HOOK_MARKER);
+		// Recognition rather than the literal name: the command names an absolute
+		// script when there is no global install, and that is still ours.
+		expect(isOurHook(groups[0].hooks[0].command)).toBe(true);
 	});
 
 	it("gives the hook longer than a person takes to answer a gate", () => {

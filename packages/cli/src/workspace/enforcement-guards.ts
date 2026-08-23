@@ -31,6 +31,7 @@ import type { PolicyDecision } from "@personaxis/core";
 
 import type { EnforceRequest } from "./enforcement-endpoint.js";
 import type { PolicyCache } from "./policy-cache.js";
+import { withinScope } from "./scope-guard.js";
 
 /**
  * Refuses a directory the operator never exposed.
@@ -39,20 +40,49 @@ import type { PolicyCache } from "./policy-cache.js";
  * consent rather than about policy. A directory nobody consented to is not a place
  * this daemon speaks for, and allowing there would mean enforcing nothing somewhere
  * the workspace cannot even see.
+ *
+ * ## It asks the consented list, and nothing else
+ *
+ * It used to ask whether a persona was registered for the directory, which is a
+ * different question with a different answer, and the two came apart the moment a
+ * persona arrived from the workspace instead of from a local file: the operator had
+ * typed `--dir` for exactly that folder, and every call in it was refused with a
+ * message telling them to add it with `--dir`. Advice somebody has already followed
+ * is worse than no advice, because it sends them to look in the wrong place.
+ *
+ * Which persona governs a directory is asked next, by its own guard, and its absence
+ * refuses under its own name.
  */
-export function scopeGuard(
-	personaVersionFor: (cwd: string) => string | null,
-	cwd: string,
-): gate.Guard {
+export function scopeGuard(consented: readonly string[], cwd: string): gate.Guard {
 	return {
 		name: "scope",
 		check: () =>
-			personaVersionFor(cwd)
+			withinScope(cwd, consented)
 				? undefined
 				: gate.deny(
 						"out_of_scope",
 						`${cwd} is not one of the directories this machine exposed. Add it with \`personaxis connect --dir\`.`,
 					),
+	};
+}
+
+/**
+ * Refuses a directory the operator did expose, where this machine does not yet know
+ * who is acting.
+ *
+ * Fail-closed, like everything else on this path, and named apart from consent so the
+ * operator is not sent to fix something that is already right. It clears itself: a
+ * local persona is found at `connect`, and a workspace persona arrives with the job
+ * that assigns it.
+ */
+export function noPersonaGuard(cwd: string): gate.Guard {
+	return {
+		name: "persona",
+		check: () =>
+			gate.deny(
+				"no_persona",
+				`this machine exposed ${cwd} but does not know which persona acts there yet, so it cannot decide.`,
+			),
 	};
 }
 

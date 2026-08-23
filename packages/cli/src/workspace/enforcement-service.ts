@@ -16,7 +16,7 @@ import type { PolicyDecision } from "@personaxis/core";
 import { gate } from "@personaxis/core";
 
 import type { EnforceReply, EnforceRequest } from "./enforcement-endpoint.js";
-import { callFor, cachedPolicyGuard, scopeGuard } from "./enforcement-guards.js";
+import { callFor, cachedPolicyGuard, noPersonaGuard, scopeGuard } from "./enforcement-guards.js";
 import type { PolicyCache } from "./policy-cache.js";
 
 /** How long a person has, before the gate answers for them. */
@@ -35,6 +35,14 @@ export type GateOutcome = "approved" | "denied" | "expired";
 
 export interface EnforcementDeps {
 	cache: PolicyCache;
+	/**
+	 * The directories the operator consented to expose, as they typed them.
+	 *
+	 * The authority on whether a call is in scope, and deliberately not the same
+	 * question as which persona acts there. Empty means empty: a daemon with no
+	 * consented directory refuses everywhere rather than defaulting to somewhere.
+	 */
+	scope: readonly string[];
 	/** Which persona this working directory is acting as. */
 	personaVersionFor: (cwd: string) => string | null;
 	/**
@@ -71,13 +79,18 @@ export function enforcementHandler(deps: EnforcementDeps) {
 		// returned at the first one, and somebody who widened a scope then found the
 		// call still refused with no hint why concluded enforcement was broken.
 		let policyDecision: PolicyDecision | undefined;
-		const guards: gate.Guard[] = [scopeGuard(deps.personaVersionFor, request.cwd)];
+		const guards: gate.Guard[] = [scopeGuard(deps.scope, request.cwd)];
 		if (personaVersionId) {
 			guards.push(
 				cachedPolicyGuard(deps.cache, personaVersionId, (seen) => {
 					policyDecision = seen;
 				}),
 			);
+		} else {
+			// Consented, but nobody has said who acts here. Still a refusal, under its
+			// own name: without this the guard list would be a scope check that passed
+			// and nothing else, which is an allow.
+			guards.push(noPersonaGuard(request.cwd));
 		}
 		guards.push(...(deps.guards ?? []));
 
