@@ -90,6 +90,16 @@ export type WireEventBody =
 			tool: string;
 			args_preview: string;
 			reason: string;
+			/**
+			 * Why the policy stopped it, as the class that fired.
+			 *
+			 * Optional because a daemon written before this field exists and still
+			 * connects. Without it the room had nothing to record and filled in a
+			 * constant, so every gate in the workspace claimed to be an external write
+			 * whatever had actually happened, and a person answering one was reading a
+			 * label nobody chose.
+			 */
+			action_class?: string;
 			required_approvals: number;
 			route: { roles?: string[]; user_ids?: string[] };
 			expires_at: string;

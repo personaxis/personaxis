@@ -250,3 +250,43 @@ describe("the latency budget", () => {
 		expect(samples[Math.floor(samples.length * 0.95)]).toBeLessThan(1);
 	});
 });
+
+/**
+ * The tools that actually do the writing.
+ *
+ * The rule for file tools was anchored on `file$`, so it matched `write_file` and
+ * `delete_file` and none of the tools the hosts this ships with actually use:
+ * Claude Code names them `Write`, `Edit` and `NotebookEdit`. Every write by the
+ * agents we run classified as nothing, and a class that never fires is a gate rule
+ * that can never be reached. A policy saying "ask a person before writing" was
+ * silent for the only tools doing the writing, and the only way to notice was to
+ * open a gate for real and see that it could be reached solely through a shell.
+ */
+describe("classifying what a host actually calls", () => {
+	it("counts the file tools of the hosts this ships with", () => {
+		expect(actionClassesFor("Write", "{}")).toContain("external_write");
+		expect(actionClassesFor("Edit", "{}")).toContain("external_write");
+		expect(actionClassesFor("NotebookEdit", "{}")).toContain("external_write");
+	});
+
+	it("still counts the suffixed names, so nothing that worked stopped working", () => {
+		expect(actionClassesFor("write_file", "{}")).toContain("external_write");
+		expect(actionClassesFor("apply_patch", "{}")).toContain("external_write");
+		expect(actionClassesFor("str_replace_editor", "{}")).toContain("external_write");
+	});
+
+	it("counts a deletion as both, because it is a write that cannot be undone", () => {
+		expect(actionClassesFor("delete_file", "{}")).toEqual(
+			expect.arrayContaining(["file_delete", "external_write"]),
+		);
+	});
+
+	it("leaves reading alone", () => {
+		// Widening this table is only safe while the read tools stay out of it. A
+		// policy that gated every `Read` would be one nobody leaves switched on.
+		expect(actionClassesFor("Read", "{}")).toEqual([]);
+		expect(actionClassesFor("Glob", "**/*.ts")).toEqual([]);
+		expect(actionClassesFor("Grep", "needle")).toEqual([]);
+	});
+})
+;

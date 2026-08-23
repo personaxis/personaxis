@@ -77,6 +77,19 @@ export interface JobRunnerOptions {
 	 * job runner evict or rewrite policies for jobs that are not its own.
 	 */
 	onPolicy?: (policy: CompiledPolicy, cwd: string) => void;
+	/**
+	 * A person answered a gate, by its id.
+	 *
+	 * Routed rather than handled here, because what waits on the answer is the
+	 * hook's request and not the run: the run carries the question outward and has
+	 * nothing to do with the reply.
+	 */
+	onGateResolved?: (gateId: string, outcome: "approved" | "denied" | "expired") => void;
+	/**
+	 * A run ended, so anything still waiting on a person there has nobody left to
+	 * answer it. Refusing beats holding a hook open on a process that is gone.
+	 */
+	onJobEnded?: (jobId: string) => void;
 	timeoutMs?: number;
 	now?: () => Date;
 	/** Injected for tests. */
@@ -86,6 +99,14 @@ export interface JobRunnerOptions {
 interface RunningJob {
 	session: HostSession;
 	reporter: JobReporter;
+	/**
+	 * Where it is running.
+	 *
+	 * Kept so a hook call can be joined to a run. The hook is spawned inside a
+	 * directory and that is the only thing it reliably knows, so the directory is
+	 * the join, and without it a gate has no run to be an event on.
+	 */
+	cwd: string;
 }
 
 export class JobRunner {
@@ -102,6 +123,26 @@ export class JobRunner {
 	handle(message: ServerToDaemonMsg): void {
 		if (message.type === "job.assign") this.assign(message);
 		else if (message.type === "job.stop") this.stop(message.job_id);
+		else if (message.type === "gate.resolved") {
+			// A person answered. Until this line existed the message arrived and
+			// nothing matched on it, which is the same shape of bug as `job.assign`
+			// before there was a runner: a wire that carries a decision to a process
+			// that ignores it.
+			this.options.onGateResolved?.(message.gate_id, message.outcome);
+		}
+	}
+
+	/**
+	 * The run in flight in a directory, if there is one.
+	 *
+	 * A directory holds at most one, because a second agent in the same folder is
+	 * two processes editing each other's files, which `assign` already refuses.
+	 */
+	runFor(cwd: string): { jobId: string; reporter: JobReporter } | null {
+		for (const [jobId, job] of this.running) {
+			if (job.cwd === cwd || withinScope(cwd, [job.cwd])) return { jobId, reporter: job.reporter };
+		}
+		return null;
 	}
 
 	private assign(message: Extract<ServerToDaemonMsg, { type: "job.assign" }>): void {
@@ -202,7 +243,7 @@ export class JobRunner {
 			...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
 		});
 
-		this.running.set(jobId, { session, reporter });
+		this.running.set(jobId, { session, reporter, cwd });
 
 		// What the step leaves behind, named after it finishes.
 		//
@@ -218,7 +259,10 @@ export class JobRunner {
 		// from a file that was already there.
 		const before = scanDirectory(cwd);
 
-		void session.run().finally(() => this.running.delete(jobId));
+		void session.run().finally(() => {
+			this.running.delete(jobId);
+			this.options.onJobEnded?.(jobId);
+		});
 	}
 
 	/**

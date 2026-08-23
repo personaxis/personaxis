@@ -29,9 +29,29 @@ export interface GateRequest {
 	action_class: string;
 	required_approvals: number;
 	timeout_seconds: number;
+	/** Who may answer. Carried through to the event, so the room routes it. */
+	route: { roles?: string[]; user_ids?: string[] };
+	/** Why the policy wants a person. It is what the person reads before deciding. */
+	reason: string;
+	/**
+	 * Where the call was made.
+	 *
+	 * A gate is an event on a RUN, and a call names no run, so something has to
+	 * join them. It is the directory: the hook is spawned inside one and that is
+	 * the only thing it reliably knows.
+	 */
+	cwd: string;
 }
 
-export type GateOutcome = "approved" | "denied" | "expired";
+/**
+ * How a gate ended.
+ *
+ * `unreachable` is the fourth and it is not a failure mode of the other three: it
+ * means there was nobody to ask, which happens in a consented directory with no run
+ * in flight. Folding it into `expired` would tell an operator that nobody answered
+ * a question that was never asked, and send them looking for it.
+ */
+export type GateOutcome = "approved" | "denied" | "expired" | "unreachable";
 
 export interface EnforcementDeps {
 	cache: PolicyCache;
@@ -157,20 +177,28 @@ export function enforcementHandler(deps: EnforcementDeps) {
 			action_class: decision.gate.action_class,
 			required_approvals: decision.gate.required_approvals,
 			timeout_seconds: decision.gate.timeout_seconds,
+			route: decision.gate.route,
+			// What the person reads before deciding. A gate verdict carries a rule and
+			// an action class and no prose, so it is composed from those rather than
+			// left blank: "approve this" with no subject is not a question.
+			reason: `this persona's policy asks a person before anything in ${decision.gate.action_class}`,
+			cwd: request.cwd,
 		});
 
 		if (outcome === "approved") {
 			return { verdict: "allow", rule: `${decision.rule}:approved`, reason: "" };
 		}
 
-		return {
-			verdict: "deny",
-			rule: `${decision.rule}:${outcome}`,
-			reason:
-				outcome === "denied"
-					? "a person declined this call in the workspace"
-					: "nobody answered the approval in time, so the call was refused",
+		const why: Record<Exclude<GateOutcome, "approved">, string> = {
+			denied: "a person declined this call in the workspace",
+			expired: "nobody answered the approval in time, so the call was refused",
+			// Named apart, because it is the one an operator can act on and the one
+			// where looking for the request in the workspace finds nothing.
+			unreachable:
+				"this call needs approval and no run is in flight in this directory, so there is nobody to ask",
 		};
+
+		return { verdict: "deny", rule: `${decision.rule}:${outcome}`, reason: why[outcome] };
 	};
 }
 

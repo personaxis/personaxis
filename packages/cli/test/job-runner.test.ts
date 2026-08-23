@@ -56,6 +56,8 @@ function runner(options: {
 	maxConcurrent?: number;
 	sessionRuns?: () => Promise<"completed" | "failed" | "stopped">;
 	onPolicy?: () => void;
+	onGateResolved?: (gateId: string, outcome: string) => void;
+	onJobEnded?: (jobId: string) => void;
 	/** Called when a session is constructed, to observe the order of things. */
 	onStart?: () => void;
 } = {}) {
@@ -70,6 +72,8 @@ function runner(options: {
 		launcher: options.launcher ?? (() => ({ command: "claude", args: ["-p"] })),
 		...(options.maxConcurrent ? { maxConcurrent: options.maxConcurrent } : {}),
 		...(options.onPolicy ? { onPolicy: options.onPolicy } : {}),
+		...(options.onGateResolved ? { onGateResolved: options.onGateResolved as never } : {}),
+		...(options.onJobEnded ? { onJobEnded: options.onJobEnded } : {}),
 		createSession: (opts) => {
 			options.onStart?.();
 			started.push({ cwd: opts.cwd, prompt: opts.prompt, command: opts.command });
@@ -455,5 +459,78 @@ describe("naming what the step left behind", () => {
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+/**
+ * Joining a hook call to the run it belongs to.
+ *
+ * A gate is an event ON a run and a call names no run, so something has to join
+ * them. It is the directory the hook was spawned in, which is the only thing that
+ * process reliably knows. Without this the relay has nowhere to ask and every gated
+ * call is refused for want of anyone to ask, which is what happened for as long as
+ * `openGate` was declared and never provided.
+ */
+describe("which run a directory is running", () => {
+	it("finds the run in the directory it was started in", () => {
+		const { instance } = runner({});
+		instance.handle(assign());
+
+		expect(instance.runFor("/work/repo")).toMatchObject({ jobId: "job_1" });
+	});
+
+	it("finds it from a subdirectory, because that is where a hook usually fires", () => {
+		// An agent working in `src/` is still that run. Matching only the exact
+		// path would refuse a gate for every call made below the project root.
+		const { instance } = runner({});
+		instance.handle(assign());
+
+		expect(instance.runFor("/work/repo/src/deep")).not.toBeNull();
+	});
+
+	it("finds nothing where nothing is running", () => {
+		// Not an error: a person using their own agent in a consented folder. The
+		// refusal that follows says exactly that instead of blaming the network.
+		const { instance } = runner({});
+
+		expect(instance.runFor("/work/repo")).toBeNull();
+	});
+
+	it("does not match a directory that merely starts with the same letters", () => {
+		const { instance } = runner({});
+		instance.handle(assign());
+
+		expect(instance.runFor("/work/repo-other")).toBeNull();
+	});
+
+	it("stops finding it once the run is over", async () => {
+		const { instance } = runner({});
+		instance.handle(assign());
+		await settle();
+
+		expect(instance.runFor("/work/repo")).toBeNull();
+	});
+});
+
+describe("a person's answer coming back", () => {
+	it("routes a resolved gate to whoever is waiting on it", () => {
+		// The message has been arriving since the protocol was written and nothing
+		// matched on it, the same shape of bug as `job.assign` before there was a
+		// runner: a wire carrying a decision to a process that ignores it.
+		const onGateResolved = vi.fn();
+		const { instance } = runner({ onGateResolved });
+
+		instance.handle({ type: "gate.resolved", gate_id: "g1", call_id: "c1", outcome: "approved" });
+
+		expect(onGateResolved).toHaveBeenCalledWith("g1", "approved");
+	});
+
+	it("says when a run ended, so its gates stop waiting on a process that is gone", async () => {
+		const onJobEnded = vi.fn();
+		const { instance } = runner({ onJobEnded });
+		instance.handle(assign());
+		await settle();
+
+		expect(onJobEnded).toHaveBeenCalledWith("job_1");
 	});
 });
