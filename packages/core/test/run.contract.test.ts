@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
 	Ledger,
 	TurnRunner,
+	productOf,
 	type LoopProvider,
 	type TurnRequest,
 } from "../src/run/index.js";
@@ -153,5 +154,67 @@ describe("a second provider is not a special case", () => {
 		}).run(asked);
 
 		expect(second).toEqual(first);
+	});
+});
+
+describe("the loop we already have goes through the same seam", () => {
+	it("calls an answered run answered", () => {
+		expect(
+			productOf({
+				summary: "the branch is clean",
+				steps: 3,
+				finished: true,
+				budget: { steps: 3, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: null },
+			}),
+		).toEqual({ answer: "the branch is clean", steps: 3, stopReason: "answered" });
+	});
+
+	it("calls a budget stop that produced text an answer, not a failure", () => {
+		// A usable reply pushed behind an error is a usable reply somebody has to
+		// dismiss. The reference reaches the same place by spending one more tool-free
+		// call to summarise on exhaustion.
+		expect(
+			productOf({
+				summary: "here is what I found so far",
+				steps: 9,
+				finished: false,
+				budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
+			}).stopReason,
+		).toBe("answered");
+	});
+
+	it("calls a budget stop that produced nothing empty", () => {
+		expect(
+			productOf({
+				summary: "",
+				steps: 9,
+				finished: false,
+				budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
+			}).stopReason,
+		).toBe("empty");
+	});
+
+	it("calls a run the gate stopped refused", () => {
+		expect(
+			productOf({
+				summary: "",
+				steps: 1,
+				finished: false,
+				budget: { steps: 1, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "tool_denied" },
+			}).stopReason,
+		).toBe("refused");
+	});
+
+	it("does not invent a reason for a stop it does not recognise", () => {
+		// A guess at which of the seven a new stop resembles is worse than the honest
+		// fallback, because a wrong reason is a reason somebody acts on.
+		const product = productOf({
+			summary: "",
+			steps: 2,
+			finished: false,
+			budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "something_new" },
+		});
+
+		expect(product.stopReason).toBe("empty");
 	});
 });
