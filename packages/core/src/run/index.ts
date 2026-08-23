@@ -33,6 +33,19 @@ export { breakerGuard, nudgeFor, type Nudge } from "./breaker-guard.js";
 export { defaultLoop, productOf } from "./default-provider.js";
 
 export {
+	catalogue,
+	loadableOnRequest,
+	mayRewrite,
+	type CatalogueContext,
+	type CatalogueView,
+	type Provenance,
+	type ScanVerdict,
+	type SkillEntry,
+	type Tier,
+	type Withheld,
+} from "./skill-catalogue.js";
+
+export {
 	EFFORT_LADDER,
 	forDestination,
 	mayReplay,
