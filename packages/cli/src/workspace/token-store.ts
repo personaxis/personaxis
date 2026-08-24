@@ -18,7 +18,16 @@
  * that quietly downgraded its own storage would be lying by omission.
  */
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -104,10 +113,32 @@ export function saveDevice(
 	const path = devicePath(io);
 	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
 	const payload = storage === "file" ? { ...record, token: input.token } : record;
-	writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
-	// Written again explicitly: the mode above only applies when the file is
-	// created, so a re-link onto a loosened file would keep the loose mode.
-	chmodSync(path, 0o600);
+
+	// Written beside and renamed over, never in place.
+	//
+	// A rename inside one directory is atomic: a crash leaves the old file or the
+	// new one and never half of either. Writing in place leaves a truncated file if
+	// the process dies mid-write or two `connect`s race, and a truncated credential
+	// does not read as damaged. It reads as NEVER LINKED, so the next `connect` asks
+	// to be approved again and the workspace gains a second machine for the same
+	// computer. Five of them accumulated that way before anybody counted.
+	//
+	// The mode is set on the temporary file, before the rename, so the secret is
+	// never briefly readable under a looser one.
+	const staging = `${path}.new`;
+	try {
+		writeFileSync(staging, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+		chmodSync(staging, 0o600);
+		renameSync(staging, path);
+	} catch (error) {
+		// Nothing half-written is left behind to be read as a link that is not one.
+		try {
+			if (existsSync(staging)) unlinkSync(staging);
+		} catch {
+			/* the write already failed; this is tidying, not the error */
+		}
+		throw error;
+	}
 
 	return record;
 }
@@ -218,6 +249,37 @@ function readRaw(io: TokenStoreIO): Record<string, unknown> | null {
 		// character enough to stop a machine connecting at all.
 		return null;
 	}
+}
+
+/**
+ * Whether there is a credential here that cannot be read.
+ *
+ * Absent and damaged are different facts and they were the same answer, which is
+ * how this machine ended up with five rows in one workspace. A file that fails to
+ * parse reads as "never linked", so `connect` asks to be approved again, a second
+ * machine is created for the same computer, and the first one sits there holding a
+ * token nobody will ever use.
+ *
+ * Reported rather than repaired. Deleting it and linking again would be the same
+ * silent path with an extra step, and the operator would still not know they now
+ * have two. This is what lets `connect` stop and say so.
+ */
+export function credentialIsDamaged(io: TokenStoreIO = defaultIO): boolean {
+	const path = devicePath(io);
+	if (!existsSync(path)) return false;
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(readFileSync(path, "utf-8"));
+	} catch {
+		return true;
+	}
+	if (typeof parsed !== "object" || parsed === null) return true;
+
+	// A record naming file storage and carrying no token is the same half-written
+	// state, reached the other way: the write got far enough to be valid JSON.
+	const record = parsed as Record<string, unknown>;
+	return record.storage === "file" && typeof record.token !== "string";
 }
 
 function unlinkedRecord(io: TokenStoreIO): DeviceRecord {

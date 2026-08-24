@@ -36,6 +36,8 @@ import { JobRunner } from "../workspace/job-runner.js";
 import { consentedDirs, describeMachine, detectHostAgents } from "../workspace/machine.js";
 import { nodeSocketFactory, socketSupported, unsupportedSocketMessage } from "../workspace/socket.js";
 import {
+	credentialIsDamaged,
+	devicePath,
 	forgetDevice,
 	loadDevice,
 	readRecord,
@@ -56,6 +58,25 @@ async function runConnect(opts: ConnectOptions): Promise<void> {
 	const scope = consentedDirs(opts.dir ?? []);
 
 	let device = loadDevice();
+
+	// A credential that exists and cannot be read is not the same as none.
+	//
+	// Linking again over one is how a workspace collects several machines for a
+	// single computer: the old row keeps a token nobody will use, and the operator
+	// is never told why they were asked twice. So this stops, and says which file.
+	if (!device && credentialIsDamaged()) {
+		console.error(
+			chalk.red(`${devicePath()} exists and cannot be read, so this machine may already be linked.`),
+		);
+		console.error(
+			chalk.dim(
+				"Linking again would add a second machine for this computer. Run `personaxis connect logout --local` to forget it here, then connect again.",
+			),
+		);
+		process.exitCode = 1;
+		return;
+	}
+
 	if (!device) {
 		const linked = await linkMachine(app, opts.open !== false);
 		if (!linked) process.exitCode = 1;
