@@ -8,7 +8,15 @@
  * link when the secret behind it is gone.
  */
 
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+	mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -24,6 +32,7 @@ import {
 import {
 	DEVICE_TOKEN_ENV,
 	devicePath,
+	credentialIsDamaged,
 	forgetDevice,
 	loadDevice,
 	readRecord,
@@ -316,5 +325,87 @@ describe("a machine linked before a workspace could belong to a person", () => {
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
+	});
+});
+
+/**
+ * The five machines.
+ *
+ * One computer ended up with five rows in one workspace, and the link flow was not
+ * at fault. The credential was written in place, so a process dying mid-write or
+ * two `connect`s racing left truncated JSON; truncated JSON failed to parse; a file
+ * that fails to parse read as NEVER LINKED; and `connect` quietly asked to be
+ * approved again. Each round left the previous machine holding a token nobody would
+ * ever use, and nothing said why the operator was being asked twice.
+ *
+ * Two halves, and the second is the one that matters: writing atomically stops it
+ * happening, and refusing to treat damage as absence stops it happening SILENTLY.
+ */
+describe("a credential that was interrupted", () => {
+	let home: string;
+
+	const io = (): TokenStoreIO => ({
+		home: () => home,
+		env: {} as NodeJS.ProcessEnv,
+		// No OS store, which is this machine and every Windows one: the secret goes
+		// in the file, which is the case the truncation bites.
+		readSecret: () => undefined,
+		writeSecret: () => {
+			throw new Error("no store here");
+		},
+		now: () => new Date("2026-08-01T00:00:00.000Z"),
+	});
+
+	const record = {
+		app_url: "https://app.example",
+		machine_name: "studio",
+		machine_id: "mach_1",
+		space: "org:org_1",
+	};
+
+	beforeEach(() => {
+		home = mkdtempSync(join(tmpdir(), "pxs-damaged-"));
+	});
+	afterEach(() => rmSync(home, { recursive: true, force: true }));
+
+	it("lands by rename, so a reader sees the old file or the new one", () => {
+		const store = io();
+		saveDevice({ token: "pxis_secret", record }, store);
+
+		expect(existsSync(`${devicePath(store)}.new`)).toBe(false);
+		expect(JSON.parse(readFileSync(devicePath(store), "utf-8")).token).toBe("pxis_secret");
+	});
+
+	it("is recognised as damaged rather than missing", () => {
+		const store = io();
+		saveDevice({ token: "pxis_secret", record }, store);
+		writeFileSync(devicePath(store), '{"app_url": "http://loc');
+
+		expect(credentialIsDamaged(store)).toBe(true);
+		// The ordinary reader still says no link, which is what `status` needs.
+		expect(loadDevice(store)).toBeNull();
+	});
+
+	it("counts a record that names a file and carries no token", () => {
+		// The same half-written state reached the other way: the write got far enough
+		// to be valid JSON and stopped before the secret.
+		const store = io();
+		mkdirSync(join(home, ".personaxis"), { recursive: true });
+		writeFileSync(devicePath(store), JSON.stringify({ ...record, storage: "file" }));
+
+		expect(credentialIsDamaged(store)).toBe(true);
+	});
+
+	it("says nothing is damaged when there is nothing there", () => {
+		// Absent is the ordinary state of a machine nobody linked, and it must not
+		// send anybody looking for a file to repair.
+		expect(credentialIsDamaged(io())).toBe(false);
+	});
+
+	it("says nothing is damaged about a good one", () => {
+		const store = io();
+		saveDevice({ token: "pxis_secret", record }, store);
+
+		expect(credentialIsDamaged(store)).toBe(false);
 	});
 });
