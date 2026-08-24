@@ -13,7 +13,7 @@
 import type { Kernel, LifecycleEvent } from "../kernel/index.js";
 import { LIFECYCLE } from "../kernel/index.js";
 import type { MutationLogEntry, StateFile } from "../persona.js";
-import type { Author, RecordEntry } from "./entry.js";
+import { GENESIS, type Author, type RecordEntry } from "./entry.js";
 import { chain, head } from "./chain.js";
 import { derive } from "./derive.js";
 import type { Journal } from "./journal.js";
@@ -86,6 +86,22 @@ function authorOf(actor: MutationLogEntry["actor"]): Author {
 				mechanism: "judge",
 				reason: "an evaluation corrected the value",
 			};
+		default:
+			// A string outside the five the schema declares: a hand edit, a file from a
+			// version this build has not learned, or a typo. It gets an author that
+			// SAYS it is unrecognised and carries the original word.
+			//
+			// The alternative was what this used to do, which was fall off the end and
+			// return undefined. An entry with no author does not verify, so one strange
+			// actor made the whole chain unreadable and the failure pointed at the
+			// chain rather than at the word that caused it. Naming it keeps the record
+			// verifiable and keeps the anomaly visible, which is the pair this file
+			// exists to preserve.
+			return {
+				kind: "runtime",
+				mechanism: "unrecognised-actor",
+				reason: `the state file attributed this to "${String(actor)}", which is not one this build knows`,
+			};
 	}
 }
 
@@ -150,7 +166,7 @@ export function replayStateFile(state: StateFile): RecordEntry[] {
 			at,
 			author: {
 				kind: "runtime" as const,
-				mechanism: "genesis",
+				mechanism: GENESIS,
 				reason: "the coordinate was initialised from its declared envelope",
 			},
 			body: {

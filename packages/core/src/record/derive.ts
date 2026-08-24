@@ -46,6 +46,27 @@ export interface DerivedState {
 	 * audit reading history goes.
 	 */
 	readonly surface?: { turn: string; tools: readonly string[]; reason: string };
+	/**
+	 * The situation in force: the last one anybody set.
+	 *
+	 * Last-wins, like every other coordinate here. Absent means nobody has said,
+	 * which is not the same as an empty situation and is why this is optional.
+	 */
+	readonly context?: {
+		readonly taskMode: string | null;
+		readonly audience: string | null;
+		readonly flags: readonly string[];
+		readonly anchors: readonly string[];
+	};
+	/** The last compile, and what it produced. */
+	readonly compiled?: { readonly at: string; readonly hash: string };
+	/**
+	 * What the closed turns have cost, added up here rather than stored anywhere.
+	 *
+	 * A total kept beside the entries is a number that can disagree with them. This
+	 * one cannot: it is the entries.
+	 */
+	readonly spent: { readonly steps: number; readonly tokens: number; readonly usd: number };
 	/** How many entries this state is a fold over. */
 	readonly through: number;
 }
@@ -60,6 +81,9 @@ const EMPTY: DerivedState = {
 	components: {},
 	turns: [],
 	denials: [],
+	// Zeros and not absent: a persona that has run nothing has spent nothing, and
+	// that is a fact rather than a gap.
+	spent: { steps: 0, tokens: 0, usd: 0 },
 	through: 0,
 };
 
@@ -80,6 +104,9 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 	const denials: { turn: string; callId: string; tool: string; reason?: string }[] = [];
 	let openTurn: string | undefined;
 	let surface: { turn: string; tools: readonly string[]; reason: string } | undefined;
+	let context: DerivedState["context"];
+	let compiled: DerivedState["compiled"];
+	const spent = { steps: 0, tokens: 0, usd: 0 };
 
 	for (const entry of entries) {
 		const body = entry.body;
@@ -100,6 +127,26 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 			case "turn-close":
 				turns.push({ id: body.turn, outcome: body.outcome, synthetic: body.synthetic });
 				if (openTurn === body.turn) openTurn = undefined;
+				// Absent is not zero: a turn whose provider reported nothing adds
+				// nothing, and a turn that cost nothing already says so with zeros.
+				if (body.spent) {
+					spent.steps += body.spent.steps;
+					spent.tokens += body.spent.tokens;
+					spent.usd += body.spent.usd;
+				}
+				break;
+			case "context":
+				context = {
+					taskMode: body.taskMode,
+					audience: body.audience,
+					flags: body.flags,
+					anchors: body.anchors,
+				};
+				break;
+			case "compiled":
+				// `at` is the entry's own timestamp, not a field somebody could set to
+				// something else. When it happened is the record's to say.
+				compiled = { at: entry.at, hash: body.hash };
 				break;
 			case "call":
 				if (body.verdict === "denied") {
@@ -130,6 +177,9 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 			turns,
 			denials,
 			...(surface === undefined ? {} : { surface }),
+			...(context === undefined ? {} : { context }),
+			...(compiled === undefined ? {} : { compiled }),
+			spent,
 			through: entries.length,
 		},
 	};

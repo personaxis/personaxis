@@ -44,3 +44,4 @@ export {
 	replayStateFile,
 	type EquivalenceReport,
 } from "./bridge.js";
+export * from "./project.js";

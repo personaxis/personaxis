@@ -129,7 +129,45 @@ export type RecordBody =
 			readonly turn: string;
 			readonly outcome: string;
 			readonly synthetic: boolean;
+			/**
+			 * What the turn cost, as the ledger charged it.
+			 *
+			 * On the turn and not in a counter beside it, because a cost kept anywhere
+			 * else is a second number that can disagree with the entries it claims to
+			 * total. A fold over closed turns IS the total, and it survives a restart
+			 * without anybody persisting a running sum.
+			 *
+			 * Absent on a turn whose provider reported nothing, which is different
+			 * from zero and must stay different: zero is a turn that cost nothing.
+			 */
+			readonly spent?: { readonly steps: number; readonly tokens: number; readonly usd: number };
 	  }
+	/**
+	 * The situation this persona is working in.
+	 *
+	 * One entry and not four, because these change together: a task mode, an
+	 * audience, the flags that qualify them and the memory anchors in play are one
+	 * answer to "what is going on right now". Four kinds would let three of them
+	 * move and the fourth stay, and nothing would say which was intended.
+	 *
+	 * An event and not a setting, because "who put this persona in this situation,
+	 * and when" is a question an audit asks, and a settings file cannot answer it.
+	 */
+	| {
+			readonly type: "context";
+			readonly taskMode: string | null;
+			readonly audience: string | null;
+			readonly flags: readonly string[];
+			readonly anchors: readonly string[];
+	  }
+	/**
+	 * The persona was compiled, and to what.
+	 *
+	 * Its own kind rather than a field on `context`, because the author differs: a
+	 * compile is the compiler's act and a context change is the operator's or the
+	 * runtime's. Folding them would make one signature stand for two hands.
+	 */
+	| { readonly type: "compiled"; readonly hash: string }
 	/** Something the model said, with any provider material left outside by reference. */
 	| {
 			readonly type: "message";
@@ -182,6 +220,26 @@ export interface DraftEntry {
 }
 
 /** One entry, chained. `hash` commits to everything above it, including `prev`. */
+/**
+ * The mechanism a coordinate's starting position is written under.
+ *
+ * Named here rather than spelled in two files, because two places deciding what
+ * counts as an origin is how one of them starts counting an origin as a change. A
+ * persona's declared position is not something that happened to it.
+ */
+export const GENESIS = "genesis";
+
+/**
+ * Whether an entry is a coordinate's starting position rather than a change to it.
+ *
+ * A function and not a comparison at each call site, because `Author` is a union and
+ * only some of its members carry a mechanism: a human has an id and nothing else. A
+ * comparison written twice is a comparison that gets the narrowing right once.
+ */
+export function isGenesis(entry: { readonly author: Author }): boolean {
+	return "mechanism" in entry.author && entry.author.mechanism === GENESIS;
+}
+
 export interface RecordEntry extends DraftEntry {
 	readonly seq: number;
 	readonly prev: string;
