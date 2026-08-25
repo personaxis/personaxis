@@ -119,12 +119,12 @@ cost. Maps to `cognition.uncertainty_policy` (abstain/disclose) and metacognitio
 `core/src/planner.ts`, `core/src/loop-breaker.ts`; the plan's risk gate reuses
 `verification.ts`.
 
-## 5. Security: see `docs/security/`
+## 5. Security
 
-The security architecture is specified separately and normatively in `docs/security/`
-(private for now). The agent core consumes it: every tool call passes the interceptor (03),
-runs under OS isolation (02), and any policy violation aborts the process asynchronously (07,
-11). This section is a pointer, not a duplicate.
+The security architecture is specified separately and normatively, in documents that are
+not published yet. The agent core consumes it: every tool call passes the interceptor,
+runs under OS isolation, and any policy violation aborts the process asynchronously. This
+section says what the core relies on, not how the isolation is built.
 
 ## 6. Context: a task state that outlives the transcript
 

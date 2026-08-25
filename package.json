@@ -20,9 +20,8 @@
 		"package": "node scripts/package.mjs",
 		"sync-mirror": "node scripts/sync-spec-mirror.mjs",
 		"check-mirror": "node scripts/sync-spec-mirror.mjs --check",
-		"cli": "node packages/cli/dist/index.js",
-		"plan:check": "node scripts/plan-check.mjs",
-		"plan:next": "node scripts/plan-next.mjs"
+		"check-private": "node scripts/check-private.mjs",
+		"cli": "node packages/cli/dist/index.js"
 	},
 	"devDependencies": {
 		"@types/node": "^22.10.0",
