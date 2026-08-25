@@ -1,0 +1,208 @@
+/**
+ * The whole path: a persona moves, the record holds it, the state file is printed.
+ *
+ * This is the step that makes `state.json` a view. Before it, a mutation was pushed
+ * onto a log inside that file and chained there, so there were two hash chains over
+ * one history and nothing to say which was right when they disagreed.
+ *
+ * The case that decides whether this migration is usable is not the happy one. It is
+ * a persona that already exists, with history in the old place and an empty record,
+ * because that is every persona on every machine today.
+ */
+
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import type { Envelope } from "../src/envelopes.js";
+import type { StateFile } from "../src/persona.js";
+import { adjust } from "../src/record/adjust.js";
+import { readRecord, recordPathFor } from "../src/record/store.js";
+
+const ENVELOPES = {
+	"mood.tone": { mean: 0, min: -1, max: 1 } as Envelope,
+	"personality.traits.honesty": { mean: 0.9, min: 0.8, max: 1 } as Envelope,
+};
+const WHO = { kind: "human", id: "david" } as never;
+
+let dir: string;
+let personaPath: string;
+let statePath: string;
+
+beforeEach(() => {
+	dir = mkdtempSync(join(tmpdir(), "pxs-adjust-"));
+	personaPath = join(dir, "personaxis.md");
+	statePath = join(dir, "state.json");
+});
+
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+function writeState(log: unknown[] = []): StateFile {
+	const state: StateFile = {
+		schema_version: "1.1.0",
+		persona_id: "clio",
+		persona_version: "1.0.0",
+		values: { "mood.tone": 0 },
+		mutation_log: log as never,
+	};
+	writeFileSync(statePath, JSON.stringify(state, null, 2));
+	return state;
+}
+
+const row = (field: string, from: number, to: number, reason: string) => ({
+	ts: "2026-08-01T00:00:00.000Z",
+	field,
+	from,
+	to,
+	delta_requested: to - from,
+	clamped: false,
+	reason,
+	actor: "actor-llm",
+});
+
+describe("a persona that has never moved", () => {
+	it("records the move and prints the value back", async () => {
+		writeState();
+
+		const { decision, state } = await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.3,
+			reason: "a good review landed",
+		});
+
+		expect(decision.to).toBeCloseTo(0.3);
+		expect(state.values["mood.tone"]).toBeCloseTo(0.3);
+	});
+
+	it("leaves the state file on disk saying the same thing", async () => {
+		writeState();
+
+		await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.3,
+			reason: "a good review landed",
+		});
+
+		const onDisk = JSON.parse(readFileSync(statePath, "utf-8")) as StateFile;
+		expect(onDisk.values["mood.tone"]).toBeCloseTo(0.3);
+		expect(onDisk.mutation_log).toHaveLength(1);
+	});
+
+	it("puts the move in the record, durably, before it returns", async () => {
+		// Awaited on purpose. An adjustment IS the operation somebody asked for, so
+		// returning before it is durable would report a change a crash could take back.
+		writeState();
+
+		await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.3,
+			reason: "a good review landed",
+		});
+
+		// Two, not one: the coordinate's declared starting position is written as an
+		// origin before the move, so the record does not begin with a value that
+		// appeared from nowhere. The origin is stamped `genesis` precisely so a fold
+		// does not count it as something that happened to the persona.
+		const entries = readRecord(recordPathFor(personaPath));
+		expect(entries).toHaveLength(2);
+		expect(entries[0]!.author).toMatchObject({ mechanism: "genesis" });
+		expect(entries[1]!.body).toMatchObject({ type: "value", reason: "a good review landed" });
+	});
+});
+
+describe("a persona that already has a history in the old place", () => {
+	it("adopts it, so the record does not begin mid-life", async () => {
+		// The case that decides whether this is usable: every persona on every machine
+		// today looks like this. A record that starts at the current value is an audit
+		// that begins with a persona appearing from nowhere.
+		writeState([
+			row("mood.tone", 0, 0.1, "first"),
+			row("mood.tone", 0.1, 0.2, "second"),
+		]);
+
+		const { state } = await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.1,
+			reason: "third",
+		});
+
+		expect(state.mutation_log).toHaveLength(3);
+		expect(state.mutation_log.map((e) => e.reason)).toEqual(["first", "second", "third"]);
+	});
+
+	it("adopts it once, not on every write", async () => {
+		writeState([row("mood.tone", 0, 0.1, "first")]);
+
+		await adjust(personaPath, statePath, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "second" });
+		await adjust(personaPath, statePath, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "third" });
+
+		// Three moves, not four and not five. A replay that ran again would duplicate
+		// the whole history on every write.
+		const onDisk = JSON.parse(readFileSync(statePath, "utf-8")) as StateFile;
+		expect(onDisk.mutation_log).toHaveLength(3);
+	});
+
+	it("continues from where the old history left the value", async () => {
+		writeState([row("mood.tone", 0, 0.4, "earlier")]);
+
+		const { decision } = await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.1,
+			reason: "later",
+		});
+
+		expect(decision.from).toBeCloseTo(0.4);
+		expect(decision.to).toBeCloseTo(0.5);
+	});
+});
+
+describe("what the record is for", () => {
+	it("makes the state file a view: delete it and the next write brings it back", async () => {
+		writeState();
+		await adjust(personaPath, statePath, ENVELOPES, WHO, { field: "mood.tone", delta: 0.3, reason: "one" });
+
+		const before = readFileSync(statePath, "utf-8");
+		rmSync(statePath);
+		writeState();
+
+		// The record still holds the first move, so the second write prints both.
+		const { state } = await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.1,
+			reason: "two",
+		});
+
+		expect(existsSync(statePath)).toBe(true);
+		expect(state.mutation_log).toHaveLength(2);
+		expect(before).toContain("one");
+	});
+
+	it("clamps to the envelope and prints that it clamped", async () => {
+		writeState();
+
+		const { state } = await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 5,
+			reason: "far too much",
+		});
+
+		expect(state.values["mood.tone"]).toBe(1);
+		expect(state.mutation_log[0]!.clamped).toBe(true);
+	});
+
+	it("keeps one chain over the history, and it verifies", async () => {
+		writeState([row("mood.tone", 0, 0.2, "earlier")]);
+		await adjust(personaPath, statePath, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "later" });
+
+		const entries = readRecord(recordPathFor(personaPath));
+		const seqs = entries.map((e) => e.seq);
+
+		expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+		for (const [i, entry] of entries.entries()) {
+			if (i === 0) continue;
+			expect(entry.prev).toBe(entries[i - 1]!.hash);
+		}
+	});
+});

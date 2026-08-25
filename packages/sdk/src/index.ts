@@ -20,6 +20,7 @@
 
 import {
   run,
+  record,
   resolveModel,
   PersonaAgent,
   EventBus,
@@ -86,6 +87,20 @@ export interface AgentRunResult {
   result: unknown;
   events: LoopEvent[];
   trace: unknown[];
+}
+
+
+/**
+ * A persona's own name, for the record's author field.
+ *
+ * Falls back to the canonical id and then to the literal word, because an entry with
+ * no author does not verify: the chain treats a missing author as damage, which is
+ * correct and is also why this cannot return undefined.
+ */
+function personaName(fm: Record<string, unknown>): string {
+  const metadata = fm.metadata as { name?: string } | undefined;
+  const identity = fm.identity as { canonical_id?: string } | undefined;
+  return metadata?.name ?? identity?.canonical_id ?? "persona";
 }
 
 /** A live persona bound to its `personaxis.md` spec (its state.json + memory live alongside it). */
@@ -173,16 +188,31 @@ export class Persona {
   }
 
   /** Apply a single clamped, audited mutation to an envelope field (the spec's adjust_persona_state). */
-  adjust(field: string, delta: number, reason: string): ReturnType<typeof applyMutation> {
+  /**
+   * Apply a single clamped, audited mutation to an envelope field (the spec's
+   * `adjust_persona_state`).
+   *
+   * Asynchronous now, and that is the honest price of the change underneath. The move
+   * goes into the hash-chained record and the state file is PRINTED from it, so
+   * returning before the record is durable would report a change that a crash could
+   * take back. The old version returned as soon as it had pushed a row onto a log
+   * inside the state file, which was quick and was also the second chain over the same
+   * history that this migration exists to remove.
+   */
+  async adjust(field: string, delta: number, reason: string): Promise<record.AdjustResult> {
     const env = extractEnvelopes(this.handle.frontmatter);
     const resolved = resolveField(field, env.envelopes);
-    // Locked read→apply→write: an embedding app may run ticks/adjusts concurrently (F1.4).
-    return withStateLock(this.handle.statePath, () => {
-      const st = readState(this.handle.statePath);
-      const result = applyMutation(st, env.envelopes, { field: resolved, delta, reason, actor: "actor-llm" });
-      writeState(this.handle.statePath, st);
-      return result;
-    });
+
+    return record.adjust(
+      this.personaPath,
+      this.handle.statePath,
+      env.envelopes,
+      // The persona itself is the author: this is `adjust_persona_state`, which is the
+      // tool a persona calls on itself. An author that said "the SDK" would put the
+      // library in the record where the persona belongs.
+      { kind: "persona", id: personaName(this.fm()) } as never,
+      { field: resolved, delta, reason },
+    );
   }
 
   /**

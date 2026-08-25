@@ -45,3 +45,22 @@ export {
 	type EquivalenceReport,
 } from "./bridge.js";
 export * from "./project.js";
+
+export {
+	RecordDamaged,
+	fileSink,
+	openRecord,
+	readRecord,
+	recordPathFor,
+} from "./store.js";
+
+export {
+	currentValue,
+	decide,
+	mutate,
+	origin,
+	type Decision,
+	type MoveRequest,
+} from "./mutate.js";
+
+export { adjust, adopt, type AdjustResult } from "./adjust.js";
