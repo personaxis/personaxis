@@ -60,11 +60,14 @@ import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "
  * `out`/`approve`/`phase` default here; the active mode runner rebinds them to the screen.
  */
 export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number): Ctx {
-  const handle = loadPersona(personaPath);
-  ensureState(handle);
-  const isSub = isSubagentPath(personaPath);
-  const compiled = compiledPathFor(personaPath);
-  const personaDoc = existsSync(compiled) ? readFileSync(compiled, "utf-8") : handle.body;
+  // One read, one place. The paths this implies used to be derived here and, in the
+  // SDK, derived differently: it looked for the compiled document beside the spec,
+  // which is only where a SUB-persona's lives, so an ordinary project got the raw body.
+  const assembled = run.assemble(personaPath);
+  const handle = assembled.handle;
+  const isSub = run.isSubagentPath(personaPath);
+  const compiled = assembled.compiledPath;
+  const personaDoc = run.identityOf(assembled);
   const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
   const loop = run.evolverFor(modelArg, {
     // F6.5: the inline recompile is REAL, on a band crossing the stage-1

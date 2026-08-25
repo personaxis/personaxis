@@ -93,21 +93,34 @@ export class Persona {
   readonly personaPath: string;
   private handle: PersonaHandle;
 
+  private assembled: run.AssembledPersona;
+
   constructor(personaPath: string) {
-    this.personaPath = resolve(personaPath);
-    this.handle = loadPersona(this.personaPath);
-    ensureState(this.handle);
+    this.assembled = run.assemble(personaPath);
+    this.personaPath = this.assembled.personaPath;
+    this.handle = this.assembled.handle;
   }
 
   private fm(): Record<string, unknown> {
     return this.handle.frontmatter as Record<string, unknown>;
   }
 
-  /** The compiled, LLM-facing identity document (system-prompt slot #1). Falls back to the spec
-   * body if PERSONA.md hasn't been compiled yet. */
+  /**
+   * The compiled, LLM-facing identity document (system-prompt slot #1). Falls back to
+   * the spec body if PERSONA.md has not been compiled yet.
+   *
+   * This looked for `PERSONA.md` beside `personaxis.md` and a ROOT persona's compiled
+   * document lives one level above, beside the `.personaxis/` folder. So for the most
+   * common layout there is, the file was never found, the fallback fired, and this
+   * returned the raw spec body under a name promising otherwise. Measured on the
+   * repository this was found in: 2,640 characters where the compiled document is
+   * 6,283, with no error and no warning.
+   *
+   * The address now has one owner, in core, which is where the REPL's correct version
+   * moved to so that this could stop having its own.
+   */
   compiledIdentity(): string {
-    const compiled = join(dirname(this.personaPath), "PERSONA.md");
-    return existsSync(compiled) ? readFileSync(compiled, "utf-8") : this.handle.body;
+    return run.identityOf(this.assembled);
   }
 
   /** The raw qualitative spec body (the compiled document as stored on the spec). */
@@ -258,7 +271,8 @@ export class Persona {
 
   /** Reload the spec from disk (e.g. after an external recompile/decompile). */
   reload(): void {
-    this.handle = loadPersona(this.personaPath);
+    this.assembled = run.assemble(this.personaPath);
+    this.handle = this.assembled.handle;
   }
 }
 

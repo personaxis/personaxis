@@ -33,6 +33,14 @@ export { breakerGuard, nudgeFor, type Nudge } from "./breaker-guard.js";
 export { defaultLoop, productOf } from "./default-provider.js";
 export { agentOptionsFor, runnerFor, type PersonaFacts, type SessionOptions } from "./runner-for.js";
 export {
+	assemble,
+	compiledPathFor,
+	identityOf,
+	isSubagentPath,
+	type AssembledPersona,
+} from "./assembled.js";
+
+export {
 	appraiserFor,
 	evolverFor,
 	type Evolver,
