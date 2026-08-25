@@ -13,10 +13,7 @@ import { resolve, join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import chalk from "chalk";
 import {
-  LivingLoop,
-  HeuristicAppraiser,
-  LlmAppraiser,
-  resolveModel,
+  run,
   slugFromPersonaPath,
   makeRecompileHook,
   readRecompilePending,
@@ -55,19 +52,17 @@ export async function runObserve(
   const handle = loadPersona(personaPath);
   ensureState(handle);
   const fm = handle.frontmatter as Record<string, unknown>;
-  const m = resolveModel({ personaPath, frontmatter: fm });
   const events: LoopEvent[] = [];
-  const loop = new LivingLoop(personaPath, {
-    appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser(),
-    recompile: makeRecompileHook(),
-  });
-  loop.bus.on((e) => events.push(e));
+  const evolver = run.evolverFor(
+    { personaPath, frontmatter: fm },
+    { recompile: makeRecompileHook(), onEvent: (e: LoopEvent) => events.push(e) },
+  );
   // D6: a tick runs a model and can rewrite the spec, so for its duration this process is a
   // holder like any other. Host hooks fire this on every turn, which is precisely the case
   // where the fleet claiming "idle" was furthest from the truth.
   const presence = holdPresence(personaPath, { host: "loop", activity: "running a governed tick" });
   try {
-    const report = await loop.tick({ observation, source });
+    const report = await evolver.observe({ observation, source });
     // Drift-gated recompile: only when a governed self-edit marked PERSONA.md stale.
     let recompiled = false;
     if (readRecompilePending(personaPath).pending) {

@@ -223,7 +223,7 @@ export function evolutionLines(ctx: Ctx): TabLine[] {
         let applied = 0;
         for (let i = 0; i < Math.min(n, 20); i++) {
           const rep = await ctx.loop
-            .tick({ observation: "scheduled tick", source: "internal", actor: "actor-llm", sessionId: ctx.sessionId })
+            .observe({ observation: "scheduled tick", source: "internal", actor: "actor-llm", sessionId: ctx.sessionId })
             .catch(() => undefined);
           applied += rep?.mutationsApplied ?? 0;
         }

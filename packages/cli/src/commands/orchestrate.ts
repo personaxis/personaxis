@@ -16,8 +16,7 @@ import {
   loadPersona,
   extractCapabilities,
   getTeam,
-  LivingLoop,
-  HeuristicAppraiser,
+  run,
   displayName,
   type Agent,
   type LoopEvent,
@@ -79,15 +78,22 @@ export const orchestrateCommand = new Command("orchestrate")
 
     if (opts.run) {
       const personaPath = paths[assigned.id];
-      const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
       const events: LoopEvent[] = [];
-      loop.bus.on((e) => events.push(e));
+      // Through the seam, which changes what appraises the assignee: it used to be
+      // pinned to the heuristic appraiser with no reason written anywhere, so the same
+      // persona evolved one way here and another way under `observe`. An orchestrator
+      // deciding a persona is appraised by something it never declared is the thing
+      // the identity axis exists to prevent, and it was doing it to itself.
+      const loop = run.evolverFor(
+        { personaPath, frontmatter: loadPersona(personaPath).frontmatter as Record<string, unknown> },
+        { recompile: null, onEvent: (e: LoopEvent) => events.push(e) },
+      );
       // D6: the assignee is being driven by someone who is not sitting in front of it. That
       // is the presence a second operator most needs to see, and it names the task.
       const presence = holdPresence(personaPath, { host: "task", activity: `assigned task: ${task.slice(0, 60)}` });
       let report;
       try {
-        report = await loop.tick({ observation: task, source: "user", actor: "actor-llm" });
+        report = await loop.observe({ observation: task, source: "user", actor: "actor-llm" });
       } finally {
         presence.release();
       }

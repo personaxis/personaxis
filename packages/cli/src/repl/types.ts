@@ -8,7 +8,7 @@
 
 import type { ChildProcess } from "node:child_process";
 import type {
-  LivingLoop,
+  run,
   Responder,
   PersonaHandle,
   PersonaTheme,
@@ -32,7 +32,7 @@ export interface ReplOptions {
 /** Session context shared by both UIs (Screen + line mode). */
 export interface Ctx {
   handle: PersonaHandle;
-  loop: LivingLoop;
+  loop: run.Evolver;
   responder: Responder;
   theme: PersonaTheme;
   name: string;
