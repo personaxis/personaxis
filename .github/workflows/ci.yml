@@ -81,7 +81,7 @@ jobs:
           path: cli
 
       # The golden persona lives in the sibling spec repo. Checked out side-by-side
-      # so the relative path used by CLAUDE.md (../persona.md) resolves in CI too.
+      # so the relative path the golden test uses (../persona.md) resolves in CI too.
       - name: Checkout persona.md spec
         uses: actions/checkout@v4
         with:
@@ -113,7 +113,7 @@ jobs:
             echo "::warning::sibling persona.md repo not available; skipping golden validate"
           fi
 
-      # Byte-identity rule (CLAUDE.md): schemas AND templates must match persona.md.
+      # Byte-identity rule: schemas AND templates must match persona.md.
       # Blocking, drift is a spec-conformance regression. `check-mirror` owns the
       # file list (scripts/sync-spec-mirror.mjs) so this gate never drifts from the
       # `sync-mirror` command contributors run locally. A missing sibling is a skip.

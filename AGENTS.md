@@ -4,13 +4,13 @@ Instructions for AI agents working on the `personaxis` CLI repository.
 
 ## What this repo is
 
-The reference CLI implementation of the [personaxis.md spec v1.0.0](https://github.com/personaxis/persona.md) (`spec_version 1.0.0`, `apiVersion personaxis.com/v1`). Published to npm as `personaxis`; it is one of eight lockstep packages in this pnpm monorepo. See `CLAUDE.md` for the full package map and the v1.0 layer model.
+The reference CLI implementation of the [personaxis.md spec v1.0.0](https://github.com/personaxis/persona.md) (`spec_version 1.0.0`, `apiVersion personaxis.com/v1`). Published to npm as `personaxis`; it is one of eight lockstep packages in this pnpm monorepo. The eight packages are `spec`, `core`, `protocol`, `cli`, `mcp`, `sdk`, `evals` and `tui`; the architecture notes live under `docs/architecture/`.
 
 The quantitative 10-layer spec lives at `.personaxis/[personas/<slug>/]personaxis.md`, and the repo-root `PERSONA.md` (or `.claude/agents/<slug>.md` / `.codex/agents/<slug>.toml` in subagent mode) is a separate, LLM-compiled qualitative document generated via `personaxis compile`. Personas at 0.3.0–0.10.0 still validate unchanged (the validator dispatches by `spec_version` to a frozen legacy schema).
 
 ## Schema sync rule
 
-The canonical schemas live in **`packages/spec/schema/`** (`persona.schema.json`, `policy.schema.json`, `state.schema.json`, `memory.schema.json`, `legacy/persona-0.10.schema.json`) and MUST be byte-identical to their counterparts in `persona.md/schema/`. After editing any schema, copy it to the spec repo and run `diff -qr packages/spec/schema ../persona.md/schema` to verify zero difference (see `CLAUDE.md` → "Schema and template sync rule").
+The canonical schemas live in **`packages/spec/schema/`** (`persona.schema.json`, `policy.schema.json`, `state.schema.json`, `memory.schema.json`, `legacy/persona-0.10.schema.json`) and MUST be byte-identical to their counterparts in `persona.md/schema/`. After editing any schema, copy it to the spec repo and run `diff -qr packages/spec/schema ../persona.md/schema` to verify zero difference. One command does both directions: `pnpm sync-mirror` copies, `pnpm check-mirror` verifies and is the CI gate.
 
 ## Template sync rule
 
