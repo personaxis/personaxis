@@ -13,8 +13,6 @@
 import { randomUUID } from "node:crypto";
 import {
   run,
-  loadPersona,
-  ensureState,
   readState,
   writeState,
   withStateLock,
@@ -50,8 +48,9 @@ export class EngineHost {
   readonly approvals = new ApprovalBroker();
 
   constructor(private readonly personaPath: string) {
-    this.handle = loadPersona(personaPath);
-    ensureState(this.handle);
+    // The same one read every other consumer does. It also leaves the state file
+    // behind, which every one of them remembered to do separately until now.
+    this.handle = run.assemble(personaPath).handle;
     this.pipePath = pipePathFor(this.handle.personaPath);
     this.server = new ProtocolServer((op) => this.dispatch(op));
   }
@@ -158,7 +157,7 @@ export class EngineHost {
       }
       case "improve": {
         const r = runMode(this.handle.personaPath, op.mode);
-        this.handle = loadPersona(this.personaPath); // posture is identity-level: reload
+        this.handle = run.assemble(this.personaPath).handle; // posture is identity-level: reload
         return { ok: true, data: r };
       }
       case "interrupt":
