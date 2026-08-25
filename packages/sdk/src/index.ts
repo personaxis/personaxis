@@ -201,7 +201,13 @@ export class Persona {
     const agent = new PersonaAgent({
       llm,
       policy: { ...policyFromFrontmatter(fm, process.cwd()), resourceRoots: personaResourceRoots(this.personaPath) },
-      personaBody: this.handle.body,
+      // The compiled identity, not the raw spec body, which is what this passed and
+      // is the same defect `compiledIdentity()` had one method above. `personaBody`
+      // becomes the "# Identity" section of the system prompt, so a persona run
+      // through this SDK was given a thinner description of itself than the same
+      // persona in the REPL, which passes its compiled document. Measured here:
+      // 2,640 characters against 6,283.
+      personaBody: run.identityOf(this.assembled),
       onApproval: opts.onApproval ?? (async () => "deny"),
       maxSteps: opts.maxSteps ?? 12,
       budget: readAgentBudget(fm),
