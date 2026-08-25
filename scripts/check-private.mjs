@@ -73,13 +73,29 @@ function looksLikeAPath(match) {
 }
 
 /**
- * Files allowed to say these words, and there are none.
+ * Files allowed to say these words. There is one, and it is this file.
  *
- * Deliberately empty and deliberately present. An exception list that starts empty is
- * a decision somebody has to argue for in a diff; one that does not exist at all gets
- * invented under pressure as a quick `if` somewhere in the loop.
+ * The list above is the only place in a public checkout that names the private work,
+ * and it has to be: a checker cannot forbid what it may not name. Once this file was
+ * committed it started reporting itself, which is the correct behaviour of the rule
+ * and the wrong outcome.
+ *
+ * The alternative was considered and rejected: move the names into a gitignored
+ * supplement so the public script carries none. That buys a public file with nothing
+ * private in it and pays for it by leaving CI with nothing to check, on a public
+ * checkout where the supplement does not exist. The one pointer that actually reached
+ * users was of exactly this kind, so trading the gate for the appearance of one is
+ * the wrong trade.
+ *
+ * And the two are not the same thing. Every other entry here POINTS somewhere: it
+ * tells a reader to go and look, and the place is not there. This one prohibits. It
+ * says a name must not appear, which is the opposite of an invitation, and it reveals
+ * only that private work exists, which is true of every project.
+ *
+ * One exception, argued here rather than as a quiet `if` in the loop below, which is
+ * what an exception list that does not exist gets replaced by under pressure.
  */
-const ALLOWED = new Set([]);
+const ALLOWED = new Set(["scripts/check-private.mjs"]);
 
 /** Only text. A binary file matching one of these is a coincidence, not a pointer. */
 const TEXT = /\.(?:md|mdx|ts|tsx|js|mjs|cjs|json|jsonc|yaml|yml|toml|txt|sh|html|css)$/;
