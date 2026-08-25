@@ -12,10 +12,7 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  LivingLoop,
-  HeuristicAppraiser,
-  LlmAppraiser,
-  resolveModel,
+  run,
   loadPersona,
   ensureState,
   readState,
@@ -184,16 +181,23 @@ export class EngineHost {
     this.interrupted = false;
     const turnId = randomUUID();
     this.broadcast({ event: "turn.started", turnId });
-    const m = resolveModel({
-      personaPath: this.handle.personaPath,
-      frontmatter: this.handle.frontmatter as Record<string, unknown>,
-    });
-    const loop = new LivingLoop(this.handle.personaPath, {
-      appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser(),
-    });
-    loop.bus.on((e: LoopEvent) => this.broadcast({ event: "engine.event", payload: e }));
+    const evolver = run.evolverFor(
+      {
+        personaPath: this.handle.personaPath,
+        frontmatter: this.handle.frontmatter as Record<string, unknown>,
+      },
+      {
+        // No inline recompile, and it is now written rather than absent. The host
+        // answers ops for whoever is on the other end of the socket, and a rewrite of
+        // the compiled document is a model call nobody on that socket asked for. The
+        // pending marker still says the document is stale, so a client that wants the
+        // rewrite asks for it.
+        recompile: null,
+        onEvent: (e: LoopEvent) => this.broadcast({ event: "engine.event", payload: e }),
+      },
+    );
     try {
-      const report = await loop.tick({ observation, source });
+      const report = await evolver.observe({ observation, source });
       this.snapshot();
       this.broadcast({ event: "turn.completed", turnId });
       return { ok: true, data: report };

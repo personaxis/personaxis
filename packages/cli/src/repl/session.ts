@@ -11,7 +11,7 @@ import { stdout } from "node:process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import {
-  LivingLoop,
+  run,
   loadPersona,
   ensureState,
   displayName,
@@ -66,8 +66,7 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
   const compiled = compiledPathFor(personaPath);
   const personaDoc = existsSync(compiled) ? readFileSync(compiled, "utf-8") : handle.body;
   const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
-  const loop = new LivingLoop(personaPath, {
-    appraiser: pickAppraiser(modelArg),
+  const loop = run.evolverFor(modelArg, {
     // F6.5: the inline recompile is REAL, on a band crossing the stage-1
     // assembler rewrites the compiled doc deterministically (band-selected
     // expression from fresh state; F3.1's `assemble` seam, finally wired).

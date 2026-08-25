@@ -82,7 +82,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       .catch((e) => `(responder error: ${friendlyProviderError((e as Error).message)})`);
     ctx.out(replyLine(ctx, reply), "persona");
     await recordTurn(ctx, line, reply);
-    await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
+    await ctx.loop.observe({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
     return;
   }
 
@@ -156,7 +156,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const memKinds: string[] = [];
   const evals: string[] = []; // individual quality scores (target · dimension · score)
   const selfEdits: string[] = [];
-  const off = ctx.loop.bus.on((e) => {
+  const off = ctx.loop.on((e) => {
     if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
       changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
     } else if (e.type === "memory") {
@@ -181,7 +181,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     }
     // NB: within-band ticks emit no recompile; the fast .live.json marker stays internal.
   });
-  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch(() => {});
+  await ctx.loop.observe({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch(() => {});
   off();
   // Per-turn telemetry as a distinct, labeled BLOCK (one line per fact) so it never blends into
   // the persona's reply above. Rendered dim, with a gutter (┊) and an aligned label; only the

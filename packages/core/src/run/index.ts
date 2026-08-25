@@ -32,6 +32,14 @@ export { breakerGuard, nudgeFor, type Nudge } from "./breaker-guard.js";
 
 export { defaultLoop, productOf } from "./default-provider.js";
 export { agentOptionsFor, runnerFor, type PersonaFacts, type SessionOptions } from "./runner-for.js";
+export {
+	appraiserFor,
+	evolverFor,
+	type Evolver,
+	type EvolvingFacts,
+	type EvolvingSession,
+	type Recompile,
+} from "./evolving.js";
 
 export {
 	catalogue,

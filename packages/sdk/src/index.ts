@@ -19,9 +19,7 @@
  */
 
 import {
-  LivingLoop,
-  HeuristicAppraiser,
-  LlmAppraiser,
+  run,
   resolveModel,
   PersonaAgent,
   EventBus,
@@ -135,14 +133,22 @@ export class Persona {
    * is clamped + audited; a malicious observation is injection-scanned and cannot steer evolution.
    */
   async observe(observation: string, source: ProvenanceSource = "user"): Promise<ObserveResult> {
-    const m = resolveModel({ personaPath: this.personaPath, frontmatter: this.fm() });
     const events: LoopEvent[] = [];
-    const loop = new LivingLoop(this.personaPath, {
-      appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser(),
-    });
-    loop.bus.on((e) => events.push(e));
+    const evolver = run.evolverFor(
+      { personaPath: this.personaPath, frontmatter: this.fm() },
+      {
+        // No inline recompile, and this is now written rather than omitted. A band
+        // crossing still marks the compiled document stale, which is what
+        // `recompilePending` below reports; what an embedded library does not do is
+        // spend the host application's model budget on a rewrite nobody asked for.
+        // The REPL, where a person is waiting and would otherwise be talking to a
+        // document that no longer matches the state, does the opposite.
+        recompile: null,
+        onEvent: (e: LoopEvent) => events.push(e),
+      },
+    );
     try {
-      const report = await loop.tick({ observation, source });
+      const report = await evolver.observe({ observation, source });
       return { report, events, recompilePending: readRecompilePending(this.personaPath).pending };
     } catch (e) {
       return {
