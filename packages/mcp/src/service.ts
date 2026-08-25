@@ -88,15 +88,24 @@ export function envelopes(p: string): unknown {
   return { mutable_fields: envelopes, hard_enforced_virtues: hardEnforcedVirtues };
 }
 
-export function adjustState(p: string, field: string, delta: number, reason: string): unknown {
-  const result = persona(p).adjust(field, delta, reason);
+export async function adjustState(
+  p: string,
+  field: string,
+  delta: number,
+  reason: string,
+): Promise<unknown> {
+  // Async because the move now lands in the hash-chained record before this returns.
+  // The shape a host sees is unchanged except for `audit`, which used to be the row
+  // pushed onto a log inside the state file and is now the whole printed state: the
+  // file is a view of the record rather than a second copy of the history.
+  const { decision, state } = await persona(p).adjust(field, delta, reason);
   return {
     field,
-    from: result.from,
-    to: result.to,
-    clamped: result.clamped,
-    blocked: result.blocked,
-    audit: result.entry,
+    from: decision.from,
+    to: decision.to,
+    clamped: decision.clamped,
+    blocked: decision.blocked,
+    audit: state.mutation_log.at(-1),
   };
 }
 

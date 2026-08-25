@@ -114,7 +114,7 @@ export function buildServer(opts: ServerOptions = {}): McpServer {
     },
     async ({ persona, field, delta, reason }) => {
       try {
-        return ok(svc.adjustState(persona, field, delta, reason));
+        return ok(await svc.adjustState(persona, field, delta, reason));
       } catch (e) {
         return fail(e);
       }

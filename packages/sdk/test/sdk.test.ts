@@ -51,10 +51,13 @@ describe("@personaxis/sdk, Persona embed API", () => {
     expect(Array.isArray(st.recentMutations)).toBe(true);
   });
 
-  it("applies a clamped, audited mutation", () => {
+  it("applies a clamped, audited mutation", async () => {
+    // Awaited now. The move lands in the hash-chained record before this returns,
+    // because reporting a change that is not yet durable is reporting a change a
+    // crash can take back.
     const p = new Persona(personaPath);
-    const r = p.adjust("mood.tone", -0.1, "customer frustrated");
-    expect(r.to).toBeCloseTo(-0.1);
+    const { decision } = await p.adjust("mood.tone", -0.1, "customer frustrated");
+    expect(decision.to).toBeCloseTo(-0.1);
     expect(p.audit().mutationCount).toBe(1);
   });
 
