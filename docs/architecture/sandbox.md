@@ -78,8 +78,8 @@ with an honest note, never to a wrapper binary that would fail to spawn.
 
 Where no native primitive exists, enforcement degrades to the policy decision (deny-by-default for
 risky ops), never a silent full-access fallback. `describeIsolation` reports which case a given run
-is in (`kernel-enforced` vs `policy-only`). This is stated rather than pretended. Full spec:
-`docs/security/02-os-sandboxing.md`.
+is in (`kernel-enforced` vs `policy-only`). This is stated rather than pretended. The OS
+isolation itself is specified in a separate document that is not published yet.
 
 ## The "no difference" case
 

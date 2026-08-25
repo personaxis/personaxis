@@ -46,8 +46,8 @@ not theirs is an oracle for enumerating what a competitor has published.
   which is always right; `CLAUDE.md` points at the package manifests and says why it does not
   repeat the value.
 - **Three public docs pointed at paths inside the private planning repo**
-  (`docs/architecture/agent-core.md`, `docs/architecture/command-center.md`,
-  `docs/security/00-threat-model.md`), and the plan they pointed at had already been
+  (`docs/architecture/agent-core.md`, `docs/architecture/command-center.md`, and the
+  threat model, which is not published), and the plan they pointed at had already been
   superseded. A reader gets a reference they cannot open, to a document that no longer says
   what the sentence claims. The threat model also declared `audience: private` while being
   published.
@@ -196,7 +196,7 @@ not theirs is an oracle for enumerating what a competitor has published.
   one's by default.
 
 ### Fix
-- `SPEC.md` §15 pointed at `research/MATH_CORE.md`, a path in a private repository, and
+- `SPEC.md` §15 pointed at a file in a private repository, and
   SPEC.md ships inside the published package: anyone installing `personaxis` read a
   reference to a file that cannot exist for them. It now says what is true and useful, that
   the derivations are published separately as a research report and the checkable
@@ -540,7 +540,8 @@ not theirs is an oracle for enumerating what a competitor has published.
 ### Note
 - The scope-tree navigator is the default `menu`/`/menu` view; the classic sectioned hub stays
   reachable via `--classic` / `--section`. The deep design docs live in
-  `docs/architecture/agent-core.md` and `docs/security/` (the latter private for now).
+  `docs/architecture/agent-core.md`, and in the security architecture docs, which are
+  not published yet.
 
 ## [0.14.0] - 2026-07-31 (first published with 0.15.0): the self-aware session (V5 P0) + real miniapps (V5 P1)
 

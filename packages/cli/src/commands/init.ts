@@ -1147,8 +1147,8 @@ export function buildPolicyYaml(metaSlug: string, includeStarterSuites = true): 
 
   return `# policy.yaml - operational policy for ${metaSlug}
 # Sibling of personaxis.md (spec v1.0.0). NEVER inlined into the LLM system
-# prompt. Read by Personaxis backend for observability + mutation governance.
-# See docs/personaxis-docs/concepts/policy-and-improvement.mdx.
+# prompt. Read by the Personaxis backend for observability + mutation
+# governance.
 
 spec_version: "1.0.0"
 
@@ -1156,8 +1156,13 @@ applies_to:
   persona_name: "${metaSlug}"
 
 # Mutation governance. Recommended default for production: "locked".
-# See docs/personaxis-docs/concepts/policy-and-improvement.mdx for the
-# meaning of suggesting / auto and when each is appropriate.
+#   locked      the spec is immutable at runtime; state still moves inside
+#               its declared envelopes, and drift only raises an alert.
+#   suggesting  the persona may PROPOSE a spec edit; a person approves it,
+#               and approval mints a new version.
+#   autonomous  the persona may apply one directly, bounded by the
+#               universals, the per-layer edit policy and the hard limits.
+# Non-locked modes require approved_by and last_approval_at.
 improvement_policy:
   mode: locked
 
@@ -1166,8 +1171,10 @@ runtime:
   allowed_consumers: [agent, human, mcp]
 
 ${evaluation}# Behavioral assertions evaluated at runtime by the Personaxis observability
-# layer. Recommended: 3 per layer (~30 total). See
-# docs/personaxis-docs/architecture/assertions.mdx for type schemas.
+# layer. Recommended: 3 per layer (~30 total). Each one names the layer it
+# covers, a type (regex | semantic | llm_judge | activation_projection),
+# its definition, and a severity of info | warn | block. The full shape
+# is in policy.schema.json, which is what validates this file.
 assertions: []
 `;
 }

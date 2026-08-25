@@ -122,6 +122,16 @@ jobs:
         working-directory: cli
         run: pnpm run check-mirror
 
+      # This repository is public and sits beside work that is not. `.gitignore` keeps
+      # the private material out and always has; what leaked was thinner, a comment or
+      # a script name pointing INTO it. Two of those reached users, inside strings that
+      # `personaxis init` writes into their own files and inside a schema description
+      # that ships to npm, where no edit here can reach them any more. Blocking, and
+      # unconditional: it needs no sibling checkout and nothing to be installed.
+      - name: No public file points at private work
+        working-directory: cli
+        run: pnpm run check-private
+
   evals:
     name: governance evals (deterministic, no API keys)
     runs-on: ubuntu-latest
