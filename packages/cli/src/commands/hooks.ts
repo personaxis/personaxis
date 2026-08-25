@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import yaml from "js-yaml";
 import chalk from "chalk";
+import { describeAilment, hookHealth } from "../workspace/host-adapter.js";
 
 const OBSERVE_CMD = "personaxis observe --stdin --source user";
 const MARKER = "personaxis observe"; // identifies OUR hook among a host's other hooks
@@ -266,10 +267,41 @@ const uninstallCommand = new Command("uninstall")
     console.log(res.removed ? chalk.green("✓ removed") : chalk.dim("· nothing to remove"), chalk.cyan(res.path));
   });
 
+
+/**
+ * Whether the enforcement hook a host would run is one it can actually start.
+ *
+ * Separate from `install`, which writes and converges, because the failure this
+ * catches happens between installs: a settings file from an older version names a
+ * command the host cannot run, the host reports that as a NON-BLOCKING failure, and
+ * the call proceeds. The session looks governed and is not, and the only evidence is
+ * a line that reads like a warning.
+ */
+const checkCommand = new Command("check")
+  .description("Check that the enforcement hook installed here is one the host can actually run.")
+  .action(() => {
+    const findings = hookHealth(process.cwd());
+    if (findings.length === 0) {
+      console.log(chalk.green("✓"), "no enforcement hook here is broken.");
+      console.log(
+        chalk.dim("  (this does not check that a daemon is answering: a hook whose daemon is down"),
+      );
+      console.log(chalk.dim("   refuses the call loudly, which is the design.)"));
+      return;
+    }
+    console.error(
+      chalk.red("✗"),
+      `${findings.length} enforcement hook${findings.length === 1 ? "" : "s"} cannot run, so calls are NOT being gated:`,
+    );
+    for (const finding of findings) console.error("  " + describeAilment(finding));
+    process.exit(1);
+  });
+
 export const hooksCommand = new Command("hooks")
   .description("Wire a host (Claude Code, Codex, openclaw, Hermes) so the persona learns from each turn via `personaxis observe`.")
   .addCommand(installCommand)
-  .addCommand(uninstallCommand);
+  .addCommand(uninstallCommand)
+  .addCommand(checkCommand);
 
 // Exported for tests.
 export { jsonStopHookPath, installJsonStopHook, hasJsonStopHook, hermesConfigPath, hermesHookDir, openclawHookDir, OBSERVE_CMD };

@@ -355,6 +355,97 @@ export const codexAdapter: HostAdapter = jsonHookAdapter({
 
 export const HOST_ADAPTERS: HostAdapter[] = [claudeCodeAdapter, codexAdapter];
 
+/** What is wrong with an installed hook, or nothing. */
+export type HookAilment =
+	/** The command names a bare binary that only resolves after a global install. */
+	| { readonly kind: "unrunnable"; readonly command: string }
+	/** The address was written with backslashes, which a POSIX shell collapses. */
+	| { readonly kind: "mangled_address"; readonly command: string };
+
+export interface HookFinding {
+	readonly host: HostAgentName;
+	readonly settingsPath: string;
+	readonly ailment: HookAilment;
+}
+
+/**
+ * Whether the hook a host would run is one it can actually start.
+ *
+ * This exists because of a real day. A settings file written by an older version named
+ * the bare binary, the CLI was updated, nobody re-ran the installer, and the host
+ * reported `command not found` as a NON-BLOCKING failure on every single tool call. A
+ * non-blocking failure means the call proceeds. So for as long as that sat there, the
+ * operator saw a governed session and had an ungoverned one, and the only evidence was
+ * a line of noise that looks like a warning.
+ *
+ * That is the worst state this code can be in, and it is worse than no hook at all: no
+ * hook is honest about what it is not doing.
+ *
+ * The installer already converges an old entry to the current form, so the window is
+ * exactly "between an update and the next `connect`". Nothing closed that window,
+ * because nothing looked. This looks.
+ *
+ * It deliberately does NOT check whether a daemon is answering. A hook pointed at a
+ * daemon that is down is fine: it fails closed and refuses the call, loudly, which is
+ * the design. What this catches is the other thing entirely, a hook that cannot start
+ * and therefore refuses nothing.
+ */
+export function hookHealth(root: string): HookFinding[] {
+	const findings: HookFinding[] = [];
+
+	for (const adapter of HOST_ADAPTERS) {
+		const path = adapter.settingsPath(root);
+		if (!existsSync(path)) continue;
+
+		let settings: Settings;
+		try {
+			settings = JSON.parse(readFileSync(path, "utf-8")) as Settings;
+		} catch {
+			// An unreadable settings file is the host's problem to report, not ours:
+			// claiming a hook is broken when we could not read the file would be
+			// guessing, and a check that guesses is one nobody believes twice.
+			continue;
+		}
+
+		for (const group of settings.hooks?.[adapter.preToolUseEvent] ?? []) {
+			for (const hook of group.hooks ?? []) {
+				const command = hook.command;
+				if (!isOurHook(command) || !command) continue;
+
+				// The bare name resolves only after a global install. Ours starts with a
+				// quoted absolute path to this Node, so anything that does not is old.
+				if (!command.startsWith('"')) {
+					findings.push({ host: adapter.name, settingsPath: path, ailment: { kind: "unrunnable", command } });
+					continue;
+				}
+				// A shell collapses a Windows pipe address before the hook sees it, so the
+				// current form sends a token with no separators and rebuilds the address.
+				if (command.includes("--socket") && command.includes("\\")) {
+					findings.push({
+						host: adapter.name,
+						settingsPath: path,
+						ailment: { kind: "mangled_address", command },
+					});
+				}
+			}
+		}
+	}
+
+	return findings;
+}
+
+/** One line a person can act on, per finding. */
+export function describeAilment(finding: HookFinding): string {
+	const where = `${finding.host} (${finding.settingsPath})`;
+	switch (finding.ailment.kind) {
+		case "unrunnable":
+			return `${where}: the hook names a command the host cannot start, so every tool call has been proceeding ungated. Run \`personaxis connect\` to rewrite it, or delete the entry if this folder is not connected.`;
+		case "mangled_address":
+			return `${where}: the hook's socket address contains backslashes, which a shell collapses before the hook sees them. Run \`personaxis connect\` to rewrite it.`;
+	}
+}
+
+
 export function adapterFor(name: HostAgentName): HostAdapter | undefined {
 	return HOST_ADAPTERS.find((adapter) => adapter.name === name);
 }
