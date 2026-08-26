@@ -163,14 +163,19 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 		case "mutate": {
 			// Only a clamp is worth a viewer's attention: it is the envelope
 			// visibly holding. An unclamped mutation is routine.
-			const result = event.result as { clamped?: boolean; path?: string; requested?: number; applied?: number };
+			// Read off the decision rather than through a cast. The cast named `path`,
+			// `requested` and `applied`; the engine has never emitted a `path` or an
+			// `applied`, so every clamp the workspace saw carried an empty field name and
+			// a zero. Nothing said so, because the test that covered it built the same
+			// shape the cast had invented.
+			const result = event.result;
 			if (!result?.clamped) return { drop: "engine-internal" };
 			return {
 				emit: {
 					kind: "envelope.clamped",
-					field: result.path ?? "",
-					requested: result.requested ?? 0,
-					applied: result.applied ?? 0,
+					field: result.field,
+					requested: result.requested,
+					applied: result.to,
 				},
 			};
 		}

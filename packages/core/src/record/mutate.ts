@@ -52,6 +52,15 @@ export interface MoveRequest {
 
 /** Where the value lands, and what happened on the way. */
 export interface Decision {
+	/**
+	 * Which coordinate moved.
+	 *
+	 * On the decision and not left to the caller to remember, because a batch returns
+	 * a list and a decision that does not say what it is about has to be matched back
+	 * by index. An event carrying one of these has no index to match against, which is
+	 * how the workspace ended up reporting every clamp against an empty field name.
+	 */
+	readonly field: string;
 	readonly from: number;
 	readonly to: number;
 	/** The value asked for, before the envelope had its say. */
@@ -77,6 +86,7 @@ export function decide(current: number, envelope: Envelope, req: MoveRequest): D
 	const blocked = req.blocked === true;
 
 	return {
+		field: req.field,
 		from: current,
 		to: blocked ? current : inside,
 		requested,

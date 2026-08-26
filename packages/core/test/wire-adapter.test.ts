@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LoopEvent } from "../src/events.js";
+import { decide } from "../src/record/mutate.js";
 import { mapLoopEvent, preview } from "../src/wire/adapter.js";
 
 /**
@@ -107,17 +108,31 @@ describe("tool calls", () => {
 
 describe("state changes reach the wire only when someone can perceive them", () => {
 	it("emits a clamp, which is the envelope visibly holding", () => {
-		const result = mapLoopEvent({
-			type: "mutate",
-			result: { clamped: true, path: "personality.traits.humor", requested: 0.9, applied: 0.7 },
-		} as LoopEvent);
-		expect(result).toMatchObject({
-			emit: { kind: "envelope.clamped", field: "personality.traits.humor", applied: 0.7 },
+		// Built by `decide`, not by hand. The version of this test that built the shape
+		// itself named `path`, `requested` and `applied`, and the engine has never
+		// emitted a `path` or an `applied`: the adapter cast the event to that shape and
+		// read three properties that were never there, so every clamp the workspace saw
+		// carried an empty field and two zeroes. The test passed the whole time, because
+		// it invented the same shape the cast did.
+		const decision = decide(0.6, { mean: 0.5, min: 0, max: 0.7 }, {
+			field: "personality.traits.humor",
+			delta: 0.3,
+			reason: "over the ceiling",
+		});
+		expect(decision.clamped).toBe(true);
+
+		expect(mapLoopEvent({ type: "mutate", result: decision })).toMatchObject({
+			emit: {
+				kind: "envelope.clamped",
+				field: "personality.traits.humor",
+				requested: 0.8999999999999999,
+				applied: 0.7,
+			},
 		});
 	});
 
 	it("drops a mutation that was not clamped, which is routine", () => {
-		const result = mapLoopEvent({ type: "mutate", result: { clamped: false } } as LoopEvent);
+		const result = mapLoopEvent({ type: "mutate", result: { clamped: false } as never } as LoopEvent);
 		expect(result).toEqual({ drop: "engine-internal" });
 	});
 

@@ -158,7 +158,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const selfEdits: string[] = [];
   const off = ctx.loop.on((e) => {
     if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
-      changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
+      changed.push(`${e.result.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
     } else if (e.type === "memory") {
       memWrites++;
       memWriteKinds.push(`[${e.entry.source}] ${e.entry.content.slice(0, 48)}`);

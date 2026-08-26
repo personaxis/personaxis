@@ -106,18 +106,46 @@ export function fileSink(path: string): RecordSink {
 }
 
 /**
+ * Where a record's entries are read from and written to.
+ *
+ * Declared here rather than only in `ports/`, because this is the module that knows
+ * what a record needs, and a second declaration over there is a second thing that can
+ * drift from it. `key` is the persona's path, as everywhere else: a folder for the
+ * filesystem, a row for a database, the store's business either way.
+ */
+export interface RecordStorage {
+	/** Everything already written, in order. Empty for a persona with no record. */
+	read(key: string): RecordEntry[];
+	/** Where new entries go. Rejecting means none of the batch landed. */
+	sink(key: string): RecordSink;
+}
+
+/** Entries in a file beside the persona. The default, and not the only possibility. */
+export const fileRecordStorage: RecordStorage = {
+	read: (key) => readRecord(recordPathFor(key)),
+	sink: (key) => fileSink(recordPathFor(key)),
+};
+
+/**
  * The record for a persona, loaded and ready to be written to.
  *
- * What was already on disk comes back as `initial`, which the journal counts as
+ * What was already stored comes back as `initial`, which the journal counts as
  * durable. Counting it as pending would rewrite the whole history on the next drain,
- * and for an append-only file that means the history twice.
+ * and for an append-only store that means the history twice.
+ *
+ * `storage` is what lets a hosted engine keep entries somewhere that is not a disk.
+ * It defaults to the file beside the persona, so a caller written before this existed
+ * keeps exactly the behaviour it had.
  */
-export function openRecord(personaPath: string, options: { now?: () => Date } = {}): Journal {
-	const path = recordPathFor(personaPath);
+export function openRecord(
+	personaPath: string,
+	options: { now?: () => Date; storage?: RecordStorage } = {},
+): Journal {
+	const storage = options.storage ?? fileRecordStorage;
 
 	return new Journal({
-		initial: readRecord(path),
-		sink: fileSink(path),
+		initial: storage.read(personaPath),
+		sink: storage.sink(personaPath),
 		...(options.now === undefined ? {} : { now: options.now }),
 	});
 }
