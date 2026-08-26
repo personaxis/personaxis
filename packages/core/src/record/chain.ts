@@ -29,7 +29,7 @@
 
 import { createHash } from "node:crypto";
 
-import type { Author, DraftEntry, RecordEntry } from "./entry.js";
+import { ENTRY_VERSION, type Author, type DraftEntry, type RecordEntry } from "./entry.js";
 
 /** Sorts keys at every depth so the bytes depend on content and not on construction. */
 function canonical(value: unknown): unknown {
@@ -48,6 +48,9 @@ function canonical(value: unknown): unknown {
 export function digestInput(entry: Omit<RecordEntry, "hash">): string {
 	return JSON.stringify(
 		canonical({
+			// The shape is part of what is committed to. A version outside the hash could
+			// be changed after the fact to make an old entry pass as a current one.
+			v: entry.v,
 			seq: entry.seq,
 			at: entry.at,
 			author: entry.author,
@@ -100,7 +103,18 @@ export type ChainProblem =
 	| { readonly kind: "no_author"; readonly seq: number }
 	| { readonly kind: "out_of_order"; readonly seq: number; readonly expected: number }
 	| { readonly kind: "broken_link"; readonly seq: number }
-	| { readonly kind: "altered"; readonly seq: number };
+	| { readonly kind: "altered"; readonly seq: number }
+	/**
+	 * An entry written in a shape this build does not know.
+	 *
+	 * Not `altered`, and the distinction is the reason this case exists. Altered means
+	 * somebody changed a record. This means the record is fine and the reader is the
+	 * wrong one, which calls for a different build or a migration rather than for
+	 * alarm. Reporting one as the other would send people looking for tampering that
+	 * did not happen, and would do it at exactly the moment they most need to trust
+	 * what the chain says.
+	 */
+	| { readonly kind: "unknown_shape"; readonly seq: number; readonly found: number };
 
 export interface ChainVerdict {
 	readonly ok: boolean;
@@ -121,6 +135,16 @@ export function verify(entries: readonly RecordEntry[]): ChainVerdict {
 	let prev = "";
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index]!;
+		// Before anything else. Every other check reads fields whose meaning depends on
+		// the shape, so checking them first is deciding what a number means before
+		// knowing which number it is.
+		if (entry.v !== ENTRY_VERSION) {
+			return {
+				ok: false,
+				length: index,
+				problem: { kind: "unknown_shape", seq: entry.seq, found: entry.v ?? 0 },
+			};
+		}
 		if (!authorIsValid(entry.author)) {
 			return { ok: false, length: index, problem: { kind: "no_author", seq: entry.seq } };
 		}

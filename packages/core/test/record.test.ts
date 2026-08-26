@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	ENTRY_VERSION,
 	Journal,
 	chain,
 	compareToStored,
@@ -37,6 +38,48 @@ function journalAt(start = 0, sink?: RecordSink): Journal {
 	});
 }
 
+describe("an entry written in a shape this build does not know", () => {
+	it("is refused, rather than read as though the numbers meant what they mean now", () => {
+		// The failure this exists to prevent already happened, on a real persona. What a
+		// value entry keeps in its third number changed from the position that was asked
+		// for to the delta that was asked for, and 164 entries already on disk went on
+		// parsing cleanly while meaning something else. Nothing was corrupt and nothing
+		// complained; the numbers were simply wrong. A chain sold as proof cannot have a
+		// failure mode that reads as success.
+		const journal = journalAt();
+		journal.append(PERSON, { type: "turn-open", turn: "t1", prompt: "hola" });
+		const [entry] = journal.all() as RecordEntry[];
+
+		const older = [{ ...entry!, v: undefined as never }];
+
+		expect(verify(older).problem).toEqual({ kind: "unknown_shape", seq: 0, found: 0 });
+	});
+
+	it("is not called altered, because the record is fine and the reader is not", () => {
+		// Reporting one as the other sends somebody looking for tampering that did not
+		// happen, at the moment they most need to trust what the chain tells them.
+		const journal = journalAt();
+		journal.append(PERSON, { type: "turn-open", turn: "t1", prompt: "hola" });
+		const [entry] = journal.all() as RecordEntry[];
+
+		expect(verify([{ ...entry!, v: 99 }]).problem?.kind).toBe("unknown_shape");
+		// And a genuinely edited entry still reads as edited.
+		expect(verify([{ ...entry!, hash: "0".repeat(64) }]).problem?.kind).toBe("altered");
+	});
+
+	it("is checked before anything that depends on what the fields mean", () => {
+		// Every other check reads fields whose meaning depends on the shape, so checking
+		// them first is deciding what a number means before knowing which number it is.
+		const journal = journalAt();
+		journal.append(PERSON, { type: "turn-open", turn: "t1", prompt: "hola" });
+		const [entry] = journal.all() as RecordEntry[];
+
+		const both = [{ ...entry!, v: 99, author: undefined as never }];
+
+		expect(verify(both).problem?.kind).toBe("unknown_shape");
+	});
+});
+
 describe("nothing enters without saying who put it there", () => {
 	it("refuses a chain whose entry has no author", () => {
 		const journal = journalAt();
@@ -52,6 +95,7 @@ describe("nothing enters without saying who put it there", () => {
 		// an empty reason is as bad as no author at all.
 		const entry = chain(
 			{
+				v: ENTRY_VERSION,
 				at: "2026-08-22T00:00:00.000Z",
 				author: { kind: "runtime", mechanism: "compaction", reason: "" },
 				body: { type: "failure", code: "x", message: "y" },

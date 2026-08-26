@@ -37,7 +37,7 @@
 
 import { chain, head, verify, type ChainVerdict } from "./chain.js";
 import { derive, type DeriveResult } from "./derive.js";
-import type { Author, DraftEntry, Provenance, RecordBody, RecordEntry } from "./entry.js";
+import { ENTRY_VERSION, type Author, type DraftEntry, type Provenance, type RecordBody, type RecordEntry } from "./entry.js";
 
 /** Where entries go when they are drained. Anything durable can be one. */
 export interface RecordSink {
@@ -142,6 +142,7 @@ export class Journal {
 	 */
 	append(author: Author, body: RecordBody, provenance?: Provenance): RecordEntry {
 		const draft: DraftEntry = {
+			v: ENTRY_VERSION,
 			at: this.now().toISOString(),
 			author,
 			body,

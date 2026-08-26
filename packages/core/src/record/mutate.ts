@@ -63,7 +63,10 @@ export interface Decision {
 	readonly field: string;
 	readonly from: number;
 	readonly to: number;
-	/** The value asked for, before the envelope had its say. */
+	/**
+	 * The position that was asked for: `from + delta`, before the envelope had its
+	 * say. Derived rather than stored, because the entry keeps the delta.
+	 */
 	readonly requested: number;
 	readonly clamped: boolean;
 	readonly blocked: boolean;
@@ -154,7 +157,7 @@ export function mutate(
 			field: req.field,
 			from: decision.from,
 			to: decision.to,
-			requested: decision.requested,
+			delta: req.delta,
 			clamped: decision.clamped,
 			blocked: decision.blocked,
 			reason: req.reason,
@@ -184,7 +187,7 @@ export function origin(record: Journal, field: string, value: number): void {
 			field,
 			from: value,
 			to: value,
-			requested: value,
+			delta: 0,
 			clamped: false,
 			blocked: false,
 			reason: "declared",

@@ -13,7 +13,7 @@
 import type { Kernel, LifecycleEvent } from "../kernel/index.js";
 import { LIFECYCLE } from "../kernel/index.js";
 import type { StateFile } from "../persona.js";
-import { GENESIS, type Author, type RecordEntry } from "./entry.js";
+import { ENTRY_VERSION, GENESIS, type Author, type RecordEntry } from "./entry.js";
 import { authorOf } from "./actor.js";
 import { chain, head } from "./chain.js";
 import { derive } from "./derive.js";
@@ -108,6 +108,7 @@ export function replayStateFile(state: StateFile): RecordEntry[] {
 	for (const field of Object.keys(origin).sort()) {
 		const value = origin[field]!;
 		const draft = {
+			v: ENTRY_VERSION,
 			at,
 			author: {
 				kind: "runtime" as const,
@@ -119,7 +120,7 @@ export function replayStateFile(state: StateFile): RecordEntry[] {
 				field,
 				from: value,
 				to: value,
-				requested: 0,
+				delta: 0,
 				clamped: false,
 				blocked: false,
 				reason: "initialised",
@@ -138,6 +139,7 @@ export function replayStateFile(state: StateFile): RecordEntry[] {
 			...(old.tool_call_id === undefined ? {} : { toolCall: old.tool_call_id }),
 		};
 		const draft = {
+			v: ENTRY_VERSION,
 			at: old.ts,
 			author: authorOf(old.actor),
 			...(Object.keys(provenance).length === 0 ? {} : { provenance }),
@@ -146,7 +148,7 @@ export function replayStateFile(state: StateFile): RecordEntry[] {
 				field: old.field,
 				from: old.from,
 				to: old.to,
-				requested: old.delta_requested,
+				delta: old.delta_requested,
 				clamped: old.clamped,
 				blocked: old.governance_blocked ?? false,
 				reason: old.reason,
