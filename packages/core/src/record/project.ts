@@ -152,3 +152,43 @@ export function project(
 
 	return file;
 }
+
+/** How a stored state file differs from the one the record says it should be. */
+export interface Divergence {
+	/** Coordinates the file and the record disagree about, with both numbers. */
+	readonly values: readonly { field: string; stored: number | undefined; recorded: number }[];
+	/**
+	 * Whether the documents differ at all, values or not.
+	 *
+	 * Separate from `values` because they are not the same question and only one of
+	 * them is actionable by a person. A log the file lost, or a session block it
+	 * gained, is a file that no longer says what the record says even though every
+	 * coordinate agrees, and reprinting is still the right answer.
+	 */
+	readonly differs: boolean;
+}
+
+/**
+ * Compare a stored state file with the one the record projects.
+ *
+ * Not `compareToStored`, which asks a different question that reads almost the same
+ * in English: that one replays a state file's OWN log against its OWN values, which
+ * is one document checked against itself and is what proved the migration. This is
+ * the file against the record, which is the check that means anything once the
+ * record is the source.
+ *
+ * A missing file differs from every record, which is what makes "delete it and it
+ * comes back" a repair rather than a special case.
+ */
+export function divergence(recorded: StateFile, stored: StateFile | undefined): Divergence {
+	const values: { field: string; stored: number | undefined; recorded: number }[] = [];
+	for (const [field, value] of Object.entries(recorded.values)) {
+		const held = stored?.values?.[field];
+		if (held !== value) values.push({ field, stored: held, recorded: value });
+	}
+
+	return {
+		values,
+		differs: stored === undefined || JSON.stringify(stored) !== JSON.stringify(recorded),
+	};
+}

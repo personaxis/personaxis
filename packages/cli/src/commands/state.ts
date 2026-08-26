@@ -29,7 +29,7 @@ import {
   writeState,
   withStateLock,
   extractEnvelopes,
-  rebuildState,
+  projectPersona,
   resolveField,
   record,
   governMutations,
@@ -241,22 +241,34 @@ const showSubcommand = new Command("show")
 // ─── state rebuild ───────────────────────────────────────────────────────────
 
 const rebuildSubcommand = new Command("rebuild")
-  .description("Rebuild state.values from the mutation_log (the source of truth) + envelope means. Detects drift; --write repairs.")
+  .description(
+    "Check that state.json still says what the record says, and reprint it with --write.",
+  )
   .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
-  .option("--write", "Write the rebuilt values back to state.json (default: dry-run, report only)")
-  .option("--json", "Output the rebuild result as JSON")
+  .option("--write", "Reprint state.json from the record (default: dry-run, report only)")
+  .option("--json", "Output the result as JSON")
   .action((options: { file?: string; write?: boolean; json?: boolean }) => {
     try {
       const { personaPath, statePath } = resolvePersonaAndState(options.file);
       const handle = loadPersona(personaPath);
-      const envelopes = extractEnvelopes(handle.frontmatter).envelopes;
 
-      // Take the lock so a concurrent writer can't race the read→rebuild→write.
+      // What this asks changed with what the state file is. It used to replay the
+      // `mutation_log` inside state.json over the envelope means and compare the
+      // result with the `values` in the same file: one document checked against
+      // itself, which catches a hand-edited value and nothing else. The record is the
+      // history now, so the question is whether the file still says what the record
+      // says, and that covers the whole document rather than one field of it.
       const result = withStateLock(statePath, () => {
-        const state = readState(statePath);
-        const { state: rebuilt, drift } = rebuildState(state, envelopes);
-        if (options.write && drift.length > 0) writeState(statePath, rebuilt);
-        return { drift, wrote: Boolean(options.write) && drift.length > 0, values: rebuilt.values, entries: state.mutation_log.length };
+        const entries = record.readRecord(record.recordPathFor(personaPath));
+        if (entries.length === 0) {
+          return { entries: 0, drift: [], wrote: false, stale: false };
+        }
+        const stored = existsSync(statePath) ? readState(statePath) : undefined;
+        const should = projectPersona(handle, entries, stored);
+        const { values: drift, differs } = record.divergence(should, stored);
+
+        if (options.write && differs) writeState(statePath, should);
+        return { entries: entries.length, drift, wrote: Boolean(options.write) && differs, stale: differs };
       });
 
       if (options.json) {
@@ -264,20 +276,27 @@ const rebuildSubcommand = new Command("rebuild")
         return;
       }
 
-      console.log(chalk.dim(`Replayed ${result.entries} mutation(s) over ${Object.keys(envelopes).length} envelope(s).`));
-      if (result.drift.length === 0) {
-        console.log(chalk.green("✓"), "state.values matches the mutation_log, no drift.");
+      if (result.entries === 0) {
+        console.log(chalk.dim("No record beside this persona yet, so there is nothing to check it against."));
         return;
       }
-      console.log(chalk.yellow(`! ${result.drift.length} field(s) drifted from the log:`));
-      for (const d of result.drift) {
-        const rebuilt = Number.isNaN(d.rebuilt) ? chalk.red("(not in log/envelopes)") : d.rebuilt;
-        console.log(`  ${chalk.cyan(d.field)}: stored ${d.stored ?? "(unset)"} → rebuilt ${rebuilt}`);
+      console.log(chalk.dim(`Folded ${result.entries} entr${result.entries === 1 ? "y" : "ies"} from the record.`));
+      if (!result.stale) {
+        console.log(chalk.green("✓"), "state.json says exactly what the record says.");
+        return;
+      }
+      if (result.drift.length > 0) {
+        console.log(chalk.yellow(`! ${result.drift.length} value(s) differ from the record:`));
+        for (const d of result.drift) {
+          console.log(`  ${chalk.cyan(d.field)}: file ${d.stored ?? "(unset)"} → record ${d.recorded}`);
+        }
+      } else {
+        console.log(chalk.yellow("! state.json differs from the record outside its values."));
       }
       if (result.wrote) {
-        console.log(chalk.green("✓"), "state.json repaired from the mutation_log.");
+        console.log(chalk.green("✓"), "state.json reprinted from the record.");
       } else {
-        console.log(chalk.dim("  dry-run, re-run with --write to repair state.json from the log."));
+        console.log(chalk.dim("  dry-run, re-run with --write to reprint it."));
       }
     } catch (err) {
       console.error(chalk.red("Error:"), (err as Error).message);
