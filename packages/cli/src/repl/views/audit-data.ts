@@ -15,6 +15,7 @@
 
 import chalk from "chalk";
 import {
+  record,
   readState,
   verifyMemoryChain,
   readMemory,
@@ -22,9 +23,8 @@ import {
   readEvaluations,
   rebuildStateValues,
   extractEnvelopes,
-  writeState,
 } from "@personaxis/core";
-import { rewindState } from "../../rewind.js";
+import { rewind } from "../../rewind.js";
 import { lineChart } from "@personaxis/tui/visual";
 import type { Ctx } from "../types.js";
 import type { TabLine, TabAction } from "./tabbed.js";
@@ -99,10 +99,15 @@ export function timelineLines(ctx: Ctx): TabLine[] {
         if (!ctx.ask) return { kind: "toast", text: "outside a terminal, use: personaxis state rewind <n>" };
         const n = Math.max(0, Number((await ctx.ask("  undo how many mutations? ")).trim()) || 0);
         if (!n) return { kind: "toast", text: "cancelled" };
-        const state = readState(ctx.handle.statePath);
         const env = extractEnvelopes(ctx.handle.frontmatter);
-        const { changed, steps } = rewindState(state, env.envelopes, n);
-        writeState(ctx.handle.statePath, state);
+        const { changed, steps } = await rewind(
+          ctx.handle.personaPath,
+          ctx.handle.statePath,
+          readState(ctx.handle.statePath),
+          env.envelopes,
+          n,
+          record.authorOf("human-operator"),
+        );
         return {
           kind: "toast",
           text: changed.length

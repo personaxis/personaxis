@@ -14,7 +14,7 @@ import { stdin, stdout } from "node:process";
 import { join, relative, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import chalk from "chalk";
-import { readState, writeState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
+import { record, readState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
@@ -50,7 +50,7 @@ import { listSkills, addSkill, pullSkill, updateSkill, removeSkill } from "./vie
 import { qualitativeDriftLines } from "./views/drift-data.js";
 import { AUDIT_TABS, auditLines } from "./views/audit-data.js";
 import { registerHistoryView } from "./views/history.js";
-import { rewindState } from "../rewind.js";
+import { rewind, rewindPlan } from "../rewind.js";
 import { resolveDeclaredSkills } from "../targets/skills.js";
 import { loadPersonaFile, slugAddressFromPath } from "../load.js";
 
@@ -446,17 +446,25 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
         reason: (m as { reason?: string }).reason,
       })),
     preview: (n) => {
-      const state = structuredClone(readState(ctx.handle.statePath));
+      // The plan and nothing else. Showing somebody what would happen used to run the
+      // same code that did it, against a clone, which is a simulation only for as
+      // long as nobody forgets the clone.
       const env = extractEnvelopes(ctx.handle.frontmatter);
-      const before = { ...state.values };
-      const { changed } = rewindState(state, env.envelopes, n);
-      return changed.map((f) => ({ field: f, from: before[f] ?? 0, to: state.values[f] ?? 0 }));
+      const { moves } = rewindPlan(readState(ctx.handle.statePath), env.envelopes, n);
+      return moves.map((m) => ({ field: m.field, from: m.from, to: m.to }));
     },
-    rewind: (n) => {
-      const state = readState(ctx.handle.statePath);
+    rewind: async (n) => {
       const env = extractEnvelopes(ctx.handle.frontmatter);
-      const { changed, steps } = rewindState(state, env.envelopes, n);
-      writeState(ctx.handle.statePath, state);
+      const { changed, steps } = await rewind(
+        ctx.handle.personaPath,
+        ctx.handle.statePath,
+        readState(ctx.handle.statePath),
+        env.envelopes,
+        n,
+        // The operator, unnamed. The REPL knows a person typed this and does not know
+        // which person, and inventing one would put a name on entries nobody signed.
+        record.authorOf("human-operator"),
+      );
       return changed.length
         ? chalk.dim(`  rewound ${steps} mutation(s) · restored ${changed.length} field(s): ${changed.join(", ")} (recorded, chain intact)`)
         : chalk.dim(`  rewind ${steps}: state already at that point.`);
