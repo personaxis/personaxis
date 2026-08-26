@@ -48,8 +48,9 @@ export interface HomeostaticMove {
  * Pure: values in, moves out, no state file and nothing written. Split out for the
  * same reason `decide` was split from `mutate`, and the split is what lets the record
  * write these entries with an author and provenance instead of the old log's five-word
- * actor. `applyHomeostasis` keeps its shape on top of this while the old engine is
- * still there.
+ * actor. It is the whole of the homeostatic step now: the engine that used to wrap it
+ * is gone, and the caller hands these moves to `record.adjustAll` with the admitted
+ * deltas so a tick lands as one transaction.
  *
  * Deviations below `epsilon` are skipped, so a coordinate that has effectively
  * returned home stops generating microscopic entries forever.

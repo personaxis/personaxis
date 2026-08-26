@@ -5,9 +5,10 @@
  * is not here did not happen, and a fact that is here cannot be unhappened, because
  * each entry commits to the one before it.
  *
- * Runs beside `state-engine.ts`, which still holds the stored copy. The old copy is
- * not retired until deriving has been proved equal to it on real personas, which is
- * what `bridge.ts` is for.
+ * It is the source now. The engine that held a second copy in `state.json` is gone,
+ * and the file is printed from these entries by `project.ts`. `bridge.ts` is what got
+ * a persona written before this existed into the record, and it still runs on the
+ * first write to one, because a persona is not new just because the record is.
  *
  * ## What to read first
  *

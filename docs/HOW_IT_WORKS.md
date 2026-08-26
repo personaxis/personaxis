@@ -37,7 +37,8 @@ A persona is described by three files (spec `personaxis.md` v1.1):
 |---|---|---|
 | `.personaxis/personaxis.md` | **Quantitative** identity: 10 layers, *envelopes* `{mean, range}`, invariants | Immutable (except through a governed flow) |
 | `PERSONA.md` / `.claude/agents/<slug>.md` | **Qualitative** compiled identity (prose), the system prompt's slot #1 | Generated (`compile`); hand-editable (`decompile`) |
-| `state.json` | **Mutable** runtime state: current values + `mutation_log` | Mutates via the `adjust_persona_state` tool, clamped to the envelopes |
+| `record.jsonl` | **The state.** Hash-chained, append-only: every value that moved, every turn, who wrote each entry | Append-only. Nothing here can be edited or unhappened |
+| `state.json` | A **view** of the record: current values + `mutation_log`, printed from it | Not written by hand. `personaxis state rebuild` compares it against the record |
 
 The 10 layers: identity, character, personality, values_and_drives, affect, cognition, memory,
 metacognition, self_regulation, persona. Each mutable field (traits, affect, mood) declares an
@@ -55,7 +56,7 @@ observe   → capture a signal (user input, tool output, reflection)  [with prov
 appraise  → the model proposes ONLY structured signals (JSON-schema), not raw mutations
    ↓
 evolve    → the spec's code applies the CLAMPED delta to the envelope + governance gate
-   ↓        + an immutable mutation_log entry
+   ↓        + an entry in the record, signed by whoever made the move
 recompile → ONLY if a coordinate CROSSED a behavior band (the normative event, spec §15):
    ↓        within-band movement = expression variance, no recompile; the crossing
    ↓        rewrites the compiled doc (live-sync) + .live.json marker + `drift` event
@@ -199,7 +200,7 @@ static fallback. Two different personas → visibly different sigil, palette, gl
 ```
 personaxis/                      ← one repo
 └── packages/
-    ├── core/  @personaxis/core        → engine: envelopes, state-engine, governance, memory,
+    ├── core/  @personaxis/core        → engine: envelopes, record, governance, memory,
     │                                     Living Loop, appraisers, sigil, blackboard, sync,
     │                                     live-sync, skills, injection, sandbox, registry
     ├── cli/   personaxis  → REPL + commands (over core)
