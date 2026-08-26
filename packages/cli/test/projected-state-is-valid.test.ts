@@ -97,6 +97,64 @@ describe("the file the record prints", () => {
 		);
 	});
 
+	it("stays valid once the record holds turns, and dates the session properly", () => {
+		// `agent_session` was the last block a second writer owned: the agent wrote it
+		// into `state.json` while this printed its own from the record. Now only this
+		// prints it, which puts a field the schema constrains under a printer nobody was
+		// checking. `started_at` is declared `format: date-time`, and the record's answer
+		// for it is an entry's own moment.
+		const journal = new record.Journal({});
+		journal.append({ kind: "human", id: "david" }, {
+			type: "turn-open",
+			turn: "t1",
+			prompt: "rewrite the ledger",
+		});
+
+		const open = record.derive(journal.all());
+		if (!open.ok) throw new Error("the turn does not verify");
+		const midTurn = record.project(open.state, journal.all(), {
+			schemaVersion: "1.0.0",
+			personaId: "p",
+			personaVersion: "1.0.0",
+		});
+
+		// The question, not the turn id. `resumeContext` prints this as "Last task: …",
+		// so a uuid here tells the model nothing.
+		expect(midTurn.agent_session?.active_task).toBe("rewrite the ledger");
+		expect(midTurn.agent_session?.started_at).toBe(journal.all()[0]!.at);
+		const okOpen = validateState(midTurn);
+		expect(complaints(validateState)).toEqual([]);
+		expect(okOpen).toBe(true);
+
+		journal.append({ kind: "runtime", mechanism: "turn", reason: "it ended" }, {
+			type: "turn-close",
+			turn: "t1",
+			outcome: "answered",
+			synthetic: false,
+			spent: { steps: 2, tokens: 138, usd: 0.0004 },
+		});
+
+		const closed = record.derive(journal.all());
+		if (!closed.ok) throw new Error("the close does not verify");
+		const after = record.project(closed.state, journal.all(), {
+			schemaVersion: "1.0.0",
+			personaId: "p",
+			personaVersion: "1.0.0",
+		});
+
+		const okClosed = validateState(after);
+		expect(complaints(validateState)).toEqual([]);
+		expect(okClosed).toBe(true);
+		expect(after.agent_session).toEqual({
+			active_task: null,
+			started_at: null,
+			step_count: 2,
+			token_count: 138,
+			cost_usd: 0.0004,
+			stop_reason: "answered",
+		});
+	});
+
 	it("stays valid when the record holds a coordinate that never moved", () => {
 		// A genesis entry is a value entry with no change, and printing one into the
 		// log would put a mutation on every persona's first day. It is skipped, and

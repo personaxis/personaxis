@@ -159,6 +159,72 @@ describe("a turn written to a real record", () => {
 	});
 });
 
+describe("the session block the file prints", () => {
+	it("comes from the record, and says what the loop used to write itself", async () => {
+		// Two writers for one block, disagreeing in two fields and settling on whichever
+		// ran last. Measured on a real turn: the loop wrote `stop_reason: "goal_met"` and
+		// the projection said `answered`, and the file flip-flopped between them as the
+		// turn and the next coordinate move landed.
+		withHistory(0);
+		await observed().run(ASKED);
+
+		const { state } = await adjust(personaPath, statePath, ENVELOPES, authorOf("actor-llm"), {
+			field: "mood.tone",
+			delta: 0.1,
+			reason: "prints the file",
+		});
+
+		expect(state.agent_session).toEqual({
+			// Nothing to resume: the turn answered.
+			active_task: null,
+			started_at: null,
+			step_count: 2,
+			token_count: 0,
+			cost_usd: 0,
+			stop_reason: "answered",
+		});
+	});
+
+	it("points a resumed run at the question, not at a turn id", async () => {
+		// The loop wrote the task TEXT here, and the projection wrote the open turn's
+		// uuid. `resumeContext` prints it as "Last task: ...", so a uuid told the model
+		// nothing at all. Same field, same meaning, one writer.
+		withHistory(0);
+		const runner = new TurnRunner({
+			provider: {
+				name: "broken",
+				run: async () => {
+					throw new Error("the model hung up");
+				},
+			},
+			observer: recordingTurns({ personaPath, statePath, onProblem: (e) => problems.push(e) }),
+		});
+
+		await runner.run({ turn: "t1", prompt: "rewrite the ledger", asker: { kind: "human", id: "d" } });
+		const { state } = await adjust(personaPath, statePath, ENVELOPES, authorOf("actor-llm"), {
+			field: "mood.tone",
+			delta: 0.1,
+			reason: "prints the file",
+		});
+
+		expect(state.agent_session?.active_task).toBe("rewrite the ledger");
+		expect(state.agent_session?.stop_reason).toBe("failed");
+	});
+
+	it("has nothing to say about a persona that has taken no turns", async () => {
+		// An empty block reads as "a session happened and did nothing".
+		withHistory(1);
+
+		const { state } = await adjust(personaPath, statePath, ENVELOPES, authorOf("actor-llm"), {
+			field: "mood.tone",
+			delta: 0.1,
+			reason: "no turns yet",
+		});
+
+		expect(state.agent_session).toBeUndefined();
+	});
+});
+
 describe("when the record will not take the turn", () => {
 	it("says so and does not take the answer away from the person", async () => {
 		// The person is already reading their reply. Throwing here loses it, and there

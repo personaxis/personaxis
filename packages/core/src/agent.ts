@@ -63,8 +63,7 @@ function snipDetail(s: string, n = 64): string {
 import { factsView, renderFacts } from "./memory/facts.js";
 import { recallWindow, memoryTools } from "./memory/retrieval.js";
 import { sessionBrief, isInfraErrorReply } from "./memory/consolidate.js";
-import { ensureState, loadPersona, readState, writeState } from "./persona.js";
-import { withStateLock } from "./lock.js";
+import { ensureState, loadPersona } from "./persona.js";
 import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow } from "./context.js";
 import { LoopBreaker, toolSignature } from "./loop-breaker.js";
 import { ForensicLog, type ForensicRecord } from "./security/forensic-log.js";
@@ -298,17 +297,19 @@ export class PersonaAgent {
   }
 
   /**
-   * Persist the run into the EXISTING memory model (no separate STATE.md): the
-   * run summary becomes an episodic memory entry (honoring memory.types.episodic),
-   * which the semantic-consolidation step folds into memory.md; and state.json's
-   * agent_session records the active task + stop reason for resumption.
+   * Persist the run into the EXISTING memory model (no separate STATE.md): the run
+   * summary becomes an episodic memory entry (honoring memory.types.episodic), which
+   * the semantic-consolidation step folds into memory.md.
+   *
+   * It no longer writes `state.json`'s `agent_session`, and the stop reason it took in
+   * order to do that is gone with it. That block is printed from the record now, folded
+   * over the turns themselves; writing it here as well made two owners of one fact.
+   * Measured on a real turn: this wrote `stop_reason: "goal_met"` while the projection
+   * said `answered`, and the file flip-flopped between them as the turn and the next
+   * coordinate move landed. The record holds the turn, its question, its ending and its
+   * price, so the record is what says.
    */
-  private spentTokens = 0;
-  private spentCost = 0;
-
-  private persist(task: string, outcome: AgentOutcome, summary: string, step: number, stopReason: string | null): void {
-    const tokens = this.spentTokens;
-    const costUsd = this.spentCost;
+  private persist(task: string, outcome: AgentOutcome, summary: string, step: number): void {
     const p = this.opts.personaPath;
     if (!p) return;
     try {
@@ -335,20 +336,6 @@ export class PersonaAgent {
           tags: [`steps:${step}`],
         });
       }
-      // Structured resumption pointer in state.json (not prose). Locked: a
-      // concurrent tick/adjust must not lose this read→modify→write (F1.4).
-      withStateLock(handle.statePath, () => {
-        const st = ensureState(handle);
-        st.agent_session = {
-          active_task: outcome === "success" ? null : task,
-          started_at: st.agent_session?.started_at ?? new Date().toISOString(),
-          step_count: step,
-          token_count: tokens,
-          cost_usd: Number(costUsd.toFixed(4)),
-          stop_reason: stopReason,
-        };
-        writeState(handle.statePath, st);
-      });
     } catch {
       /* best-effort: persistence must never crash a run */
     }
@@ -589,7 +576,7 @@ export class PersonaAgent {
           bus.emit({ type: "agent-stop-condition", reason: check.stopReason ?? "budget", step: step - 1 });
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
-          this.persist(task, "stopped", summary, step - 1, check.stopReason);
+          this.persist(task, "stopped", summary, step - 1);
           return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification };
         }
 
@@ -603,7 +590,7 @@ export class PersonaAgent {
           bus.emit({ type: "agent-stop-condition", reason: "watchdog", step: step - 1 });
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
-          this.persist(task, "stopped", summary, step - 1, "watchdog");
+          this.persist(task, "stopped", summary, step - 1);
           return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification };
         }
 
@@ -622,8 +609,6 @@ export class PersonaAgent {
         const res = await requestToolCall(this.opts.llm, messages, activeTools, this.preferFallback);
         if (res.usedFallback) this.preferFallback = true;
         tokens += res.usage?.total_tokens ?? 0;
-        this.spentTokens = tokens;
-        this.spentCost = estimateCostUsd(this.opts.llm.model, tokens);
         meter.observe(res.usage);
         if (!res.usage) meter.estimate(messages);
         bus.emit({ type: "context-meter", used: meter.used, limit: meter.limit, pct: Number(meter.pct.toFixed(3)) });
@@ -641,13 +626,13 @@ export class PersonaAgent {
           const decision = await verifyCompletion(res.text || "(no action)");
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
-            this.persist(task, "success", res.text || "", step, "goal_met");
+            this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
             return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
-            this.persist(task, "verification_failed", "verification failed", step, "verification_failed");
+            this.persist(task, "verification_failed", "verification failed", step);
             return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
           }
           continue; // retry
@@ -797,7 +782,7 @@ export class PersonaAgent {
             bus.emit({ type: "agent-stop-condition", reason: "loop_breaker", step });
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
-            this.persist(task, "stopped", summary, step, "loop_breaker");
+            this.persist(task, "stopped", summary, step);
             return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification };
           }
         }
@@ -806,13 +791,13 @@ export class PersonaAgent {
           const decision = await verifyCompletion(finishedThisStep.summary);
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
-            this.persist(task, "success", finishedThisStep.summary, step, "goal_met");
+            this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
             return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
-            this.persist(task, "verification_failed", "verification failed", step, "verification_failed");
+            this.persist(task, "verification_failed", "verification failed", step);
             return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
           }
           // retry: loop continues; the failure note is already in messages.
@@ -820,11 +805,11 @@ export class PersonaAgent {
       }
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
-      this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL, "hard_ceiling");
+      this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
       return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
-      this.persist(task, "error", `agent error: ${(err as Error).message}`, 0, "error");
+      this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
       return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.

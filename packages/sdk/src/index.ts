@@ -59,6 +59,7 @@ import {
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
+import { randomUUID } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -217,6 +218,18 @@ export class Persona {
   /**
    * Run the governed Agent Loop on a task. Non-interactive: any tool whose verdict is `ask` is
    * denied unless the persona's permissions allow-list pre-authorizes it. Requires a configured model.
+   *
+   * The turn goes through a `TurnRunner`, so it is written into the persona's record:
+   * what was asked, what came back, how it ended and what it cost. A persona driven
+   * through this SDK used to leave no trace in its own record, so it could not say
+   * afterwards what it had been asked to do, and its resumption pointer came from a
+   * block the agent wrote straight into `state.json` beside the record's own.
+   *
+   * The provider is spelled out here rather than taken from `defaultLoop` for one
+   * reason: this method still returns the whole `AgentResult`, so it has to keep what
+   * the loop produced as well as the outcome the seam reports. Narrowing the return to
+   * `TurnOutcome` is a breaking change to a published API and is its own piece of work;
+   * this closes the record gap without waiting for it.
    */
   async agentRun(task: string, opts: { maxSteps?: number; onApproval?: () => Promise<"deny" | "approve"> } = {}): Promise<AgentRunResult | { error: string }> {
     const fm = this.fm();
@@ -247,10 +260,36 @@ export class Persona {
     });
     const obs = readObservability(fm);
     const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
-    const result = await agent.run(task);
+
+    let produced: Awaited<ReturnType<PersonaAgent["run"]>> | undefined;
+    const runner = new run.TurnRunner({
+      provider: {
+        name: "personaxis",
+        run: async (context) => {
+          produced = await agent.run(context.request.prompt);
+          return run.productOf(produced);
+        },
+      },
+      observer: run.recordingTurns({ personaPath: this.personaPath, statePath: this.handle.statePath }),
+    });
+    // Attributed to the persona, because nobody typed this. An SDK call is the persona
+    // being driven, and crediting an unnamed operator would put a person's hand on a
+    // turn no person took.
+    const outcome = await runner.run({
+      turn: randomUUID(),
+      prompt: task,
+      asker: { kind: "persona", id: record.SELF },
+    });
+
     const trace = tracer ? tracer.write(this.personaPath).paths : [];
     tracer?.stop();
-    return { result, events, trace };
+    // The loop returns a result on every path it takes itself, so a missing one means
+    // it threw and the runner closed the turn instead. Reported rather than asserted
+    // away: `result!` would hand a caller `undefined` under a type that promises a run.
+    if (!produced) {
+      return { error: outcome.failure?.message ?? "the agent loop produced no result" };
+    }
+    return { result: produced, events, trace };
   }
 
   /** Integrity view: mutation count, memory size, hash-chain validity, detected anomalies. */

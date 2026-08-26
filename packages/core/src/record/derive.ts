@@ -32,8 +32,15 @@ export interface DerivedState {
 	readonly values: Readonly<Record<string, number>>;
 	/** Which components are up, and the epoch each resolved to. */
 	readonly components: Readonly<Record<string, { state: string; epoch?: string }>>;
-	/** The turn currently open, if one is. */
-	readonly openTurn?: string;
+	/**
+	 * The turn currently open, if one is, with what was asked and when.
+	 *
+	 * The prompt and the moment are here rather than only in the entries because the
+	 * projection has to answer "what is this persona in the middle of", and an id
+	 * answers it with a UUID. Bounded: one turn is open at a time, so this is one
+	 * string however long the history gets.
+	 */
+	readonly openTurn?: { readonly id: string; readonly prompt: string; readonly at: string };
 	/**
 	 * How many turns have closed, and how the last one did.
 	 *
@@ -48,8 +55,15 @@ export interface DerivedState {
 	 * last element, and nothing else in the codebase touched it.
 	 */
 	readonly turnCount: number;
-	/** How the last turn that closed did, absent when none has. */
-	readonly lastTurn?: { id: string; outcome: string; synthetic: boolean };
+	/**
+	 * How the last turn that closed did, absent when none has.
+	 *
+	 * It carries the prompt for the same reason the open one does: a turn that ended
+	 * badly is the thing a resumed run is told not to restart, and telling it a UUID
+	 * tells it nothing. Empty when the close had no opening to take it from, which is a
+	 * record that lost its own opening rather than a turn with no question.
+	 */
+	readonly lastTurn?: { id: string; prompt: string; outcome: string; synthetic: boolean };
 	/**
 	 * How many calls the gate has refused, and the last one.
 	 *
@@ -192,7 +206,7 @@ function fold(start: DerivedState, entries: readonly RecordEntry[]): DerivedStat
 	let lastTurn = start.lastTurn;
 	let denialCount = start.denialCount;
 	let lastDenial = start.lastDenial;
-	let openTurn: string | undefined = start.openTurn;
+	let openTurn: DerivedState["openTurn"] = start.openTurn;
 	let surface: { turn: string; tools: readonly string[]; reason: string } | undefined = start.surface;
 	let context: DerivedState["context"] = start.context;
 	let compiled: DerivedState["compiled"] = start.compiled;
@@ -212,12 +226,20 @@ function fold(start: DerivedState, entries: readonly RecordEntry[]): DerivedStat
 					body.epoch === undefined ? { state: body.to } : { state: body.to, epoch: body.epoch };
 				break;
 			case "turn-open":
-				openTurn = body.turn;
+				openTurn = { id: body.turn, prompt: body.prompt, at: entry.at };
 				break;
 			case "turn-close":
 				turnCount += 1;
-				lastTurn = { id: body.turn, outcome: body.outcome, synthetic: body.synthetic };
-				if (openTurn === body.turn) openTurn = undefined;
+				lastTurn = {
+					id: body.turn,
+					// Taken from the opening this close belongs to. A close for some other
+					// turn is a record whose opening is missing, and inventing a question
+					// for it would be worse than saying there is none.
+					prompt: openTurn?.id === body.turn ? openTurn.prompt : "",
+					outcome: body.outcome,
+					synthetic: body.synthetic,
+				};
+				if (openTurn?.id === body.turn) openTurn = undefined;
 				// Absent is not zero: a turn whose provider reported nothing adds
 				// nothing, and a turn that cost nothing already says so with zeros.
 				if (body.spent) {

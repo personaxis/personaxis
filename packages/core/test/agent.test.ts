@@ -191,9 +191,14 @@ describe("PersonaAgent (governed task execution)", () => {
     expect(existsSync(join(dir, "memory", "agent-state.jsonl"))).toBe(false);
     const mem = readMemory(personaPath);
     expect(mem.some((m) => m.tags.includes("agent-run") && m.content.includes("build a landing page"))).toBe(true);
-    // agent_session in state.json tracks the run.
+    // The loop no longer writes `agent_session` itself, and this test used to pin
+    // that it did. The block is printed from the record, folded over the turns, and
+    // this agent was driven without a runner so no turn was ever recorded: there is
+    // nothing to fold and nothing to print. Two writers for one block is what it was:
+    // this one wrote `stop_reason: "goal_met"` while the projection said `answered`,
+    // and the file flip-flopped between them.
     const st = ensureState(loadPersona(personaPath));
-    expect(st.agent_session?.step_count).toBeGreaterThanOrEqual(1);
+    expect(st.agent_session).toBeUndefined();
   });
 });
 
