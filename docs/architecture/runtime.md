@@ -129,11 +129,14 @@ tick. What survives is the audited numeric change (`mutation_log`) and the disti
 
 - **Tick** (`observe`): one appraisal cycle over one observation (§3). Updates state and memory.
   No conversation is stored.
-- **Agent loop** (`agentRun` / `POST /persona/agent`, `packages/sdk/src/index.ts:172`,
+- **Agent loop** (`agentRun` / `POST /persona/agent`, `packages/sdk/src/index.ts`,
   `packages/core/src/agent.ts`): a multi-step, tool-using loop bounded by `maxSteps` and the
   persona's `agent_budget`, with every tool call **sandbox-gated** by the permission policy
-  ([sandbox.md](./sandbox.md)) and an optional verification judge. It writes an observability
-  **trace**, not the living-loop state, unless you also call `observe`.
+  ([sandbox.md](./sandbox.md)) and an optional verification judge. It runs behind the turn
+  seam, so the turn itself lands in the persona's **record**: what was asked, what came back,
+  how it ended and what it cost. It writes an observability **trace** too. What it does not
+  do is move the persona's coordinates: that is the living loop, and it happens when you also
+  call `observe`.
 - **Session**: persistent conversation history for the **REPL** (`/sessions`, `/resume`,
   `/compact`; `packages/core/src/sessions.ts`, `session-writer.ts`). The hook/observe path does
   **not** create a session. Details in [sessions.md](./sessions.md).
