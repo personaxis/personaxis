@@ -86,7 +86,19 @@ export interface DerivedState {
 	 * A total kept beside the entries is a number that can disagree with them. This
 	 * one cannot: it is the entries.
 	 */
-	readonly spent: { readonly steps: number; readonly tokens: number; readonly usd: number };
+	readonly spent: {
+		readonly steps: number;
+		readonly tokens: number;
+		readonly usd: number;
+		/**
+		 * How many of the closed turns came with a price.
+		 *
+		 * Without it the totals cannot be read honestly: zero dollars over ten turns
+		 * means one thing when all ten were priced and another when none were, and the
+		 * sum looks identical either way.
+		 */
+		readonly priced: number;
+	};
 	/** How many entries this state is a fold over. */
 	readonly through: number;
 }
@@ -103,7 +115,7 @@ const EMPTY: DerivedState = {
 	denialCount: 0,
 	// Zeros and not absent: a persona that has run nothing has spent nothing, and
 	// that is a fact rather than a gap.
-	spent: { steps: 0, tokens: 0, usd: 0 },
+	spent: { steps: 0, tokens: 0, usd: 0, priced: 0 },
 	through: 0,
 };
 
@@ -210,8 +222,13 @@ function fold(start: DerivedState, entries: readonly RecordEntry[]): DerivedStat
 				// nothing, and a turn that cost nothing already says so with zeros.
 				if (body.spent) {
 					spent.steps += body.spent.steps;
-					spent.tokens += body.spent.tokens;
-					spent.usd += body.spent.usd;
+					// A turn nobody priced adds nothing to the money, and it still adds
+					// its steps. Treating an absent price as zero would be the same
+					// arithmetic and a different claim: that somebody looked and found
+					// it free.
+					spent.tokens += body.spent.tokens ?? 0;
+					spent.usd += body.spent.usd ?? 0;
+					if (body.spent.tokens !== undefined) spent.priced += 1;
 				}
 				break;
 			case "context":

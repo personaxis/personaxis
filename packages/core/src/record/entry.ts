@@ -155,10 +155,18 @@ export type RecordBody =
 			 * total. A fold over closed turns IS the total, and it survives a restart
 			 * without anybody persisting a running sum.
 			 *
-			 * Absent on a turn whose provider reported nothing, which is different
-			 * from zero and must stay different: zero is a turn that cost nothing.
+			 * Steps are always known, because the runtime counts them itself. Tokens and
+			 * money are only known when a provider says, and a scripted one never does.
+			 * Grouping all three made those two facts look like one, so a turn that took
+			 * four steps through a provider that reports no cost had to choose between
+			 * claiming it cost nothing and losing the steps.
+			 *
+			 * Absent tokens are different from zero tokens and must stay different: zero
+			 * is a turn that cost nothing, absent is a turn nobody priced. Widening the
+			 * two inner fields rather than adding a kind keeps every entry written
+			 * before this valid and meaning exactly what it meant.
 			 */
-			readonly spent?: { readonly steps: number; readonly tokens: number; readonly usd: number };
+			readonly spent?: { readonly steps: number; readonly tokens?: number; readonly usd?: number };
 	  }
 	/**
 	 * The situation this persona is working in.

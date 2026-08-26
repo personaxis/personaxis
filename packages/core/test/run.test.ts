@@ -104,9 +104,14 @@ describe("every turn closes, on every path", () => {
 		expect(observer.closed).toHaveBeenCalledTimes(1);
 	});
 
-	it("does not open a turn it refused before it began", async () => {
-		// A turn that was never allowed to begin is not a turn that ended, so nothing is
-		// written as having started.
+	it("opens a turn it then refuses, so the refusal is not an ending with no beginning", async () => {
+		// This used to assert the opposite, on the reasoning that a turn never allowed to
+		// begin is not a turn that ended. The line after it asserted that the close still
+		// fired, so the record got an ending for something that, as far as it said, never
+		// started. Either both or neither, and neither is wrong for the same reason a
+		// blocked mutation is written down rather than skipped: the refusal is the fact
+		// worth keeping. Somebody asked and was told no, and a record that keeps only the
+		// no cannot say what was refused.
 		const { observer } = collect();
 		const runner = new TurnRunner({
 			provider: provider(async () => ({ answer: "x", steps: 1 })),
@@ -117,7 +122,7 @@ describe("every turn closes, on every path", () => {
 		const outcome = await runner.run(asked);
 
 		expect(outcome.stopReason).toBe("budget");
-		expect(observer.opened).not.toHaveBeenCalled();
+		expect(observer.opened).toHaveBeenCalledTimes(1);
 		expect(observer.closed).toHaveBeenCalledTimes(1);
 	});
 
