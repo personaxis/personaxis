@@ -35,11 +35,6 @@
  */
 
 import type { MutationLogEntry, StateFile } from "../persona.js";
-// The record stores the runtime's stop reasons verbatim, so it reads the runtime's own
-// word for which of them left something to resume. A second predicate here would be a
-// second answer to one question, and it would drift the first time a reason was added.
-// `vocabulary` imports nothing, so this direction costs no cycle.
-import { answered, type StopReason } from "../run/vocabulary.js";
 import { requireActor } from "./actor.js";
 import type { DerivedState } from "./derive.js";
 import { isGenesis, type RecordEntry } from "./entry.js";
@@ -157,11 +152,14 @@ export function project(
 	const ran = state.turnCount > 0 || state.openTurn !== undefined;
 	if (ran) {
 		const last = state.lastTurn;
-		// Cast because an entry holds whatever word was written into it, including one
-		// from a build that knew a reason this one does not. `answered` returns false for
-		// anything it does not recognise, which errs toward "there is something to
-		// resume": a stale pointer is a smaller lie than a lost one.
-		const unfinished = last !== undefined && !answered(last.outcome as StopReason) ? last.prompt : null;
+		// `answered` and nothing else. This asked `answered(outcome)` first, which is the
+		// question "did somebody get a reply" and includes a turn that ran out of room:
+		// a half-finished task would have reported nothing to resume. An entry also holds
+		// whatever word was written into it, including one from a build that knew a
+		// reason this one does not, and comparing against the one word that means
+		// finished errs toward "there is something to resume". A stale pointer is a
+		// smaller lie than a lost one.
+		const unfinished = last !== undefined && last.outcome !== "answered" ? last.prompt : null;
 		file.agent_session = {
 			active_task: state.openTurn?.prompt ?? unfinished,
 			started_at: state.openTurn?.at ?? null,

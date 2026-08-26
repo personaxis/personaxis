@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
 	Ledger,
 	TurnRunner,
+	answered,
 	productOf,
 	type LoopProvider,
 	type TurnRequest,
@@ -203,29 +204,50 @@ describe("the loop we already have goes through the same seam", () => {
 		expect(ranOut.cost).toEqual({ tokens: 900, usd: 0.04 });
 	});
 
-	it("calls a budget stop that produced text an answer, not a failure", () => {
-		// A usable reply pushed behind an error is a usable reply somebody has to
-		// dismiss. The reference reaches the same place by spending one more tool-free
-		// call to summarise on exhaustion.
-		expect(
-			productOf({
-				summary: "here is what I found so far",
-				steps: 9,
-				finished: false,
-				budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
-			}).stopReason,
-		).toBe("answered");
+	it("hands back what a budget stop had, and does not call the loop finished", () => {
+		// This asserted `answered`, which is how "the loop said it was done" and "the
+		// loop ran out of steps" came to be the same word. A usable reply is still
+		// delivered, which is what the reasoning behind the old assertion was actually
+		// about and what `answered(reason)` still says; the reference reaches the same
+		// place by spending one more tool-free call to summarise on exhaustion.
+		const product = productOf({
+			summary: "here is what I found so far",
+			steps: 9,
+			finished: false,
+			budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
+		});
+
+		expect(product.stopReason).toBe("budget");
+		expect(product.answer).toBe("here is what I found so far");
+		expect(answered("budget")).toBe(true);
 	});
 
-	it("calls a budget stop that produced nothing empty", () => {
-		expect(
-			productOf({
-				summary: "",
-				steps: 9,
-				finished: false,
-				budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
-			}).stopReason,
-		).toBe("empty");
+	it("says a budget stop ran out of room even when it produced nothing", () => {
+		// This asserted `empty`, which reports "the model produced nothing usable" for a
+		// turn that never got the chance. The reason and the answer are separate facts.
+		const product = productOf({
+			summary: "",
+			steps: 9,
+			finished: false,
+			budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
+		});
+
+		expect(product.stopReason).toBe("budget");
+		expect(product.answer).toBe("");
+	});
+
+	it("keeps a loop that said it was done as the only thing called answered", () => {
+		// The distinction the SDK was about to lose: `AgentResult.finished` is the field
+		// that says the task completed, and `answered` is now the only reason that means
+		// it. Nothing else in the closed set does.
+		const finished = productOf({
+			summary: "done",
+			steps: 2,
+			finished: true,
+			budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "goal_met" },
+		});
+
+		expect(finished.stopReason).toBe("answered");
 	});
 
 	it("calls a run the gate stopped refused", () => {
@@ -301,10 +323,20 @@ describe("the loop we already have goes through the same seam", () => {
 		}
 	});
 
-	it("treats a declared stop condition as the loop obeying, not as the loop breaking", () => {
-		// An operator who wrote `stop_conditions: [no_progress]` asked for this. Calling
-		// it a failure would report the spec working as the spec being wrong.
-		for (const stoppedBy of ["hard_ceiling", "execution_error", "low_confidence", "no_progress"]) {
+	it("tells a ceiling apart from a rule somebody declared", () => {
+		// An operator who wrote `stop_conditions: [no_progress]` asked for this, and
+		// reporting it as a budget tells them their ceiling ran out when their rule
+		// fired. Neither is a failure: the spec working is not the spec being wrong.
+		const cases = [
+			["hard_ceiling", "budget"],
+			["watchdog", "budget"],
+			["max_wall_seconds", "budget"],
+			["execution_error", "stopped"],
+			["low_confidence", "stopped"],
+			["no_progress", "stopped"],
+		] as const;
+
+		for (const [stoppedBy, reason] of cases) {
 			const product = productOf({
 				summary: "here is what I have",
 				steps: 5,
@@ -312,7 +344,11 @@ describe("the loop we already have goes through the same seam", () => {
 				budget: { steps: 5, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy },
 			});
 
-			expect({ stoppedBy, reason: product.stopReason }).toEqual({ stoppedBy, reason: "answered" });
+			expect({ stoppedBy, reason: product.stopReason }).toEqual({ stoppedBy, reason });
+			expect({ stoppedBy, delivered: answered(product.stopReason!) }).toEqual({
+				stoppedBy,
+				delivered: true,
+			});
 		}
 	});
 

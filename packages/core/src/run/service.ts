@@ -69,14 +69,24 @@ export interface TurnProduct {
 	/**
 	 * How it ended, when the provider knows better than the runner can guess.
 	 *
-	 * `budget` is not here, because the runner reads that off its own ledger and a
-	 * provider claiming it would be reporting on a count it cannot see. `failed` is,
-	 * and it was not: a provider that caught its own error had no way to say so, so a
-	 * loop that returned "the model hung up" as its text was closed as `answered` with
-	 * that sentence as the persona's reply. Throwing was the only route to `failed`,
-	 * which asks every provider to let its errors escape in order to be honest.
+	 * Three of these were missing and each absence became a lie the translator had to
+	 * tell.
+	 *
+	 * `failed`, because a provider that caught its own error had no way to say so: a
+	 * loop returning "the model hung up" as its text was closed `answered` with that
+	 * sentence as the persona's reply. Throwing was the only route to `failed`, which
+	 * asks every provider to let its errors escape in order to be honest.
+	 *
+	 * `budget` and `stopped`, because without them a loop that ran out of room came
+	 * back `answered`, which is the one word that should mean the loop said it was
+	 * done. The runner's own ledger refuses a turn at the door, before the provider is
+	 * ever called, so a provider reporting its own ceiling is not claiming anything
+	 * about a count it cannot see: it is reporting its own.
 	 */
-	readonly stopReason?: Extract<StopReason, "answered" | "empty" | "interrupted" | "refused" | "failed">;
+	readonly stopReason?: Extract<
+		StopReason,
+		"answered" | "budget" | "stopped" | "empty" | "interrupted" | "refused" | "failed"
+	>;
 	/**
 	 * Why it failed, when it did.
 	 *

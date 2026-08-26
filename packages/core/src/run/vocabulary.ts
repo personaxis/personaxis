@@ -24,12 +24,28 @@
  * exists to answer and everything else is in service of that.
  */
 
-/** Why a turn ended. Closed, because an open set is a set nobody can switch on. */
+/**
+ * Why a turn ended. Closed, because an open set is a set nobody can switch on.
+ *
+ * `answered` means the loop said it was DONE, and nothing else does. That was not true
+ * until it was measured: a loop that ran out of steps and a loop that called `finish`
+ * both came back `answered`, so "did this turn complete the task" had no answer in the
+ * vocabulary at all. It only surfaced when the SDK went to narrow its return to this,
+ * because `AgentResult.finished` is the field that would have been lost.
+ */
 export type StopReason =
-	/** The model said it was done and produced an answer. */
+	/** The loop said it was done. Not merely that a person got something back. */
 	| "answered"
-	/** A step budget ran out. The turn is closed with what it had. */
+	/** There was no room: a step, token, cost or time ceiling. Closed with what it had. */
 	| "budget"
+	/**
+	 * It stopped early on a condition somebody declared, closing with what it had.
+	 *
+	 * Separate from `budget` because a ceiling and a rule are different things. An
+	 * operator who wrote `stop_conditions: [no_progress]` asked for this, and calling
+	 * it a budget would report their rule working as their budget running out.
+	 */
+	| "stopped"
 	/** A guard refused something the turn could not continue without. */
 	| "refused"
 	/** The person interrupted. */
@@ -70,18 +86,33 @@ export interface TurnOutcome {
 export interface TurnRequest {
 	readonly turn: string;
 	readonly prompt: string;
-	/** Who asked. A turn nobody can attribute is a turn the record cannot describe. */
-	readonly asker: { readonly kind: "human"; readonly id: string } | { readonly kind: "persona"; readonly id: string };
+	/**
+	 * Who asked. A turn nobody can attribute is a turn the record cannot describe.
+	 *
+	 * Three kinds, because three things ask. A person types. A persona delegates. And a
+	 * PROGRAM drives, which is what an embedded SDK or an HTTP call is, and which used
+	 * to have to pick one of the other two: `human` puts a person's hand on a turn no
+	 * person took, and `persona` says the persona asked itself. Both are false in the
+	 * one field the whole record rests on being true.
+	 */
+	readonly asker:
+		| { readonly kind: "human"; readonly id: string }
+		| { readonly kind: "persona"; readonly id: string }
+		| { readonly kind: "component"; readonly name: string };
 }
 
 /**
  * Whether a stop reason means the turn produced an answer somebody is waiting on.
  *
  * Used to decide whether a close is a normal ending or one that owes an explanation.
- * `budget` is deliberately on the answering side: a turn that ran out of steps still
- * closes with whatever it had, and delivering that beats delivering nothing, which is
- * what the reference does with its final tool-free summarising call.
+ * `budget` and `stopped` are deliberately on the answering side: a turn that ran out of
+ * room still closes with whatever it had, and delivering that beats delivering nothing,
+ * which is what the reference does with its final tool-free summarising call.
+ *
+ * It is NOT the question "did the loop finish the task". That is `stopReason ===
+ * "answered"` and nothing else, and conflating the two is what let a turn that ran out
+ * of steps report itself complete.
  */
 export function answered(reason: StopReason): boolean {
-	return reason === "answered" || reason === "budget";
+	return reason === "answered" || reason === "budget" || reason === "stopped";
 }
