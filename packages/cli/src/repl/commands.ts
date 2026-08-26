@@ -12,7 +12,6 @@ import { relative, dirname, join } from "node:path";
 import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
 import {
   readState,
-  writeState,
   extractEnvelopes,
   driftReport,
   readDriftThresholds,
@@ -75,7 +74,6 @@ import { maybeRecompile, handleTurn } from "./turn.js";
 import { loadCustomCommands, findCustomCommand, expandCommand } from "./custom-commands.js";
 import { resolveDeclaredSkills } from "../targets/skills.js";
 import type { PersonaData } from "../load.js";
-import { rewindState } from "../rewind.js";
 import { startTask, listTasks, readTaskDetail, markTaskSurfaced } from "./tasks.js";
 import { statusLines, configLines, usageLines } from "./views/settings-data.js";
 import { driftTextLines } from "./views/drift-view.js";
