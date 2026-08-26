@@ -31,6 +31,7 @@ export {
 export { breakerGuard, nudgeFor, type Nudge } from "./breaker-guard.js";
 
 export { defaultLoop, productOf } from "./default-provider.js";
+export { inMemoryConversation, type Conversation } from "./conversation.js";
 export { agentOptionsFor, runnerFor, type PersonaFacts, type SessionOptions } from "./runner-for.js";
 export {
 	assemble,

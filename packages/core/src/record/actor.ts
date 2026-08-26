@@ -69,6 +69,16 @@ export const MECHANISM = {
 export const UNRECOGNISED = "unrecognised-actor:";
 
 /**
+ * How a person the runtime cannot name is identified.
+ *
+ * A real person, whose name we do not have. Naming them would be inventing an
+ * identity; leaving the author out would make the entry unverifiable. Exported
+ * because a live turn attributes its asker the same way a migrated row does, and two
+ * spellings of one identity is the drift this file exists to end.
+ */
+export const UNNAMED_OPERATOR = "unattributed-operator";
+
+/**
  * The author a stored `actor` stands for.
  *
  * `human-operator` becomes an unnamed human rather than being invented into a real
@@ -83,7 +93,7 @@ export const UNRECOGNISED = "unrecognised-actor:";
 export function authorOf(actor: Actor | string): Author {
 	switch (actor) {
 		case "human-operator":
-			return { kind: "human", id: "unattributed-operator" };
+			return { kind: "human", id: UNNAMED_OPERATOR };
 		case "actor-llm":
 			return { kind: "persona", id: "self" };
 		case "runtime-decay":

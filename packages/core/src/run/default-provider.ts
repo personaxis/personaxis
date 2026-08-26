@@ -51,9 +51,22 @@
  * What this deliberately does **not** do is invent a reason. A stop this does not
  * recognise becomes `failed` carrying the original word, not a guess at which of the
  * seven it resembles.
+ *
+ * ## The transcript goes back where it came from
+ *
+ * This loop keeps a transcript, and the REPL needs it to answer the next turn in the
+ * same conversation. It had been taking it off `agent.lastMessages`, which is reaching
+ * past the seam for the one thing the seam cannot carry: a scripted provider has no
+ * messages, so a transcript in `TurnOutcome` would make the result describe the shape
+ * of this particular loop.
+ *
+ * So the session lends a `Conversation` and this gives it back. A provider that keeps
+ * no transcript never touches it, and the continuity it cannot offer is honestly
+ * absent instead of quietly empty.
  */
 
 import { PersonaAgent, type AgentResult } from "../agent.js";
+import type { Conversation } from "./conversation.js";
 import type { LoopProvider, TurnContext, TurnProduct } from "./service.js";
 
 /**
@@ -156,13 +169,22 @@ export function productOf(result: AgentResult): TurnProduct {
  * Takes the agent rather than building one, because who owns the agent's lifetime is
  * the caller's business and a provider that constructed its own would quietly decide
  * it.
+ *
+ * `conversation` is where the transcript is handed back. It is written even when the
+ * turn produced nothing usable: the messages that led nowhere are still what was said,
+ * and dropping them would make the next turn re-ask a question this one already put to
+ * the model.
  */
-export function defaultLoop(agent: PersonaAgent): LoopProvider {
+export function defaultLoop(agent: PersonaAgent, conversation?: Conversation): LoopProvider {
 	return {
 		name: "personaxis",
 		run: async (context: TurnContext): Promise<TurnProduct> => {
-			const result = await agent.run(context.request.prompt);
-			return productOf(result);
+			try {
+				const result = await agent.run(context.request.prompt);
+				return productOf(result);
+			} finally {
+				if (conversation && agent.lastMessages) conversation.write(agent.lastMessages);
+			}
 		},
 	};
 }
