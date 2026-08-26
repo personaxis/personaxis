@@ -66,7 +66,14 @@ export {
 	type MoveRequest,
 } from "./mutate.js";
 
-export { adjust, adopt, type AdjustResult } from "./adjust.js";
+export {
+	adjust,
+	adjustAll,
+	adopt,
+	type AdjustAllResult,
+	type AdjustResult,
+	type Move,
+} from "./adjust.js";
 
 export {
 	MECHANISM,

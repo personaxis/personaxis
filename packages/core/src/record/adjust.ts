@@ -78,6 +78,26 @@ export interface AdjustResult {
 }
 
 /**
+ * One move and who is making it.
+ *
+ * The author travels with the move rather than with the batch, because a tick is not
+ * one hand: a decay is the runtime pulling a value toward its baseline and an
+ * admitted change is the persona acting. One author for the batch would put the
+ * runtime's name on the persona's changes, or the reverse.
+ */
+export interface Move {
+	readonly author: Author;
+	readonly request: MoveRequest;
+}
+
+/** What a batch did, in the order it did it. */
+export interface AdjustAllResult {
+	readonly decisions: readonly Decision[];
+	/** The state file as printed from the record, after every move in the batch. */
+	readonly state: StateFile;
+}
+
+/**
  * Move one coordinate and leave both the record and the printed file correct.
  *
  * The drain is awaited rather than left in flight. This is a deliberate difference
@@ -92,6 +112,32 @@ export async function adjust(
 	author: Author,
 	req: MoveRequest,
 ): Promise<AdjustResult> {
+	const { decisions, state } = await adjustAll(personaPath, statePath, envelopes, [
+		{ author, request: req },
+	]);
+	return { decision: decisions[0]!, state };
+}
+
+/**
+ * Move several coordinates as one transaction.
+ *
+ * A tick is not a sequence of adjustments. It decays what has drifted and applies
+ * what was admitted, and those belong to the same moment: running them one at a time
+ * would take the lock, read the file, verify the chain and print the document once
+ * per coordinate, and would leave a crash between two of them with a persona that
+ * half-ticked. One lock, one verify, one print.
+ *
+ * The order of `moves` is the order they happen, and it matters: each move reads the
+ * value the one before it left, which is what makes clamping compose correctly.
+ * Summing deltas first and clamping once at the end is a different and wrong answer,
+ * because `clamp(a + b)` is not `clamp(a) + clamp(b)`.
+ */
+export async function adjustAll(
+	personaPath: string,
+	statePath: string,
+	envelopes: Record<string, Envelope>,
+	moves: readonly Move[],
+): Promise<AdjustAllResult> {
 	// The lock is taken here and released in `finally`, rather than through
 	// `withStateLock`. That helper is generic over the callback's return type, so
 	// handing it an async function type-checks and releases the lock the moment the
@@ -100,7 +146,7 @@ export async function adjust(
 	// worse than none: it looks like protection in the code and provides none.
 	const release = acquireStateLock(statePath);
 	try {
-		return await write(personaPath, statePath, envelopes, author, req);
+		return await write(personaPath, statePath, envelopes, moves);
 	} finally {
 		release();
 	}
@@ -110,14 +156,14 @@ async function write(
 	personaPath: string,
 	statePath: string,
 	envelopes: Record<string, Envelope>,
-	author: Author,
-	req: MoveRequest,
-): Promise<AdjustResult> {
+	moves: readonly Move[],
+): Promise<AdjustAllResult> {
 	const stored = readState(statePath);
 	const record = openRecord(personaPath);
+	const migrated = record.all().length === 0;
 	adopt(record, stored);
 
-	const decision = mutate(record, envelopes, author, req);
+	const decisions = moves.map((move) => mutate(record, envelopes, move.author, move.request));
 
 	const report = await record.drain();
 	if (report.failure) {
@@ -138,7 +184,13 @@ async function write(
 	}
 
 	const printed = project(folded.state, record.all(), identityOf(stored));
-	writeFileSync(statePath, JSON.stringify(printed, null, 2) + "\n", "utf-8");
+	// Written when anything actually changed. A batch with no moves against a record
+	// that already existed is a tick where nothing happened, and rewriting the file
+	// then would touch its mtime on every idle turn for no reason. A first touch is a
+	// change even with no moves: it is the migration.
+	if (migrated || moves.length > 0) {
+		writeFileSync(statePath, JSON.stringify(printed, null, 2) + "\n", "utf-8");
+	}
 
-	return { decision, state: printed };
+	return { decisions, state: printed };
 }
