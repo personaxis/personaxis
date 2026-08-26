@@ -19,7 +19,9 @@
  */
 
 export {
+	GENESIS,
 	authorId,
+	isGenesis,
 	type Author,
 	type DraftEntry,
 	type ProviderArtifact,
@@ -64,3 +66,14 @@ export {
 } from "./mutate.js";
 
 export { adjust, adopt, type AdjustResult } from "./adjust.js";
+
+export {
+	MECHANISM,
+	UNRECOGNISED,
+	actorFor,
+	authorOf,
+	describeAuthor,
+	isWritableAuthor,
+	requireActor,
+	type Actor,
+} from "./actor.js";

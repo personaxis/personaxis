@@ -26,7 +26,8 @@
  */
 
 import type { Envelope } from "../envelopes.js";
-import type { Author } from "./entry.js";
+import { describeAuthor, isWritableAuthor } from "./actor.js";
+import { GENESIS, type Author } from "./entry.js";
 import { derive } from "./derive.js";
 import type { Journal } from "./journal.js";
 
@@ -110,6 +111,20 @@ export function mutate(
 		);
 	}
 
+	// Refused here rather than when the file is printed. `state.json` has one word
+	// for the author and a closed list of five to choose from, so an author outside
+	// that list produces an entry nothing can print. Catching it at the print would
+	// leave a persona whose record already holds one unable to write its state file
+	// ever again; catching it at the write means the mistake is reported to whoever
+	// made it, before anything is durable. R8 removes the file and this with it.
+	if (!isWritableAuthor(author)) {
+		throw new Error(
+			`${describeAuthor(author)} cannot be written to a coordinate entry while state.json ` +
+				"is still projected from the record: the file's actor vocabulary has no word for it. " +
+				"Use one of the mechanisms in MECHANISM, or a human or persona author.",
+		);
+	}
+
 	const decision = decide(currentValue(record, req.field, envelope), envelope, req);
 
 	record.append(author, {
@@ -139,7 +154,7 @@ export function origin(record: Journal, field: string, value: number): void {
 	if (already.ok && field in already.state.values) return;
 
 	record.append(
-		{ kind: "runtime", mechanism: "genesis", reason: "the position its spec declares" },
+		{ kind: "runtime", mechanism: GENESIS, reason: "the position its spec declares" },
 		{
 			type: "value",
 			field,

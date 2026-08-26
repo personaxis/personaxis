@@ -12,8 +12,9 @@
 
 import type { Kernel, LifecycleEvent } from "../kernel/index.js";
 import { LIFECYCLE } from "../kernel/index.js";
-import type { MutationLogEntry, StateFile } from "../persona.js";
+import type { StateFile } from "../persona.js";
 import { GENESIS, type Author, type RecordEntry } from "./entry.js";
+import { authorOf } from "./actor.js";
 import { chain, head } from "./chain.js";
 import { derive } from "./derive.js";
 import type { Journal } from "./journal.js";
@@ -47,62 +48,6 @@ export function recordLifecycle(kernel: Kernel, journal: Journal): () => void {
 			...(change.reason === undefined ? {} : { reason: change.reason }),
 		});
 	});
-}
-
-/**
- * How an old mutation entry's actor maps onto an author.
- *
- * The old vocabulary is five strings that mix who acted with what mechanism acted,
- * which is why it could default. Mapping it out is the migration doing the work the
- * original schema left undone: a decayed value was written by the runtime and says
- * which mechanism, a corrected one by a judge, and only `human-operator` is a person.
- *
- * `human-operator` becomes an unnamed human rather than being invented into a real
- * identity. A migration that guessed a name would put a person's name on entries they
- * may never have written, which is the forgery the invariant exists to prevent, only
- * committed by us instead of by a bug.
- */
-function authorOf(actor: MutationLogEntry["actor"]): Author {
-	switch (actor) {
-		case "human-operator":
-			return { kind: "human", id: "unattributed-operator" };
-		case "actor-llm":
-			return { kind: "persona", id: "self" };
-		case "runtime-decay":
-			return {
-				kind: "runtime",
-				mechanism: "homeostasis",
-				reason: "declared half-life pulled the value toward its mean",
-			};
-		case "runtime-context":
-			return {
-				kind: "runtime",
-				mechanism: "context",
-				reason: "the active context changed what this coordinate should be",
-			};
-		case "judge-correction":
-			return {
-				kind: "runtime",
-				mechanism: "judge",
-				reason: "an evaluation corrected the value",
-			};
-		default:
-			// A string outside the five the schema declares: a hand edit, a file from a
-			// version this build has not learned, or a typo. It gets an author that
-			// SAYS it is unrecognised and carries the original word.
-			//
-			// The alternative was what this used to do, which was fall off the end and
-			// return undefined. An entry with no author does not verify, so one strange
-			// actor made the whole chain unreadable and the failure pointed at the
-			// chain rather than at the word that caused it. Naming it keeps the record
-			// verifiable and keeps the anomaly visible, which is the pair this file
-			// exists to preserve.
-			return {
-				kind: "runtime",
-				mechanism: "unrecognised-actor",
-				reason: `the state file attributed this to "${String(actor)}", which is not one this build knows`,
-			};
-	}
 }
 
 /**
