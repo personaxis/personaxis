@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
-import {
+import { ensureState,
   loadPersona,
   memoryPath,
   record,
@@ -114,7 +114,7 @@ function scaffold(): { dir: string; personaPath: string; state: StateFile; env: 
     const handle = loadPersona(personaPath);
     const env = extractEnvelopes(handle.frontmatter);
     if (Object.keys(env.envelopes).length > 0) {
-      const live = readState(srcHandle.statePath).values;
+      const live = ensureState(srcHandle).values;
       const values: Record<string, number> = {};
       for (const [k, e] of Object.entries(env.envelopes)) values[k] = typeof live[k] === "number" ? live[k] : e.mean;
       const state: StateFile = { schema_version: "1.0.0", persona_id: "proof", persona_version: "1.0.0", values, mutation_log: [] };

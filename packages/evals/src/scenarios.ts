@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validatePersona } from "@personaxis/spec";
-import {
+import { ensureState,
   checkEgressIn,
   redactSecrets,
   LivingLoop,
@@ -165,7 +165,7 @@ export const SCENARIOS: Scenario[] = [
       try {
         const handle = loadPersona(personaPath);
         const env = extractEnvelopes(handle.frontmatter);
-        const state = readState(handle.statePath);
+        const state = ensureState(handle);
         const r = applyMutation(state, env.envelopes, { field: "mood.tone", delta: 0.9, reason: "eval", actor: "actor-llm" });
         return result(this, [
           check("within envelope", state.values["mood.tone"] <= 0.1 + 1e-9, `value=${state.values["mood.tone"]} (max 0.1)`),
@@ -323,7 +323,7 @@ export const SCENARIOS: Scenario[] = [
       try {
         const handle = loadPersona(personaPath);
         const env = extractEnvelopes(handle.frontmatter);
-        const state = readState(handle.statePath);
+        const state = ensureState(handle);
         // Push to the envelope wall; drift must read exactly 1, never beyond.
         applyMutation(state, env.envelopes, { field: "mood.tone", delta: 99, reason: "eval push", actor: "actor-llm" });
         const report = driftReport({ values: state.values, envelopes: env.envelopes, maxStepDelta: 0.1, thresholds: { affect: 0.5 } });
@@ -348,7 +348,7 @@ export const SCENARIOS: Scenario[] = [
       try {
         const handle = loadPersona(personaPath);
         const env = extractEnvelopes(handle.frontmatter);
-        const state = readState(handle.statePath);
+        const state = ensureState(handle);
         const field = Object.keys(env.envelopes).find((k) => k.includes("warmth"))!;
         const e = env.envelopes[field];
         const deltaMax = 0.1;
@@ -379,7 +379,7 @@ export const SCENARIOS: Scenario[] = [
       try {
         const handle = loadPersona(personaPath);
         const env = extractEnvelopes(handle.frontmatter);
-        const state = readState(handle.statePath);
+        const state = ensureState(handle);
         const field = Object.keys(env.envelopes).find((k) => k.includes("warmth"))!;
         state.values[field] = 0.9; // displaced
         const before = Math.abs(state.values[field] - 0.5);

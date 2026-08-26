@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "no
 import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
+import { ensureState,
   PersonaAgent,
   evaluateFileWrite,
   executeCommand,
@@ -192,7 +192,7 @@ describe("PersonaAgent (governed task execution)", () => {
     const mem = readMemory(personaPath);
     expect(mem.some((m) => m.tags.includes("agent-run") && m.content.includes("build a landing page"))).toBe(true);
     // agent_session in state.json tracks the run.
-    const st = readState(loadPersona(personaPath).statePath);
+    const st = ensureState(loadPersona(personaPath));
     expect(st.agent_session?.step_count).toBeGreaterThanOrEqual(1);
   });
 });

@@ -16,7 +16,7 @@
  */
 
 import chalk from "chalk";
-import {
+import { loadPersona, stateOf,
   readState,
   extractEnvelopes,
   driftReport,
@@ -54,7 +54,8 @@ const LAYERS = [
 /** Per-coordinate drill: the live value against its declared envelope. */
 function stateDetailLines(ctx: Ctx): TabLine[] {
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
-  const st = readState(ctx.handle.statePath);
+  const st = stateOf(ctx.handle);
+  if (!st) return [];
   const env = extractEnvelopes(ctx.handle.frontmatter);
   const report = driftReport({
     values: st.values,
@@ -235,22 +236,23 @@ function subDetailLines(sub: SubPersonaRef): TabLine[] {
   const cfg = loadConfig("global");
   const projectCfg = loadConfig("project");
   const profile = projectCfg.personas?.[sub.slug]?.profile ?? cfg.personas?.[sub.slug]?.profile;
-  const statePath = join(dirname(sub.path), "state.json");
   const out: TabLine[] = [
     chalk.dim(`  @${sub.address}`),
     "",
     `  ${chalk.cyan("spec".padEnd(10))} ${sub.path}`,
     `  ${chalk.cyan("model".padEnd(10))} ${profile ?? chalk.dim("(inherits the default profile)")}`,
   ];
-  if (existsSync(statePath)) {
-    try {
-      const st = readState(statePath);
-      out.push(`  ${chalk.cyan("state".padEnd(10))} ${st.mutation_log.length} mutation(s) recorded`);
-    } catch {
-      out.push(`  ${chalk.cyan("state".padEnd(10))} ${chalk.yellow("unreadable state.json")}`);
-    }
-  } else {
-    out.push(`  ${chalk.cyan("state".padEnd(10))} ${chalk.dim("not initialized yet")}`);
+  try {
+    // Described from the record, and without creating anything: showing somebody a
+    // sub-persona must not be what brings it into being.
+    const st = stateOf(loadPersona(sub.path));
+    out.push(
+      st
+        ? `  ${chalk.cyan("state".padEnd(10))} ${st.mutation_log.length} mutation(s) recorded`
+        : `  ${chalk.cyan("state".padEnd(10))} ${chalk.dim("not initialized yet")}`,
+    );
+  } catch (e) {
+    out.push(`  ${chalk.cyan("state".padEnd(10))} ${chalk.yellow((e as Error).message)}`);
   }
   out.push(
     "",

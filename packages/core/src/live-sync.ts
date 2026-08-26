@@ -17,7 +17,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { readState, type PersonaHandle, type StateFile } from "./persona.js";
+import { ensureState, readState, type PersonaHandle, type StateFile } from "./persona.js";
 
 export const LIVE_START = "<!-- PERSONAXIS:LIVE-STATE start -->";
 export const LIVE_END = "<!-- PERSONAXIS:LIVE-STATE end -->";
@@ -103,7 +103,7 @@ export function makeRecompileHook(
 ): (handle: PersonaHandle) => Promise<void> {
   const options: RecompileHookOptions = typeof opts === "string" ? { compiledPath: opts } : opts ?? {};
   return async (handle: PersonaHandle) => {
-    const state = readState(handle.statePath);
+    const state = ensureState(handle);
     liveSync(handle, options.compiledPath, state);
     if (options.assemble && options.compiledPath && existsSync(options.compiledPath)) {
       const doc = options.assemble(handle);

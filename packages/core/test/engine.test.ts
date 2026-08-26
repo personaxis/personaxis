@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
+import { ensureState,
   LivingLoop,
   extractEnvelopes,
   applyMutation,
@@ -207,7 +207,7 @@ describe("LivingLoop (autonomous)", () => {
     const report = await loop.tick({ observation: "obs", source: "user" });
     expect(report.mutationsApplied).toBe(1);
     expect(report.memoriesWritten).toBe(1);
-    const st = readState(loadPersona(personaPath).statePath);
+    const st = ensureState(loadPersona(personaPath));
     // delta 0.9 -> drift-bounded 0.15 -> clamped to envelope max 0.1
     expect(st.values["mood.tone"]).toBe(0.1);
     expect(st.mutation_log[0].clamped).toBe(true);
@@ -229,7 +229,7 @@ describe("LivingLoop (autonomous)", () => {
       }),
     });
     await loop.tick({ observation: "o", source: "user" });
-    const st = readState(loadPersona(personaPath).statePath);
+    const st = ensureState(loadPersona(personaPath));
     expect(st.values["mood.tone"]).toBeCloseTo(0.05, 5); // bounded to max_step_delta, not 0.9
   });
 

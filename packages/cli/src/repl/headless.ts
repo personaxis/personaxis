@@ -5,7 +5,7 @@
  * --output-format text | json | stream-json.
  */
 
-import { readMemoryKnobs, factsView, recallWindow, readState, readHooksConfig, runHooks } from "@personaxis/core";
+import { ensureState, readMemoryKnobs, factsView, recallWindow, readState, readHooksConfig, runHooks } from "@personaxis/core";
 import { resolvePersonaPath, makeMeter } from "./config.js";
 import { makeCtx, recordTurn } from "./session.js";
 import { shortName, friendlyProviderError } from "./render.js";
@@ -89,7 +89,7 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
     ...Object.entries(known.facts).map(([k, v]) => `${k}: ${v.value}`),
     ...recallWindow(personaPath, { maxItems: knobs.maxItems, sessionId: ctx.sessionId }).map((m) => m.content),
   ];
-  const state = readState(ctx.handle.statePath).values;
+  const state = ensureState(ctx.handle).values;
 
   // Streaming (V2-F3.E23): stream tokens live for text/stream-json; json buffers.
   const wantStream = format === "text" || format === "stream-json";

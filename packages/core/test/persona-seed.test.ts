@@ -14,14 +14,14 @@
  * report the new mean as where the coordinate started.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { extractEnvelopes } from "../src/envelopes.js";
-import { ensureState, loadPersona, projectPersona, readState } from "../src/persona.js";
+import { ensureState, loadPersona, projectPersona, readState, stateOf } from "../src/persona.js";
 import { verify } from "../src/record/chain.js";
 import { derive } from "../src/record/derive.js";
 import { isGenesis } from "../src/record/entry.js";
@@ -61,6 +61,49 @@ function accountedFor(path: string): string[] {
 		.filter(isGenesis)
 		.map((entry) => (entry.body as { field: string }).field);
 }
+
+describe("looking at a persona", () => {
+	it("does not create it, however many times you look", () => {
+		// The invariant a test caught me breaking. Every reader was routed through
+		// `ensureState`, which seeds, so opening the Persona view on a freshly created
+		// sub-persona brought it into existence and it could no longer say it had not
+		// been set up. Browsing is not an act.
+		const handle = loadPersona(personaPath);
+
+		expect(stateOf(handle)).toBeUndefined();
+		expect(stateOf(handle)).toBeUndefined();
+
+		expect(existsSync(handle.statePath)).toBe(false);
+		expect(existsSync(recordPathFor(personaPath))).toBe(false);
+	});
+
+	it("says where it is once it has started, from the record and not the file", () => {
+		const handle = loadPersona(personaPath);
+		ensureState(handle);
+		const envelopes = extractEnvelopes(handle.frontmatter).envelopes;
+
+		// The file says one thing and the record says another, which only happens if
+		// somebody edited the file. The record wins, because the file is printed from it.
+		const stored = readState(handle.statePath);
+		const field = Object.keys(envelopes)[0]!;
+		writeFileSync(
+			handle.statePath,
+			JSON.stringify({ ...stored, values: { ...stored.values, [field]: 0.987 } }, null, 2),
+		);
+
+		expect(stateOf(handle)?.values[field]).toBe(envelopes[field]!.mean);
+	});
+
+	it("reads a persona that predates the record from its file, rather than reporting nothing", () => {
+		// Every persona on every machine today is this one until its first write.
+		const handle = loadPersona(personaPath);
+		ensureState(handle);
+		const stored = readState(handle.statePath);
+		rmSync(recordPathFor(personaPath));
+
+		expect(stateOf(handle)?.values).toEqual(stored.values);
+	});
+});
 
 describe("a persona on the day it is created", () => {
 	it("can account for every value it holds", () => {
@@ -161,7 +204,7 @@ describe("a persona on the day it is created", () => {
 		const handle = loadPersona(personaPath);
 		ensureState(handle);
 		const entries = readRecord(recordPathFor(personaPath));
-		const older = { ...readState(handle.statePath), schema_version: "0.6.0" };
+		const older = { ...ensureState(handle), schema_version: "0.6.0" };
 
 		expect(projectPersona(handle, entries, older).schema_version).toBe("0.6.0");
 		expect(projectPersona(handle, entries).schema_version).not.toBe("0.6.0");

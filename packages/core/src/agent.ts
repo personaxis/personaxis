@@ -63,7 +63,7 @@ function snipDetail(s: string, n = 64): string {
 import { factsView, renderFacts } from "./memory/facts.js";
 import { recallWindow, memoryTools } from "./memory/retrieval.js";
 import { sessionBrief, isInfraErrorReply } from "./memory/consolidate.js";
-import { loadPersona, readState, writeState } from "./persona.js";
+import { ensureState, loadPersona, readState, writeState } from "./persona.js";
 import { withStateLock } from "./lock.js";
 import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow } from "./context.js";
 import { LoopBreaker, toolSignature } from "./loop-breaker.js";
@@ -243,7 +243,7 @@ export class PersonaAgent {
     try {
       const handle = loadPersona(p);
       fm = handle.frontmatter as Record<string, unknown>;
-      const st = readState(handle.statePath);
+      const st = ensureState(handle);
       const sess = st.agent_session;
       if (sess?.active_task) {
         parts.push(`\n# Resume (do not restart)\nLast task: ${sess.active_task}${sess.stop_reason ? `, stopped: ${sess.stop_reason}` : ""}`);
@@ -338,7 +338,7 @@ export class PersonaAgent {
       // Structured resumption pointer in state.json (not prose). Locked: a
       // concurrent tick/adjust must not lose this read→modify→write (F1.4).
       withStateLock(handle.statePath, () => {
-        const st = readState(handle.statePath);
+        const st = ensureState(handle);
         st.agent_session = {
           active_task: outcome === "success" ? null : task,
           started_at: st.agent_session?.started_at ?? new Date().toISOString(),

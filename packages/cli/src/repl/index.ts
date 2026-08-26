@@ -14,7 +14,7 @@ import { stdin, stdout } from "node:process";
 import { join, relative, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import chalk from "chalk";
-import { record, readState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
+import { ensureState, record, readState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
@@ -239,7 +239,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 // ── Non-TTY: simple line reader (pipes/CI) ───────────────────────────────────
 async function runLineMode(ctx: Ctx): Promise<void> {
   stdout.write("\n");
-  await awaken(ctx.handle.frontmatter, readState(ctx.handle.statePath));
+  await awaken(ctx.handle.frontmatter, ensureState(ctx.handle));
   stdout.write(voiceWrap(ctx.theme, `  ${ctx.name} is awake`) + chalk.dim(` · mode=${ctx.mode} · posture=${POSTURES[ctx.postureIndex]}\n\n`));
 
   const roster = buildRoster(ctx);
@@ -434,7 +434,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   // V5.P2.3: the state history view behind /rewind and /replay.
   registerHistoryView({
     log: () =>
-      (readState(ctx.handle.statePath).mutation_log ?? []).map((m, idx) => ({
+      (ensureState(ctx.handle).mutation_log ?? []).map((m, idx) => ({
         idx,
         ts: (m as { ts?: string }).ts ?? "",
         field: (m as { field?: string }).field ?? "?",
@@ -450,7 +450,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
       // same code that did it, against a clone, which is a simulation only for as
       // long as nobody forgets the clone.
       const env = extractEnvelopes(ctx.handle.frontmatter);
-      const { moves } = rewindPlan(readState(ctx.handle.statePath), env.envelopes, n);
+      const { moves } = rewindPlan(ensureState(ctx.handle), env.envelopes, n);
       return moves.map((m) => ({ field: m.field, from: m.from, to: m.to }));
     },
     rewind: async (n) => {
@@ -458,7 +458,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
       const { changed, steps } = await rewind(
         ctx.handle.personaPath,
         ctx.handle.statePath,
-        readState(ctx.handle.statePath),
+        ensureState(ctx.handle),
         env.envelopes,
         n,
         // The operator, unnamed. The REPL knows a person typed this and does not know

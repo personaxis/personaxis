@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
+import { ensureState,
   scanForInjection,
   LivingLoop,
   loadPersona,
@@ -107,7 +107,7 @@ describe("loop blocks evolution on malicious injection", () => {
       source: "tool",
     });
     expect(report.mutationsApplied).toBe(0); // blocked by injection
-    expect(readState(loadPersona(personaPath).statePath).values["mood.tone"]).toBe(0);
+    expect(ensureState(loadPersona(personaPath)).values["mood.tone"]).toBe(0);
     const mem = readMemory(personaPath);
     expect(mem[mem.length - 1].tags).toContain("injection-flagged");
   });

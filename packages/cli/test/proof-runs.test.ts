@@ -50,5 +50,7 @@ describe("the live proof", () => {
 		// is a run that proved something false.
 		expect(output).not.toContain("✗");
 		expect(output).toMatch(/all \d+ checks passed/);
-	});
+		// The proof is a thousand hostile steps through the real engine and takes about
+		// six seconds, so the five second default would fail it for being what it is.
+	}, 180_000);
 });

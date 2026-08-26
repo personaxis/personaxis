@@ -13,7 +13,7 @@ import { resolve, join, dirname } from "node:path";
 import {
   run,
   loadPersona,
-  ensureState,
+  stateOf,
   displayName,
   readMode,
   personaTheme,
@@ -87,7 +87,9 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
             resourceBase: isSub ? "./" : "./.personaxis/",
           },
           appliedOverlay: activeOverlay(personaPath),
-          stateValues: existsSync(h.statePath) ? readState(h.statePath).values : undefined,
+          // Undefined when the persona has not started. Building a session must not
+          // bring one into existence as a side effect of describing it.
+          stateValues: stateOf(h)?.values,
         }),
     }),
   });
