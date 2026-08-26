@@ -72,6 +72,16 @@ export function mutationLog(entries: readonly RecordEntry[]): MutationLogEntry[]
 			// and not only where it is checked.
 			actor: requireActor(entry.author),
 			governance_blocked: body.blocked,
+			// Where it was written, printed only when the entry knew it. Writing the
+			// keys with undefined values would put `origin_node: null` on every row of
+			// a single-machine persona, and the schema has no null there.
+			...(entry.provenance?.node === undefined ? {} : { origin_node: entry.provenance.node }),
+			...(entry.provenance?.session === undefined
+				? {}
+				: { session_id: entry.provenance.session }),
+			...(entry.provenance?.toolCall === undefined
+				? {}
+				: { tool_call_id: entry.provenance.toolCall }),
 			// The record's own link, not a second chain over the same facts.
 			prev_hash: entry.prev,
 			hash: entry.hash,

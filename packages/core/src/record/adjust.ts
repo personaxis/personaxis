@@ -63,9 +63,11 @@ function identityOf(state: StateFile): Identity {
 export function adopt(record: Journal, state: StateFile): void {
 	if (record.all().length > 0) return;
 
-	for (const entry of replayStateFile(state)) {
-		record.append(entry.author, entry.body);
-	}
+	// Handed over whole, not replayed through `append`. Appending re-stamps the clock
+	// and takes only an author and a body, so the history came out dated the moment of
+	// the migration and stripped of the machine and session each row knew about. On
+	// this repo's persona that turned two months into one millisecond.
+	record.adopt(replayStateFile(state));
 }
 
 /** What a completed adjustment did, and where it left the persona. */

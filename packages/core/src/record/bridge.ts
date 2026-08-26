@@ -128,9 +128,19 @@ export function replayStateFile(state: StateFile): RecordEntry[] {
 		entries.push(chain(draft, entries.length, head(entries)));
 	}
 	for (const old of state.mutation_log ?? []) {
+		// The machine, the session and the tool call come across with the row. They are
+		// what a merge between two devices reads, and a migration that dropped them
+		// would reintroduce, inside the record, the collapse the spec added them to
+		// prevent: two machines' identical moves becoming one.
+		const provenance = {
+			...(old.origin_node === undefined ? {} : { node: old.origin_node }),
+			...(old.session_id === undefined ? {} : { session: old.session_id }),
+			...(old.tool_call_id === undefined ? {} : { toolCall: old.tool_call_id }),
+		};
 		const draft = {
 			at: old.ts,
 			author: authorOf(old.actor),
+			...(Object.keys(provenance).length === 0 ? {} : { provenance }),
 			body: {
 				type: "value" as const,
 				field: old.field,

@@ -144,6 +144,73 @@ describe("a persona that already has a history in the old place", () => {
 		expect(onDisk.mutation_log).toHaveLength(3);
 	});
 
+	it("keeps every row exactly as the file had it, and not as of the migration", async () => {
+		// The one that matters most and the one that was wrong. Adopting replayed the
+		// history through `append`, which stamps the clock and takes only an author and
+		// a body, so every adopted row came out dated the instant of the upgrade and
+		// carrying none of the machine or session the row knew about. Measured on this
+		// repo's own persona: 147 rows spanning two months came back with 147 identical
+		// timestamps. A history whose dates are all the moment somebody upgraded is not
+		// a history, and nothing here was comparing the two sides.
+		//
+		// Every field, not the ones that were broken: a migration is faithful or it is
+		// not, and checking the two that failed last time is how the third goes
+		// unnoticed.
+		const before = [
+			{
+				...row("mood.tone", 0, 0.2, "june"),
+				ts: "2026-06-01T09:00:00.000Z",
+				origin_node: "laptop",
+				session_id: "s-june",
+				tool_call_id: "call-1",
+			},
+			{
+				...row("mood.tone", 0.2, 0.35, "july"),
+				ts: "2026-07-14T18:30:00.000Z",
+				actor: "runtime-context",
+				origin_node: "desktop",
+				session_id: "s-july",
+			},
+		];
+		writeState(before);
+
+		const after = (await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.05,
+			reason: "today",
+		})).state;
+
+		// The adopted rows come back byte for byte, in order, minus the chain links,
+		// which are the record's own and deliberately not the old file's.
+		for (const [i, original] of before.entries()) {
+			const printed = after.mutation_log[i]! as unknown as Record<string, unknown>;
+			for (const [key, value] of Object.entries(original)) {
+				expect({ row: i, key, value: printed[key] }).toEqual({ row: i, key, value });
+			}
+		}
+	});
+
+	it("marks a move made now as made now, and not as of the oldest row", async () => {
+		// The mirror of the test above: keeping the old dates must not be implemented
+		// by giving everything the same date. The migration is faithful and the new
+		// entry is current, and only checking one of those passes with either bug.
+		writeState([{ ...row("mood.tone", 0, 0.2, "june"), ts: "2026-06-01T09:00:00.000Z" }]);
+
+		const before = Date.now();
+		const after = (await adjust(personaPath, statePath, ENVELOPES, WHO, {
+			field: "mood.tone",
+			delta: 0.05,
+			reason: "today",
+			provenance: { node: "this-machine", session: "s-now", toolCall: "call-now" },
+		})).state;
+
+		const fresh = after.mutation_log.at(-1)!;
+		expect(new Date(fresh.ts).getTime()).toBeGreaterThanOrEqual(before);
+		expect(fresh.origin_node).toBe("this-machine");
+		expect(fresh.session_id).toBe("s-now");
+		expect(fresh.tool_call_id).toBe("call-now");
+	});
+
 	it("continues from where the old history left the value", async () => {
 		writeState([row("mood.tone", 0, 0.4, "earlier")]);
 
