@@ -205,7 +205,8 @@ export function ensureState(handle: PersonaHandle): StateFile {
   }
 
   // No record: a persona from before this existed, whose file is still its history.
-  // The migration happens on its first write, through `adopt`.
+  // The migration happens on its first write, wherever that write comes from:
+  // `writingToRecord` adopts the file before the writer touches the record.
   if (existsSync(handle.statePath)) return readState(handle.statePath);
   // Seeding races with other processes seeding the same persona, take the lock and
   // re-check so exactly one seeder wins.
