@@ -29,6 +29,24 @@
  * leaves. That is not damage in the middle, it is an entry that never finished being
  * written, and dropping it puts the file back exactly where the last completed append
  * left it.
+ *
+ * ## Writing refuses a batch chained onto a head the file has moved past
+ *
+ * A `Journal` chains its entries onto the head it held when it opened. Nothing stops a
+ * second journal opening on the same record, writing, and leaving the first holding a
+ * head that is no longer the file's. The first one's next append then carries a
+ * sequence number the file already used and a link to an entry that is no longer last.
+ *
+ * Measured before this existed, with two journals over one record: three entries on
+ * disk numbered 0, 1, 1, and the chain stopping at the second of them. Nothing threw.
+ * The corruption is written by the ordinary path, it is durable, and it is found by
+ * whoever verifies next rather than by whoever caused it.
+ *
+ * "Open the record, write, drain, let go" is the discipline that avoids it, and a
+ * discipline is a rule that holds until somebody is in a hurry. So the file refuses
+ * instead: an append has to continue the file as it stands at that moment, or none of
+ * the batch lands and the journal is told, which is the contract it already had for a
+ * sink that would not take a write.
  */
 
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs";
@@ -103,9 +121,84 @@ function appendLines(path: string, entries: readonly RecordEntry[]): void {
 	appendFileSync(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf-8");
 }
 
+/**
+ * The last complete entry in a record file, without reading the rest of it.
+ *
+ * Read backwards from the end until a newline turns up, because the only thing a
+ * writer needs to know is where the file currently ends. Reading forwards to find the
+ * last of something means reading everything, and this runs on every append.
+ *
+ * `undefined` for a file that is missing, empty, or whose only line never finished
+ * being written. All three mean the same thing to a writer: there is nothing here to
+ * continue from.
+ */
+function lastEntry(path: string, blockSize = 8 * 1024): RecordEntry | undefined {
+	if (!existsSync(path)) return undefined;
+	const size = statSync(path).size;
+	if (size === 0) return undefined;
+
+	const handle = openSync(path, "r");
+	try {
+		let end = size;
+		let carried = "";
+		while (end > 0) {
+			const start = Math.max(0, end - blockSize);
+			const block = Buffer.alloc(end - start);
+			readSync(handle, block, 0, block.length, start);
+			carried = block.toString("utf-8") + carried;
+			end = start;
+
+			// The trailing piece is dropped for the same two reasons `readRecord` drops
+			// it: a file written by appends ends in a newline, and one that does not was
+			// cut mid-append and its last piece is an entry that never landed.
+			const lines = carried.split("\n").slice(0, -1);
+			const complete = lines.filter((line) => line.trim().length > 0);
+			// Only usable once the line is known to be whole, which it is when a newline
+			// precedes it or the block reached the start of the file.
+			if (complete.length > (end === 0 ? 0 : 1)) {
+				try {
+					return JSON.parse(complete[complete.length - 1]!) as RecordEntry;
+				} catch {
+					// Damage, and `readRecord` is what reports it with the real line number.
+					// Saying nothing here sends the writer down the refusal path, which is the
+					// safe direction: a record nobody can read is not one to append to.
+					return undefined;
+				}
+			}
+		}
+	} finally {
+		closeSync(handle);
+	}
+	return undefined;
+}
+
+/** How a refused append reads, naming both views so the divergence is legible. */
+function staleWrite(path: string, seq: number, found: RecordEntry | undefined): string {
+	const here = found === undefined ? "the record is empty" : `the record ends at entry ${found.seq}`;
+
+	return (
+		`${path}: this batch was chained onto entry ${seq - 1} and ${here}, so it ` +
+		"was written from a view of the record that has since moved. Nothing was appended. " +
+		"Open the record again and write from where it is now."
+	);
+}
+
 export function fileSink(path: string): RecordSink {
 	return {
 		async append(entries) {
+			const first = entries[0];
+			if (first === undefined) return;
+
+			// The whole batch is chained, so checking the first entry checks all of them:
+			// if it continues the file, every later one continues its predecessor by
+			// construction.
+			const last = lastEntry(path);
+			const continues =
+				last === undefined
+					? first.seq === 0 && first.prev === ""
+					: first.seq === last.seq + 1 && first.prev === last.hash;
+			if (!continues) throw new Error(staleWrite(path, first.seq, last));
+
 			appendLines(path, entries);
 		},
 	};
