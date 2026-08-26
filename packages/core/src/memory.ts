@@ -99,8 +99,14 @@ function legacyMemoryPath(personaPath: string): string {
  * appending to one file produce links that do not follow from each other: the integrity
  * check correctly reports tampering and cannot say which side is right, because from its
  * point of view neither is. One file per device removes the question.
+ *
+ * Exported because callers outside this module were spelling it themselves, and one of
+ * them was still spelling the name this had BEFORE the per-device split: the live
+ * proof reached for `episodic.jsonl`, found nothing, and crashed. Nobody noticed
+ * because nothing ran it. A path with two spellings is the same class of fault as a
+ * fact with two owners.
  */
-function memoryPath(personaPath: string): string {
+export function memoryPath(personaPath: string): string {
   return join(memoryDir(personaPath), `episodic.${deviceIdentity().id}.jsonl`);
 }
 
