@@ -99,7 +99,23 @@ export type RecordBody =
 			readonly field: string;
 			readonly from: number;
 			readonly to: number;
-			readonly requested: number;
+			/**
+			 * The delta that was asked for, before the envelope had its say.
+			 *
+			 * A delta and not the position it aimed at, for two reasons that agree. It is
+			 * literally what a caller asks for, so the entry records the request rather
+			 * than something computed from it. And it is what `state.json` stores, so
+			 * printing the file back is exact: keeping the position instead meant
+			 * printing `requested - from`, and `-0.2` came back as
+			 * `-0.19999999999999996`. A migration that changes the numbers slightly is
+			 * not a migration, and float noise inside a hash chain is noise nobody can
+			 * explain later.
+			 *
+			 * The two were confused for each other in both directions at once: a move of
+			 * 0.02 was written down as 1.01, and a migrated delta was stored as though it
+			 * were a position.
+			 */
+			readonly delta: number;
 			readonly clamped: boolean;
 			readonly blocked: boolean;
 			readonly reason: string;
@@ -250,8 +266,29 @@ export interface Provenance {
 	readonly toolCall?: string;
 }
 
+/**
+ * The shape this build writes, stamped on every entry and inside the hash.
+ *
+ * A record outlives the build that wrote it, and it cannot be rewritten: that is the
+ * whole point of it. So a reader meeting an entry from another shape has exactly two
+ * honest options, understand it or refuse it, and it can only choose between them if
+ * the entry says which shape it is.
+ *
+ * Written after being bitten twice in one day. What a value entry keeps in its third
+ * number changed from the position that was asked for to the delta that was asked
+ * for, and entries already on disk went on parsing cleanly while meaning something
+ * else. Nothing was corrupt and nothing complained; the numbers were just wrong. A
+ * chain sold as proof cannot have a failure mode that reads as success.
+ *
+ * Inside the hash for the same reason the author is: a version anybody can edit
+ * afterwards is a version that can be used to make an old entry look current.
+ */
+export const ENTRY_VERSION = 1;
+
 /** One entry, before it has been chained. */
 export interface DraftEntry {
+	/** Which shape this is. Absent means it predates versioning and is not readable. */
+	readonly v: number;
 	readonly at: string;
 	readonly author: Author;
 	readonly body: RecordBody;

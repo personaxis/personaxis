@@ -19,6 +19,7 @@
  */
 
 export {
+	ENTRY_VERSION,
 	GENESIS,
 	authorId,
 	isGenesis,

@@ -38,11 +38,32 @@ import { acquireStateLock } from "../lock.js";
 import type { StateFile } from "../persona.js";
 import { readState } from "../persona.js";
 import { replayStateFile } from "./bridge.js";
-import type { Author } from "./entry.js";
+import type { ChainProblem } from "./chain.js";
+import { ENTRY_VERSION, type Author } from "./entry.js";
 import type { Journal } from "./journal.js";
 import { mutate, type Decision, type MoveRequest } from "./mutate.js";
 import { project, type Identity } from "./project.js";
-import { openRecord, type RecordStorage } from "./store.js";
+import { openRecord, recordPathFor, type RecordStorage } from "./store.js";
+
+/**
+ * What a refusal to read a record should tell somebody, and what to do about it.
+ *
+ * `unknown_shape` is the one that needs saying out loud, because it is the only case
+ * where nothing is wrong with the record. Reported as a bare problem name beside the
+ * others, it reads as damage, and somebody goes looking for tampering that did not
+ * happen at the exact moment they most need to trust the chain.
+ */
+function explain(personaPath: string, problem: ChainProblem): string {
+	if (problem.kind === "unknown_shape") {
+		return (
+			`the record at ${recordPathFor(personaPath)} was written in shape ${problem.found} ` +
+			`and this build writes shape ${ENTRY_VERSION} (entry ${problem.seq}). Nothing is wrong ` +
+			"with it: this build cannot read it, which is a different thing. Use a build that " +
+			"can, or start a new record from the state file."
+		);
+	}
+	return `the record does not verify: ${problem.kind} at entry ${problem.seq}`;
+}
 
 /** Who this record belongs to, read from the file it is replacing. */
 function identityOf(state: StateFile): Identity {
@@ -206,6 +227,15 @@ async function write(
 		personaPath,
 		ports.record === undefined ? {} : { storage: ports.record },
 	);
+	// Checked before anything is added to it. Appending to a chain nobody has verified
+	// is appending to something we cannot vouch for, and the check used to run after
+	// the drain: an unreadable record received the new entry, the entry reached the
+	// disk, and only then did it throw. The record was left worse than it was found.
+	const loaded = record.verify();
+	if (!loaded.ok) {
+		throw new Error(explain(personaPath, loaded.problem!));
+	}
+
 	const migrated = record.all().length === 0;
 	adopt(record, stored);
 

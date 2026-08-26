@@ -63,7 +63,11 @@ export function mutationLog(entries: readonly RecordEntry[]): MutationLogEntry[]
 			field: body.field,
 			from: body.from,
 			to: body.to,
-			delta_requested: body.requested,
+			// Straight through, because the entry keeps the same thing the file does. It
+			// briefly kept the position instead, and every row of a real persona came out
+			// with 1.01 where the move was 0.02. The migration tests did not see it: they
+			// compare rows that came IN, and this is what goes OUT.
+			delta_requested: body.delta,
 			clamped: body.clamped,
 			reason: body.reason,
 			// Refuses rather than inventing a word, and the refusal is unreachable in

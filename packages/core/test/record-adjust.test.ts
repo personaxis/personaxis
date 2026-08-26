@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Envelope } from "../src/envelopes.js";
 import type { StateFile } from "../src/persona.js";
 import { adjust } from "../src/record/adjust.js";
-import { readRecord, recordPathFor } from "../src/record/store.js";
+import { fileSink, readRecord, recordPathFor } from "../src/record/store.js";
 
 const ENVELOPES = {
 	"mood.tone": { mean: 0, min: -1, max: 1 } as Envelope,
@@ -222,6 +222,73 @@ describe("a persona that already has a history in the old place", () => {
 
 		expect(decision.from).toBeCloseTo(0.4);
 		expect(decision.to).toBeCloseTo(0.5);
+	});
+});
+
+describe("a record this build cannot read", () => {
+	/** An entry as some other build would have left it, written the way the code writes. */
+	async function laid(entry: unknown): Promise<string> {
+		const path = recordPathFor(personaPath);
+		await fileSink(path).append([entry as never]);
+		return path;
+	}
+
+	it("is refused before anything is added to it, and the file is left alone", async () => {
+		// The check used to run after the drain, so an unreadable record received the new
+		// entry, the entry reached the disk, and only then did it throw. A refusal that
+		// leaves the record worse than it found it is not a refusal.
+		writeState();
+		const path = await laid({
+			v: 0,
+			seq: 0,
+			at: "2026-06-01T00:00:00.000Z",
+			prev: "",
+			hash: "x",
+			author: { kind: "human", id: "someone" },
+			body: {
+				type: "value",
+				field: "mood.tone",
+				from: 0,
+				to: 0.1,
+				delta: 0.1,
+				clamped: false,
+				blocked: false,
+				reason: "from an older build",
+			},
+		});
+
+		await expect(
+			adjust(personaPath, statePath, ENVELOPES, WHO, {
+				field: "mood.tone",
+				delta: 0.1,
+				reason: "now",
+			}),
+		).rejects.toThrow(/shape 0.*shape 1/s);
+
+		expect(readRecord(path)).toHaveLength(1);
+	});
+
+	it("says nothing is wrong with it, because nothing is", async () => {
+		// Reported as a bare problem name it reads as damage, and somebody goes looking
+		// for tampering that did not happen, at the moment they most need to trust it.
+		writeState();
+		await laid({
+			v: 99,
+			seq: 0,
+			at: "2026-06-01T00:00:00.000Z",
+			prev: "",
+			hash: "x",
+			author: { kind: "human", id: "someone" },
+			body: { type: "failure", code: "c", message: "m" },
+		});
+
+		await expect(
+			adjust(personaPath, statePath, ENVELOPES, WHO, {
+				field: "mood.tone",
+				delta: 0.1,
+				reason: "now",
+			}),
+		).rejects.toThrow(/Nothing is wrong with it/);
 	});
 });
 
