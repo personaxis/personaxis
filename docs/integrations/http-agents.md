@@ -97,7 +97,7 @@ Response:
 
 ### `POST /persona/agent`
 Run the persona's governed Agent Loop on a task: it proposes shell/file tool calls, each gated by the
-persona's sandbox policy, executes the allowed ones, and returns the step events + final result.
+persona's sandbox policy, executes the allowed ones, and returns the step events + how the turn ended.
 
 Request:
 ```json
@@ -106,8 +106,30 @@ Request:
 
 Response:
 ```json
-{ "result": { "...": "..." }, "events": [ /* step events */ ], "trace": [ /* trace file paths, if enabled */ ] }
+{
+  "outcome": {
+    "turn": "6fb83c6a-5bee-489a-a5c6-7e502405c6d7",
+    "stopReason": "answered",
+    "answer": "…",
+    "steps": 3,
+    "cost": { "tokens": 1380, "usd": 0.004 }
+  },
+  "events": [ /* step events */ ],
+  "trace": [ /* trace file paths, if enabled */ ]
+}
 ```
+
+`stopReason` is a closed set, so a client can switch on it: `answered` (the loop said it was done),
+`budget` (a step, token, cost or time ceiling), `stopped` (a stop condition the spec declared),
+`refused` (a guard would not let it continue), `interrupted`, `empty`, `failed`, `abandoned`. Every
+one but the first three closes with an empty `answer` or an explanatory `failure: { code, message }`.
+
+`turn` is the entry id in the persona's record, so the same turn can be looked up in `record.jsonl`
+afterwards: what was asked, what was answered, how it ended and what it cost.
+
+The specific ceiling that stopped a run, the verification verdict with each verifier named, and the
+wall clock are all in `events` (`agent-stop-condition`, `verify-result` / `verify-complete`,
+`agent-budget`), not in `outcome`, which carries only what any loop can report.
 
 Requires a configured tool-calling model (`400` without one). This is non-interactive: anything the
 sandbox policy marks as needing approval is **denied** (never auto-approved over HTTP). `task` must be

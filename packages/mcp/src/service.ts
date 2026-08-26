@@ -120,7 +120,10 @@ export async function observe(p: string, observation: string, source: Provenance
  * allow-list). Requires a configured model for tool-calling.
  */
 export async function agentRun(p: string, task: string, maxSteps = 12): Promise<unknown> {
-  return persona(p).agentRun(task, { maxSteps });
+  // The host asked, and the record says so. It is not the persona asking itself and it
+  // is not a person: an MCP host drives a persona on somebody's behalf and this surface
+  // never learns whose.
+  return persona(p).agentRun(task, { maxSteps, asker: { kind: "component", name: "mcp" } });
 }
 
 export function audit(p: string): unknown {

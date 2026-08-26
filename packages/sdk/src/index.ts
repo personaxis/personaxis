@@ -22,7 +22,6 @@ import {
   run,
   record,
   resolveModel,
-  PersonaAgent,
   EventBus,
   Tracer,
   readObservability,
@@ -52,8 +51,6 @@ import {
   evaluateCommand,
   policyFromFrontmatter,
   personaResourceRoots,
-  readAgentBudget,
-  readVerification,
   DEFAULT_POLICY,
   type PersonaHandle,
   type LoopEvent,
@@ -84,7 +81,16 @@ export interface PersonaAuditView {
 }
 
 export interface AgentRunResult {
-  result: unknown;
+  /**
+   * How the turn ended, in the runtime's vocabulary: `TurnOutcome`.
+   *
+   * Named `outcome` rather than `result`, and the rename is deliberate. This used to be
+   * the whole `AgentResult` of one particular loop, so a caller reading `summary` and
+   * `budget.stoppedBy` was reading the shape of our loop and would have got silence
+   * from anybody else's. Renaming makes that a compile error where keeping the name
+   * would have made it a field that quietly stopped being there.
+   */
+  outcome: run.TurnOutcome;
   events: LoopEvent[];
   trace: unknown[];
 }
@@ -219,19 +225,47 @@ export class Persona {
    * Run the governed Agent Loop on a task. Non-interactive: any tool whose verdict is `ask` is
    * denied unless the persona's permissions allow-list pre-authorizes it. Requires a configured model.
    *
-   * The turn goes through a `TurnRunner`, so it is written into the persona's record:
-   * what was asked, what came back, how it ended and what it cost. A persona driven
-   * through this SDK used to leave no trace in its own record, so it could not say
-   * afterwards what it had been asked to do, and its resumption pointer came from a
-   * block the agent wrote straight into `state.json` beside the record's own.
+   * The turn goes through `run.runnerFor`, so this method no longer knows which loop
+   * answers it, and it is written into the persona's record: what was asked, what came
+   * back, how it ended and what it cost.
    *
-   * The provider is spelled out here rather than taken from `defaultLoop` for one
-   * reason: this method still returns the whole `AgentResult`, so it has to keep what
-   * the loop produced as well as the outcome the seam reports. Narrowing the return to
-   * `TurnOutcome` is a breaking change to a published API and is its own piece of work;
-   * this closes the record gap without waiting for it.
+   * ## What the narrowing cost, measured rather than assumed
+   *
+   * It used to return the whole `AgentResult` of our own loop. Four things are not in
+   * `TurnOutcome`, and three of them were never lost: the specific ceiling that stopped
+   * it rides `agent-stop-condition`, the verification verdict rides `verify-result` and
+   * `verify-complete` with every verifier named, and the wall clock rides
+   * `agent-budget`. All three are in `events`, which this still returns whole.
+   *
+   * The fourth was real. `AgentResult.finished` says the loop completed the task, and
+   * the seam had no word for it: a turn that ran out of steps and a turn that called
+   * `finish` both came back `answered`. That was a defect in the vocabulary rather than
+   * a cost of narrowing, so it was fixed rather than worked around. `answered` now
+   * means the loop said it was done, `budget` means it ran out of room, `stopped` means
+   * a declared rule ended it, and `answered(reason)` still tells a caller whether there
+   * is something to show.
+   *
+   * `outcome.turn` is the id of the turn in the record, which the old shape had no way
+   * to give: a caller can now go and read what it wrote.
    */
-  async agentRun(task: string, opts: { maxSteps?: number; onApproval?: () => Promise<"deny" | "approve"> } = {}): Promise<AgentRunResult | { error: string }> {
+  async agentRun(
+    task: string,
+    opts: {
+      maxSteps?: number;
+      onApproval?: () => Promise<"deny" | "approve">;
+      /**
+       * Who is asking, for the record's author field.
+       *
+       * Defaults to this SDK as a component, which is what is true when nobody says:
+       * a program drove the persona. An embedder that knows its own user should pass
+       * them, because "a person asked" and "our backend asked" are different facts and
+       * the record is the place they must not be confused. It is never inferred: a
+       * default that guessed a person would put somebody's hand on a turn they never
+       * took, which is the forgery the author invariant exists to prevent.
+       */
+      asker?: run.TurnRequest["asker"];
+    } = {},
+  ): Promise<AgentRunResult | { error: string }> {
     const fm = this.fm();
     const llm = resolveModel({ personaPath: this.personaPath, frontmatter: fm });
     if (!llm) {
@@ -240,56 +274,35 @@ export class Persona {
     const events: LoopEvent[] = [];
     const bus = new EventBus();
     bus.on((e) => events.push(e));
-    const agent = new PersonaAgent({
-      llm,
-      policy: { ...policyFromFrontmatter(fm, process.cwd()), resourceRoots: personaResourceRoots(this.personaPath) },
-      // The compiled identity, not the raw spec body, which is what this passed and
-      // is the same defect `compiledIdentity()` had one method above. `personaBody`
-      // becomes the "# Identity" section of the system prompt, so a persona run
-      // through this SDK was given a thinner description of itself than the same
-      // persona in the REPL, which passes its compiled document. Measured here:
-      // 2,640 characters against 6,283.
-      personaBody: run.identityOf(this.assembled),
-      onApproval: opts.onApproval ?? (async () => "deny"),
-      maxSteps: opts.maxSteps ?? 12,
-      budget: readAgentBudget(fm),
-      verification: readVerification(fm),
-      judge: llm,
-      personaPath: this.personaPath,
-      bus,
-    });
     const obs = readObservability(fm);
     const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
 
-    let produced: Awaited<ReturnType<PersonaAgent["run"]>> | undefined;
-    const runner = new run.TurnRunner({
-      provider: {
-        name: "personaxis",
-        run: async (context) => {
-          produced = await agent.run(context.request.prompt);
-          return run.productOf(produced);
-        },
+    const runner = run.runnerFor(
+      { personaPath: this.personaPath, frontmatter: fm, llm },
+      {
+        policy: { ...policyFromFrontmatter(fm, process.cwd()), resourceRoots: personaResourceRoots(this.personaPath) },
+        // The compiled identity, not the raw spec body, which is what this passed and
+        // is the same defect `compiledIdentity()` had one method above. `personaBody`
+        // becomes the "# Identity" section of the system prompt, so a persona run
+        // through this SDK was given a thinner description of itself than the same
+        // persona in the REPL, which passes its compiled document. Measured here:
+        // 2,640 characters against 6,283.
+        personaBody: run.identityOf(this.assembled),
+        onApproval: opts.onApproval ?? (async () => "deny"),
+        maxSteps: opts.maxSteps ?? 12,
+        observer: run.recordingTurns({ personaPath: this.personaPath, statePath: this.handle.statePath }),
+        bus,
       },
-      observer: run.recordingTurns({ personaPath: this.personaPath, statePath: this.handle.statePath }),
-    });
-    // Attributed to the persona, because nobody typed this. An SDK call is the persona
-    // being driven, and crediting an unnamed operator would put a person's hand on a
-    // turn no person took.
+    );
     const outcome = await runner.run({
       turn: randomUUID(),
       prompt: task,
-      asker: { kind: "persona", id: record.SELF },
+      asker: opts.asker ?? { kind: "component", name: "sdk" },
     });
 
     const trace = tracer ? tracer.write(this.personaPath).paths : [];
     tracer?.stop();
-    // The loop returns a result on every path it takes itself, so a missing one means
-    // it threw and the runner closed the turn instead. Reported rather than asserted
-    // away: `result!` would hand a caller `undefined` under a type that promises a run.
-    if (!produced) {
-      return { error: outcome.failure?.message ?? "the agent loop produced no result" };
-    }
-    return { result: produced, events, trace };
+    return { outcome, events, trace };
   }
 
   /** Integrity view: mutation count, memory size, hash-chain validity, detected anomalies. */

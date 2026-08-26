@@ -311,7 +311,7 @@ export function buildServer(opts: ServerOptions = {}): McpServer {
 
   server.tool(
     "agent_run",
-    "Run the persona's GOVERNED Agent Loop on a task: it proposes shell/file tool calls, each gated by the persona's sandbox policy (a 'deny' never runs; anything needing approval is denied in this non-interactive context), executes the allowed ones, and returns the step events + final summary. Requires a configured model (config.json local.endpoint/model, or PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL).",
+    "Run the persona's GOVERNED Agent Loop on a task: it proposes shell/file tool calls, each gated by the persona's sandbox policy (a 'deny' never runs; anything needing approval is denied in this non-interactive context), executes the allowed ones, and returns the step events plus how the turn ended. The reply is { outcome, events, trace }: outcome.answer is what the persona produced, outcome.stopReason says why it stopped (answered = the loop finished; budget = a ceiling; stopped = a declared stop condition; refused, interrupted, empty, failed, abandoned), and outcome.turn is the entry id in the persona's record. Requires a configured model (config.json local.endpoint/model, or PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL).",
     {
       persona: z.string().describe("Path to the persona (personaxis.md / PERSONA.md)."),
       task: z.string().describe("The task to accomplish."),
