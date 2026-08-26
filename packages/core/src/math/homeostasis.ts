@@ -37,6 +37,46 @@ export function decayingFields(
   return out;
 }
 
+/** One coordinate's pull toward its baseline, before anything writes it down. */
+export interface HomeostaticMove {
+  field: string;
+  delta: number;
+  reason: string;
+}
+
+/**
+ * What one homeostatic step would move, and by how much.
+ *
+ * Pure: values in, moves out, no state file and nothing written. Split out for the
+ * same reason `decide` was split from `mutate`, and the split is what lets the record
+ * write these entries with an author and provenance instead of the old log's five-word
+ * actor. `applyHomeostasis` keeps its shape on top of this while the old engine is
+ * still there.
+ *
+ * Deviations below `epsilon` are skipped, so a coordinate that has effectively
+ * returned home stops generating microscopic entries forever.
+ */
+export function homeostaticMoves(
+  values: Record<string, number>,
+  envelopes: Record<string, Envelope>,
+  opts?: { epsilon?: number },
+): HomeostaticMove[] {
+  const epsilon = opts?.epsilon ?? 1e-4;
+  const moves: HomeostaticMove[] = [];
+  for (const { field, lambda, halfLife } of decayingFields(envelopes)) {
+    const e = envelopes[field];
+    const current = values[field] ?? e.mean;
+    const delta = lambda * (e.mean - current);
+    if (Math.abs(delta) < epsilon) continue;
+    moves.push({
+      field,
+      delta,
+      reason: `homeostatic decay toward baseline (half_life ${halfLife})`,
+    });
+  }
+  return moves;
+}
+
 /**
  * Apply one homeostatic step to `state` in place (audited via applyMutation).
  * Deviations below `epsilon` are left untouched, the log stays free of
@@ -47,18 +87,11 @@ export function applyHomeostasis(
   envelopes: Record<string, Envelope>,
   opts?: { epsilon?: number; sessionId?: string; originNode?: string },
 ): MutationResult[] {
-  const epsilon = opts?.epsilon ?? 1e-4;
   const results: MutationResult[] = [];
-  for (const { field, lambda, halfLife } of decayingFields(envelopes)) {
-    const e = envelopes[field];
-    const current = state.values[field] ?? e.mean;
-    const delta = lambda * (e.mean - current);
-    if (Math.abs(delta) < epsilon) continue;
+  for (const move of homeostaticMoves(state.values, envelopes, opts)) {
     results.push(
       applyMutation(state, envelopes, {
-        field,
-        delta,
-        reason: `homeostatic decay toward baseline (half_life ${halfLife})`,
+        ...move,
         actor: "runtime-decay",
         sessionId: opts?.sessionId,
         originNode: opts?.originNode,
