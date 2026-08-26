@@ -49,6 +49,19 @@ export interface TurnOutcome {
 	readonly answer: string;
 	/** Steps taken, for the record and for the budget. */
 	readonly steps: number;
+	/**
+	 * What the turn cost, when whoever ran it can say.
+	 *
+	 * Optional, and the option is the point rather than convenience. Every provider
+	 * takes steps and the runtime counts those itself; only a provider talking to
+	 * something that charges can report tokens and money, and a scripted one cannot.
+	 * Requiring it would make every test provider claim its turns were free, which is
+	 * a different statement from having no price to give.
+	 *
+	 * It is here rather than left to a counter beside the runner because a total kept
+	 * elsewhere is a number that can disagree with the turns it claims to add up.
+	 */
+	readonly cost?: { readonly tokens: number; readonly usd: number };
 	/** Present when the turn ended badly, with a code so it can be routed. */
 	readonly failure?: { readonly code: string; readonly message: string };
 }

@@ -166,7 +166,41 @@ describe("the loop we already have goes through the same seam", () => {
 				finished: true,
 				budget: { steps: 3, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: null },
 			}),
-		).toEqual({ answer: "the branch is clean", steps: 3, stopReason: "answered" });
+		).toEqual({
+			answer: "the branch is clean",
+			steps: 3,
+			stopReason: "answered",
+			// Reported because the budget said so, zeros included. Zero is a
+			// measurement: somebody looked and the turn was free.
+			cost: { tokens: 0, usd: 0 },
+		});
+	});
+
+	it("gives no price for a run nobody priced, rather than calling it free", () => {
+		// A scripted provider has no budget to read. Reporting zero would turn "nothing
+		// to say" into "checked, and it cost nothing", and a total over ten turns reads
+		// identically whether all ten were priced or none were.
+		const product = productOf({ summary: "done", steps: 1, finished: true });
+
+		expect(product).toEqual({ answer: "done", steps: 1, stopReason: "answered" });
+		expect("cost" in product).toBe(false);
+	});
+
+	it("carries the price through every ending, not only the happy one", () => {
+		// A turn that was refused or ran out still cost what it cost, and dropping the
+		// price on the unhappy paths is how a bill comes out lower than the work.
+		const budget = { steps: 2, tokens: 900, costUsd: 0.04, wallSeconds: 1, stoppedBy: "tool_denied" };
+		const refused = productOf({ summary: "", steps: 2, finished: false, budget } as never);
+		const ranOut = productOf({
+			summary: "",
+			steps: 2,
+			finished: false,
+			budget: { ...budget, stoppedBy: "max_steps" },
+		} as never);
+
+		expect(refused.stopReason).toBe("refused");
+		expect(refused.cost).toEqual({ tokens: 900, usd: 0.04 });
+		expect(ranOut.cost).toEqual({ tokens: 900, usd: 0.04 });
 	});
 
 	it("calls a budget stop that produced text an answer, not a failure", () => {

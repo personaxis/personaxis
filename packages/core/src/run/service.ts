@@ -67,6 +67,8 @@ export interface TurnProduct {
 	readonly answer: string;
 	readonly steps: number;
 	readonly stopReason?: Extract<StopReason, "answered" | "empty" | "interrupted" | "refused">;
+	/** What it cost, when this provider talks to something that charges. */
+	readonly cost?: { readonly tokens: number; readonly usd: number };
 }
 
 /**
@@ -123,11 +125,16 @@ export class TurnRunner {
 	}
 
 	async run(request: TurnRequest, signal?: AbortSignal): Promise<TurnOutcome> {
+		// Opened before the budget is consulted, because being asked is a fact and the
+		// answer to it is a different fact. This used to sit after the refusal, so a
+		// turn with no room left wrote a close with no open: a reader met an ending for
+		// something that, as far as the record said, never started. Nothing is charged
+		// by opening, and a refusal that leaves no trace is a refusal a reader has to
+		// guess at, with the guess always being that nothing was asked.
+		this.#observer?.opened?.(request);
+
 		const room = this.ledger.room();
 		if (!room.ok) {
-			// Refused before the turn opens, so nothing is charged and nothing is
-			// written as having started. A turn that was never allowed to begin is not a
-			// turn that ended.
 			return this.#close({
 				turn: request.turn,
 				stopReason: "budget",
@@ -136,8 +143,6 @@ export class TurnRunner {
 				failure: { code: "budget", message: describeRoom(room) },
 			});
 		}
-
-		this.#observer?.opened?.(request);
 
 		// Steps the provider reported as they finished, so the total at the end is not
 		// charged twice for the ones already counted.
@@ -183,6 +188,10 @@ export class TurnRunner {
 			stopReason,
 			answer: product.answer,
 			steps: product.steps,
+			// Passed through untouched, absent included. A provider that gave no price
+			// gets no price in the outcome rather than a zero somebody would later read
+			// as "checked, and free".
+			...(product.cost === undefined ? {} : { cost: product.cost }),
 			...(stopReason === "abandoned"
 				? {
 						failure: {

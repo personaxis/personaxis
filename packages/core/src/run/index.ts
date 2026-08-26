@@ -84,3 +84,5 @@ export {
 	type DelegationResult,
 	type ExplicitScope,
 } from "./delegation.js";
+
+export { recordTurns, type RecordingOptions } from "./recording.js";

@@ -44,13 +44,29 @@ const BUDGET_STOPS = new Set([
 	"budget",
 ]);
 
+/**
+ * What the run cost, when the loop was talking to something that charges.
+ *
+ * Absent rather than zero when there is no budget to read. A turn nobody priced and a
+ * turn that cost nothing are different facts, and the second one is a measurement.
+ */
+function costOf(result: AgentResult): { tokens: number; usd: number } | undefined {
+	const budget = result.budget;
+	if (!budget) return undefined;
+	if (budget.tokens === undefined && budget.costUsd === undefined) return undefined;
+
+	return { tokens: budget.tokens ?? 0, usd: budget.costUsd ?? 0 };
+}
+
 /** Turns the old result into what the seam expects, without inventing anything. */
 export function productOf(result: AgentResult): TurnProduct {
 	const answer = result.summary ?? "";
 	const stoppedBy = result.budget?.stoppedBy ?? null;
+	const cost = costOf(result);
+	const priced = cost === undefined ? {} : { cost };
 
 	if (result.finished) {
-		return { answer, steps: result.steps, stopReason: "answered" };
+		return { answer, steps: result.steps, stopReason: "answered", ...priced };
 	}
 	if (stoppedBy && BUDGET_STOPS.has(stoppedBy)) {
 		// The runner reads a budget stop off its own ledger rather than from here, so
@@ -58,15 +74,15 @@ export function productOf(result: AgentResult): TurnProduct {
 		// is `answered` when there is text and `empty` when there is not, which is the
 		// same distinction the runner would draw.
 		return answer.length > 0
-			? { answer, steps: result.steps, stopReason: "answered" }
-			: { answer, steps: result.steps, stopReason: "empty" };
+			? { answer, steps: result.steps, stopReason: "answered", ...priced }
+			: { answer, steps: result.steps, stopReason: "empty", ...priced };
 	}
 	if (stoppedBy === "tool_denied") {
-		return { answer, steps: result.steps, stopReason: "refused" };
+		return { answer, steps: result.steps, stopReason: "refused", ...priced };
 	}
 	return answer.length > 0
-		? { answer, steps: result.steps, stopReason: "answered" }
-		: { answer, steps: result.steps, stopReason: "empty" };
+		? { answer, steps: result.steps, stopReason: "answered", ...priced }
+		: { answer, steps: result.steps, stopReason: "empty", ...priced };
 }
 
 /**
