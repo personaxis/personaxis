@@ -31,7 +31,7 @@ import {
   extractEnvelopes,
   rebuildState,
   resolveField,
-  applyMutation,
+  record,
   governMutations,
   readMode,
   readMaxStepDelta,
@@ -104,7 +104,7 @@ const mutateSubcommand = new Command("mutate")
   )
   .option("--tool-call-id <id>", "Tool call id for traceability (optional)")
   .action(
-    (options: {
+    async (options: {
       field: string;
       delta: string;
       reason: string;
@@ -149,20 +149,21 @@ const mutateSubcommand = new Command("mutate")
         const admitted = decision.admitted[0];
         const rejected = decision.rejected[0];
 
-        const result = withStateLock(statePath, () => {
-          const state = readState(statePath);
-          const r = applyMutation(state, env.envelopes, {
+        // Through the record, which is the source, rather than into state.json, which
+        // is now printed from it. `adjust` takes the lock itself and holds it across
+        // the read, the write and the print, so there is no `withStateLock` here.
+        const result = (
+          await record.adjust(personaPath, statePath, env.envelopes, record.authorOf(actor), {
             field,
             delta: admitted ? admitted.delta : delta,
             reason: admitted ? admitted.reason : options.reason,
-            actor,
-            toolCallId: options.toolCallId,
-            governanceBlocked: !admitted,
-            originNode: machineId(),
-          });
-          writeState(statePath, state);
-          return r;
-        });
+            blocked: !admitted,
+            provenance: {
+              node: machineId(),
+              ...(options.toolCallId === undefined ? {} : { toolCall: options.toolCallId }),
+            },
+          })
+        ).decision;
 
         if (rejected) {
           // The refusal is itself in the audit trail (governance_blocked: true).
