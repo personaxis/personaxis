@@ -48,7 +48,28 @@ const PRIVATE = [
 	{ re: /docs\/security\//, what: "the security architecture docs" },
 	{ re: /FABLE5_BRIEF/, what: "the internal brief" },
 	{ re: /SAAS_BUILD_PLAN/, what: "the internal build plan" },
-	{ re: /plan:(?:check|next)/, what: "a script named after the private ledger" },
+	// `\b` was written here as a literal backspace byte, so this rule matched a
+	// control character and never a script name. It had been inert since it was
+	// added, while the gate reported every run as clean: a rule nobody can see fail
+	// is worse than no rule, because the clean report is what people act on.
+	{ re: /\bplan:(?:check|next)\b/, what: "a script named after the private ledger" },
+	/**
+	 * The planning ledgers, by NAME as well as by path.
+	 *
+	 * These leaked as bare filenames, which the path patterns above cannot see because
+	 * there is no slash in them: `tracked in \`IMPLEMENTATION_CHECKLIST.md\`` in five
+	 * CHANGELOG headings, and `per \`ARCHITECTURE_REVIEW.md\` §14` in the tech-stack
+	 * page. Thirteen were live in public files when this rule was written.
+	 *
+	 * A bare filename is worse than a path, not better. A reader following a path at
+	 * least sees it is a path they do not have; a filename reads as a document they are
+	 * simply missing, so they go looking.
+	 */
+	{ re: /IMPLEMENTATION_CHECKLIST/, what: "the private execution checklist" },
+	{ re: /ARCHITECTURE_REVIEW/, what: "the private architecture audit" },
+	{ re: /MASTER_PLAN/, what: "the private master plan" },
+	{ re: /STUDIO_IDE_PLAN/, what: "the private IDE plan" },
+	{ re: /TECH_SPECS_V[0-9]/, what: "the private technical specifications" },
 ];
 
 /**
