@@ -42,7 +42,7 @@ import type { Author } from "./entry.js";
 import type { Journal } from "./journal.js";
 import { mutate, type Decision, type MoveRequest } from "./mutate.js";
 import { project, type Identity } from "./project.js";
-import { openRecord } from "./store.js";
+import { openRecord, type RecordStorage } from "./store.js";
 
 /** Who this record belongs to, read from the file it is replacing. */
 function identityOf(state: StateFile): Identity {
@@ -90,6 +90,42 @@ export interface Move {
 	readonly request: MoveRequest;
 }
 
+/**
+ * How a caller says what it wants moved, given where the persona actually is.
+ *
+ * A function and not a list, because some moves depend on the current values and
+ * those can only be read correctly under the lock. A homeostatic decay is
+ * `lambda * (mean - current)`: deciding it before the lock is taken computes the pull
+ * from a value another writer may already have changed, so the persona is pulled
+ * toward its baseline by the wrong amount and nothing says so.
+ *
+ * A caller whose moves do not depend on anything just ignores the argument.
+ */
+export type Plan = (values: Record<string, number>) => readonly Move[];
+
+/**
+ * Where an adjustment reads and writes, for an engine that is not running on a disk.
+ *
+ * The state file's own port is `StateStore` and the record's is `RecordStorage`, and
+ * both are optional because the filesystem is the default and every caller written
+ * before this existed keeps working.
+ *
+ * The lock is acquire-and-release rather than the `withLock(key, fn)` shape the other
+ * ports use, and that is not a style choice. `withLock` is generic over what the
+ * callback returns, so handing it an async function type-checks and releases the lock
+ * the moment the promise is CREATED, leaving everything after the first await
+ * unprotected. A lock held only until the first await looks like protection in the
+ * code and is none.
+ */
+export interface AdjustPorts {
+	readonly record?: RecordStorage;
+	readonly state?: {
+		read(key: string): StateFile;
+		write(key: string, state: StateFile): void;
+	};
+	readonly lock?: (key: string) => () => void;
+}
+
 /** What a batch did, in the order it did it. */
 export interface AdjustAllResult {
 	readonly decisions: readonly Decision[];
@@ -111,10 +147,15 @@ export async function adjust(
 	envelopes: Record<string, Envelope>,
 	author: Author,
 	req: MoveRequest,
+	ports: AdjustPorts = {},
 ): Promise<AdjustResult> {
-	const { decisions, state } = await adjustAll(personaPath, statePath, envelopes, [
-		{ author, request: req },
-	]);
+	const { decisions, state } = await adjustAll(
+		personaPath,
+		statePath,
+		envelopes,
+		() => [{ author, request: req }],
+		ports,
+	);
 	return { decision: decisions[0]!, state };
 }
 
@@ -136,7 +177,8 @@ export async function adjustAll(
 	personaPath: string,
 	statePath: string,
 	envelopes: Record<string, Envelope>,
-	moves: readonly Move[],
+	plan: Plan,
+	ports: AdjustPorts = {},
 ): Promise<AdjustAllResult> {
 	// The lock is taken here and released in `finally`, rather than through
 	// `withStateLock`. That helper is generic over the callback's return type, so
@@ -144,9 +186,9 @@ export async function adjustAll(
 	// promise is CREATED, leaving the read, the write and the print unprotected for
 	// exactly as long as they take. A lock that is held only until the first await is
 	// worse than none: it looks like protection in the code and provides none.
-	const release = acquireStateLock(statePath);
+	const release = (ports.lock ?? acquireStateLock)(statePath);
 	try {
-		return await write(personaPath, statePath, envelopes, moves);
+		return await write(personaPath, statePath, envelopes, plan, ports);
 	} finally {
 		release();
 	}
@@ -156,13 +198,22 @@ async function write(
 	personaPath: string,
 	statePath: string,
 	envelopes: Record<string, Envelope>,
-	moves: readonly Move[],
+	plan: Plan,
+	ports: AdjustPorts,
 ): Promise<AdjustAllResult> {
-	const stored = readState(statePath);
-	const record = openRecord(personaPath);
+	const stored = (ports.state?.read ?? readState)(statePath);
+	const record = openRecord(
+		personaPath,
+		ports.record === undefined ? {} : { storage: ports.record },
+	);
 	const migrated = record.all().length === 0;
 	adopt(record, stored);
 
+	// Planned after adopting, so the values it sees are the record's and not the
+	// stored copy's. On a persona that has just migrated those agree; on one whose
+	// state file somebody edited by hand they do not, and the record is the source.
+	const folded0 = record.state();
+	const moves = plan(folded0.ok ? folded0.state.values : {});
 	const decisions = moves.map((move) => mutate(record, envelopes, move.author, move.request));
 
 	const report = await record.drain();
@@ -189,7 +240,8 @@ async function write(
 	// then would touch its mtime on every idle turn for no reason. A first touch is a
 	// change even with no moves: it is the migration.
 	if (migrated || moves.length > 0) {
-		writeFileSync(statePath, JSON.stringify(printed, null, 2) + "\n", "utf-8");
+		if (ports.state) ports.state.write(statePath, printed);
+		else writeFileSync(statePath, JSON.stringify(printed, null, 2) + "\n", "utf-8");
 	}
 
 	return { decisions, state: printed };

@@ -12,7 +12,7 @@
 import { extractEnvelopes } from "./envelopes.js";
 import { bandCrossing, bandOf, expressionFor } from "./math/bands.js";
 import { driftReport, readDriftThresholds } from "./math/drift.js";
-import { applyHomeostasis, decayingFields } from "./math/homeostasis.js";
+import { decayingFields, homeostaticMoves } from "./math/homeostasis.js";
 import {
   governMutations,
   readMode,
@@ -20,7 +20,7 @@ import {
   type GovernanceConfig,
   DEFAULT_GOVERNANCE,
 } from "./governance.js";
-import { applyMutation } from "./state-engine.js";
+import * as record from "./record/index.js";
 import { mirrorMutationToLog } from "./multi-device.js";
 import {
   prepareMemoryEntry,
@@ -192,50 +192,74 @@ export class LivingLoop {
         // another tick): re-read fresh state under the lock, the proposed deltas
         // are relative, so applying them to fresh values is correct, and never
         // hold the lock across a model call (the appraisal already happened).
-        this.storage.lock.withLock(this.handle.statePath, () => {
-          const fresh: StateFile = this.storage.state.read(this.handle.statePath);
-          // Homeostatic step FIRST (the dynamics' decay term precedes the tick's
-          // forcing; every decay is an audited runtime-decay mutation).
-          for (const r of applyHomeostasis(fresh, env.envelopes, {
-            sessionId: this.sessionId,
-            originNode: machineId(),
-          })) {
-            bus.emit({ type: "mutate", result: r });
-            if (r.to !== r.from) {
-              mutationsApplied++;
-              recordCrossing(r.entry.field, r.from, r.to);
-            }
+        // Where every entry of this tick was written: this machine, this session.
+        const provenance = { node: machineId(), session: this.sessionId };
+
+        // Through the record, and NOT through the storage seam, which is the choice
+        // this step turned on.
+        //
+        // The seam exists so a hosted engine can keep state in Postgres instead of on
+        // a disk. In practice it has one adapter, the filesystem, and one caller, this
+        // loop: nothing else ever implemented `StateStore`. Adding a second port for
+        // the record would double a guess about a second adapter that has not
+        // appeared, and it would put the record behind an interface that also exposes
+        // `state.write`, preserving the exact duplication this step exists to end.
+        //
+        // What a hosted engine actually needs is not another state store but somewhere
+        // to put entries, and the journal already has that: `RecordSink`. It is the
+        // right level, entries rather than files, and it is a seam that is used.
+        const result = await record.adjustAll(
+          this.handle.personaPath,
+          this.handle.statePath,
+          env.envelopes,
+          // Planned inside the lock: a decay is `lambda * (mean - current)`, and
+          // deciding it beforehand computes the pull from a value another writer may
+          // already have moved.
+          (values) => [
+            // Decay first: the dynamics' decay term precedes the tick's forcing, and
+            // the order is the order the moves are written down.
+            ...homeostaticMoves(values, env.envelopes).map((m) => ({
+              author: record.authorOf("runtime-decay"),
+              request: { ...m, provenance },
+            })),
+            ...admitted.map((m) => ({
+              author: record.authorOf(input.actor ?? "actor-llm"),
+              request: { field: m.field, delta: m.delta, reason: m.reason, provenance },
+            })),
+          ],
+          // The seam, at the level the truth is at now. An engine hosted somewhere
+          // without a disk injects a record store and a state store and never touches
+          // one; the default is the filesystem, so nothing that worked stops.
+          {
+            ...(this.storage.record === undefined ? {} : { record: this.storage.record }),
+            lock: (key) => this.storage.lock.acquire(key),
+            state: {
+              read: (key) => this.storage.state.read(key),
+              write: (key, value) => this.storage.state.write(key, value),
+            },
+          },
+        );
+
+        for (const decision of result.decisions) {
+          bus.emit({ type: "mutate", result: decision });
+          if (decision.to !== decision.from) {
+            mutationsApplied++;
+            recordCrossing(decision.field, decision.from, decision.to);
           }
-          for (const m of admitted) {
-            const result = applyMutation(fresh, env.envelopes, {
-              field: m.field,
-              delta: m.delta,
-              reason: m.reason,
-              actor: input.actor ?? "actor-llm",
-              originNode: machineId(),
-              sessionId: this.sessionId,
-            });
-            bus.emit({ type: "mutate", result });
-            if (result.to !== result.from) {
-              mutationsApplied++;
-              recordCrossing(m.field, result.from, result.to);
-            }
-          }
-          this.storage.state.write(this.handle.statePath, fresh);
-          // V8.C: the same change, appended to THIS device's log. state.json stays the
-          // fast local cache; the log is what merges with another machine's without one
-          // overwriting the other. Written here, at the single point where state is
-          // persisted, so no mutation path can forget to record itself.
-          for (const m of admitted) {
-            mirrorMutationToLog(this.handle.personaPath, {
-              field: m.field,
-              delta: m.delta,
-              actor: input.actor ?? "actor-llm",
-              reason: m.reason,
-            });
-          }
-          postValues = { ...fresh.values };
-        });
+        }
+
+        // V8.C: the same change, appended to THIS device's log. Still written while
+        // state.json is still a document other machines merge; the record carries the
+        // machine on every entry now, so R8 is what removes this third copy.
+        for (const m of admitted) {
+          mirrorMutationToLog(this.handle.personaPath, {
+            field: m.field,
+            delta: m.delta,
+            actor: input.actor ?? "actor-llm",
+            reason: m.reason,
+          });
+        }
+        postValues = { ...result.state.values };
       }
 
       // Drift metric after this tick's mutations: report D, crossings, and any layer

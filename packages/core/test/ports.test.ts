@@ -15,6 +15,11 @@ import {
   type StateFile,
   type Storage,
 } from "../src/index.js";
+// From the record's own module, not the top-level re-export: `RecordEntry` is also
+// the name of the wire protocol's entry, and this file's tsconfig does not type-check
+// tests, so importing the wrong one of the two would go unnoticed.
+import type { RecordEntry } from "../src/record/entry.js";
+import { recordPathFor } from "../src/record/store.js";
 
 let dir: string;
 let personaPath: string;
@@ -50,9 +55,14 @@ class FixedAppraiser implements Appraiser {
 describe("F3.3 storage ports", () => {
   it("defaultFsStorage exposes the four adapters", () => {
     const s = defaultFsStorage();
-    expect(typeof s.lock.withLock).toBe("function");
+    expect(typeof s.lock.acquire).toBe("function");
     expect(typeof s.state.read).toBe("function");
     expect(typeof s.state.write).toBe("function");
+    // The record's own port. The state file is printed from the record now, so a
+    // hosted engine given only `state` would be hosting the projection and losing
+    // the thing it is projected from.
+    expect(typeof s.record?.read).toBe("function");
+    expect(typeof s.record?.sink).toBe("function");
     expect(typeof s.ledger.verify).toBe("function");
     expect(typeof s.memory.consolidate).toBe("function");
   });
@@ -71,12 +81,20 @@ describe("F3.3 storage ports", () => {
     };
     let locks = 0;
     let writes = 0;
+    // The record, in memory too. Since the record became the source, an engine that
+    // wrote state through this store and entries to a disk beside it would still be
+    // touching the filesystem, and touching it for the half that matters.
+    let entries: RecordEntry[] = [];
     const storage: Storage = {
-      lock: { withLock: (_k, fn) => { locks++; return fn(); } },
+      lock: { acquire: (_k) => { locks++; return () => {}; } },
       state: {
         read: () => structuredClone(mem),
         write: (_k, s) => { writes++; mem = structuredClone(s); },
         exists: () => true,
+      },
+      record: {
+        read: () => [...entries],
+        sink: () => ({ append: async (batch) => { entries = [...entries, ...batch]; } }),
       },
       memory: { readSemantic: () => "", consolidate: () => ({ ok: true, path: "", count: 0 }) },
       ledger: { read: () => [], append: () => {}, verify: () => ({ ok: true }), redact: () => ({ redacted: true }) },
@@ -98,7 +116,13 @@ describe("F3.3 storage ports", () => {
     // The value moved (governance may cap the per-step delta) and MATCHES the audited entry.
     expect(mem.values["mood.tone"]).toBeGreaterThan(0);
     expect(mem.values["mood.tone"]).toBe(mem.mutation_log[0].to);
+    // The record went to the injected store and its entries are really there.
+    expect(entries.length).toBeGreaterThan(0);
     expect(existsSync(statePath)).toBe(false); // fs was never touched
+    // And neither did the record, which is the half that matters now: an engine
+    // writing state through a store and entries to a disk beside it is still on the
+    // filesystem, for the source rather than for the projection.
+    expect(existsSync(recordPathFor(personaPath))).toBe(false);
   });
 
   it("the engine appends EPISODIC memory and checks the chain through the injected ledger", async () => {
@@ -110,8 +134,9 @@ describe("F3.3 storage ports", () => {
     const appended: string[] = [];
     let verifyCalls = 0;
     const storage: Storage = {
-      lock: { withLock: (_k, fn) => fn() },
+      lock: { acquire: () => () => {} },
       state: { read: () => structuredClone(mem), write: (_k, s) => { mem = structuredClone(s); }, exists: () => true },
+      record: { read: () => [], sink: () => ({ append: async () => {} }) },
       memory: { readSemantic: () => "", consolidate: () => ({ ok: true, path: "", count: 0 }) },
       ledger: {
         read: () => [],

@@ -267,7 +267,7 @@ export function eventLine(theme: PersonaTheme, e: LoopEvent): string | null {
     case "mutate": {
       const r = e.result;
       const ripple = p(theme.palette.accent)("◦○◉○◦");
-      return `  ${ripple} ${chalk.bold(r.entry.field)} ${r.from.toFixed(3)}→${r.to.toFixed(3)}` +
+      return `  ${ripple} ${chalk.bold(r.field)} ${r.from.toFixed(3)}→${r.to.toFixed(3)}` +
         (r.clamped ? chalk.yellow(" clamped") : "") + (r.blocked ? chalk.red(" blocked") : "");
     }
     case "memory":
