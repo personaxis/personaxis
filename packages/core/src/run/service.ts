@@ -66,7 +66,25 @@ export interface TurnContext {
 export interface TurnProduct {
 	readonly answer: string;
 	readonly steps: number;
-	readonly stopReason?: Extract<StopReason, "answered" | "empty" | "interrupted" | "refused">;
+	/**
+	 * How it ended, when the provider knows better than the runner can guess.
+	 *
+	 * `budget` is not here, because the runner reads that off its own ledger and a
+	 * provider claiming it would be reporting on a count it cannot see. `failed` is,
+	 * and it was not: a provider that caught its own error had no way to say so, so a
+	 * loop that returned "the model hung up" as its text was closed as `answered` with
+	 * that sentence as the persona's reply. Throwing was the only route to `failed`,
+	 * which asks every provider to let its errors escape in order to be honest.
+	 */
+	readonly stopReason?: Extract<StopReason, "answered" | "empty" | "interrupted" | "refused" | "failed">;
+	/**
+	 * Why it failed, when it did.
+	 *
+	 * Separate from `answer` on purpose. A failure message is the runtime talking, not
+	 * the persona, and putting it where the answer goes is how a transcript ends up
+	 * quoting a component as though the persona had said it.
+	 */
+	readonly failure?: { readonly code: string; readonly message: string };
 	/** What it cost, when this provider talks to something that charges. */
 	readonly cost?: { readonly tokens: number; readonly usd: number };
 }
@@ -192,6 +210,7 @@ export class TurnRunner {
 			// gets no price in the outcome rather than a zero somebody would later read
 			// as "checked, and free".
 			...(product.cost === undefined ? {} : { cost: product.cost }),
+			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {
 						failure: {

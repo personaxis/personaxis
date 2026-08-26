@@ -240,8 +240,10 @@ describe("the loop we already have goes through the same seam", () => {
 	});
 
 	it("does not invent a reason for a stop it does not recognise", () => {
-		// A guess at which of the seven a new stop resembles is worse than the honest
-		// fallback, because a wrong reason is a reason somebody acts on.
+		// This test existed and asserted `empty`, which is the guess its own name says
+		// not to make: a stop nobody classified came out as a turn that ran and produced
+		// nothing. A wrong reason is a reason somebody acts on, so an unknown stop fails
+		// and carries the word, which is how whoever added it finds out where it landed.
 		const product = productOf({
 			summary: "",
 			steps: 2,
@@ -249,6 +251,88 @@ describe("the loop we already have goes through the same seam", () => {
 			budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "something_new" },
 		});
 
-		expect(product.stopReason).toBe("empty");
+		expect(product.stopReason).toBe("failed");
+		expect(product.failure?.message).toContain("something_new");
+	});
+
+	it("calls a run that ended in an error failed, and does not quote it as the answer", () => {
+		// The one that mattered. The old loop returns `agent error: ...` as its summary,
+		// and this reported the turn ANSWERED with that sentence as the persona's reply.
+		// Nothing read the stop reason in production, so nothing showed it; the moment
+		// the REPL went through the seam, the record would have stored a runtime string
+		// as a message authored by the persona, hash-chained and unfixable.
+		const product = productOf({
+			summary: "agent error: the model hung up",
+			steps: 0,
+			finished: false,
+			budget: { steps: 0, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "error" },
+		});
+
+		expect(product.stopReason).toBe("failed");
+		expect(product.answer).toBe("");
+		expect(product.failure).toEqual({ code: "error", message: "agent error: the model hung up" });
+	});
+
+	it("calls a rejected verification failed, not an answer of the words verification failed", () => {
+		const product = productOf({
+			summary: "verification failed",
+			steps: 4,
+			finished: false,
+			budget: { steps: 4, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "verification_failed" },
+		});
+
+		expect(product.stopReason).toBe("failed");
+		expect(product.answer).toBe("");
+	});
+
+	it("calls every guard that stopped the loop refused, not only a denied tool", () => {
+		// The repetition breaker and a plan that could not survive its own gates are the
+		// same fact as a denied tool: the turn could not continue past something it
+		// needed. They used to fall through to "answered if there is text".
+		for (const stoppedBy of ["tool_denied", "loop_breaker", "plan"]) {
+			const product = productOf({
+				summary: "as far as I got",
+				steps: 2,
+				finished: false,
+				budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy },
+			});
+
+			expect({ stoppedBy, reason: product.stopReason }).toEqual({ stoppedBy, reason: "refused" });
+		}
+	});
+
+	it("treats a declared stop condition as the loop obeying, not as the loop breaking", () => {
+		// An operator who wrote `stop_conditions: [no_progress]` asked for this. Calling
+		// it a failure would report the spec working as the spec being wrong.
+		for (const stoppedBy of ["hard_ceiling", "execution_error", "low_confidence", "no_progress"]) {
+			const product = productOf({
+				summary: "here is what I have",
+				steps: 5,
+				finished: false,
+				budget: { steps: 5, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy },
+			});
+
+			expect({ stoppedBy, reason: product.stopReason }).toEqual({ stoppedBy, reason: "answered" });
+		}
+	});
+
+	it("puts a provider's own failure in the outcome instead of losing it", async () => {
+		// A provider that catches its own error had no way to say so: throwing was the
+		// only route to `failed`, which asks every provider to let its errors escape in
+		// order to be honest about them.
+		const outcome = await new TurnRunner({
+			provider: {
+				name: "honest",
+				run: async () => ({
+					answer: "",
+					steps: 1,
+					stopReason: "failed" as const,
+					failure: { code: "upstream", message: "the endpoint refused" },
+				}),
+			},
+		}).run(asked);
+
+		expect(outcome.stopReason).toBe("failed");
+		expect(outcome.failure).toEqual({ code: "upstream", message: "the endpoint refused" });
 	});
 });
