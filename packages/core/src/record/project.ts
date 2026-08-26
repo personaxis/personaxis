@@ -35,6 +35,7 @@
  */
 
 import type { MutationLogEntry, StateFile } from "../persona.js";
+import { requireActor } from "./actor.js";
 import type { DerivedState } from "./derive.js";
 import { isGenesis, type RecordEntry } from "./entry.js";
 
@@ -44,27 +45,6 @@ export interface Identity {
 	readonly personaId: string;
 	readonly personaVersion: string;
 	readonly sessionId?: string;
-}
-
-/**
- * The actor a mutation is attributed to, in the words the state schema uses.
- *
- * The record's author is richer: it says the mechanism and the reason as well as
- * the kind. The file has one string, so this is a narrowing, and it is written down
- * because a narrowing that happens silently is how a record and its projection come
- * to disagree about who did something.
- */
-function actorOf(entry: RecordEntry): string {
-	const author = entry.author;
-	switch (author.kind) {
-		case "human":
-			return "human";
-		case "persona":
-			return "self";
-		case "component":
-		case "runtime":
-			return "runtime";
-	}
 }
 
 /** The mutation log, printed from the value entries in the order they happened. */
@@ -86,12 +66,16 @@ export function mutationLog(entries: readonly RecordEntry[]): MutationLogEntry[]
 			delta_requested: body.requested,
 			clamped: body.clamped,
 			reason: body.reason,
-			actor: actorOf(entry),
+			// Refuses rather than inventing a word, and the refusal is unreachable in
+			// practice because `mutate` rejects an unprintable author when the entry is
+			// written. It stays here so the correspondence is enforced where it is used
+			// and not only where it is checked.
+			actor: requireActor(entry.author),
 			governance_blocked: body.blocked,
 			// The record's own link, not a second chain over the same facts.
 			prev_hash: entry.prev,
 			hash: entry.hash,
-		} as MutationLogEntry);
+		});
 	}
 	return log;
 }

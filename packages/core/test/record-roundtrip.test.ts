@@ -108,27 +108,45 @@ describe("printing the state file from the record", () => {
 		}
 	});
 
-	it("keeps who did it, narrowed to the word the state schema uses", () => {
-		// The record's author is richer: it says the mechanism and the reason as well
-		// as the kind. The file has one string, so printing it back is a narrowing,
-		// and a narrowing that happens quietly is how the two come to disagree.
-		const after = roundTrip(sample());
+	it("gives back the exact word it was given, for every actor the schema declares", () => {
+		// This used to assert `self` and `runtime`, which is the bug written down as
+		// the contract. Two mappings existed for one correspondence, in two files,
+		// pointing opposite ways: the migration was faithful and the printing was not,
+		// and the printing was the half that reached the disk. On a real persona 147
+		// rows went in as `actor-llm` and `runtime-context` and came back out as
+		// `self` and `runtime`, words that are not in the schema's enum at all, so
+		// every row of the file failed the JSON Schema this project publishes.
+		//
+		// Every declared word, not the two the sample happens to use: a table with a
+		// hole in it passes a test that only looks at the entries beside the hole.
+		const actors = [
+			"actor-llm",
+			"runtime-decay",
+			"runtime-context",
+			"human-operator",
+			"judge-correction",
+		] as const;
 
-		expect(after.mutation_log[0]!.actor).toBe("self");
-		expect(after.mutation_log[1]!.actor).toBe("runtime");
+		for (const actor of actors) {
+			const one = sample();
+			(one.mutation_log[0] as { actor: string }).actor = actor;
+
+			expect(roundTrip(one).mutation_log[0]!.actor).toBe(actor);
+		}
 	});
 
-	it("gives an unrecognised actor an author that says so, rather than none", () => {
-		// It used to fall off the end of the mapping and return undefined, so one
-		// strange word made the whole chain unverifiable and the failure pointed at
-		// the chain instead of at the word.
+	it("gives back a word this build does not know, rather than one it does", () => {
+		// A file that used a sixth actor was already invalid against the published
+		// schema. Printing one of our five over it would launder somebody's anomaly
+		// into a fact, and refusing to print would leave them unable to write the file
+		// at all for a problem they did not cause. It goes back out as it came in.
 		const odd = sample();
-		(odd.mutation_log[0] as never as { actor: string }).actor = "some-future-thing";
+		(odd.mutation_log[0] as { actor: string }).actor = "some-future-thing";
 
 		const after = roundTrip(odd);
 
 		expect(after.mutation_log).toHaveLength(odd.mutation_log.length);
-		expect(after.mutation_log[0]!.actor).toBe("runtime");
+		expect(after.mutation_log[0]!.actor).toBe("some-future-thing");
 	});
 
 	it("carries the record's own link and not a second chain over the same facts", () => {
