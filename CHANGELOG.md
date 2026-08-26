@@ -1620,7 +1620,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   homeostasis is observable on the house persona (validate PASS, jacobian 0 decoratives,
   spec bumped to 1.1.0). Starter, init, CMO, and Clio now all carry mood half-life plus
   banded trait prose.
-- **Final audit recorded** in `IMPLEMENTATION_CHECKLIST.md`: build clean across 8 packages;
+- **Final audit recorded**: build clean across 8 packages;
   tests spec 4/4, core 324/325 (the one red is a timing-sensitive hooks-timeout test that
   passes in isolation, unrelated to this phase), protocol 4/4, sdk 10/10, mcp 11/11, evals
   5/5, cli 86/86, tui 33/33; conformance 15/15; golden CMO PASS with 0 decoratives; spec
@@ -1739,9 +1739,9 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   (~165 ms every CLI invocation, even `--version`); validators compile on first call with an
   identical API. `dash` lazy-loads the tui barrel (~90 ms). Module-graph cost: 400 -> 314 ms.
 - Full verdict table (38 CLI subcommands, 29 slash-commands, core modules, infra) recorded
-  in IMPLEMENTATION_CHECKLIST.
+  in the release audit.
 
-## [Unreleased], Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], Fase 6 proven core
 
 ### Added, the interview wizard + dashboard drill-down (F6.7b)
 - **Genesis interview wizard (Ink)**: `personaxis create` with no flags now opens a full-screen
@@ -1769,7 +1769,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
 - **CLI startup 2× faster** (audit finding → fix): the REPL (Ink/React, ~1 s of import cost)
   was imported eagerly by every subcommand; it is now lazy-loaded only on the no-subcommand
   path. `--version` 1.26 s → 0.62 s; the flaky-at-5 s multi-spawn e2e is green again.
-- Final audit recorded in IMPLEMENTATION_CHECKLIST (build 8/8, 477 unit/property tests green,
+- Final audit recorded (build 8/8, 477 unit/property tests green,
   evals 15/15, golden CMO PASS, check-mirror byte-identical, proof 12/12 under
   NO_COLOR/80 col, all relative doc links resolve, help strings speak v1.1).
 
@@ -1916,7 +1916,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   (SPEC v1.0 §L3: within-band movement is expression variance, not drift). Cheaper and
   normative; the tick still emits `mutate` + `drift` events for every change.
 
-## [Unreleased], Fase 3 living engine (per `ARCHITECTURE_REVIEW.md` §11–§13, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], Fase 3 living engine
 
 ### Fixed, v1.0 concordance sweep (F5.2): the toolchain now fully speaks v1.0
 - **`lint` was broken on v1.0 personas**: it emitted three FALSE errors (`apiVersion` must be
@@ -2022,7 +2022,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   bundle. No behavior change locally; the fs adapter wraps the existing atomic writes + per-persona
   lock.
 
-## [Unreleased], Fase R replatform (per `ARCHITECTURE_REVIEW.md` §15 + `docs/architecture/TECH_STACK.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], Fase R replatform (per [`docs/architecture/TECH_STACK.md`](docs/architecture/TECH_STACK.md))
 
 ### Added, platform (FR.1–FR.3)
 - **`docs/architecture/TECH_STACK.md`**: the definitive stack decision record (12 sections,
@@ -2078,7 +2078,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   for supply-chain surface reasons. Binary self-updater + Windows code-signing land with the
   bun-compile release infrastructure.
 
-## [Unreleased], F2 SPEC v1.0 support (per `ARCHITECTURE_REVIEW.md` §11, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], F2 SPEC v1.0 support
 
 ### Added, spec v1.0 (breaking spec release; the CLI reads BOTH)
 - **Dual-schema validator with version dispatch**: v1.0 documents (`spec_version: "1.0.0"`)
@@ -2126,7 +2126,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   into degenerate envelopes (with a widen-me follow-up). `validate` banner prefers
   `identity.display_name`.
 
-## [Unreleased], F1 hardening (per `ARCHITECTURE_REVIEW.md` §9, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], F1 hardening
 
 ### Fixed, governance & integrity
 - **`state mutate` now goes through the real governance gate** (F-02): the duplicated mutation
@@ -2167,8 +2167,9 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
 - CLAUDE.md corrections: evals categories are **governance/security/spec-fidelity** (no "honesty"
   category exists), migrate codemods listed through `0.9-to-0.10`, MCP row reflects the 16 tools +
   `--root`/`--allow-decide`; evals package description no longer claims an "optional live" mode.
-- Added `ARCHITECTURE_REVIEW.md` (the master architecture audit + v1.0 design reference) and
-  `IMPLEMENTATION_CHECKLIST.md` (persistent execution state).
+- Added the architecture audit and the execution checklist that drive the phases above.
+  Both are working documents rather than published ones; what they decided is recorded
+  here and in `docs/architecture/`.
 
 ---
 
