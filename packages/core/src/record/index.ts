@@ -84,6 +84,7 @@ export {
 
 export {
 	MECHANISM,
+	UNNAMED_OPERATOR,
 	UNRECOGNISED,
 	actorFor,
 	authorOf,

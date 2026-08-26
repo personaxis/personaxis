@@ -39,12 +39,23 @@
  * has to be edited again when the loop behind it changes; a caller holding a
  * `TurnRunner` asked for a turn and does not know what ran it. That is the whole
  * point of the seam, and it only pays once nobody reaches past it.
+ *
+ * ## One runner per turn, and why that is not waste
+ *
+ * The agent is built here, once, and it reads its prior messages once. A caller that
+ * held one runner across a whole conversation would be running every turn against the
+ * transcript the first one started from. Building a runner is assembling options and
+ * constructing an object, so the cost is nothing next to the model call it wraps, and
+ * the per-turn things a session actually varies, what the persona currently knows,
+ * what the environment just changed, are read fresh each time rather than frozen at
+ * whatever they were when the session opened.
  */
 
 import { PersonaAgent, type AgentOptions } from "../agent.js";
 import { readAgentBudget } from "../governance.js";
 import { readVerification } from "../verification.js";
 import type { Ledger } from "./budget.js";
+import type { Conversation } from "./conversation.js";
 import { defaultLoop } from "./default-provider.js";
 import { TurnRunner, type TurnObserver } from "./service.js";
 
@@ -65,10 +76,20 @@ export interface PersonaFacts {
 	readonly llm: AgentOptions["llm"];
 }
 
-/** Everything else, which is the caller's by definition. */
-export type SessionOptions = Omit<AgentOptions, Derived> & {
+/**
+ * Everything else, which is the caller's by definition.
+ *
+ * `priorMessages` is not among them, and its absence is deliberate. A conversation the
+ * caller passes in and a conversation the caller reads back out are the same fact, and
+ * two ways to say it is two owners: a session could hand one transcript to the loop and
+ * keep a different one for itself with nothing to say which was the conversation. So
+ * the session lends a `Conversation` and the loop both reads and returns through it.
+ */
+export type SessionOptions = Omit<AgentOptions, Derived | "priorMessages"> & {
 	readonly ledger?: Ledger;
 	readonly observer?: TurnObserver;
+	/** What has been said, lent to whatever runs the turn. */
+	readonly conversation?: Conversation;
 };
 
 /**
@@ -84,8 +105,13 @@ export function agentOptionsFor(
 	persona: PersonaFacts,
 	session: Omit<SessionOptions, "ledger" | "observer"> = {},
 ): AgentOptions {
+	const { conversation, ...rest } = session;
+
 	return {
-		...session,
+		...rest,
+		// Read here rather than by the caller, so "what the loop is given" and "what the
+		// session holds" cannot be two different lists.
+		...(conversation === undefined ? {} : { priorMessages: [...conversation.read()] }),
 		llm: persona.llm,
 		personaPath: persona.personaPath,
 		budget: readAgentBudget(persona.frontmatter),
@@ -101,7 +127,7 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 	const { ledger, observer, ...rest } = session;
 
 	return new TurnRunner({
-		provider: defaultLoop(new PersonaAgent(agentOptionsFor(persona, rest))),
+		provider: defaultLoop(new PersonaAgent(agentOptionsFor(persona, rest)), rest.conversation),
 		...(ledger === undefined ? {} : { ledger }),
 		...(observer === undefined ? {} : { observer }),
 	});
