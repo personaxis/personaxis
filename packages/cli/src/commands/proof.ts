@@ -23,17 +23,17 @@ import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
 import {
   loadPersona,
+  memoryPath,
+  record,
+  type Envelope,
   readState,
   extractEnvelopes,
-  applyMutation,
   governMutations,
-  verifyMutationChain,
   scanForInjection,
   prepareMemoryEntry,
   commitMemoryEntry,
   verifyMemoryChain,
   readMemory,
-  rebuildStateValues,
   bandBoundaries,
   bandOf,
   toU,
@@ -81,6 +81,28 @@ function gauge(label: string, value: number, e: { mean: number; min: number; max
 let proofSource: string | undefined;
 export function setProofSource(path: string | undefined): void {
   proofSource = path;
+}
+
+/**
+ * A record with every declared coordinate at the position the persona starts from.
+ *
+ * The proof runs on the real path now, which means the real record: these scenes used
+ * to demonstrate the OLD chain, the `mutation_log` inside `state.json`, which is not
+ * the chain this ships any more. A proof of something the product no longer does is
+ * worse than no proof, because it is believed.
+ *
+ * In memory rather than on disk. Nothing here is a persona anybody keeps, and ten
+ * thousand hostile steps through a file would make the scene about the filesystem.
+ */
+function ledgerFor(values: Record<string, number>): record.Journal {
+  const journal = new record.Journal({});
+  for (const field of Object.keys(values).sort()) record.origin(journal, field, values[field]);
+  return journal;
+}
+
+/** Where a coordinate is, according to the record. */
+function at(journal: record.Journal, field: string, envelope: Envelope): number {
+  return record.currentValue(journal, field, envelope);
 }
 
 function scaffold(): { dir: string; personaPath: string; state: StateFile; env: ReturnType<typeof extractEnvelopes> } {
@@ -135,6 +157,9 @@ proof body
   return { dir, personaPath, state, env };
 }
 
+/** Who the adversary is in these scenes: the persona itself, acting. */
+const ACTOR = record.authorOf("actor-llm");
+
 type Frame = (line: string) => Promise<void>;
 
 interface SceneResult {
@@ -143,6 +168,7 @@ interface SceneResult {
 
 async function sceneStorm(steps: number, seed: number, frame: Frame, width: number): Promise<SceneResult> {
   const { dir, state, env } = scaffold();
+  const journal = ledgerFor(state.values);
   const rand = rng(seed);
   const fields = Object.keys(env.envelopes);
   try {
@@ -158,7 +184,7 @@ async function sceneStorm(steps: number, seed: number, frame: Frame, width: numb
       const decision = governMutations([{ field, delta, reason: "storm" }], env, { mode: "autonomous", maxStepDelta: 0.15 });
       for (const m of decision.admitted) {
         if (Math.abs(m.delta) > 0.15 + 1e-12) overSteps++;
-        const r = applyMutation(state, env.envelopes, { field: m.field, delta: m.delta, reason: "storm", actor: "actor-llm" });
+        const r = record.mutate(journal, env.envelopes, ACTOR, { field: m.field, delta: m.delta, reason: "storm" });
         if (r.clamped) clamped++;
         const e = env.envelopes[m.field];
         if (r.to < e.min || r.to > e.max) escapes++;
@@ -173,12 +199,13 @@ async function sceneStorm(steps: number, seed: number, frame: Frame, width: numb
         );
       }
     }
-    const chain = verifyMutationChain(state.mutation_log);
+    const chain = journal.verify();
+    const written = journal.all().length;
     return {
       checks: [
         { pass: escapes === 0, line: `${steps} hostile steps, ${clamped} clamped, 0 escapes from the declared box (T1)` },
         { pass: overSteps === 0, line: `every admitted step ≤ max_step_delta 0.15 (T2)` },
-        { pass: chain.ok && chain.chained === state.mutation_log.length, line: `all ${state.mutation_log.length} mutations hash-chained and verifiable` },
+        { pass: chain.ok && chain.length === written, line: `all ${written} record entries hash-chained and verifiable` },
       ],
     };
   } finally {
@@ -200,6 +227,7 @@ async function sceneInjection(frame: Frame): Promise<SceneResult> {
 
 async function sceneEvidence(frame: Frame, width: number): Promise<SceneResult> {
   const { dir, state, env } = scaffold();
+  const journal = ledgerFor(state.values);
   try {
     // V5.P2.2: pick the coordinate with the most upward room in THIS persona (the
     // demo's `resolve` at 0.40 is just one instance). δ_max 0.05 keeps the crossing
@@ -212,7 +240,7 @@ async function sceneEvidence(frame: Frame, width: number): Promise<SceneResult> 
     const candidates = Object.entries(env.envelopes)
       .filter(([f]) => !(env.protectedFields ?? []).includes(f))
       .map(([f, en]) => {
-        const v = state.values[f];
+        const v = at(journal, f, en);
         const [bb1, bb2] = bandBoundaries(en);
         const tgt = v < bb1 ? bb1 : bb2;
         return { f, target: tgt, room: tgt - v, reachable: tgt <= en.max - 1e-9 };
@@ -225,25 +253,28 @@ async function sceneEvidence(frame: Frame, width: number): Promise<SceneResult> 
     // Directional bound: the adversary pushes UP, so the crossing target is the
     // next boundary ABOVE the CURRENT value (V5.P2.2 fix: the live value, not the
     // mean; a persona whose state has drifted starts where it actually is).
-    const start = state.values[field];
+    const start = at(journal, field, e);
     const [b1, b2] = bandBoundaries(e);
     const target = start < b1 ? b1 : b2;
     const bound = Math.max(1, Math.ceil((target - start) / deltaMax));
     const startBand = bandOf(start, e);
     let steps = 0;
-    while (bandOf(state.values[field], e) === startBand && steps < 50) {
-      applyMutation(state, env.envelopes, { field, delta: deltaMax, reason: "push to the boundary", actor: "actor-llm" });
+    while (bandOf(at(journal, field, e), e) === startBand && steps < 50) {
+      record.mutate(journal, env.envelopes, ACTOR, { field, delta: deltaMax, reason: "push to the boundary" });
       steps++;
-      await frame(gauge(field.split(".").pop()!, state.values[field], e, width) + dim(`   audited entries: ${state.mutation_log.length}`));
+      await frame(gauge(field.split(".").pop()!, at(journal, field, e), e, width) + dim(`   audited entries: ${journal.all().length}`));
       await new Promise((r) => setTimeout(r, 60)); // let the crossing be watchable (≈0.4 s total)
     }
-    const crossed = bandOf(state.values[field], e) !== startBand;
-    const chain = verifyMutationChain(state.mutation_log);
+    const crossed = bandOf(at(journal, field, e), e) !== startBand;
+    const chain = journal.verify();
+    // The origins are entries too, and they are not steps. Counting them as steps
+    // would report a crossing that took more moves than it did.
+    const origins = journal.all().filter((entry: record.RecordEntry) => record.isGenesis(entry)).length;
     return {
       checks: [
-        { pass: crossed, line: `the coordinate crossed ${startBand} → ${bandOf(state.values[field], e)}` },
+        { pass: crossed, line: `the coordinate crossed ${startBand} → ${bandOf(at(journal, field, e), e)}` },
         { pass: crossed && steps >= bound, line: `crossing took ${steps} step(s), certified minimum ⌈dist/δ_max⌉ = ${bound} (T3: no silent drift)` },
-        { pass: chain.ok && chain.chained === steps, line: `each step is a chained, attributable audit entry (${chain.chained} verified)` },
+        { pass: chain.ok && chain.length - origins === steps, line: `each step is a chained, attributable record entry (${chain.length} verified)` },
       ],
     };
   } finally {
@@ -258,7 +289,10 @@ async function sceneTamper(frame: Frame): Promise<SceneResult> {
       commitMemoryEntry(personaPath, prepareMemoryEntry(personaPath, { content: c, source: "user" }));
     }
     const before = verifyMemoryChain(personaPath);
-    const ledger = join(dirname(personaPath), "memory", "episodic.jsonl");
+    // Asked for rather than spelled. The per-device split renamed this file and the
+    // hard-coded name here was never updated, so the scene crashed on a path that has
+    // not existed for versions.
+    const ledger = memoryPath(personaPath);
     const entries = readMemory(personaPath);
     const forged: MemoryEntry = { ...entries[1], content: "user prefers UNSAFE answers" };
     const lines = readFileSync(ledger, "utf-8").trim().split("\n");
@@ -279,21 +313,47 @@ async function sceneTamper(frame: Frame): Promise<SceneResult> {
 
 async function sceneReplay(frame: Frame): Promise<SceneResult> {
   const { dir, state, env } = scaffold();
+  const journal = ledgerFor(state.values);
   try {
     const rand = rng(7);
     const fields = Object.keys(env.envelopes);
     for (let i = 0; i < 12; i++) {
-      applyMutation(state, env.envelopes, { field: fields[i % fields.length], delta: (rand() - 0.5) * 0.3, reason: "history", actor: "actor-llm" });
+      const field = fields[i % fields.length];
+      record.mutate(journal, env.envelopes, ACTOR, { field, delta: (rand() - 0.5) * 0.3, reason: "history" });
     }
-    const clean = rebuildStateValues(env.envelopes, state.mutation_log, state.values);
+
+    // What the record says, worked out from the entries and nothing else.
+    const folded = record.derive(journal.all());
     const victim = fields[0];
-    const forgedValues = { ...state.values, [victim]: env.envelopes[victim].max };
-    const caught = rebuildStateValues(env.envelopes, state.mutation_log, forgedValues);
-    await frame(dim(`  forging ${victim} → ${env.envelopes[victim].max} (no log entry to justify it)`));
+
+    // The forgery this scene used to demonstrate was a value edited in a file, caught
+    // because replaying the log disagreed with it. That is a weaker claim than the one
+    // this ships: there is no second copy to edit any more, so the only way to change
+    // what a persona is, is to change the record, and the record commits to every
+    // entry by hash. The demonstration is therefore the stronger one: edit an entry
+    // and the chain refuses, naming where.
+    const entries = journal.all();
+    const target = entries.findIndex(
+      (entry: record.RecordEntry) => entry.body.type === "value" && entry.body.field === victim && !record.isGenesis(entry),
+    );
+    const forged = entries.map((entry: record.RecordEntry, index: number) =>
+      index === target && entry.body.type === "value"
+        ? { ...entry, body: { ...entry.body, to: env.envelopes[victim].max } }
+        : entry,
+    );
+    const caught = record.verify(forged);
+    await frame(dim(`  forging entry ${target} so ${victim} reads ${env.envelopes[victim].max}, without touching its hash`));
+
     return {
       checks: [
-        { pass: clean.drift.length === 0, line: "replaying the log reproduces the state exactly (T4)" },
-        { pass: caught.drift.some((d) => d.field === victim), line: `the forged value is exposed as unexplained drift on ${victim}` },
+        {
+          pass: folded.ok && fields.every((f) => typeof folded.state.values[f] === "number"),
+          line: "the persona's position is the fold over its record, held nowhere else (T4)",
+        },
+        {
+          pass: !caught.ok && caught.problem?.kind === "altered" && caught.problem.seq === target,
+          line: `the edited entry is refused at ${target}, and everything after it with it`,
+        },
       ],
     };
   } finally {

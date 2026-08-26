@@ -21,7 +21,7 @@ import {
   readMemory,
   proposals,
   readEvaluations,
-  rebuildStateValues,
+  projectPersona,
   extractEnvelopes,
 } from "@personaxis/core";
 import { rewind } from "../../rewind.js";
@@ -141,24 +141,36 @@ export function integrityLines(ctx: Ctx): string[] {
     lines.push(chalk.red("  a broken link means an entry was edited after it was written; the position above is the spot."));
   }
 
-  // Replay: fold the mutation log and compare with the stored values. This is what the
-  // old `/replay` command did; `rebuildStateValues` already reports the disagreements.
-  lines.push("", chalk.bold("  Replay (state as a fold of its log)"));
+  // The state file against the record, and not against itself. This used to replay the
+  // `mutation_log` inside `state.json` over the envelope means and compare the answer
+  // with the `values` in the same file: one document checked against itself, which
+  // cannot notice a tampered log because the log is what the comparison trusts.
+  lines.push("", chalk.bold("  Replay (state as a fold of the record)"));
   try {
-    const { drift } = rebuildStateValues(env.envelopes, st.mutation_log ?? [], st.values);
-    if (!drift.length) {
-      lines.push(row("verdict", chalk.green("reproduces exactly ✓")));
-      lines.push(
-        chalk.dim(`  replayed ${(st.mutation_log ?? []).length} entr(ies); no stored value exists that the log cannot explain.`),
-      );
+    const entries = record.readRecord(record.recordPathFor(p));
+    if (entries.length === 0) {
+      lines.push(row("verdict", chalk.dim("no record yet")));
+      lines.push(chalk.dim("  this persona has not been written to since the record became its history."));
     } else {
-      lines.push(row("verdict", chalk.red(`${drift.length} unexplained value(s)`)));
-      for (const d of drift) {
+      const should = projectPersona(ctx.handle, entries, st);
+      const { values: drift, differs } = record.divergence(should, st);
+      if (!differs) {
+        lines.push(row("verdict", chalk.green("reproduces exactly ✓")));
         lines.push(
-          `  ${chalk.red("✗")} ${d.field}: log says ${d.rebuilt.toFixed(3)}, state holds ${d.stored === undefined ? "nothing" : d.stored.toFixed(3)}`,
+          chalk.dim(`  folded ${entries.length} entr(ies); the file says exactly what the record says.`),
         );
+      } else if (drift.length > 0) {
+        lines.push(row("verdict", chalk.red(`${drift.length} value(s) the record does not account for`)));
+        for (const d of drift) {
+          lines.push(
+            `  ${chalk.red("✗")} ${d.field}: record says ${d.recorded.toFixed(3)}, file holds ${d.stored === undefined ? "nothing" : d.stored.toFixed(3)}`,
+          );
+        }
+        lines.push(chalk.dim("  the file was edited, or written by something that is not the record (T4 catches it)."));
+      } else {
+        lines.push(row("verdict", chalk.yellow("differs outside its values")));
+        lines.push(chalk.dim("  every coordinate agrees and the document does not; `state rebuild --write` reprints it."));
       }
-      lines.push(chalk.dim("  a mismatch means a value was written without an audited entry (T4 catches it)."));
     }
   } catch (e) {
     lines.push(chalk.yellow(`  replay unavailable: ${(e as Error).message}`));

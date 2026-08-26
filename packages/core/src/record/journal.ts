@@ -36,7 +36,7 @@
  */
 
 import { chain, head, verify, type ChainVerdict } from "./chain.js";
-import { derive, type DeriveResult } from "./derive.js";
+import { derive, foldOne, type DeriveResult } from "./derive.js";
 import { ENTRY_VERSION, type Author, type DraftEntry, type Provenance, type RecordBody, type RecordEntry } from "./entry.js";
 
 /** Where entries go when they are drained. Anything durable can be one. */
@@ -70,6 +70,19 @@ export class Journal {
 	private durableThrough = 0;
 	/** Set while a drain is in flight, so two drains cannot write the same prefix. */
 	private draining: Promise<DrainReport> | undefined;
+	/**
+	 * The fold, kept up to date rather than redone.
+	 *
+	 * `state()` used to call `derive` over every entry, which verifies the whole chain
+	 * and folds it. It reads like an accessor and it is not: writing one mutation asks
+	 * what the coordinate currently is, so a batch of five moves on a long history
+	 * folded and verified it five times, quadratic in a thing that only grows.
+	 *
+	 * Entries written through `append` are chained here and correct by construction, so
+	 * there is nothing about them to verify a second time. What does need checking is
+	 * what came from elsewhere, and that is checked once, when it arrives.
+	 */
+	private folded: DeriveResult;
 
 	constructor(options: JournalOptions = {}) {
 		this.now = options.now ?? (() => new Date());
@@ -81,6 +94,10 @@ export class Journal {
 			// means duplicating the entire history on every restart.
 			this.durableThrough = this.entries.length;
 		}
+		// The one place recovered entries are checked, and it is once rather than on
+		// every read. A journal that opened on a broken chain keeps saying so: the
+		// failure is remembered rather than recomputed into existence each time.
+		this.folded = derive(this.entries);
 	}
 
 	/** Everything, in order. A copy, because the caller must not be able to edit it. */
@@ -90,7 +107,7 @@ export class Journal {
 
 	/** The state this record describes right now. */
 	state(): DeriveResult {
-		return derive(this.entries);
+		return this.folded;
 	}
 
 	/** Whether the chain holds. */
@@ -168,6 +185,7 @@ export class Journal {
 			);
 		}
 		this.entries.push(...entries);
+		this.folded = derive(this.entries);
 	}
 
 	/**
@@ -190,6 +208,7 @@ export class Journal {
 		};
 		const entry = chain(draft, this.entries.length, head(this.entries));
 		this.entries.push(entry);
+		if (this.folded.ok) this.folded = { ok: true, state: foldOne(this.folded.state, entry) };
 		return entry;
 	}
 

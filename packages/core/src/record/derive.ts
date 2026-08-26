@@ -152,6 +152,19 @@ export function deriveFrom(
 }
 
 /**
+ * One more entry on top of a state already folded.
+ *
+ * Exported so a journal can keep its fold up to date as it writes instead of redoing
+ * it. Redoing it is what it used to do, and every single mutation folded and verified
+ * the entire record to find out what one coordinate currently was: a batch of five
+ * moves on a long history did that five times. Quadratic in something that only
+ * grows, hidden behind a function that reads like an accessor.
+ */
+export function foldOne(state: DerivedState, entry: RecordEntry): DerivedState {
+	return fold(state, [entry]);
+}
+
+/**
  * The fold itself, from a starting state.
  *
  * Checkpoints are SKIPPED here, and that is the property that makes them safe. A
