@@ -199,8 +199,12 @@ const showSubcommand = new Command("show")
   .option("--json", "Output raw JSON instead of formatted summary")
   .action((options: { file?: string; json?: boolean }) => {
     try {
-      const { statePath } = resolvePersonaAndState(options.file);
-      const state = readState(statePath);
+      const { personaPath, statePath } = resolvePersonaAndState(options.file);
+      // Printed from the record rather than read off the disk, so a state file that
+      // somebody deleted comes back instead of turning into "run state init first".
+      // The record is the source and the file is a view; a view that has to exist
+      // before you can look at it is not a view.
+      const state = ensureState(loadPersona(personaPath));
 
       if (options.json) {
         console.log(JSON.stringify(state, null, 2));
@@ -296,7 +300,7 @@ const driftSubcommand = new Command("drift")
       const handle = loadPersona(personaPath);
       const fm = handle.frontmatter as Record<string, unknown>;
       const env = extractEnvelopes(handle.frontmatter);
-      const state = readState(statePath);
+      const state = ensureState(handle);
       const report = driftReport({
         values: state.values,
         envelopes: env.envelopes,

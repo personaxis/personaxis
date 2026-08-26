@@ -313,6 +313,42 @@ export const GENESIS = "genesis";
  * only some of its members carry a mechanism: a human has an id and nothing else. A
  * comparison written twice is a comparison that gets the narrowing right once.
  */
+/**
+ * A coordinate's starting position, as an entry.
+ *
+ * One builder, because there were two and they had already drifted: the migration
+ * called it "initialised" with a requested delta of nothing, and the runtime called
+ * it "declared" with a requested delta of the whole value. Two spellings of one fact
+ * is how the fact stops being one.
+ *
+ * The author is the runtime with the genesis mechanism, which is what
+ * `isGenesis` reads and what keeps an origin out of the mutation log. A persona's
+ * declared position is not something that happened to it, and printing origins into
+ * the log would make every persona look as though it had been adjusted on the day it
+ * was created.
+ */
+export function genesisEntry(field: string, value: number, at: string): DraftEntry {
+	return {
+		v: ENTRY_VERSION,
+		at,
+		author: {
+			kind: "runtime",
+			mechanism: GENESIS,
+			reason: "the position its spec declares",
+		},
+		body: {
+			type: "value",
+			field,
+			from: value,
+			to: value,
+			delta: 0,
+			clamped: false,
+			blocked: false,
+			reason: "declared",
+		},
+	};
+}
+
 export function isGenesis(entry: { readonly author: Author }): boolean {
 	return "mechanism" in entry.author && entry.author.mechanism === GENESIS;
 }

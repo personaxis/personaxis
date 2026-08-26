@@ -34,7 +34,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import type { RecordEntry } from "./entry.js";
+import { chain, head } from "./chain.js";
+import type { DraftEntry, RecordEntry } from "./entry.js";
 import { Journal, type RecordSink } from "./journal.js";
 
 /** Where a persona's record lives: beside its spec, like its state file. */
@@ -95,14 +96,43 @@ export function readRecord(path: string): RecordEntry[] {
  * journal already keeps the turn from waiting on this, so there is nothing to gain
  * from making the write itself asynchronous and a real interleaving hazard to lose.
  */
+function appendLines(path: string, entries: readonly RecordEntry[]): void {
+	if (entries.length === 0) return;
+	mkdirSync(dirname(path), { recursive: true });
+	appendFileSync(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf-8");
+}
+
 export function fileSink(path: string): RecordSink {
 	return {
 		async append(entries) {
-			if (entries.length === 0) return;
-			mkdirSync(dirname(path), { recursive: true });
-			appendFileSync(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n", "utf-8");
+			appendLines(path, entries);
 		},
 	};
+}
+
+/**
+ * Write a persona's first entries, synchronously, and only into an empty record.
+ *
+ * Synchronous because the only caller is the one that seeds a persona on first touch,
+ * which is itself synchronous and has everything else waiting on it. It writes to the
+ * file beside the persona rather than through a store, for the same reason that caller
+ * writes `state.json` with the filesystem: seeding is the local path, and a hosted
+ * engine seeds through its own.
+ *
+ * Refuses a record that already has entries. These are chained from zero, so grafting
+ * them on would produce two entries with the same sequence number and a chain that
+ * stops verifying at the join.
+ */
+export function seedRecord(personaPath: string, entries: readonly DraftEntry[]): RecordEntry[] {
+	const path = recordPathFor(personaPath);
+	if (readRecord(path).length > 0) {
+		throw new Error(`the record at ${path} is not empty, so it cannot be seeded`);
+	}
+
+	const chained: RecordEntry[] = [];
+	for (const draft of entries) chained.push(chain(draft, chained.length, head(chained)));
+	appendLines(path, chained);
+	return chained;
 }
 
 /**
