@@ -79,6 +79,24 @@ export const UNRECOGNISED = "unrecognised-actor:";
 export const UNNAMED_OPERATOR = "unattributed-operator";
 
 /**
+ * How the persona a record belongs to is identified inside it.
+ *
+ * Not its canonical id, and the reason is that the id would be a second name for
+ * something the file already says: a record lives beside one persona and describes
+ * that one. Two spellings of one actor in one file is the drift this file exists to
+ * end, and it would have arrived the moment turns were recorded, because every
+ * coordinate entry already says `self` and a turn would have said `clio`.
+ *
+ * A name is not lost by this. Another persona's id is written when ANOTHER persona is
+ * the author, which is what makes a delegation legible: `self` means the owner of this
+ * record and anything else means somebody else.
+ *
+ * It also survives a rename. An identity that changes when a display name changes is
+ * an identity a hash chain cannot rely on.
+ */
+export const SELF = "self";
+
+/**
  * The author a stored `actor` stands for.
  *
  * `human-operator` becomes an unnamed human rather than being invented into a real
@@ -95,7 +113,7 @@ export function authorOf(actor: Actor | string): Author {
 		case "human-operator":
 			return { kind: "human", id: UNNAMED_OPERATOR };
 		case "actor-llm":
-			return { kind: "persona", id: "self" };
+			return { kind: "persona", id: SELF };
 		case "runtime-decay":
 			return {
 				kind: "runtime",

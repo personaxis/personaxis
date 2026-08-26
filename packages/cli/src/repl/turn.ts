@@ -18,6 +18,20 @@
  * block and the judge are derived from the persona now, because they are properties of
  * who this persona is and a caller that could pass them would be changing the persona
  * without editing it. This file re-deriving them is how the SDK's copy came to differ.
+ *
+ * ## The turn is written down, and the persona exists first
+ *
+ * `recordingTurns` puts the question, the answer, the ending and the price into the
+ * persona's record: one transaction to open and one to close, each opening the record
+ * and letting it go, because a journal held across a turn would chain onto a head the
+ * living loop moves past the moment it writes a coordinate.
+ *
+ * `ensureState` runs before any of it, and the ordering is load-bearing rather than
+ * tidy. Seeding writes the persona's starting positions as the first entries in its
+ * record, and it refuses a record that already has some. A turn recorded into an empty
+ * record would take that slot, and the persona would have a transcript and no account
+ * of where any of its coordinates began. Looking at a persona must not create it; a
+ * persona that TAKES A TURN is one that exists.
  */
 
 import { randomUUID } from "node:crypto";
@@ -96,6 +110,11 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     return;
   }
 
+  // Before anything is recorded. See the header: seeding claims the first entries in
+  // the record and refuses a record that is not empty, so a turn written ahead of it
+  // leaves a persona with a transcript and no origin for any of its coordinates.
+  ensureState(ctx.handle);
+
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
   const bus = new EventBus();
   // Which memories were RECALLED to answer this turn (emitted by the agent's resumeContext
@@ -126,6 +145,14 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       // front of the user's text, which made the model answer the environment note as if
       // the user had written it ("thanks for restoring my access!" out of nowhere).
       envNote: ctx.pendingEnvNote,
+      // Said out loud rather than swallowed. The person keeps the answer they are
+      // already reading, and hears that it did not reach the record, because a turn
+      // that is not in the record did not happen as far as this persona is concerned.
+      observer: run.recordingTurns({
+        personaPath: ctx.handle.personaPath,
+        statePath: ctx.handle.statePath,
+        onProblem: (e) => ctx.out(chalk.yellow(`  · this turn was not recorded: ${e.message}`), "activity"),
+      }),
       bus,
     },
   );

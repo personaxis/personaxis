@@ -34,45 +34,12 @@
 import { writeFileSync } from "node:fs";
 
 import type { Envelope } from "../envelopes.js";
-import { acquireStateLock } from "../lock.js";
 import type { StateFile } from "../persona.js";
 import { readState } from "../persona.js";
-import { replayStateFile } from "./bridge.js";
-import type { ChainProblem } from "./chain.js";
-import { ENTRY_VERSION, type Author } from "./entry.js";
-import type { Journal } from "./journal.js";
+import type { Author } from "./entry.js";
 import { mutate, type Decision, type MoveRequest } from "./mutate.js";
 import { project, type Identity } from "./project.js";
-import { openRecord, recordPathFor, type RecordStorage } from "./store.js";
-
-/**
- * What a refusal to read a record should tell somebody, and what to do about it.
- *
- * `unknown_shape` is the one that needs saying out loud, because it is the only case
- * where nothing is wrong with the record. Reported as a bare problem name beside the
- * others, it reads as damage, and somebody goes looking for tampering that did not
- * happen at the exact moment they most need to trust the chain.
- */
-function explain(personaPath: string, problem: ChainProblem): string {
-	if (problem.kind === "unknown_shape") {
-		return (
-			`the record at ${recordPathFor(personaPath)} was written in shape ${problem.found} ` +
-			`and this build writes shape ${ENTRY_VERSION} (entry ${problem.seq}). Nothing is wrong ` +
-			"with it: this build cannot read it, which is a different thing. Use a build that " +
-			"can, or start a new record from the state file."
-		);
-	}
-	return `the record does not verify: ${problem.kind} at entry ${problem.seq}`;
-}
-
-/**
- * How many entries may pile up before one summarises them.
- *
- * Small enough that a reader starting from the last one has little left to fold, and
- * large enough that checkpoints are a rounding error in the file rather than a third
- * of it. At this size a checkpoint costs roughly one entry per two hundred.
- */
-const CHECKPOINT_EVERY = 200;
+import { writingToRecord, type RecordPorts } from "./transaction.js";
 
 /** Who this record belongs to, read from the file it is replacing. */
 function identityOf(state: StateFile): Identity {
@@ -82,22 +49,6 @@ function identityOf(state: StateFile): Identity {
 		personaVersion: state.persona_version,
 		...(state.session_id === undefined ? {} : { sessionId: state.session_id }),
 	};
-}
-
-/**
- * Bring a record up to date with a state file it has never seen.
- *
- * Does nothing when the record already has entries, which is what makes this safe to
- * call on every write instead of once behind a flag somebody has to remember.
- */
-export function adopt(record: Journal, state: StateFile): void {
-	if (record.all().length > 0) return;
-
-	// Handed over whole, not replayed through `append`. Appending re-stamps the clock
-	// and takes only an author and a body, so the history came out dated the moment of
-	// the migration and stripped of the machine and session each row knew about. On
-	// this repo's persona that turned two months into one millisecond.
-	record.adopt(replayStateFile(state));
 }
 
 /** What a completed adjustment did, and where it left the persona. */
@@ -136,25 +87,11 @@ export type Plan = (values: Record<string, number>) => readonly Move[];
 /**
  * Where an adjustment reads and writes, for an engine that is not running on a disk.
  *
- * The state file's own port is `StateStore` and the record's is `RecordStorage`, and
- * both are optional because the filesystem is the default and every caller written
- * before this existed keeps working.
- *
- * The lock is acquire-and-release rather than the `withLock(key, fn)` shape the other
- * ports use, and that is not a style choice. `withLock` is generic over what the
- * callback returns, so handing it an async function type-checks and releases the lock
- * the moment the promise is CREATED, leaving everything after the first await
- * unprotected. A lock held only until the first await looks like protection in the
- * code and is none.
+ * Every one of them now belongs to `RecordPorts`, which each writer to a record shares.
+ * All optional: the filesystem is the default, so a caller written before any of this
+ * existed keeps working.
  */
-export interface AdjustPorts {
-	readonly record?: RecordStorage;
-	readonly state?: {
-		read(key: string): StateFile;
-		write(key: string, state: StateFile): void;
-	};
-	readonly lock?: (key: string) => () => void;
-}
+export type AdjustPorts = RecordPorts;
 
 /** What a batch did, in the order it did it. */
 export interface AdjustAllResult {
@@ -210,82 +147,48 @@ export async function adjustAll(
 	plan: Plan,
 	ports: AdjustPorts = {},
 ): Promise<AdjustAllResult> {
-	// The lock is taken here and released in `finally`, rather than through
-	// `withStateLock`. That helper is generic over the callback's return type, so
-	// handing it an async function type-checks and releases the lock the moment the
-	// promise is CREATED, leaving the read, the write and the print unprotected for
-	// exactly as long as they take. A lock that is held only until the first await is
-	// worse than none: it looks like protection in the code and provides none.
-	const release = (ports.lock ?? acquireStateLock)(statePath);
-	try {
-		return await write(personaPath, statePath, envelopes, plan, ports);
-	} finally {
-		release();
-	}
-}
-
-async function write(
-	personaPath: string,
-	statePath: string,
-	envelopes: Record<string, Envelope>,
-	plan: Plan,
-	ports: AdjustPorts,
-): Promise<AdjustAllResult> {
 	const stored = (ports.state?.read ?? readState)(statePath);
-	const record = openRecord(
+
+	// Everything up to and including the drain happens inside, under the lock and
+	// against a record opened for this write. The printing is here rather than after
+	// because it has to read the entries this write just added, and outside the lock
+	// they are no longer guaranteed to be the newest.
+	const { decisions, printed, changed } = await writingToRecord(
 		personaPath,
-		ports.record === undefined ? {} : { storage: ports.record },
+		statePath,
+		ports,
+		(record, migrated) => {
+			// Planned after the migration, so the values it sees are the record's and not the
+			// stored copy's. On a persona that has just migrated those agree; on one whose
+			// state file somebody edited by hand they do not, and the record is the source.
+			const folded0 = record.state();
+			const moves = plan(folded0.ok ? folded0.state.values : {});
+			const decisions = moves.map((move) => mutate(record, envelopes, move.author, move.request));
+
+			const folded = record.state();
+			if (!folded.ok) {
+				// Named with the entry, because "the chain is broken" without a sequence
+				// number sends somebody through the whole file. The chain stops at the first
+				// problem on purpose: everything after it is suspect, so reporting the first
+				// is reporting the only one that can be trusted to be real.
+				throw new Error(
+					`the record does not verify after the move: ${folded.problem.kind} at entry ${folded.problem.seq}`,
+				);
+			}
+
+			return {
+				decisions,
+				printed: project(folded.state, record.all(), identityOf(stored)),
+				// A first touch is a change even with no moves: it is the migration.
+				changed: migrated || moves.length > 0,
+			};
+		},
 	);
-	// Checked before anything is added to it. Appending to a chain nobody has verified
-	// is appending to something we cannot vouch for, and the check used to run after
-	// the drain: an unreadable record received the new entry, the entry reached the
-	// disk, and only then did it throw. The record was left worse than it was found.
-	const loaded = record.verify();
-	if (!loaded.ok) {
-		throw new Error(explain(personaPath, loaded.problem!));
-	}
 
-	const migrated = record.all().length === 0;
-	adopt(record, stored);
-
-	// Planned after adopting, so the values it sees are the record's and not the
-	// stored copy's. On a persona that has just migrated those agree; on one whose
-	// state file somebody edited by hand they do not, and the record is the source.
-	const folded0 = record.state();
-	const moves = plan(folded0.ok ? folded0.state.values : {});
-	const decisions = moves.map((move) => mutate(record, envelopes, move.author, move.request));
-
-	// A checkpoint every so often, written by the path that was already holding the
-	// lock and had already folded. Reading a persona means folding its record and the
-	// record only grows: 167 entries fold in about a millisecond, 50,000 in 238ms, on
-	// a file nothing ever shortens. Doing it here rather than on a timer means it
-	// happens exactly when there is something new to summarise.
-	if (moves.length > 0 && record.sinceCheckpoint() >= CHECKPOINT_EVERY) record.checkpoint();
-
-	const report = await record.drain();
-	if (report.failure) {
-		throw new Error(
-			`the move was decided but could not be recorded (${report.failure.message}), so nothing was written`,
-		);
-	}
-
-	const folded = record.state();
-	if (!folded.ok) {
-		// Named with the entry, because "the chain is broken" without a sequence number
-		// sends somebody through the whole file. The chain stops at the first problem
-		// on purpose: everything after it is suspect, so reporting the first is
-		// reporting the only one that can be trusted to be real.
-		throw new Error(
-			`the record does not verify after the move: ${folded.problem.kind} at entry ${folded.problem.seq}`,
-		);
-	}
-
-	const printed = project(folded.state, record.all(), identityOf(stored));
 	// Written when anything actually changed. A batch with no moves against a record
-	// that already existed is a tick where nothing happened, and rewriting the file
-	// then would touch its mtime on every idle turn for no reason. A first touch is a
-	// change even with no moves: it is the migration.
-	if (migrated || moves.length > 0) {
+	// that already existed is a tick where nothing happened, and rewriting the file then
+	// would touch its mtime on every idle turn for no reason.
+	if (changed) {
 		if (ports.state) ports.state.write(statePath, printed);
 		else writeFileSync(statePath, JSON.stringify(printed, null, 2) + "\n", "utf-8");
 	}

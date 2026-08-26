@@ -76,14 +76,21 @@ export {
 export {
 	adjust,
 	adjustAll,
-	adopt,
 	type AdjustAllResult,
 	type AdjustResult,
 	type Move,
 } from "./adjust.js";
 
 export {
+	CHECKPOINT_EVERY,
+	explain,
+	writingToRecord,
+	type RecordPorts,
+} from "./transaction.js";
+
+export {
 	MECHANISM,
+	SELF,
 	UNNAMED_OPERATOR,
 	UNRECOGNISED,
 	actorFor,

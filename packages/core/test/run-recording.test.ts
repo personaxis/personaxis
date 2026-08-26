@@ -39,7 +39,7 @@ function runnerWith(
 	const journal = new Journal({});
 	const runner = new TurnRunner({
 		provider: provider as never,
-		observer: recordTurns({ journal, personaId: "clio" }),
+		observer: recordTurns({ journal }),
 		...(ledger ? { ledger } : {}),
 	});
 	return { runner, journal };
@@ -78,7 +78,10 @@ describe("a turn that went well", () => {
 		const [opened, said, closed] = journal.all();
 
 		expect(opened!.author).toEqual({ kind: "human", id: "david" });
-		expect(said!.author).toEqual({ kind: "persona", id: "clio" });
+		// `self`, not the persona's canonical id. A record belongs to one persona, every
+		// coordinate entry in it already says `self`, and a second spelling for one actor
+		// in one chain is the drift the author vocabulary exists to end.
+		expect(said!.author).toEqual({ kind: "persona", id: "self" });
 		// The runtime ended the turn; the persona did not decide it was over.
 		expect(closed!.author.kind).toBe("runtime");
 	});
