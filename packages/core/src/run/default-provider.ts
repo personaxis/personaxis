@@ -13,35 +13,86 @@
  *
  * ## Where the translation has to make a judgement, and what it chose
  *
- * The old result says `finished` and carries what stopped it. The new one says why the
- * turn ended, from a closed set. Two of those mappings are obvious and one is not:
+ * The old result says `finished` and carries what stopped it, from a dozen strings the
+ * loop grew one at a time. The new one says why the turn ended, from a closed set. The
+ * stops sort into three families, and every one of them is named below rather than
+ * caught by a fallthrough, because a stop nobody classified is a stop that gets
+ * classified by whatever the fallthrough happens to be.
  *
- *   - finished, with text            -> answered
- *   - stopped by a budget            -> budget, because it closed with what it had
- *   - not finished, with no text     -> empty
- *   - not finished, with text        -> answered
+ *   - **it closed with what it had**: the four budget caps, the hard ceiling, and the
+ *     stop conditions an operator declared. Answered when there is text a person can
+ *     read, empty when there is not. A loop that ran out of steps but produced
+ *     something usable **answered**, and calling that a failure would push a real reply
+ *     behind an error somebody has to dismiss. The reference reaches the same place by
+ *     a different route: on exhaustion it spends one more tool-free call to summarise,
+ *     precisely so the turn ends with something rather than with a stop.
+ *   - **a guard refused it**: a denied tool, the repetition breaker, a plan that could
+ *     not survive its own gates. The turn could not continue past something it needed.
+ *   - **it failed**: the loop caught an error, or verification rejected the work.
  *
- * The last is the one worth arguing about. A loop that ran out of steps but produced
- * something the person can read **answered**, and calling that a failure would push a
- * usable reply behind an error somebody has to dismiss. The reference reaches the same
- * place by a different route: on exhaustion it spends one more tool-free call to
- * summarise, precisely so the turn ends with something rather than with a stop.
+ * ## The bug this had, and why nothing could see it until the REPL went through here
  *
- * What this deliberately does **not** do is invent a reason. A stop the old loop
- * reports and this does not recognise becomes `failed` with the original string, not a
- * guess at which of the seven it resembles.
+ * The last family did not exist. `TurnProduct` had no way to say `failed`, and every
+ * stop that was not a budget cap or a denied tool fell through to "answered if there is
+ * text". So a run that ended in `catch` returned `agent error: the model hung up` as
+ * its summary and this reported the turn **answered**, with that sentence as the
+ * answer. A rejected verification reported the turn answered with the words
+ * `verification failed`.
+ *
+ * Nothing read the stop reason in production, so nothing showed it. The moment the REPL
+ * runs through the seam, two things read it: the person sees it, and the record stores
+ * the answer as a `message` attributed to the persona. The persona did not say "agent
+ * error". That is the forgery the author invariant exists to prevent, committed by the
+ * translator, and it would have been durable and hash-chained.
+ *
+ * So a failure comes back as a failure now, with its text in `failure` where the
+ * runtime's own words belong, and `answer` empty because the persona produced none.
+ *
+ * What this deliberately does **not** do is invent a reason. A stop this does not
+ * recognise becomes `failed` carrying the original word, not a guess at which of the
+ * seven it resembles.
  */
 
 import { PersonaAgent, type AgentResult } from "../agent.js";
 import type { LoopProvider, TurnContext, TurnProduct } from "./service.js";
 
-/** Reasons the old loop can report that mean the budget stopped it. */
-const BUDGET_STOPS = new Set([
+/**
+ * Stops that mean the turn ran out of room and closed with whatever it had.
+ *
+ * The runner reads a budget stop off its own ledger rather than from here, so these
+ * report what they have: `answered` when there is text and `empty` when there is not,
+ * which is the same distinction the runner would draw.
+ */
+const CLOSED_WITH_WHAT_IT_HAD = new Set([
 	"max_steps",
 	"max_tokens",
 	"max_cost_usd",
 	"max_wall_seconds",
 	"budget",
+	// The absolute ceiling, which is a cap an operator never had to declare.
+	"hard_ceiling",
+	// Stop conditions a spec asked for. The operator said "stop when this happens", so it
+	// happening is the loop obeying rather than the loop breaking.
+	"execution_error",
+	"low_confidence",
+	"no_progress",
+]);
+
+/** Stops that mean a guard would not let the turn continue. */
+const REFUSED_BY_A_GUARD = new Set([
+	"tool_denied",
+	// The repetition breaker decided the loop was going nowhere and stopped it.
+	"loop_breaker",
+	// A plan that could not survive its own gates, so the work never started.
+	"plan",
+]);
+
+/** Stops that mean the turn produced no answer, and something is wrong. */
+const THE_TURN_FAILED = new Set([
+	"error",
+	// The work was done and rejected. "verification failed" is the runtime's verdict on
+	// the persona, never the persona's reply, and it used to be delivered as one.
+	"verification_failed",
 ]);
 
 /**
@@ -63,26 +114,40 @@ export function productOf(result: AgentResult): TurnProduct {
 	const answer = result.summary ?? "";
 	const stoppedBy = result.budget?.stoppedBy ?? null;
 	const cost = costOf(result);
-	const priced = cost === undefined ? {} : { cost };
+	const common = { steps: result.steps, ...(cost === undefined ? {} : { cost }) };
 
-	if (result.finished) {
-		return { answer, steps: result.steps, stopReason: "answered", ...priced };
+	if (result.finished) return { answer, stopReason: "answered", ...common };
+
+	if (stoppedBy !== null && THE_TURN_FAILED.has(stoppedBy)) {
+		// The summary is dropped rather than carried through. What the old loop puts there
+		// on these paths is its own report of the failure, and a report is not a reply:
+		// passing it on as one is what got `agent error: ...` attributed to the persona.
+		return {
+			answer: "",
+			stopReason: "failed",
+			failure: { code: stoppedBy, message: answer || stoppedBy },
+			...common,
+		};
 	}
-	if (stoppedBy && BUDGET_STOPS.has(stoppedBy)) {
-		// The runner reads a budget stop off its own ledger rather than from here, so
-		// this reports what it has: a turn that closed with whatever it produced. That
-		// is `answered` when there is text and `empty` when there is not, which is the
-		// same distinction the runner would draw.
+
+	if (stoppedBy !== null && REFUSED_BY_A_GUARD.has(stoppedBy)) {
+		return { answer, stopReason: "refused", ...common };
+	}
+
+	if (stoppedBy === null || CLOSED_WITH_WHAT_IT_HAD.has(stoppedBy)) {
 		return answer.length > 0
-			? { answer, steps: result.steps, stopReason: "answered", ...priced }
-			: { answer, steps: result.steps, stopReason: "empty", ...priced };
+			? { answer, stopReason: "answered", ...common }
+			: { answer, stopReason: "empty", ...common };
 	}
-	if (stoppedBy === "tool_denied") {
-		return { answer, steps: result.steps, stopReason: "refused", ...priced };
-	}
-	return answer.length > 0
-		? { answer, steps: result.steps, stopReason: "answered", ...priced }
-		: { answer, steps: result.steps, stopReason: "empty", ...priced };
+
+	// A stop from a build this one does not know. Naming it as one of the seven would be
+	// guessing; carrying the word through means whoever added it can see where it landed.
+	return {
+		answer: "",
+		stopReason: "failed",
+		failure: { code: "unrecognised_stop", message: "the loop stopped with " + stoppedBy },
+		...common,
+	};
 }
 
 /**
