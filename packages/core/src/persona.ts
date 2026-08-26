@@ -54,7 +54,7 @@ export interface MutationLogEntry {
   /** v1.1 (F6.3, T3 forensic upgrade): hash of the previous chained entry ("" for
    *  the first). Same scheme as episodic memory, the audit trail is tamper-evident,
    *  not merely append-only by convention. Absent on pre-1.1 entries (legacy prefix
-   *  tolerated by verifyMutationChain). */
+   *  tolerated by `record.verify`). */
   prev_hash?: string;
   /** v1.1: sha256 over {ts, field, from, to, delta_requested, clamped, reason,
    *  actor, governance_blocked, prev_hash}. */

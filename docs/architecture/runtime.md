@@ -81,9 +81,11 @@ auditable event on the bus; nothing is a black box.
    (`loop.ts:154`).
 4. **Govern, then clamp and audit** (`loop.ts:159`). `governMutations` admits or rejects each
    proposed delta against the envelopes and the governance mode. Under a lock (`loop.ts:189`), the
-   engine re-reads fresh state, applies the **homeostatic decay first** (`applyHomeostasis`), then
-   the admitted deltas (`applyMutation`), each **clamped to its envelope** and appended to
-   `state.json#/mutation_log` with actor, reason, origin node, session id, and a `clamped` flag.
+   engine re-reads fresh state, applies the **homeostatic decay first** (`homeostaticMoves`), then
+   the admitted deltas, each **clamped to its envelope** and written to the persona's **record** as
+   an entry carrying its author, reason, origin node, session id, and a `clamped` flag. The decay
+   and the deltas belong to the same moment, so they land as one transaction (`record.adjustAll`).
+   `state.json#/mutation_log` is printed from those entries, not written beside them.
 5. **Drift** (`loop.ts:225`). A normative drift event is a **band crossing**, not any mutation
    (within-band movement is expression variance). `driftReport` computes per-layer drift `D`
    against `governance.drift_thresholds`; a layer over threshold emits a `drift-threshold`
@@ -114,7 +116,8 @@ auditable event on the bus; nothing is a black box.
 
 | Artifact | Written | Contents |
 |---|---|---|
-| `state.json` | every tick with an admitted mutation or a decaying field | current values + `mutation_log` (actor, reason, clamp/block flags, origin, session) |
+| `record.jsonl` | every admitted move, every decaying field, and every turn | the state itself: hash-chained entries, each carrying its author, and the fold over them IS the persona |
+| `state.json` | printed whenever the document it prints came out different | a view of the record: current values + `mutation_log` (actor, reason, clamp/block flags, origin, session) |
 | `memory/episodic.jsonl` | when `memory.types.episodic` and the appraiser proposes memories | hash-chained distilled notes, provenance-tagged |
 | `memory.md` | on episodic->semantic consolidation | consolidated semantic memory |
 | user preferences / evaluations | when those `memory.types` are declared | key/value prefs; deterministic quality scores |
@@ -184,8 +187,8 @@ Everything above is verifiable after the fact:
 - `personaxis audit` / `GET /persona/audit`: mutation count, memory size, hash-chain integrity,
   anomalies.
 - `personaxis state drift`: per-coordinate position, band, and the T3 evidence cost.
-- `personaxis state rebuild`: replays `mutation_log` to reconstruct `state.json` and detect
-  tampering.
+- `personaxis state rebuild`: folds the record and compares the result against `state.json`,
+  so a file somebody edited by hand is reported rather than believed. `--write` reprints it.
 - The event stream (`observe`, `appraise`, `govern`, `mutate`, `drift`, `self-edit`, `memory`,
   `recompile`, `anomaly`, `tick-complete`) is the per-tick audit log.
 

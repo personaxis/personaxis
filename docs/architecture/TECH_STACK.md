@@ -3,7 +3,7 @@
 Decision record for the replatform, sourced from the July-2026 source-first research wave: four
 parallel audits (Claude Code, local install + docs; **Codex CLI**: source clone; **OpenClaw** +
 **Hermes**: source; and a verified TypeScript-ecosystem landscape). The condensed decision table
-lives in `ARCHITECTURE_REVIEW.md` §15; this document carries the twelve research questions in
+was taken in the architecture audit; this document carries the twelve research questions in
 full, with the evidence that backs each choice and the rules an implementer must follow.
 
 The strongest meta-signal from the research: **the four leading agent CLIs independently converged
@@ -16,7 +16,7 @@ ratatui), we read it as a *warning*, not an invitation.
 
 ## 1. General architecture
 
-The target architecture (ARCHITECTURE_REVIEW.md §14) is a **pnpm monorepo with a protocol seam**:
+The target architecture is a **pnpm monorepo with a protocol seam**:
 
 ```
 @personaxis/spec ──▶ @personaxis/core ──▶ @personaxis/protocol ──▶ consumers
@@ -140,7 +140,7 @@ deliberate bump to v2 (2026-07-28 release). `--root` confinement + `--allow-deci
 
 ## 11. Design patterns (what pays off, what is rejected)
 
-Adopted (ARCHITECTURE_REVIEW.md §14.2): hexagonal ports **only for storage** (F3), plugin registry
+Adopted: hexagonal ports **only for storage** (F3), plugin registry
 for compile targets (F3), event-driven core (already exists), SQ/EQ protocol seam (FR), partial
 event sourcing (mutation_log as replayable ledger). **Rejected**: CQRS, actor frameworks,
 ceremonial DDD, custom renderer, custom parser, SQLite.
