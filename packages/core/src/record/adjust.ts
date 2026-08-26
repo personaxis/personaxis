@@ -38,7 +38,7 @@ import type { StateFile } from "../persona.js";
 import { readState } from "../persona.js";
 import type { Author } from "./entry.js";
 import { mutate, type Decision, type MoveRequest } from "./mutate.js";
-import { project, type Identity } from "./project.js";
+import { divergence, project, type Identity } from "./project.js";
 import { writingToRecord, type RecordPorts } from "./transaction.js";
 
 /** Who this record belongs to, read from the file it is replacing. */
@@ -176,18 +176,26 @@ export async function adjustAll(
 				);
 			}
 
+			const printed = project(folded.state, record.all(), identityOf(stored));
+
 			return {
 				decisions,
-				printed: project(folded.state, record.all(), identityOf(stored)),
+				printed,
 				// A first touch is a change even with no moves: it is the migration.
-				changed: migrated || moves.length > 0,
+				//
+				// And so is a document that came out different from the one on disk. This
+				// used to be moves alone, on the reasoning that rewriting the file when
+				// nothing moved would touch its mtime on every idle tick for no reason.
+				// That stopped being true when turns reached the record: a conversation
+				// that moves no coordinate still changes the session block, so the file
+				// sat one turn behind and `state rebuild` reported a persona diverged
+				// from its own record until something happened to move a value.
+				changed: migrated || moves.length > 0 || divergence(printed, stored).differs,
 			};
 		},
 	);
 
-	// Written when anything actually changed. A batch with no moves against a record
-	// that already existed is a tick where nothing happened, and rewriting the file then
-	// would touch its mtime on every idle turn for no reason.
+	// Written when the document is actually different from the one on disk.
 	if (changed) {
 		if (ports.state) ports.state.write(statePath, printed);
 		else writeFileSync(statePath, JSON.stringify(printed, null, 2) + "\n", "utf-8");

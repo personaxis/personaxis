@@ -35,6 +35,11 @@
  */
 
 import type { MutationLogEntry, StateFile } from "../persona.js";
+// The record stores the runtime's stop reasons verbatim, so it reads the runtime's own
+// word for which of them left something to resume. A second predicate here would be a
+// second answer to one question, and it would drift the first time a reason was added.
+// `vocabulary` imports nothing, so this direction costs no cycle.
+import { answered, type StopReason } from "../run/vocabulary.js";
 import { requireActor } from "./actor.js";
 import type { DerivedState } from "./derive.js";
 import { isGenesis, type RecordEntry } from "./entry.js";
@@ -134,15 +139,32 @@ export function project(
 		file.last_compiled_hash = state.compiled.hash;
 	}
 
-	// The open turn is the active task, and the totals are the fold over closed ones.
-	// A persona with nothing open and nothing spent gets no session block at all,
-	// because an empty one reads as "a session happened and did nothing".
+	// The session block, folded from the turns rather than kept beside them.
+	//
+	// The agent used to write this itself, straight into `state.json`, while this
+	// printed its own version from the record: two writers for one block, disagreeing
+	// in two fields and settling on whichever ran last. On a real turn the agent wrote
+	// `stop_reason: "goal_met"` and the projection said `answered`, and the file
+	// flip-flopped between them as the turn and the next coordinate move landed.
+	//
+	// So this is the only writer, and it says what the agent's said, from the entries.
+	// `active_task` is what the persona is in the middle of: the open turn's question,
+	// or the last one's when that turn ended badly, which is the pointer a resumed run
+	// is told not to restart. A turn that ended well leaves nothing to resume.
+	//
+	// A persona with nothing open and nothing spent gets no block at all, because an
+	// empty one reads as "a session happened and did nothing".
 	const ran = state.turnCount > 0 || state.openTurn !== undefined;
 	if (ran) {
 		const last = state.lastTurn;
+		// Cast because an entry holds whatever word was written into it, including one
+		// from a build that knew a reason this one does not. `answered` returns false for
+		// anything it does not recognise, which errs toward "there is something to
+		// resume": a stale pointer is a smaller lie than a lost one.
+		const unfinished = last !== undefined && !answered(last.outcome as StopReason) ? last.prompt : null;
 		file.agent_session = {
-			active_task: state.openTurn ?? null,
-			started_at: null,
+			active_task: state.openTurn?.prompt ?? unfinished,
+			started_at: state.openTurn?.at ?? null,
 			step_count: state.spent.steps,
 			token_count: state.spent.tokens,
 			cost_usd: state.spent.usd,

@@ -268,7 +268,7 @@ export class Journal {
 			{ kind: "runtime", mechanism: "crash-recovery", reason },
 			{
 				type: "turn-close",
-				turn: result.state.openTurn,
+				turn: result.state.openTurn.id,
 				outcome: "interrupted",
 				synthetic: true,
 			},
