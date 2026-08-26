@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { extractEnvelopes } from "../src/envelopes.js";
-import { ensureState, loadPersona } from "../src/persona.js";
+import { ensureState, loadPersona, projectPersona, readState } from "../src/persona.js";
 import { verify } from "../src/record/chain.js";
 import { derive } from "../src/record/derive.js";
 import { isGenesis } from "../src/record/entry.js";
@@ -150,6 +150,21 @@ describe("a persona on the day it is created", () => {
 		rmSync(handle.statePath);
 
 		expect(() => ensureState(loadPersona(personaPath))).toThrow(/does not verify/);
+	});
+
+	it("does not raise a persona's declared schema version as a side effect of reprinting", () => {
+		// Found by the check itself, on this repo's own persona: the file said 0.6.0 and
+		// the projection wrote the build's current constant. Raising a schema version is
+		// a migration, which `personaxis migrate` does deliberately and with a report,
+		// and reprinting a view would have done it silently. The answer lived in two
+		// places, one here and one in `adjust`, and they disagreed.
+		const handle = loadPersona(personaPath);
+		ensureState(handle);
+		const entries = readRecord(recordPathFor(personaPath));
+		const older = { ...readState(handle.statePath), schema_version: "0.6.0" };
+
+		expect(projectPersona(handle, entries, older).schema_version).toBe("0.6.0");
+		expect(projectPersona(handle, entries).schema_version).not.toBe("0.6.0");
 	});
 
 	it("gives two personas from the same spec the same origins, in the same order", () => {

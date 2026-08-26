@@ -203,7 +203,10 @@ export function ensureState(handle: PersonaHandle): StateFile {
 }
 
 /**
- * Print the state file from a persona's record and leave it on disk.
+ * The state file a persona's record says it has, without writing anything.
+ *
+ * Separated from writing it so a caller can ask what the file OUGHT to say and
+ * compare, which is what checking a projection for drift is.
  *
  * Building the object by hand is how the seeded file came to differ from every file
  * written after it: it carried `last_compiled_at: null` and `last_compiled_hash:
@@ -211,7 +214,11 @@ export function ensureState(handle: PersonaHandle): StateFile {
  * failed validation against the spec this project ships. A projection cannot drift
  * from itself.
  */
-function print(handle: PersonaHandle, entries: readonly RecordEntry[]): StateFile {
+export function projectPersona(
+  handle: PersonaHandle,
+  entries: readonly RecordEntry[],
+  stored?: StateFile,
+): StateFile {
   const folded = derive(entries);
   if (!folded.ok) {
     throw new Error(
@@ -219,11 +226,24 @@ function print(handle: PersonaHandle, entries: readonly RecordEntry[]): StateFil
     );
   }
   const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
-  const state = project(folded.state, entries, {
-    schemaVersion: STATE_SCHEMA_VERSION,
-    personaId: meta.name ?? "persona",
-    personaVersion: meta.version ?? "0.0.0",
+  return project(folded.state, entries, {
+    // What the file already declares wins over what this build writes. Printing the
+    // current constant over a persona that says 0.6.0 would raise its declared schema
+    // version as a side effect of reprinting a view, and raising a schema version is a
+    // migration: `personaxis migrate` does it deliberately, with a report, and this
+    // would have done it silently. The two answers lived in two places, one in
+    // `adjust` and one here, and they disagreed on a real persona.
+    schemaVersion: stored?.schema_version ?? STATE_SCHEMA_VERSION,
+    personaId: stored?.persona_id ?? meta.name ?? "persona",
+    personaVersion: stored?.persona_version ?? meta.version ?? "0.0.0",
+    ...(stored?.session_id === undefined ? {} : { sessionId: stored.session_id }),
   });
+}
+
+/** The same document, left on disk. */
+function print(handle: PersonaHandle, entries: readonly RecordEntry[]): StateFile {
+  // Only reached when the file is absent, so there is nothing stored to preserve.
+  const state = projectPersona(handle, entries);
   writeState(handle.statePath, state);
   return state;
 }
