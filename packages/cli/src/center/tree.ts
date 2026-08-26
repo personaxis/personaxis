@@ -20,7 +20,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { hostname } from "node:os";
-import {
+import { stateOf, loadPersona,
   loadRegistry,
   livePresence,
   describePresence,
@@ -203,9 +203,9 @@ function layersNode(personaPath: string, parentPath: string[], fm: PersonaFrontm
 /** Current numeric state values keyed by envelope dotpath, {} if none. */
 function readStateValues(personaPath: string): Record<string, number> {
   try {
-    const statePath = join(dirname(personaPath), "state.json");
-    const st = readState(statePath) as { values?: Record<string, number> } | null;
-    return st?.values ?? {};
+    // From the record rather than the file beside it, and without creating either:
+    // drawing the navigator for a persona must not bring that persona into being.
+    return stateOf(loadPersona(personaPath))?.values ?? {};
   } catch {
     return {};
   }

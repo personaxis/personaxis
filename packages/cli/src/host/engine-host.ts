@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
+import { ensureState,
   run,
   readState,
   extractEnvelopes,
@@ -100,7 +100,7 @@ export class EngineHost {
   }
 
   private snapshot(): void {
-    const st = readState(this.handle.statePath);
+    const st = ensureState(this.handle);
     this.broadcast({
       event: "state.snapshot",
       values: st.values,
@@ -144,11 +144,11 @@ export class EngineHost {
         return { ok: !result.blocked, data: result };
       }
       case "state_get": {
-        const st = readState(this.handle.statePath);
+        const st = ensureState(this.handle);
         return { ok: true, data: { values: st.values, recent_mutations: st.mutation_log.slice(-5) } };
       }
       case "audit_get": {
-        const st = readState(this.handle.statePath);
+        const st = ensureState(this.handle);
         const mem = readMemory(this.handle.personaPath);
         return {
           ok: true,

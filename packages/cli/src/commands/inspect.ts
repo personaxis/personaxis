@@ -14,7 +14,7 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { readState, proposals, applySelfEdit, rejectSelfEdit, readMemoryTypes } from "@personaxis/core";
+import { ensureState, readState, proposals, applySelfEdit, rejectSelfEdit, readMemoryTypes } from "@personaxis/core";
 import { resolve } from "node:path";
 import { resolvePersonaSourcePath } from "../load.js";
 import { makeCtx } from "../repl/session.js";
@@ -66,7 +66,7 @@ export const statusCommand = new Command("status")
   .action((opts: { persona?: string; json?: boolean }) => {
     const ctx = inspectCtx(opts.persona);
     const lines = statusLines(ctx);
-    const st = readState(ctx.handle.statePath);
+    const st = ensureState(ctx.handle);
     emit(
       lines,
       {

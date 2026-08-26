@@ -145,7 +145,7 @@ export class Persona {
 
   /** Current runtime state: envelope values + the last few audited mutations. */
   state(): PersonaStateView {
-    const st = readState(this.handle.statePath);
+    const st = ensureState(this.handle);
     return { values: st.values, recentMutations: st.mutation_log.slice(-5) };
   }
 
@@ -256,7 +256,7 @@ export class Persona {
 
   /** Integrity view: mutation count, memory size, hash-chain validity, detected anomalies. */
   audit(): PersonaAuditView {
-    const st = readState(this.handle.statePath);
+    const st = ensureState(this.handle);
     const mem = readMemory(this.personaPath);
     const chain = verifyMemoryChain(this.personaPath);
     return {

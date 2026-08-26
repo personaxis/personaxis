@@ -165,6 +165,30 @@ export function displayName(fm: PersonaFrontmatter): string {
  * reconstruction reports the new mean as where it started. Written at initialisation,
  * the origin is what was actually declared at the time.
  */
+/**
+ * Where a persona is, reading only, or nothing when it has not started yet.
+ *
+ * The counterpart to `ensureState` and the difference is the whole point: looking at
+ * a persona must not create it. A view that seeds one turns browsing into a write,
+ * so opening a list of personas would bring every one of them into existence and a
+ * freshly created sub-persona would stop being able to say it has not been set up.
+ *
+ * `undefined` rather than envelope means, because "this persona has not started" and
+ * "this persona is at its declared starting position" are different situations that
+ * happen to hold the same numbers, and only one of them is worth telling somebody
+ * about.
+ *
+ * The record first, for the same reason `ensureState` reads it first: `state.json` is
+ * printed from it, so reading the file rather than the record is reading a copy.
+ */
+export function stateOf(handle: PersonaHandle): StateFile | undefined {
+  const entries = readRecord(recordPathFor(handle.personaPath));
+  const stored = existsSync(handle.statePath) ? readState(handle.statePath) : undefined;
+  if (entries.length > 0) return projectPersona(handle, entries, stored);
+
+  return stored;
+}
+
 export function ensureState(handle: PersonaHandle): StateFile {
   // The record first, and this is the whole point of the step. `state.json` is
   // printed from the record, so reading the file instead of the record is reading a

@@ -14,7 +14,8 @@
  */
 
 import chalk from "chalk";
-import {
+import { ensureState,
+  stateOf,
   record,
   readState,
   verifyMemoryChain,
@@ -35,7 +36,8 @@ const row = (label: string, value: string): string => `  ${chalk.cyan(label.padE
 
 /** Timeline: what changed, when, why, and how often. */
 export function timelineLines(ctx: Ctx): TabLine[] {
-  const st = readState(ctx.handle.statePath);
+  const st = stateOf(ctx.handle);
+  if (!st) return [];
   const log = st.mutation_log ?? [];
   if (!log.length) {
     return [
@@ -100,10 +102,12 @@ export function timelineLines(ctx: Ctx): TabLine[] {
         const n = Math.max(0, Number((await ctx.ask("  undo how many mutations? ")).trim()) || 0);
         if (!n) return { kind: "toast", text: "cancelled" };
         const env = extractEnvelopes(ctx.handle.frontmatter);
+        // The rewind is an action rather than a look, so it is entitled to bring the
+        // persona's state into being if that is what it takes to undo something.
         const { changed, steps } = await rewind(
           ctx.handle.personaPath,
           ctx.handle.statePath,
-          readState(ctx.handle.statePath),
+          ensureState(ctx.handle),
           env.envelopes,
           n,
           record.authorOf("human-operator"),
@@ -125,7 +129,8 @@ export function timelineLines(ctx: Ctx): TabLine[] {
  */
 export function integrityLines(ctx: Ctx): string[] {
   const p = ctx.handle.personaPath;
-  const st = readState(ctx.handle.statePath);
+  const st = stateOf(ctx.handle);
+  if (!st) return [];
   const chain = verifyMemoryChain(p);
   const entries = readMemory(p);
   const env = extractEnvelopes(ctx.handle.frontmatter);

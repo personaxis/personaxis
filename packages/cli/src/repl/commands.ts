@@ -10,7 +10,7 @@
 import chalk from "chalk";
 import { relative, dirname, join } from "node:path";
 import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
-import {
+import { ensureState,
   readState,
   extractEnvelopes,
   driftReport,
@@ -189,7 +189,7 @@ export const COMMANDS: CommandDef[] = [
       }
       // V5.P3.2: the AURA, the persona's living creature mark (unique per seed;
       // it breathes with the loop and flares when drift crosses thresholds).
-      const st = readState(ctx.handle.statePath);
+      const st = ensureState(ctx.handle);
       ctx.out(
         auraLines(sigilParams(ctx.handle.frontmatter), 0, { intensity: liveIntensity(st.values, 0) })
           .split("\n")
@@ -223,7 +223,7 @@ export const COMMANDS: CommandDef[] = [
       if (ctx.openView) {
         // Feed the live gauge in the status bar with the numeric plane, then open the app.
         try {
-          const st = readState(ctx.handle.statePath);
+          const st = ensureState(ctx.handle);
           const fm = ctx.handle.frontmatter as Record<string, unknown>;
           const env = extractEnvelopes(ctx.handle.frontmatter);
           ctx.onDrift?.(

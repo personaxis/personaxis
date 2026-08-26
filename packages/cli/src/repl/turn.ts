@@ -12,7 +12,7 @@
  */
 
 import chalk from "chalk";
-import {
+import { ensureState,
   PersonaAgent,
   EventBus,
   Tracer,
@@ -67,7 +67,7 @@ function awarenessOpts(ctx: Ctx, model: string | undefined): AwarenessOpts {
 export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const llm = llmConfig(ctxModelArg(ctx));
   if (!llm) {
-    const cur = readState(ctx.handle.statePath);
+    const cur = ensureState(ctx.handle);
     // Offline recall (V2-F1.2): the user profile loads FIRST (name recall works with
     // no model), then the bounded recent window, never a blind last-6 of raw lines.
     const p = ctx.handle.personaPath;

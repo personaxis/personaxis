@@ -7,7 +7,7 @@
 
 import chalk from "chalk";
 import { dirname } from "node:path";
-import {
+import { type PersonaHandle, stateOf,
   readState,
   sigilParams,
   liveIntensity,
@@ -32,7 +32,11 @@ import { POSTURES } from "../config.js";
 /** Global drift D right now, so the aura can flare when the persona is off its box. */
 function driftFor(ctx: Ctx): number {
   try {
-    const st = readState(ctx.handle.statePath);
+    const st = stateOf(ctx.handle);
+    // A persona that has not started has drifted nowhere, which is what zero means
+    // here. It is not the same claim as "measured and found none", and the caller
+    // uses this to decide how hard the aura flares, so both come out the same way.
+    if (!st) return 0;
     const env = extractEnvelopes(ctx.handle.frontmatter);
     const fm = ctx.handle.frontmatter as Record<string, unknown>;
     return driftReport({
@@ -56,9 +60,11 @@ function driftFor(ctx: Ctx): number {
  * took the WHOLE view down to a blank screen. A view must degrade to "not initialized
  * yet", never to nothing.
  */
-function readStateValues(statePath: string): Record<string, number> {
+function readStateValues(handle: PersonaHandle): Record<string, number> {
   try {
-    return readState(statePath).values;
+    // From the record, which is the source. Reading the file gave whatever the file
+    // happened to hold, which is right only until somebody edits it.
+    return stateOf(handle)?.values ?? {};
   } catch {
     return {};
   }
@@ -81,7 +87,7 @@ export function identityLines(ctx: Ctx): string[] {
   const fm = ctx.handle.frontmatter as FM;
   const p = ctx.handle.personaPath;
   const address = slugAddressFromPath(p);
-  const values = readStateValues(ctx.handle.statePath);
+  const values = readStateValues(ctx.handle);
   // V7.D: the aura is ALIVE here. It used to be asked for frame 0 on every render, so it
   // never moved no matter how often the view refreshed (it never appeared to be animated at all). The frame comes from the clock, so each tick of the miniapp
   // advances it; PERSONAXIS_NO_ANIM pins frame 0 for deterministic tests.
