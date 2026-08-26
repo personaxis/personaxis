@@ -57,11 +57,23 @@ interface Written {
 	readonly body: RecordBody;
 }
 
-/** Who a turn is attributed to, in the record's vocabulary rather than the seam's. */
+/**
+ * Who a turn is attributed to, in the record's vocabulary rather than the seam's.
+ *
+ * Passed through rather than narrowed. It used to collapse everything that was not a
+ * human into a persona, so a program driving the persona was written down as the
+ * persona asking itself.
+ */
 function askerOf(request: TurnRequest): Author {
-	return request.asker.kind === "human"
-		? { kind: "human", id: request.asker.id }
-		: { kind: "persona", id: request.asker.id };
+	const asker = request.asker;
+	switch (asker.kind) {
+		case "human":
+			return { kind: "human", id: asker.id };
+		case "persona":
+			return { kind: "persona", id: asker.id };
+		case "component":
+			return { kind: "component", name: asker.name };
+	}
 }
 
 /**

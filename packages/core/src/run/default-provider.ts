@@ -19,18 +19,21 @@
  * caught by a fallthrough, because a stop nobody classified is a stop that gets
  * classified by whatever the fallthrough happens to be.
  *
- *   - **it closed with what it had**: the four budget caps, the hard ceiling, and the
- *     stop conditions an operator declared. Answered when there is text a person can
- *     read, empty when there is not. A loop that ran out of steps but produced
- *     something usable **answered**, and calling that a failure would push a real reply
- *     behind an error somebody has to dismiss. The reference reaches the same place by
- *     a different route: on exhaustion it spends one more tool-free call to summarise,
- *     precisely so the turn ends with something rather than with a stop.
+ *   - **it ran out of room**: the four caps and the hard ceiling. `budget`.
+ *   - **a rule stopped it**: the stop conditions an operator declared. `stopped`.
  *   - **a guard refused it**: a denied tool, the repetition breaker, a plan that could
  *     not survive its own gates. The turn could not continue past something it needed.
  *   - **it failed**: the loop caught an error, or verification rejected the work.
  *
- * ## The bug this had, and why nothing could see it until the REPL went through here
+ * Only a loop that said it was DONE comes back `answered`. The first two families used
+ * to as well, whenever they had text to show, on the reasoning that a usable reply
+ * pushed behind an error is a reply somebody has to dismiss. That reasoning is right
+ * and the word was wrong: the turn still ends with what it had, and `answered(reason)`
+ * still says so, but "the loop finished" and "the loop stopped" stopped being the same
+ * sentence. The reference reaches the delivery half by a different route, spending one
+ * more tool-free call to summarise on exhaustion.
+ *
+ * ## The other bug, and why nothing could see it until the REPL went through here
  *
  * The last family did not exist. `TurnProduct` had no way to say `failed`, and every
  * stop that was not a budget cap or a denied tool fell through to "answered if there is
@@ -69,14 +72,8 @@ import { PersonaAgent, type AgentResult } from "../agent.js";
 import type { Conversation } from "./conversation.js";
 import type { LoopProvider, TurnContext, TurnProduct } from "./service.js";
 
-/**
- * Stops that mean the turn ran out of room and closed with whatever it had.
- *
- * The runner reads a budget stop off its own ledger rather than from here, so these
- * report what they have: `answered` when there is text and `empty` when there is not,
- * which is the same distinction the runner would draw.
- */
-const CLOSED_WITH_WHAT_IT_HAD = new Set([
+/** Stops that mean there was no room left, and the turn closed with what it had. */
+const RAN_OUT_OF_ROOM = new Set([
 	"max_steps",
 	"max_tokens",
 	"max_cost_usd",
@@ -84,12 +81,21 @@ const CLOSED_WITH_WHAT_IT_HAD = new Set([
 	"budget",
 	// The absolute ceiling, which is a cap an operator never had to declare.
 	"hard_ceiling",
-	// Stop conditions a spec asked for. The operator said "stop when this happens", so it
-	// happening is the loop obeying rather than the loop breaking.
-	"execution_error",
-	"low_confidence",
-	"no_progress",
+	// The wall-clock watchdog, which stops a run hung inside a tool call where the
+	// step-boundary check never runs. A ceiling like any other, and it used to fall
+	// through to "answered if there is text" along with everything else.
+	"watchdog",
 ]);
+
+/**
+ * Stops that mean a declared rule ended the turn early.
+ *
+ * The operator wrote `stop_conditions: [no_progress]` and it happened, so the loop was
+ * obeying rather than breaking. Kept apart from a ceiling because a rule and a ceiling
+ * are different things, and reporting one as the other tells somebody their budget ran
+ * out when their rule fired.
+ */
+const A_RULE_STOPPED_IT = new Set(["execution_error", "low_confidence", "no_progress"]);
 
 /** Stops that mean a guard would not let the turn continue. */
 const REFUSED_BY_A_GUARD = new Set([
@@ -147,7 +153,17 @@ export function productOf(result: AgentResult): TurnProduct {
 		return { answer, stopReason: "refused", ...common };
 	}
 
-	if (stoppedBy === null || CLOSED_WITH_WHAT_IT_HAD.has(stoppedBy)) {
+	// Whatever it had comes back with it, empty included. The answer and the reason are
+	// separate facts: a caller that wants to know whether there is something to show
+	// reads the answer, and one that wants to know whether the loop finished reads this.
+	if (stoppedBy !== null && RAN_OUT_OF_ROOM.has(stoppedBy)) {
+		return { answer, stopReason: "budget", ...common };
+	}
+	if (stoppedBy !== null && A_RULE_STOPPED_IT.has(stoppedBy)) {
+		return { answer, stopReason: "stopped", ...common };
+	}
+
+	if (stoppedBy === null) {
 		return answer.length > 0
 			? { answer, stopReason: "answered", ...common }
 			: { answer, stopReason: "empty", ...common };
