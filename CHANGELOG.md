@@ -8,6 +8,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Breaking: a turn is now a thing the runtime owns, and the old state engine is gone
+
+The next release is a **minor** bump, not a patch. Nine names left the public surface of
+`@personaxis/core`, and two reply shapes changed. Everything else is additive.
+
+**Gone from `@personaxis/core`** (the old state engine and the rebuild it needed):
+`applyMutation`, `applyHomeostasis`, `rebuildState`, `rebuildStateValues`,
+`verifyMutationChain`, `MutationRequest`, `MutationResult`, `RebuildResult`,
+`RebuildDrift`.
+
+State was two chains over one history: the `mutation_log` inside `state.json`, and the
+record. It is one now. `state.json` is **printed from the record**, so a coordinate moves
+through `record.adjust` (or `record.adjustAll` for a batch that has to land together), and
+what a persona is at any moment is `record.derive` folded over its entries. Editing the
+file by hand changes nothing that survives the next write, and `personaxis state rebuild`
+says so instead of trusting it.
+
+**`@personaxis/sdk`: `agentRun` answers with `outcome`, not `result`.**
+
+```ts
+// before
+const { result } = await persona.agentRun(task);
+result.summary; result.finished; result.budget.stoppedBy;
+
+// now
+const { outcome } = await persona.agentRun(task);
+outcome.answer; outcome.stopReason; outcome.cost; outcome.turn;
+```
+
+It used to hand back the whole result of one particular loop, so a caller was reading our
+loop's shape and would have got silence from anybody else's behind the same seam. The
+field is renamed rather than reshaped in place, so a caller breaks at compile time instead
+of finding a field that quietly stopped being there.
+
+Nothing was lost that was not already somewhere else. The specific ceiling that stopped a
+run rides `agent-stop-condition`, the verification verdict rides `verify-result` and
+`verify-complete` with every verifier named, and the wall clock rides `agent-budget`. All
+three are in `events`, which is still returned whole. And `outcome.turn` is something the
+old shape could not give at all: the id of the turn in the persona's record.
+
+**`POST /persona/agent` and the MCP `agent_run` reply the same way**, `{ outcome, events,
+trace }`.
+
+**`stopReason` is a closed set, and `answered` narrowed.** It used to mean both "the loop
+said it was done" and "it ran out of steps but had something to show", so whether a turn
+completed its task had no answer at all. Now `answered` means the loop finished, `budget`
+means a step, token, cost or time ceiling, and `stopped` means a stop condition the spec
+declared. All three still deliver whatever the turn had. The rest are `refused`,
+`interrupted`, `empty`, `failed`, `abandoned`.
+
+### Feature: every turn is written into the persona's record
+
+What was asked, what came back, how it ended, how many steps it took and what it cost, in
+the same hash-chained, append-only record the coordinates live in. On every surface that
+runs a turn: the REPL, the SDK, `personaxis serve`, and the MCP host.
+
+Every entry says who wrote it, and that now includes who ASKED. A person is a person, a
+persona delegating is a persona, and a program driving one says it is a program:
+`agentRun` takes an optional `asker` so an embedder can name its own user, `serve` and the
+MCP host name themselves, and nothing infers a person from an absent field. An answer is
+always attributed to the persona, never to whoever asked for it.
+
+Reading a persona no longer costs what its whole life costs. The fold is checkpointed
+inside the chain rather than beside it, so a checkpoint is checkable instead of trusted:
+50,000 entries went from 227ms to 1.4ms.
+
 ### Feature: `pull` can reach what `push` writes
 
 `personaxis push` has always written a version into the namespace of whoever
