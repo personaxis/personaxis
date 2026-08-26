@@ -24,6 +24,7 @@ export {
 	isGenesis,
 	type Author,
 	type DraftEntry,
+	type Provenance,
 	type ProviderArtifact,
 	type RecordBody,
 	type RecordEntry,

@@ -52,6 +52,11 @@ export function digestInput(entry: Omit<RecordEntry, "hash">): string {
 			at: entry.at,
 			author: entry.author,
 			body: entry.body,
+			// Where it was written commits too. Provenance outside the hash is
+			// provenance anybody can edit afterwards, which reads as evidence and is
+			// not. `canonical` drops undefined keys, so an entry that knows none of it
+			// hashes exactly as it did before this existed.
+			provenance: entry.provenance,
 			prev: entry.prev,
 		}),
 	);

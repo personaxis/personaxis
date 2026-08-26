@@ -212,11 +212,51 @@ export type RecordBody =
 			readonly subject?: string;
 	  };
 
+/**
+ * Where an entry was written, as opposed to what it says.
+ *
+ * `at` answers when, `author` answers who, and these answer the rest of the same
+ * question. They are not part of the body because none of them is a thing that
+ * happened to the coordinate: the machine, the session and the tool call are facts
+ * about the writing.
+ *
+ * They are not part of the author either, and that distinction has teeth. The same
+ * person working from a laptop and a desktop is the same author, and folding the
+ * machine into the author would make two people out of one. What the machine
+ * actually separates is two writings, which is exactly what reconciliation needs.
+ *
+ * ## Why the machine has to be here rather than nowhere
+ *
+ * Merging two devices' histories asks whether an entry from one is the same event as
+ * an entry from the other, and without the machine the answer is a guess. The spec
+ * added `origin_node` for that reason and says so: concurrent edits from different
+ * machines were being collapsed into one. Dropping it on the way into the record
+ * would reintroduce the bug the field was cut to fix, in the layer that is supposed
+ * to be the source of truth.
+ *
+ * ## And why inside the hash
+ *
+ * Everything else that says where an entry came from commits to the hash, because a
+ * claim about provenance that sits outside it is a claim anybody can change. A
+ * machine id that could be edited after the fact is worth less than none: it would
+ * read as evidence.
+ */
+export interface Provenance {
+	/** The machine that wrote it. What tells two devices' identical moves apart. */
+	readonly node?: string;
+	/** The runtime session it was written in. */
+	readonly session?: string;
+	/** The tool call that asked for it, when a tool did. */
+	readonly toolCall?: string;
+}
+
 /** One entry, before it has been chained. */
 export interface DraftEntry {
 	readonly at: string;
 	readonly author: Author;
 	readonly body: RecordBody;
+	/** Absent when nothing knew any of it, which is different from empty. */
+	readonly provenance?: Provenance;
 }
 
 /** One entry, chained. `hash` commits to everything above it, including `prev`. */

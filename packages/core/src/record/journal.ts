@@ -37,7 +37,7 @@
 
 import { chain, head, verify, type ChainVerdict } from "./chain.js";
 import { derive, type DeriveResult } from "./derive.js";
-import type { Author, DraftEntry, RecordBody, RecordEntry } from "./entry.js";
+import type { Author, DraftEntry, Provenance, RecordBody, RecordEntry } from "./entry.js";
 
 /** Where entries go when they are drained. Anything durable can be one. */
 export interface RecordSink {
@@ -104,14 +104,52 @@ export class Journal {
 	}
 
 	/**
+	 * Takes entries that already exist and are already chained, keeping them as they
+	 * are: their moments, their authors, their provenance and their links.
+	 *
+	 * Not the same operation as appending, and the difference is the whole point. A
+	 * migration replaying a persona's history had been going through `append`, which
+	 * stamps the clock and takes only an author and a body, so every entry came out
+	 * dated the instant of the migration and carrying none of what the row knew about
+	 * where it was written. Measured on this repo's persona: 147 rows spanning two
+	 * months came back with 147 identical timestamps one millisecond apart. An audit
+	 * trail whose dates are all the moment somebody upgraded is not an audit trail.
+	 *
+	 * Only into an empty journal, because these carry their own sequence numbers and
+	 * links from zero. Grafting them onto existing entries would produce two entries
+	 * with the same `seq` and a chain that stops verifying at the join.
+	 *
+	 * They count as pending, unlike `initial`. `initial` came out of the sink and is
+	 * already durable; these have never been written to it and the whole purpose of
+	 * adopting them is that they will be.
+	 */
+	adopt(entries: readonly RecordEntry[]): void {
+		if (this.entries.length > 0) {
+			throw new Error(
+				`a record with ${this.entries.length} entries cannot adopt a history: the ` +
+					"entries being adopted are chained from zero and would collide with what is here",
+			);
+		}
+		this.entries.push(...entries);
+	}
+
+	/**
 	 * Writes one entry and returns it, chained.
 	 *
 	 * Synchronous on purpose: the caller's next line may derive state, and an append
 	 * that had not landed yet would make that derivation briefly wrong in a way
 	 * nothing would catch.
 	 */
-	append(author: Author, body: RecordBody): RecordEntry {
-		const draft: DraftEntry = { at: this.now().toISOString(), author, body };
+	append(author: Author, body: RecordBody, provenance?: Provenance): RecordEntry {
+		const draft: DraftEntry = {
+			at: this.now().toISOString(),
+			author,
+			body,
+			// Omitted rather than stored empty: an entry that says it came from nowhere
+			// and one that never claimed to are different, and only one of them is a
+			// gap somebody should close.
+			...(provenance === undefined ? {} : { provenance }),
+		};
 		const entry = chain(draft, this.entries.length, head(this.entries));
 		this.entries.push(entry);
 		return entry;

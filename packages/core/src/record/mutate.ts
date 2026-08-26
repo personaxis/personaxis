@@ -27,7 +27,7 @@
 
 import type { Envelope } from "../envelopes.js";
 import { describeAuthor, isWritableAuthor } from "./actor.js";
-import { GENESIS, type Author } from "./entry.js";
+import { GENESIS, type Author, type Provenance } from "./entry.js";
 import { derive } from "./derive.js";
 import type { Journal } from "./journal.js";
 
@@ -38,6 +38,16 @@ export interface MoveRequest {
 	readonly reason: string;
 	/** Governance said this coordinate may not move. It is recorded, not skipped. */
 	readonly blocked?: boolean;
+	/**
+	 * Where the move was made: the machine, the session, the tool call.
+	 *
+	 * Optional because not every caller knows any of it, and a caller that knows none
+	 * should say nothing rather than invent a blank. What a caller must not do is
+	 * know it and drop it: reconciliation between two devices reads the machine, and
+	 * an entry that lost it is one that merges wrong rather than one that merges
+	 * without extra detail.
+	 */
+	readonly provenance?: Provenance;
 }
 
 /** Where the value lands, and what happened on the way. */
@@ -127,16 +137,20 @@ export function mutate(
 
 	const decision = decide(currentValue(record, req.field, envelope), envelope, req);
 
-	record.append(author, {
-		type: "value",
-		field: req.field,
-		from: decision.from,
-		to: decision.to,
-		requested: decision.requested,
-		clamped: decision.clamped,
-		blocked: decision.blocked,
-		reason: req.reason,
-	});
+	record.append(
+		author,
+		{
+			type: "value",
+			field: req.field,
+			from: decision.from,
+			to: decision.to,
+			requested: decision.requested,
+			clamped: decision.clamped,
+			blocked: decision.blocked,
+			reason: req.reason,
+		},
+		req.provenance,
+	);
 
 	return decision;
 }
