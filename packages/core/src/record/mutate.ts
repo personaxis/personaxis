@@ -27,7 +27,7 @@
 
 import type { Envelope } from "../envelopes.js";
 import { describeAuthor, isWritableAuthor } from "./actor.js";
-import { GENESIS, type Author, type Provenance } from "./entry.js";
+import { genesisEntry, type Author, type Provenance } from "./entry.js";
 import { derive } from "./derive.js";
 import type { Journal } from "./journal.js";
 
@@ -180,17 +180,8 @@ export function origin(record: Journal, field: string, value: number): void {
 	const already = derive(record.all());
 	if (already.ok && field in already.state.values) return;
 
-	record.append(
-		{ kind: "runtime", mechanism: GENESIS, reason: "the position its spec declares" },
-		{
-			type: "value",
-			field,
-			from: value,
-			to: value,
-			delta: 0,
-			clamped: false,
-			blocked: false,
-			reason: "declared",
-		},
-	);
+	// The moment comes from the journal's clock rather than from here, so a test that
+	// fixes the clock sees the moment it fixed.
+	const entry = genesisEntry(field, value, "");
+	record.append(entry.author, entry.body);
 }

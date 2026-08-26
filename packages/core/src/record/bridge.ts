@@ -13,7 +13,7 @@
 import type { Kernel, LifecycleEvent } from "../kernel/index.js";
 import { LIFECYCLE } from "../kernel/index.js";
 import type { StateFile } from "../persona.js";
-import { ENTRY_VERSION, GENESIS, type Author, type RecordEntry } from "./entry.js";
+import { ENTRY_VERSION, genesisEntry, type Author, type RecordEntry } from "./entry.js";
 import { authorOf } from "./actor.js";
 import { chain, head } from "./chain.js";
 import { derive } from "./derive.js";
@@ -107,26 +107,7 @@ export function replayStateFile(state: StateFile): RecordEntry[] {
 	const origin = genesisValues(state);
 	for (const field of Object.keys(origin).sort()) {
 		const value = origin[field]!;
-		const draft = {
-			v: ENTRY_VERSION,
-			at,
-			author: {
-				kind: "runtime" as const,
-				mechanism: GENESIS,
-				reason: "the coordinate was initialised from its declared envelope",
-			},
-			body: {
-				type: "value" as const,
-				field,
-				from: value,
-				to: value,
-				delta: 0,
-				clamped: false,
-				blocked: false,
-				reason: "initialised",
-			},
-		};
-		entries.push(chain(draft, entries.length, head(entries)));
+		entries.push(chain(genesisEntry(field, value, at), entries.length, head(entries)));
 	}
 	for (const old of state.mutation_log ?? []) {
 		// The machine, the session and the tool call come across with the row. They are

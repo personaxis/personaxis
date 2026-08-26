@@ -14,6 +14,10 @@ import { dirname, join, resolve } from "node:path";
 import matter from "gray-matter";
 import { extractEnvelopes } from "./envelopes.js";
 import { withStateLock } from "./lock.js";
+import { genesisEntry, type RecordEntry } from "./record/entry.js";
+import { readRecord, recordPathFor, seedRecord } from "./record/store.js";
+import { derive } from "./record/derive.js";
+import { project } from "./record/project.js";
 
 /**
  * Current state.json schema version (schema/state.schema.json's newest accepted
@@ -142,8 +146,23 @@ export function displayName(fm: PersonaFrontmatter): string {
 }
 
 /**
- * Return the persona's state, seeding a fresh state.json from envelope means if
- * none exists yet. Keeps hosts (REPL, MCP) working out-of-the-box.
+ * Return the persona's state, seeding it from envelope means if there is none yet.
+ *
+ * ## What seeding writes, and why it changed
+ *
+ * It used to write a `state.json` holding every declared coordinate at its envelope
+ * mean and an empty `mutation_log`: a persona whose numbers appear with nobody named.
+ * On the reference example that was eleven of twelve values with no origin anybody
+ * could point at, which is a small hole in an ordinary log and an unacceptable one in
+ * a chain sold as proof, because "where did this number come from" is the first
+ * question and the honest answer was nowhere.
+ *
+ * It writes the origins into the record instead, and prints the file from them. The
+ * migration could already reconstruct origins for an existing persona, but
+ * reconstructing is not the same as knowing: an untouched coordinate is recovered as
+ * "whatever it holds now", so if the spec's declared mean changes later, the
+ * reconstruction reports the new mean as where it started. Written at initialisation,
+ * the origin is what was actually declared at the time.
  */
 export function ensureState(handle: PersonaHandle): StateFile {
   if (existsSync(handle.statePath)) return readState(handle.statePath);
@@ -155,18 +174,56 @@ export function ensureState(handle: PersonaHandle): StateFile {
     const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
     const values: Record<string, number> = {};
     for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
-    const state: StateFile = {
-      schema_version: STATE_SCHEMA_VERSION,
-      persona_id: meta.name ?? "persona",
-      persona_version: meta.version ?? "0.0.0",
-      values,
-      active_context: { task_mode: null, audience: null, additional_context_flags: [] },
-      memory_anchors_active: [],
-      mutation_log: [],
-      last_compiled_at: null,
-      last_compiled_hash: null,
-    };
-    writeState(handle.statePath, state);
-    return state;
+    // The origins first, so the file is printed from a record rather than asserted.
+    // Sorted, because two personas seeded from the same spec should produce the same
+    // chain, and object key order is not something to rest that on.
+    // A persona whose record already exists is not a new persona, whatever happened
+    // to its state file. Seeding again would refuse, and it would be wrong to allow:
+    // the origins are already written, and the file is a view of them. So the view is
+    // printed again, which is what makes `state init --force` and a deleted state file
+    // both do the harmless thing rather than the destructive one.
+    const existing = readRecord(recordPathFor(handle.personaPath));
+    if (existing.length > 0) return print(handle, existing);
+
+    const at = new Date().toISOString();
+    const entries = seedRecord(
+      handle.personaPath,
+      Object.keys(values)
+        .sort()
+        .map((field) => genesisEntry(field, values[field], at)),
+    );
+
+    // Printed, not asserted. Building the object here by hand is how the seeded file
+    // came to differ from every file written after it: it carried
+    // `last_compiled_at: null` and `last_compiled_hash: null`, and the published
+    // schema declares both as strings, so a brand new persona failed validation
+    // against the spec this project ships. A projection cannot drift from itself.
+    return print(handle, entries);
   });
+}
+
+/**
+ * Print the state file from a persona's record and leave it on disk.
+ *
+ * Building the object by hand is how the seeded file came to differ from every file
+ * written after it: it carried `last_compiled_at: null` and `last_compiled_hash:
+ * null`, and the published schema declares both as strings, so a brand new persona
+ * failed validation against the spec this project ships. A projection cannot drift
+ * from itself.
+ */
+function print(handle: PersonaHandle, entries: readonly RecordEntry[]): StateFile {
+  const folded = derive(entries);
+  if (!folded.ok) {
+    throw new Error(
+      `the record beside this persona does not verify (${folded.problem.kind} at entry ${folded.problem.seq}), so its state cannot be printed`,
+    );
+  }
+  const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
+  const state = project(folded.state, entries, {
+    schemaVersion: STATE_SCHEMA_VERSION,
+    personaId: meta.name ?? "persona",
+    personaVersion: meta.version ?? "0.0.0",
+  });
+  writeState(handle.statePath, state);
+  return state;
 }
