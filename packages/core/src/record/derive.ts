@@ -34,10 +34,30 @@ export interface DerivedState {
 	readonly components: Readonly<Record<string, { state: string; epoch?: string }>>;
 	/** The turn currently open, if one is. */
 	readonly openTurn?: string;
-	/** Turns that closed, in order, with how. */
-	readonly turns: readonly { id: string; outcome: string; synthetic: boolean }[];
-	/** Calls the gate refused, which is the half an audit reads first. */
-	readonly denials: readonly { turn: string; callId: string; tool: string; reason?: string }[];
+	/**
+	 * How many turns have closed, and how the last one did.
+	 *
+	 * A count and the last, rather than every turn in order, for the reason `surface`
+	 * gives below and which the list version quietly broke: this is the state fold, so
+	 * it answers what the persona is now. Every turn it ever took is in the entries,
+	 * which is where an audit reading history goes.
+	 *
+	 * It is not only a tidiness argument. A fold that keeps a growing array cannot be
+	 * checkpointed, because the checkpoint grows with the history it exists to let you
+	 * skip. Nothing ever read the whole array: the projection used its length and its
+	 * last element, and nothing else in the codebase touched it.
+	 */
+	readonly turnCount: number;
+	/** How the last turn that closed did, absent when none has. */
+	readonly lastTurn?: { id: string; outcome: string; synthetic: boolean };
+	/**
+	 * How many calls the gate has refused, and the last one.
+	 *
+	 * A refusal is the half an audit reads first, and an audit reads the entries. What
+	 * belongs in the state is how many there have been and what the most recent was.
+	 */
+	readonly denialCount: number;
+	readonly lastDenial?: { turn: string; callId: string; tool: string; reason?: string };
 	/**
 	 * The last set of tools put in front of the model, and why.
 	 *
@@ -79,8 +99,8 @@ export type DeriveResult =
 const EMPTY: DerivedState = {
 	values: {},
 	components: {},
-	turns: [],
-	denials: [],
+	turnCount: 0,
+	denialCount: 0,
 	// Zeros and not absent: a persona that has run nothing has spent nothing, and
 	// that is a fact rather than a gap.
 	spent: { steps: 0, tokens: 0, usd: 0 },
@@ -98,15 +118,60 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 	const verdict = verify(entries);
 	if (!verdict.ok) return { ok: false, problem: verdict.problem! };
 
-	const values: Record<string, number> = {};
-	const components: Record<string, { state: string; epoch?: string }> = {};
-	const turns: { id: string; outcome: string; synthetic: boolean }[] = [];
-	const denials: { turn: string; callId: string; tool: string; reason?: string }[] = [];
-	let openTurn: string | undefined;
-	let surface: { turn: string; tools: readonly string[]; reason: string } | undefined;
-	let context: DerivedState["context"];
-	let compiled: DerivedState["compiled"];
-	const spent = { steps: 0, tokens: 0, usd: 0 };
+	return { ok: true, state: fold(EMPTY, entries) };
+}
+
+/**
+ * Folds a tail onto a state a checkpoint already established.
+ *
+ * The chain is checked from where the tail claims to start rather than from zero,
+ * because that is where it does start: a tail's first entry has a sequence number
+ * that is not zero and a `prev` pointing at an entry the reader deliberately did not
+ * load. Checking it as though it were a whole chain reports a break at its first
+ * entry, which is a true statement about the wrong question.
+ *
+ * This trades reading the whole history for reading the end of it, and says so. What
+ * it does NOT trade is the tail's own integrity: an edited entry after the checkpoint
+ * still fails, and `derive` over everything remains the answer when proof is what is
+ * wanted rather than speed.
+ */
+export function deriveFrom(
+	start: DerivedState,
+	entries: readonly RecordEntry[],
+	from: { seq: number; prev: string },
+): DeriveResult {
+	const verdict = verify(entries, from);
+	if (!verdict.ok) return { ok: false, problem: verdict.problem! };
+
+	// Counted from where the tail begins rather than from the checkpoint's own count,
+	// because the checkpoint entry is itself an entry and its state was folded over
+	// everything BEFORE it. Adding the tail to that number loses exactly one, and a
+	// state that says it is a fold over one fewer entries than it is would not match
+	// the same state derived the long way.
+	return { ok: true, state: { ...fold(start, entries), through: from.seq + entries.length } };
+}
+
+/**
+ * The fold itself, from a starting state.
+ *
+ * Checkpoints are SKIPPED here, and that is the property that makes them safe. A
+ * checkpoint is a claim about what the entries before it add up to, and folding it
+ * would mean believing the claim; skipping it means folding from zero always gives
+ * the truth, and a checkpoint can therefore be checked against the truth rather than
+ * trusted in place of it.
+ */
+function fold(start: DerivedState, entries: readonly RecordEntry[]): DerivedState {
+	const values: Record<string, number> = { ...start.values };
+	const components: Record<string, { state: string; epoch?: string }> = { ...start.components };
+	let turnCount = start.turnCount;
+	let lastTurn = start.lastTurn;
+	let denialCount = start.denialCount;
+	let lastDenial = start.lastDenial;
+	let openTurn: string | undefined = start.openTurn;
+	let surface: { turn: string; tools: readonly string[]; reason: string } | undefined = start.surface;
+	let context: DerivedState["context"] = start.context;
+	let compiled: DerivedState["compiled"] = start.compiled;
+	const spent = { ...start.spent };
 
 	for (const entry of entries) {
 		const body = entry.body;
@@ -125,7 +190,8 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 				openTurn = body.turn;
 				break;
 			case "turn-close":
-				turns.push({ id: body.turn, outcome: body.outcome, synthetic: body.synthetic });
+				turnCount += 1;
+				lastTurn = { id: body.turn, outcome: body.outcome, synthetic: body.synthetic };
 				if (openTurn === body.turn) openTurn = undefined;
 				// Absent is not zero: a turn whose provider reported nothing adds
 				// nothing, and a turn that cost nothing already says so with zeros.
@@ -150,16 +216,22 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 				break;
 			case "call":
 				if (body.verdict === "denied") {
-					denials.push({
+					denialCount += 1;
+					lastDenial = {
 						turn: body.turn,
 						callId: body.callId,
 						tool: body.tool,
 						...(body.reason === undefined ? {} : { reason: body.reason }),
-					});
+					};
 				}
 				break;
 			case "surface":
 				surface = { turn: body.turn, tools: body.tools, reason: body.reason };
+				break;
+			case "checkpoint":
+				// Skipped on purpose. See the note on `fold`: a checkpoint is a claim
+				// about what came before it, and folding from zero has to be the answer
+				// that claim is checked against rather than one it can replace.
 				break;
 			case "message":
 			case "failure":
@@ -169,19 +241,18 @@ export function derive(entries: readonly RecordEntry[]): DeriveResult {
 	}
 
 	return {
-		ok: true,
-		state: {
-			values,
-			components,
-			...(openTurn === undefined ? {} : { openTurn }),
-			turns,
-			denials,
-			...(surface === undefined ? {} : { surface }),
-			...(context === undefined ? {} : { context }),
-			...(compiled === undefined ? {} : { compiled }),
-			spent,
-			through: entries.length,
-		},
+		values,
+		components,
+		...(openTurn === undefined ? {} : { openTurn }),
+		turnCount,
+		...(lastTurn === undefined ? {} : { lastTurn }),
+		denialCount,
+		...(lastDenial === undefined ? {} : { lastDenial }),
+		...(surface === undefined ? {} : { surface }),
+		...(context === undefined ? {} : { context }),
+		...(compiled === undefined ? {} : { compiled }),
+		spent,
+		through: start.through + entries.length,
 	};
 }
 

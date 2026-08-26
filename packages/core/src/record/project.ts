@@ -137,9 +137,9 @@ export function project(
 	// The open turn is the active task, and the totals are the fold over closed ones.
 	// A persona with nothing open and nothing spent gets no session block at all,
 	// because an empty one reads as "a session happened and did nothing".
-	const ran = state.turns.length > 0 || state.openTurn !== undefined;
+	const ran = state.turnCount > 0 || state.openTurn !== undefined;
 	if (ran) {
-		const last = state.turns.at(-1);
+		const last = state.lastTurn;
 		file.agent_session = {
 			active_task: state.openTurn ?? null,
 			started_at: null,

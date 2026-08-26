@@ -104,6 +104,43 @@ export class Journal {
 	}
 
 	/**
+	 * Write what the fold says right now, so a later reader can start from here.
+	 *
+	 * Appended like anything else, because it is a fact about the record and belongs
+	 * inside the chain it summarises rather than in a file somebody could edit. It is
+	 * built from `derive` over everything held, so it is honest by construction rather
+	 * than by promise, and `derive` skips checkpoints when folding, so writing one
+	 * cannot change what the record means.
+	 *
+	 * The author is the runtime, which is what wrote it, and nobody asked for it.
+	 *
+	 * Does nothing when the chain does not verify. A checkpoint over a broken chain
+	 * would take a number nobody can vouch for and put it somewhere later readers
+	 * treat as established.
+	 */
+	/** How many entries have been written since the last checkpoint, or since the start. */
+	sinceCheckpoint(): number {
+		for (let index = this.entries.length - 1; index >= 0; index -= 1) {
+			if (this.entries[index]!.body.type === "checkpoint") return this.entries.length - index - 1;
+		}
+		return this.entries.length;
+	}
+
+	checkpoint(): RecordEntry | undefined {
+		const folded = derive(this.entries);
+		if (!folded.ok) return undefined;
+
+		return this.append(
+			{
+				kind: "runtime",
+				mechanism: "checkpoint",
+				reason: `so a reader does not have to fold ${this.entries.length} entries to know where this persona is`,
+			},
+			{ type: "checkpoint", state: folded.state },
+		);
+	}
+
+	/**
 	 * Takes entries that already exist and are already chained, keeping them as they
 	 * are: their moments, their authors, their provenance and their links.
 	 *

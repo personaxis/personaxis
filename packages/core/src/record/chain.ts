@@ -69,6 +69,19 @@ function digest(entry: Omit<RecordEntry, "hash">): string {
 	return createHash("sha256").update(digestInput(entry)).digest("hex");
 }
 
+/**
+ * Whether one entry's hash still matches what it says.
+ *
+ * On its own and not as part of a chain walk, because a reader starting from a
+ * checkpoint has exactly one entry it must not take on trust and no ancestors loaded
+ * to walk. It proves the entry has not been edited since it was written. It does not
+ * prove what came before it, which is what `verify` over the whole chain is for and
+ * the reason that call still exists.
+ */
+export function holds(entry: RecordEntry): boolean {
+	return digest(entry) === entry.hash;
+}
+
 /** Chains a draft onto whatever came before it. */
 export function chain(draft: DraftEntry, seq: number, prev: string): RecordEntry {
 	const unhashed = { ...draft, seq, prev };
@@ -131,8 +144,23 @@ export interface ChainVerdict {
  * problems most of which are consequences of the first. One honest answer beats a
  * page of derived noise.
  */
-export function verify(entries: readonly RecordEntry[]): ChainVerdict {
-	let prev = "";
+/**
+ * Where a chain being checked is expected to start, when it is not the beginning.
+ *
+ * A tail read from a checkpoint is a real chain, and it is not the whole chain: its
+ * first entry has a sequence number that is not zero and a `prev` that points at
+ * something the reader never loaded. Without saying so, checking it reports
+ * `out_of_order` at its first entry, which is a true statement about the wrong
+ * question.
+ */
+export interface From {
+	readonly seq: number;
+	readonly prev: string;
+}
+
+export function verify(entries: readonly RecordEntry[], from?: From): ChainVerdict {
+	let prev = from?.prev ?? "";
+	const offset = from?.seq ?? 0;
 	for (let index = 0; index < entries.length; index += 1) {
 		const entry = entries[index]!;
 		// Before anything else. Every other check reads fields whose meaning depends on
@@ -148,11 +176,11 @@ export function verify(entries: readonly RecordEntry[]): ChainVerdict {
 		if (!authorIsValid(entry.author)) {
 			return { ok: false, length: index, problem: { kind: "no_author", seq: entry.seq } };
 		}
-		if (entry.seq !== index) {
+		if (entry.seq !== index + offset) {
 			return {
 				ok: false,
 				length: index,
-				problem: { kind: "out_of_order", seq: entry.seq, expected: index },
+				problem: { kind: "out_of_order", seq: entry.seq, expected: index + offset },
 			};
 		}
 		if (entry.prev !== prev) {

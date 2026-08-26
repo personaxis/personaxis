@@ -16,7 +16,8 @@ import { extractEnvelopes } from "./envelopes.js";
 import { withStateLock } from "./lock.js";
 import { genesisEntry, type RecordEntry } from "./record/entry.js";
 import { readRecord, recordPathFor, seedRecord } from "./record/store.js";
-import { derive } from "./record/derive.js";
+import { derive, deriveFrom, type DeriveResult } from "./record/derive.js";
+import { holds } from "./record/chain.js";
 import { project } from "./record/project.js";
 
 /**
@@ -165,6 +166,22 @@ export function displayName(fm: PersonaFrontmatter): string {
  * the origin is what was actually declared at the time.
  */
 export function ensureState(handle: PersonaHandle): StateFile {
+  // The record first, and this is the whole point of the step. `state.json` is
+  // printed from the record, so reading the file instead of the record is reading a
+  // copy, and a copy is only right until somebody edits it. Every reader that asked
+  // the file rather than the record was a second source waiting to disagree.
+  //
+  // Nothing is written here. A file that has fallen behind is not repaired by looking
+  // at it: reading returns the truth, and `state rebuild --write` is the deliberate
+  // repair. A read that writes would touch the mtime of every persona anybody
+  // glanced at, and would take the lock to do it.
+  const entries = readRecord(recordPathFor(handle.personaPath));
+  if (entries.length > 0) {
+    return projectPersona(handle, entries, existsSync(handle.statePath) ? readState(handle.statePath) : undefined);
+  }
+
+  // No record: a persona from before this existed, whose file is still its history.
+  // The migration happens on its first write, through `adopt`.
   if (existsSync(handle.statePath)) return readState(handle.statePath);
   // Seeding races with other processes seeding the same persona, take the lock and
   // re-check so exactly one seeder wins.
@@ -219,7 +236,16 @@ export function projectPersona(
   entries: readonly RecordEntry[],
   stored?: StateFile,
 ): StateFile {
-  const folded = derive(entries);
+  // Folded from the last checkpoint rather than from the beginning. The entries are
+  // in hand either way, because the projected `mutation_log` is the whole history and
+  // reading it is what the file's format asks for; what this avoids is re-verifying
+  // and re-folding every one of them, which is the larger half of the cost and the
+  // half that grows without bound. The spec allows trimming that log under a
+  // retention policy, and doing so is what would make this flat rather than merely
+  // cheaper. That policy belongs with the entries a conversation will add, because
+  // the right window depends on what is in there, and inventing one now would be
+  // guessing at a volume that does not exist yet.
+  const folded = foldFromCheckpoint(entries);
   if (!folded.ok) {
     throw new Error(
       `the record beside this persona does not verify (${folded.problem.kind} at entry ${folded.problem.seq}), so its state cannot be printed`,
@@ -238,6 +264,26 @@ export function projectPersona(
     personaVersion: stored?.persona_version ?? meta.version ?? "0.0.0",
     ...(stored?.session_id === undefined ? {} : { sessionId: stored.session_id }),
   });
+}
+
+/**
+ * Fold entries already in memory, starting from the last checkpoint among them.
+ *
+ * The same shortcut `stateFrom` takes off the disk, for a caller that has already
+ * had to read the file for another reason. The checkpoint's own hash is recomputed
+ * before it is believed, because it is the one entry this does not walk a chain to.
+ */
+function foldFromCheckpoint(entries: readonly RecordEntry[]): DeriveResult {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.body.type !== "checkpoint" || !holds(entry)) continue;
+
+    return deriveFrom(entry.body.state, entries.slice(index + 1), {
+      seq: entry.seq + 1,
+      prev: entry.hash,
+    });
+  }
+  return derive(entries);
 }
 
 /** The same document, left on disk. */

@@ -31,10 +31,11 @@
  * left it.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { chain, head } from "./chain.js";
+import { chain, head, holds } from "./chain.js";
+import { derive, deriveFrom, emptyState, type DeriveResult, type DerivedState } from "./derive.js";
 import type { DraftEntry, RecordEntry } from "./entry.js";
 import { Journal, type RecordSink } from "./journal.js";
 
@@ -110,6 +111,117 @@ export function fileSink(path: string): RecordSink {
 	};
 }
 
+/** A record read from its last checkpoint onward, and where that point is. */
+export interface Tail {
+	/** The state the checkpoint established, or the empty state when there is none. */
+	readonly start: DerivedState;
+	/** Everything after the checkpoint, in order. */
+	readonly entries: RecordEntry[];
+	/** Where the tail begins, so its chain can be checked from the right place. */
+	readonly from: { seq: number; prev: string };
+	/** Whether a checkpoint was found at all. False means this is the whole record. */
+	readonly checkpointed: boolean;
+}
+
+/**
+ * Read only what a reader needs: the last checkpoint and everything after it.
+ *
+ * The file is read backwards in blocks and stopped at the first checkpoint found from
+ * the end, so a persona with a long history costs what its recent history costs
+ * instead of what its whole history costs. Folding the whole record is 238ms at
+ * 50,000 entries and only ever grows; this is flat in the size of the file behind the
+ * checkpoint.
+ *
+ * A record with no checkpoint reads whole, which is the honest fallback and the one
+ * every existing record takes.
+ */
+export function readTail(path: string, blockSize = 64 * 1024): Tail {
+	const whole = (): Tail => ({
+		start: emptyState(),
+		entries: readRecord(path),
+		from: { seq: 0, prev: "" },
+		checkpointed: false,
+	});
+
+	if (!existsSync(path)) return whole();
+	const size = statSync(path).size;
+	if (size === 0) return whole();
+
+	const handle = openSync(path, "r");
+	try {
+		// Backwards in blocks, keeping what has been read so a checkpoint found in an
+		// earlier block still has every line after it. Reading forwards to find the
+		// LAST of something means reading everything, which is the cost being avoided.
+		let end = size;
+		let carried = "";
+		while (end > 0) {
+			const start = Math.max(0, end - blockSize);
+			const block = Buffer.alloc(end - start);
+			readSync(handle, block, 0, block.length, start);
+			carried = block.toString("utf-8") + carried;
+			end = start;
+
+			// The first line of the block may be a fragment unless the block starts at
+			// the beginning of the file, so it is left for the next iteration to
+			// complete. Parsing a fragment would report damage that is not there.
+			const newline = carried.indexOf("\n");
+			const usable = end === 0 ? carried : carried.slice(newline + 1);
+			const found = lastCheckpoint(usable, path);
+			if (found) return found;
+			if (end === 0) break;
+		}
+	} finally {
+		closeSync(handle);
+	}
+
+	return whole();
+}
+
+/** The last checkpoint in a block of complete lines, with everything after it. */
+function lastCheckpoint(block: string, path: string): Tail | undefined {
+	const lines = block.split("\n").filter((line) => line.trim().length > 0);
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		let entry: RecordEntry;
+		try {
+			entry = JSON.parse(lines[index]!) as RecordEntry;
+		} catch {
+			// A line that will not parse is damage, and reporting it from here would
+			// name a line number counted from the wrong place. `readRecord` is what
+			// reports damage, with the real line, and falling through reaches it.
+			return undefined;
+		}
+		if (entry.body?.type !== "checkpoint") continue;
+
+		// The one entry this read takes on trust, so it is the one entry that must not
+		// be taken on trust. Its stored hash is what the tail chains onto, and a
+		// checkpoint whose body somebody rewrote would hand the reader a persona that
+		// never existed. Recomputing it is one hash and it closes that.
+		//
+		// It does not prove what came BEFORE the checkpoint: that needs the whole
+		// chain, which is exactly the cost this read exists to avoid, and which
+		// `derive` over everything still pays when proof rather than speed is wanted.
+		// Ignoring a checkpoint that does not hold up sends the read down the whole
+		// record, where the tampering is reported properly.
+		if (!holds(entry)) return undefined;
+
+		const after: RecordEntry[] = [];
+		for (const line of lines.slice(index + 1)) {
+			try {
+				after.push(JSON.parse(line) as RecordEntry);
+			} catch {
+				return undefined;
+			}
+		}
+		return {
+			start: entry.body.state,
+			entries: after,
+			from: { seq: entry.seq + 1, prev: entry.hash },
+			checkpointed: true,
+		};
+	}
+	return undefined;
+}
+
 /**
  * Write a persona's first entries, synchronously, and only into an empty record.
  *
@@ -178,4 +290,19 @@ export function openRecord(
 		sink: storage.sink(personaPath),
 		...(options.now === undefined ? {} : { now: options.now }),
 	});
+}
+
+/**
+ * Where a persona is, folded from as little of its record as correctness allows.
+ *
+ * The tail from the last checkpoint, or the whole record when there is none. This is
+ * the read that answers "what is this persona now"; `derive` over everything is the
+ * read that answers "and prove it", and the two are deliberately different calls
+ * because they are different questions with different prices.
+ */
+export function stateFrom(path: string): DeriveResult {
+	const tail = readTail(path);
+	if (!tail.checkpointed) return derive(tail.entries);
+
+	return deriveFrom(tail.start, tail.entries, tail.from);
 }

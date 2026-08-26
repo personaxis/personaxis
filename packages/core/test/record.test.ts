@@ -292,9 +292,36 @@ describe("the state is a fold and nothing else", () => {
 		});
 
 		const result = journal.state();
-		expect(result.ok && result.state.denials).toEqual([
-			{ turn: "t1", callId: "c1", tool: "shell", reason: "out_of_scope" },
-		]);
+		// How many and which was last, rather than every one in order. The list version
+		// grew with the history, and a fold that grows cannot be checkpointed: the
+		// snapshot ends up as large as the thing it exists to let you skip. Every
+		// refusal is still in the entries, which is where an audit reads them.
+		expect(result.ok && result.state.denialCount).toBe(1);
+		expect(result.ok && result.state.lastDenial).toEqual({
+			turn: "t1",
+			callId: "c1",
+			tool: "shell",
+			reason: "out_of_scope",
+		});
+	});
+
+	it("counts refusals as they accumulate, and remembers the most recent", () => {
+		const journal = journalAt();
+		for (const callId of ["c1", "c2", "c3"]) {
+			journal.append(SELF, {
+				type: "call",
+				turn: "t1",
+				callId,
+				tool: "shell",
+				verdict: "denied",
+				reason: `no ${callId}`,
+			});
+		}
+
+		const result = journal.state();
+
+		expect(result.ok && result.state.denialCount).toBe(3);
+		expect(result.ok && result.state.lastDenial?.callId).toBe("c3");
 	});
 });
 

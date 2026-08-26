@@ -65,6 +65,15 @@ function explain(personaPath: string, problem: ChainProblem): string {
 	return `the record does not verify: ${problem.kind} at entry ${problem.seq}`;
 }
 
+/**
+ * How many entries may pile up before one summarises them.
+ *
+ * Small enough that a reader starting from the last one has little left to fold, and
+ * large enough that checkpoints are a rounding error in the file rather than a third
+ * of it. At this size a checkpoint costs roughly one entry per two hundred.
+ */
+const CHECKPOINT_EVERY = 200;
+
 /** Who this record belongs to, read from the file it is replacing. */
 function identityOf(state: StateFile): Identity {
 	return {
@@ -245,6 +254,13 @@ async function write(
 	const folded0 = record.state();
 	const moves = plan(folded0.ok ? folded0.state.values : {});
 	const decisions = moves.map((move) => mutate(record, envelopes, move.author, move.request));
+
+	// A checkpoint every so often, written by the path that was already holding the
+	// lock and had already folded. Reading a persona means folding its record and the
+	// record only grows: 167 entries fold in about a millisecond, 50,000 in 238ms, on
+	// a file nothing ever shortens. Doing it here rather than on a timer means it
+	// happens exactly when there is something new to summarise.
+	if (moves.length > 0 && record.sinceCheckpoint() >= CHECKPOINT_EVERY) record.checkpoint();
 
 	const report = await record.drain();
 	if (report.failure) {

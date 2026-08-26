@@ -33,7 +33,7 @@ export {
 
 export { chain, digestInput, head, verify, type ChainProblem, type ChainVerdict } from "./chain.js";
 
-export { derive, emptyState, type DeriveResult, type DerivedState } from "./derive.js";
+export { derive, deriveFrom, emptyState, type DeriveResult, type DerivedState } from "./derive.js";
 
 export {
 	Journal,
@@ -52,10 +52,16 @@ export * from "./project.js";
 
 export {
 	RecordDamaged,
+	fileRecordStorage,
 	fileSink,
 	openRecord,
 	readRecord,
+	readTail,
 	recordPathFor,
+	seedRecord,
+	stateFrom,
+	type RecordStorage,
+	type Tail,
 } from "./store.js";
 
 export {

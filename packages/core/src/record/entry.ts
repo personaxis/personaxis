@@ -38,6 +38,8 @@
  * property of the record.
  */
 
+import type { DerivedState } from "./derive.js";
+
 /**
  * Who wrote an entry.
  *
@@ -226,7 +228,39 @@ export type RecordBody =
 			readonly code: string;
 			readonly message: string;
 			readonly subject?: string;
-	  };
+	  }
+	/**
+	 * What the fold said as of this point, so a reader does not have to redo it.
+	 *
+	 * ## Why a record needs one at all
+	 *
+	 * Reading a persona means folding its record, and the record only grows. Measured
+	 * on generated histories: 167 entries fold in about a millisecond, 10,000 in
+	 * 51ms, 50,000 in 238ms. That is a read path that works today and stops working
+	 * later, on a file nothing ever shortens, which is worse than one that is slow now
+	 * because nobody notices until the persona nobody can afford to lose is the slow
+	 * one.
+	 *
+	 * A reader that finds one of these folds only what comes after it.
+	 *
+	 * ## Why it lives in the chain and not beside it
+	 *
+	 * The obvious place is `state.json`, which the spec already calls a checkpoint of
+	 * the log. But that file is editable, and a checkpoint somebody can edit is a
+	 * checkpoint that can lie about a history it claims to summarise. Here it is
+	 * hash-linked like everything else: forging one means forging the chain.
+	 *
+	 * It is also not a new artifact. A fourth file beside the persona would be a fourth
+	 * thing to keep in step with the other three.
+	 *
+	 * ## It is a shortcut and never a source
+	 *
+	 * `state` is what folding the entries up to here produced. Nothing may be in it
+	 * that is not derivable from those entries, because a reader is entitled to ignore
+	 * every checkpoint and fold from zero and get the same answer. That property is
+	 * what makes it safe to skip, and it is checked rather than assumed.
+	 */
+	| { readonly type: "checkpoint"; readonly state: DerivedState };
 
 /**
  * Where an entry was written, as opposed to what it says.
