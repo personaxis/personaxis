@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ensureState,
   LivingLoop,
   extractEnvelopes,
-  applyMutation,
+  record,
   governMutations,
   loadPersona,
   readState,
@@ -96,38 +96,49 @@ describe("envelopes + state engine", () => {
     expect(hardEnforcedVirtues).toContain("honesty");
   });
 
-  it("clamps a delta to the envelope and records the audit entry", () => {
+  it("clamps a delta to the envelope and records that it clamped", async () => {
+    // Through the record, which is the path a persona takes. This drove the old engine
+    // straight into `state.json`, so it was checking a route nothing runs.
     writeFileSync(personaPath, fixture("autonomous"));
     seedState();
-    const { frontmatter, statePath } = loadPersona(personaPath);
-    const env = extractEnvelopes(frontmatter);
-    const state = readState(statePath);
-    const r = applyMutation(state, env.envelopes, {
-      field: "mood.tone",
-      delta: 0.5, // way past the [-0.1, 0.1] envelope
-      reason: "test",
-    });
-    expect(r.to).toBe(0.1); // clamped to max
-    expect(r.clamped).toBe(true);
+    const handle = loadPersona(personaPath);
+    const env = extractEnvelopes(handle.frontmatter);
+
+    const { decision, state } = await record.adjust(
+      personaPath,
+      handle.statePath,
+      env.envelopes,
+      record.authorOf("actor-llm"),
+      { field: "mood.tone", delta: 0.5, reason: "test" }, // way past [-0.1, 0.1]
+    );
+
+    expect(decision.to).toBe(0.1); // clamped to max
+    expect(decision.clamped).toBe(true);
     expect(state.mutation_log).toHaveLength(1);
-    expect(state.mutation_log[0].clamped).toBe(true);
+    expect(state.mutation_log[0]!.clamped).toBe(true);
   });
 
-  it("v0.8: records origin_node + session_id on the audit entry", () => {
+  it("records the machine and the session on the entry, where reconciliation reads them", async () => {
     writeFileSync(personaPath, fixture("autonomous"));
     seedState();
-    const { frontmatter, statePath } = loadPersona(personaPath);
-    const env = extractEnvelopes(frontmatter);
-    const state = readState(statePath);
-    const r = applyMutation(state, env.envelopes, {
-      field: "mood.tone",
-      delta: 0.05,
-      reason: "t",
-      originNode: "machine-abc",
-      sessionId: "sess-1",
-    });
-    expect(r.entry.origin_node).toBe("machine-abc");
-    expect(r.entry.session_id).toBe("sess-1");
+    const handle = loadPersona(personaPath);
+    const env = extractEnvelopes(handle.frontmatter);
+
+    const { state } = await record.adjust(
+      personaPath,
+      handle.statePath,
+      env.envelopes,
+      record.authorOf("actor-llm"),
+      {
+        field: "mood.tone",
+        delta: 0.05,
+        reason: "t",
+        provenance: { node: "machine-abc", session: "sess-1" },
+      },
+    );
+
+    expect(state.mutation_log.at(-1)!.origin_node).toBe("machine-abc");
+    expect(state.mutation_log.at(-1)!.session_id).toBe("sess-1");
   });
 });
 
