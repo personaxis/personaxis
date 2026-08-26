@@ -100,11 +100,24 @@ export interface LoopProvider {
 	run(context: TurnContext): Promise<TurnProduct>;
 }
 
-/** What the runner tells the record. The runner does not write it itself. */
+/**
+ * What the runner tells the record. The runner does not write it itself.
+ *
+ * Both may be asynchronous, and the runner waits for them. Writing to a record means
+ * taking a lock and getting bytes to disk, and a turn that returned before its close
+ * was durable would leave a crash with a record that ends mid-exchange. The journal
+ * says the same thing from the other side: draining at the close of a turn is what
+ * makes whatever survives a crash a whole number of turns.
+ *
+ * An observer that throws fails the turn, and that is the contract rather than an
+ * accident. An observer with a policy for its own failures owns that policy: the one
+ * that writes to a record catches and reports instead of throwing, because a person
+ * who got an answer should keep it and hear that it was not written down.
+ */
 export interface TurnObserver {
-	opened?(request: TurnRequest): void;
+	opened?(request: TurnRequest): void | Promise<void>;
 	/** Called exactly once per turn, on every path, including the ones nobody planned. */
-	closed?(outcome: TurnOutcome): void;
+	closed?(outcome: TurnOutcome): void | Promise<void>;
 }
 
 export interface RunnerOptions {
@@ -149,11 +162,11 @@ export class TurnRunner {
 		// something that, as far as the record said, never started. Nothing is charged
 		// by opening, and a refusal that leaves no trace is a refusal a reader has to
 		// guess at, with the guess always being that nothing was asked.
-		this.#observer?.opened?.(request);
+		await this.#observer?.opened?.(request);
 
 		const room = this.ledger.room();
 		if (!room.ok) {
-			return this.#close({
+			return await this.#close({
 				turn: request.turn,
 				stopReason: "budget",
 				answer: "",
@@ -185,7 +198,7 @@ export class TurnRunner {
 			// for work the outcome then denies took place, which is the same class of
 			// divergence the record exists to make impossible: two numbers about one fact,
 			// and nothing comparing them.
-			return this.#close({
+			return await this.#close({
 				turn: request.turn,
 				stopReason: "failed",
 				answer: "",
@@ -201,7 +214,7 @@ export class TurnRunner {
 		const stopReason: StopReason =
 			product.stopReason ?? (product.answer.length > 0 ? "answered" : "abandoned");
 
-		return this.#close({
+		return await this.#close({
 			turn: request.turn,
 			stopReason,
 			answer: product.answer,
@@ -229,9 +242,9 @@ export class TurnRunner {
 	 * it because a provider does not have it, which is what turns "always close the
 	 * turn" from a rule somebody follows into a shape of the code.
 	 */
-	#close(outcome: TurnOutcome): TurnOutcome {
+	async #close(outcome: TurnOutcome): Promise<TurnOutcome> {
 		this.ledger.chargeTurn();
-		this.#observer?.closed?.(outcome);
+		await this.#observer?.closed?.(outcome);
 		return outcome;
 	}
 }
