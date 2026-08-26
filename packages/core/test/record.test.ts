@@ -20,9 +20,9 @@ import {
 	type Author,
 	type RecordEntry,
 	type RecordSink,
+	decide,
 } from "../src/record/index.js";
 import { Kernel, serviceKey } from "../src/kernel/index.js";
-import { applyMutation } from "../src/state-engine.js";
 import type { Envelope } from "../src/envelopes.js";
 import type { StateFile } from "../src/persona.js";
 
@@ -79,6 +79,42 @@ describe("an entry written in a shape this build does not know", () => {
 		expect(verify(both).problem?.kind).toBe("unknown_shape");
 	});
 });
+
+/**
+ * Writes a row in the format `state.json` used before the record existed.
+ *
+ * The old engine used to be the convenient way to produce one, and it is gone. That
+ * makes this better rather than worse: a migration is read by files written by
+ * versions nobody has any more, so a test that could only build one by running the
+ * writer was testing the writer as much as the migration. The arithmetic is `decide`,
+ * because the clamp did not change when the thing that recorded it did.
+ */
+function legacy(
+	state: StateFile,
+	envelopes: Record<string, Envelope>,
+	step: { field: string; delta: number; reason: string; actor?: string; blocked?: boolean },
+): void {
+	const envelope = envelopes[step.field]!;
+	const from = state.values[step.field] ?? envelope.mean;
+	const decision = decide(from, envelope, {
+		field: step.field,
+		delta: step.delta,
+		reason: step.reason,
+		...(step.blocked ? { blocked: true } : {}),
+	});
+	state.values[step.field] = decision.to;
+	(state.mutation_log ??= []).push({
+		ts: new Date(Date.UTC(2026, 0, 1) + state.mutation_log.length * 1000).toISOString(),
+		field: step.field,
+		from: decision.from,
+		to: decision.to,
+		delta_requested: step.delta,
+		clamped: decision.clamped,
+		reason: step.reason,
+		actor: (step.actor ?? "actor-llm") as never,
+		governance_blocked: decision.blocked,
+	});
+}
 
 describe("nothing enters without saying who put it there", () => {
 	it("refuses a chain whose entry has no author", () => {
@@ -476,9 +512,9 @@ describe("deriving gives what the stored copy says", () => {
 
 	it("matches after a run of ordinary mutations", () => {
 		const state = freshState();
-		applyMutation(state, envelopes, { field: "mood.tone", delta: 0.2, reason: "a" });
-		applyMutation(state, envelopes, { field: "traits.humour", delta: 0.1, reason: "b" });
-		applyMutation(state, envelopes, { field: "mood.tone", delta: -0.05, reason: "c" });
+		legacy(state, envelopes, { field: "mood.tone", delta: 0.2, reason: "a" });
+		legacy(state, envelopes, { field: "traits.humour", delta: 0.1, reason: "b" });
+		legacy(state, envelopes, { field: "mood.tone", delta: -0.05, reason: "c" });
 
 		// Two genesis entries, one per coordinate the log touched, then the three
 		// mutations. Genesis is what stops a value existing with nobody named.
@@ -487,7 +523,7 @@ describe("deriving gives what the stored copy says", () => {
 
 	it("matches when a mutation was clamped to its envelope", () => {
 		const state = freshState();
-		applyMutation(state, envelopes, { field: "mood.tone", delta: 5, reason: "way over" });
+		legacy(state, envelopes, { field: "mood.tone", delta: 5, reason: "way over" });
 
 		const report = compareToStored(state);
 		expect(report.ok).toBe(true);
@@ -496,7 +532,7 @@ describe("deriving gives what the stored copy says", () => {
 
 	it("matches when governance blocked a mutation", () => {
 		const state = freshState();
-		applyMutation(state, envelopes, {
+		legacy(state, envelopes, {
 			field: "mood.tone",
 			delta: 0.3,
 			reason: "refused",
@@ -510,7 +546,7 @@ describe("deriving gives what the stored copy says", () => {
 		// Not a failure, and deliberately not reported as one. It is how much of a
 		// persona's position rests on a genesis entry reconstructed after the fact.
 		const state = freshState();
-		applyMutation(state, envelopes, { field: "mood.tone", delta: 0.1, reason: "a" });
+		legacy(state, envelopes, { field: "mood.tone", delta: 0.1, reason: "a" });
 		state.values["traits.humour"] = 0.7;
 
 		const report = compareToStored(state);
@@ -520,7 +556,7 @@ describe("deriving gives what the stored copy says", () => {
 
 	it("names a field where the log and the stored copy disagree", () => {
 		const state = freshState();
-		applyMutation(state, envelopes, { field: "mood.tone", delta: 0.1, reason: "a" });
+		legacy(state, envelopes, { field: "mood.tone", delta: 0.1, reason: "a" });
 		state.values["mood.tone"] = 0.35;
 
 		const report = compareToStored(state);
@@ -532,7 +568,7 @@ describe("deriving gives what the stored copy says", () => {
 		// The old schema defaulted a missing actor to a human operator, which is the
 		// exact shape of the bug the invariant exists to stop. The migration undoes it.
 		const state = freshState();
-		applyMutation(state, envelopes, {
+		legacy(state, envelopes, {
 			field: "mood.tone",
 			delta: -0.1,
 			reason: "half-life",
@@ -549,7 +585,7 @@ describe("deriving gives what the stored copy says", () => {
 	it("replays a real persona's log without a break in the chain", () => {
 		const state = freshState();
 		for (let index = 0; index < 40; index += 1) {
-			applyMutation(state, envelopes, {
+			legacy(state, envelopes, {
 				field: index % 2 === 0 ? "mood.tone" : "traits.humour",
 				delta: index % 3 === 0 ? 0.07 : -0.05,
 				reason: `step ${index}`,

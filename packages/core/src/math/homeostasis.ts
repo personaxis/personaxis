@@ -16,8 +16,6 @@
  */
 
 import type { Envelope } from "../envelopes.js";
-import type { StateFile } from "../persona.js";
-import { applyMutation, type MutationResult } from "../state-engine.js";
 
 /** λ from a half-life in turns: the per-turn retention is 2^(−1/h). */
 export function decayRate(halfLife: number): number {
@@ -75,28 +73,4 @@ export function homeostaticMoves(
     });
   }
   return moves;
-}
-
-/**
- * Apply one homeostatic step to `state` in place (audited via applyMutation).
- * Deviations below `epsilon` are left untouched, the log stays free of
- * microscopic decay entries once a coordinate has effectively returned home.
- */
-export function applyHomeostasis(
-  state: StateFile,
-  envelopes: Record<string, Envelope>,
-  opts?: { epsilon?: number; sessionId?: string; originNode?: string },
-): MutationResult[] {
-  const results: MutationResult[] = [];
-  for (const move of homeostaticMoves(state.values, envelopes, opts)) {
-    results.push(
-      applyMutation(state, envelopes, {
-        ...move,
-        actor: "runtime-decay",
-        sessionId: opts?.sessionId,
-        originNode: opts?.originNode,
-      }),
-    );
-  }
-  return results;
 }

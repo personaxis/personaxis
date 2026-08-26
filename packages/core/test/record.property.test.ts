@@ -28,13 +28,49 @@ import {
 	verify,
 	type Author,
 	type RecordEntry,
+	decide,
 } from "../src/record/index.js";
-import { applyMutation } from "../src/state-engine.js";
 import type { Envelope } from "../src/envelopes.js";
 import type { StateFile } from "../src/persona.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..", "..");
+
+/**
+ * Writes a row in the format `state.json` used before the record existed.
+ *
+ * The old engine used to be the convenient way to produce one, and it is gone. That
+ * makes this better rather than worse: a migration is read by files written by
+ * versions nobody has any more, so a test that could only build one by running the
+ * writer was testing the writer as much as the migration. The arithmetic is `decide`,
+ * because the clamp did not change when the thing that recorded it did.
+ */
+function legacy(
+	state: StateFile,
+	envelopes: Record<string, Envelope>,
+	step: { field: string; delta: number; reason: string; actor?: string; blocked?: boolean },
+): void {
+	const envelope = envelopes[step.field]!;
+	const from = state.values[step.field] ?? envelope.mean;
+	const decision = decide(from, envelope, {
+		field: step.field,
+		delta: step.delta,
+		reason: step.reason,
+		...(step.blocked ? { blocked: true } : {}),
+	});
+	state.values[step.field] = decision.to;
+	(state.mutation_log ??= []).push({
+		ts: new Date(Date.UTC(2026, 0, 1) + state.mutation_log.length * 1000).toISOString(),
+		field: step.field,
+		from: decision.from,
+		to: decision.to,
+		delta_requested: step.delta,
+		clamped: decision.clamped,
+		reason: step.reason,
+		actor: (step.actor ?? "actor-llm") as never,
+		governance_blocked: decision.blocked,
+	});
+}
 
 const authors = fc.oneof(
 	fc.record({ kind: fc.constant("human" as const), id: fc.constantFrom("david", "ana") }),
@@ -251,12 +287,12 @@ describe("the derived state equals the stored copy", () => {
 						mutation_log: [],
 					};
 					for (const step of steps) {
-						applyMutation(state, envelopes, {
+						legacy(state, envelopes, {
 							field: step.field,
 							delta: step.delta,
 							reason: "generated",
 							actor: step.actor,
-							governanceBlocked: step.blocked,
+							blocked: step.blocked,
 						});
 					}
 

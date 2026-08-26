@@ -33,7 +33,6 @@ import {
   ensureState,
   extractEnvelopes,
   resolveField,
-  applyMutation,
   readMemory,
   readLiveMemory,
   tombstoneMemory,
