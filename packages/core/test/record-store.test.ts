@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Envelope } from "../src/envelopes.js";
+import { verify } from "../src/record/chain.js";
 import { derive } from "../src/record/derive.js";
 import { currentValue, decide, mutate, origin } from "../src/record/mutate.js";
 import { RecordDamaged, openRecord, readRecord, recordPathFor } from "../src/record/store.js";
@@ -74,6 +75,53 @@ describe("the file the record lives in", () => {
 
 		expect(() => readRecord(path)).toThrow(RecordDamaged);
 		expect(() => readRecord(path)).toThrow(/:1 /);
+	});
+
+	it("refuses an append from a journal the file has moved past, and stays intact", async () => {
+		// Measured before the file refused: three entries on disk numbered 0, 1, 1, and
+		// the chain stopping at the second of them, written by the ordinary path with
+		// nothing thrown. A REPL holding one journal across a turn while the living loop
+		// writes through its own is exactly this shape.
+		const long = openRecord(personaPath);
+		mutate(long, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "one" });
+		await long.drain();
+
+		const other = openRecord(personaPath);
+		mutate(other, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "two" });
+		await other.drain();
+
+		mutate(long, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "three" });
+		const report = await long.drain();
+
+		expect(report.written).toBe(0);
+		expect(report.failure?.message).toMatch(/view of the record that has since moved/);
+		// Nothing landed, so the record is still what the other journal left, and the
+		// refused entry is still pending rather than dropped as though it had landed.
+		const onDisk = readRecord(recordPathFor(personaPath));
+		expect(onDisk.map((e) => e.seq)).toEqual([0, 1]);
+		expect(verify(onDisk).ok).toBe(true);
+		expect(long.pending).toBe(1);
+	});
+
+	it("takes the write once the journal is opened again from where the record is", async () => {
+		// The other half of the refusal: it is a stale view, not a permanent refusal,
+		// and the fix is the discipline the message names.
+		const first = openRecord(personaPath);
+		mutate(first, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "one" });
+		await first.drain();
+
+		const stale = openRecord(personaPath);
+		const winner = openRecord(personaPath);
+		mutate(winner, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "theirs" });
+		await winner.drain();
+
+		mutate(stale, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "mine, refused" });
+		expect((await stale.drain()).failure).toBeDefined();
+
+		const reopened = openRecord(personaPath);
+		mutate(reopened, ENVELOPES, WHO, { field: "mood.tone", delta: 0.1, reason: "mine, landed" });
+		expect((await reopened.drain()).written).toBe(1);
+		expect(reopened.verify().ok).toBe(true);
 	});
 
 	it("drops a trailing half-written entry, which is what a crash leaves", async () => {
