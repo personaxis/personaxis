@@ -117,6 +117,26 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
   };
 }
 
+/**
+ * The session's conversation, as the port whatever runs the turn reads and writes.
+ *
+ * A lens onto `ctx.conversation` rather than a copy of it, because `/compact` and
+ * `/resume` replace that array outright and a port holding its own list would keep
+ * handing the loop the conversation the session used to have.
+ *
+ * The system message is dropped on the way in. It is built fresh for each request from
+ * the persona's current identity, so carrying an old one forward would hand the model a
+ * description of who this persona used to be.
+ */
+export function conversationOf(ctx: Ctx): run.Conversation {
+  return {
+    read: () => ctx.conversation,
+    write: (messages) => {
+      ctx.conversation = messages.filter((m) => m.role !== "system");
+    },
+  };
+}
+
 /** Lazily create the on-disk session (header) for a ctx, seeded by the first message. */
 export function ensureCtxSession(ctx: Ctx, seedMsg: string, kind?: SessionKind): void {
   if (ctx.sessionStarted) return;
@@ -280,13 +300,31 @@ export function recordEvidence(ctx: Ctx, block: string[]): void {
   }
 }
 
-/** Append a completed user/assistant exchange to the persona's session; auto-name once. */
-export async function recordTurn(ctx: Ctx, userMsg: string, assistantMsg: string, kind?: SessionKind): Promise<void> {
+/**
+ * Append a completed exchange to the persona's session; auto-name once.
+ *
+ * `spoken: false` records the reply as a NOTE instead of as the persona's words. It is
+ * for a turn that failed, where the text is the runtime saying what went wrong. Notes
+ * are dropped by `loadConversation`, so a resumed session does not hand the model
+ * "agent error: connection refused" as something this persona once said, and the
+ * transcript does not quote a component under the persona's name.
+ */
+export async function recordTurn(
+  ctx: Ctx,
+  userMsg: string,
+  assistantMsg: string,
+  kind?: SessionKind,
+  spoken = true,
+): Promise<void> {
   try {
     ensureCtxSession(ctx, userMsg, kind);
     const from = slugAddressFromPath(ctx.handle.personaPath) || "(root)";
     appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "user", content: userMsg });
-    appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "assistant", content: assistantMsg, from });
+    appendTurn(ctx.handle.personaPath, ctx.sessionId, {
+      role: spoken ? "assistant" : "note",
+      content: assistantMsg,
+      from,
+    });
     if (!ctx.sessionNamed) {
       ctx.sessionNamed = true;
       const llm = llmConfig(ctxModelArg(ctx));

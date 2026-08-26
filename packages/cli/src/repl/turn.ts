@@ -1,19 +1,31 @@
 /**
  * REPL turn execution + multi-persona routing (F3.6 split).
  *
- * `runAgentTurn` is the unified chat+tools turn: one governed Agent Loop with the
- * persistent conversation and the session context meter, plus the per-turn
- * telemetry block and the identity-evolution tick. `dispatchTurn` routes a line
- * to the ROOT persona or to addressed sub-personas (`@address`/`@all`).
+ * `runAgentTurn` is the unified chat+tools turn: one governed turn with the persistent
+ * conversation and the session context meter, plus the per-turn telemetry block and the
+ * identity-evolution tick. `dispatchTurn` routes a line to the ROOT persona or to
+ * addressed sub-personas (`@address`/`@all`).
  *
- * The interactive turn constructs `PersonaAgent` directly (it needs fine-grained
- * bus/meter/awareness/approval control the SDK façade doesn't expose); routing it
- * through @personaxis/sdk is a follow-on that needs an expanded SDK agent API.
+ * The turn goes through `run.runnerFor`, so this file no longer knows which loop
+ * answers it. It used to build a `PersonaAgent` by hand and then reach past the seam
+ * three times for facts the seam now carries: the reply off `result.summary`, the price
+ * off `result.budget`, and the next turn's conversation off `agent.lastMessages`. The
+ * first two come back in the outcome. The third is a port the session LENDS to whatever
+ * ran the turn, because a transcript in the outcome would make the result describe the
+ * shape of one particular loop and a scripted provider has no messages at all.
+ *
+ * Three of the old options are gone rather than moved. The budget, the verification
+ * block and the judge are derived from the persona now, because they are properties of
+ * who this persona is and a caller that could pass them would be changing the persona
+ * without editing it. This file re-deriving them is how the SDK's copy came to differ.
  */
+
+import { randomUUID } from "node:crypto";
 
 import chalk from "chalk";
 import { ensureState,
-  PersonaAgent,
+  run,
+  record,
   EventBus,
   Tracer,
   readState,
@@ -25,8 +37,6 @@ import { ensureState,
   commitMemoryEntry,
   appendTurn,
   readRecompilePending,
-  readAgentBudget,
-  readVerification,
   readObservability,
   compactMessages,
   recordCompaction,
@@ -43,7 +53,7 @@ import { llmConfig, ctxModelArg, buildPolicy, readGoalText, POSTURES } from "./c
 import type { AwarenessOpts } from "./awareness.js";
 import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError } from "./render.js";
 import { expandFileMentions } from "./mentions.js";
-import { recordTurn, recordEvidence, makeCtx, ensureCtxSession } from "./session.js";
+import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf } from "./session.js";
 
 /**
  * A turn: the persona CONVERSES and (when needed) USES TOOLS, one governed agent
@@ -100,47 +110,62 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   });
   const obs = readObservability(fm);
   const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
-  const agent = new PersonaAgent({
-    llm,
-    policy: buildPolicy(ctx),
-    personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
-    awareness: buildAwarenessBlock(ctx.handle.personaPath, awarenessOpts(ctx, llm.model)),
-    goal: readGoalText(ctx.handle),
-    onApproval: ctx.approve,
-    budget: readAgentBudget(fm),
-    verification: readVerification(fm),
-    judge: { endpoint: llm.endpoint, model: llm.model, apiKey: llm.apiKey },
-    personaPath: ctx.handle.personaPath,
-    sessionId: ctx.sessionId,
-    meter: ctx.meter,
-    priorMessages: ctx.conversation,
-    // V7.A1: a posture change is announced as an EPHEMERAL SYSTEM MESSAGE so the model
-    // re-evaluates what it declined under a stricter posture. It used to be glued in
-    // front of the user's text, which made the model answer the environment note as if
-    // the user had written it ("thanks for restoring my access!" out of nowhere).
-    envNote: ctx.pendingEnvNote,
-    bus,
-  });
+  const runner = run.runnerFor(
+    { personaPath: ctx.handle.personaPath, frontmatter: fm, llm },
+    {
+      policy: buildPolicy(ctx),
+      personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
+      awareness: buildAwarenessBlock(ctx.handle.personaPath, awarenessOpts(ctx, llm.model)),
+      goal: readGoalText(ctx.handle),
+      onApproval: ctx.approve,
+      sessionId: ctx.sessionId,
+      meter: ctx.meter,
+      conversation: conversationOf(ctx),
+      // V7.A1: a posture change is announced as an EPHEMERAL SYSTEM MESSAGE so the model
+      // re-evaluates what it declined under a stricter posture. It used to be glued in
+      // front of the user's text, which made the model answer the environment note as if
+      // the user had written it ("thanks for restoring my access!" out of nowhere).
+      envNote: ctx.pendingEnvNote,
+      bus,
+    },
+  );
   ctx.pendingEnvNote = undefined;
-  const result = await agent.run(line);
-  ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
-  ctx.out(replyLine(ctx, result.summary || "…"), "persona");
-  // Cumulative session accounting (F3.D16: /cost, /usage).
+  // A real person, whose name this surface does not have. Inventing one would put a
+  // name on entries nobody can attribute, and the record's vocabulary already has the
+  // word for a person it cannot name.
+  const outcome = await runner.run({
+    turn: randomUUID(),
+    prompt: line,
+    asker: { kind: "human", id: record.UNNAMED_OPERATOR },
+  });
+  // A failed turn produced no answer, and its text is the runtime saying what went
+  // wrong. Shown as such, and recorded as a note rather than as the persona's reply:
+  // handing it on as one is how a transcript comes to quote a component under the
+  // persona's name, and how a resumed session feeds that back to the model.
+  const spoke = outcome.failure === undefined || outcome.answer.length > 0;
+  const reply = spoke ? outcome.answer || "…" : friendlyProviderError(outcome.failure!.message);
+  if (spoke) ctx.out(replyLine(ctx, reply), "persona");
+  else ctx.out(chalk.yellow(`  ${reply}`), "activity");
+  // Cumulative session accounting (F3.D16: /cost, /usage). Steps are always known; a
+  // price is only known when the loop talked to something that charges, and a provider
+  // that reported none adds nothing rather than adding a zero somebody reads as free.
   ctx.usage.turns += 1;
-  ctx.usage.tokens += result.budget.tokens;
-  ctx.usage.costUsd += result.budget.costUsd;
-  ctx.usage.steps += result.budget.steps;
+  ctx.usage.steps += outcome.steps;
+  ctx.usage.tokens += outcome.cost?.tokens ?? 0;
+  ctx.usage.costUsd += outcome.cost?.usd ?? 0;
   // V5.P1.2: per-model breakdown for Settings > Usage.
   const bm = (ctx.usage.byModel ??= {});
   const slot = (bm[llm.model] ??= { turns: 0, tokens: 0, costUsd: 0 });
   slot.turns += 1;
-  slot.tokens += result.budget.tokens;
-  slot.costUsd += result.budget.costUsd;
-  await recordTurn(ctx, line, result.summary || "…");
+  slot.tokens += outcome.cost?.tokens ?? 0;
+  slot.costUsd += outcome.cost?.usd ?? 0;
+  await recordTurn(ctx, line, reply, undefined, spoke);
   // Only surface the budget line when something noteworthy happened (a multi-step
   // task or an early stop), not on every one-shot chat reply.
-  if (result.budget.steps > 1 || (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met")) {
-    ctx.out(chalk.dim(`  budget: ${result.budget.steps} steps · ${result.budget.tokens} tok · $${result.budget.costUsd}` + (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met" ? ` · stopped: ${result.budget.stoppedBy}` : "")));
+  if (outcome.steps > 1 || outcome.stopReason !== "answered") {
+    const priced = outcome.cost ? ` · ${outcome.cost.tokens} tok · $${outcome.cost.usd}` : "";
+    const stopped = outcome.stopReason === "answered" ? "" : ` · stopped: ${outcome.stopReason}`;
+    ctx.out(chalk.dim(`  budget: ${outcome.steps} steps${priced}${stopped}`));
   }
   if (tracer) {
     const { paths } = tracer.write(ctx.handle.personaPath);
