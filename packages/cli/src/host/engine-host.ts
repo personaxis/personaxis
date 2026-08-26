@@ -14,11 +14,10 @@ import { randomUUID } from "node:crypto";
 import {
   run,
   readState,
-  writeState,
-  withStateLock,
   extractEnvelopes,
   resolveField,
-  applyMutation,
+  record,
+  machineId,
   readMemory,
   verifyMemoryChain,
   detectMemoryAnomalies,
@@ -124,17 +123,23 @@ export class EngineHost {
         if (!(field in env.envelopes)) {
           return { ok: false, error: `no envelope declared for '${op.field}'` };
         }
-        const result = withStateLock(this.handle.statePath, () => {
-          const st = readState(this.handle.statePath);
-          const r = applyMutation(st, env.envelopes, {
-            field,
-            delta: op.delta,
-            reason: op.reason,
-            actor: "actor-llm",
-          });
-          writeState(this.handle.statePath, st);
-          return r;
-        });
+        // Through the record, the same path the SDK and the MCP server take. It
+        // locks across the read, the write and the print itself, which is why there
+        // is no `withStateLock` around it.
+        const result = (
+          await record.adjust(
+            this.handle.personaPath,
+            this.handle.statePath,
+            env.envelopes,
+            record.authorOf("actor-llm"),
+            {
+              field,
+              delta: op.delta,
+              reason: op.reason,
+              provenance: { node: machineId(), session: this.sessionId },
+            },
+          )
+        ).decision;
         this.snapshot();
         return { ok: !result.blocked, data: result };
       }
