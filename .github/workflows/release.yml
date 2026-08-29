@@ -77,7 +77,12 @@ jobs:
       - run: pnpm run build
       - name: Compile single-file binary
         run: bun build packages/cli/dist/index.js --compile --target ${{ matrix.target }} --outfile dist-bin/personaxis-${{ matrix.name }}
+      # Same rule as the npm dist-tag above, for the same reason. A tag with a
+      # prerelease part must not become what the repository's front page calls the
+      # latest release, because that is where somebody who has never used this
+      # decides which version to install.
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
           files: dist-bin/personaxis-${{ matrix.name }}*
+          prerelease: ${{ contains(github.ref_name, '-') }}
