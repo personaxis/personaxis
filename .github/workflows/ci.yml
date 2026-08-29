@@ -1,10 +1,21 @@
 name: CI
 
+# Every branch, not just `main`.
+#
+# It used to be `branches: [main]`, and on 2026-08-29 that cost a release. The
+# `feature/runtime-kernel` branch had 63 commits that had never been built or run
+# anywhere but the Windows machine they were written on, because nothing triggered
+# here until they reached `main`. One of them asserted the opposite of its own name
+# on any platform that is not Windows, and what found it was the publish job, at the
+# publish step, after the tag was already pushed.
+#
+# A branch that is only correct on its author's laptop is not correct, and finding
+# that out from a release is finding out too late. The matrix below already covers
+# three operating systems; it just was not being asked.
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
