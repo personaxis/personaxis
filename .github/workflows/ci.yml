@@ -74,8 +74,12 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
-      - name: Test
-        run: pnpm run test
+      # Coverage, not just green. `test:coverage` runs the same suites and then holds
+      # each package to the floor in vitest.floor.ts, which is where all eight numbers
+      # live so they can be compared. A floor only moves up; lowering one costs a line
+      # in a diff, and that is the entire mechanism.
+      - name: Test, against the coverage floor
+        run: pnpm run test:coverage
         env:
           # Per-push regression gate (5x the local default of 200). The core suite
           # uses the forks pool (packages/core/vitest.config.ts) so this stays clear
