@@ -4,6 +4,10 @@
   "description": "Personaxis MCP server, expose a living, governed persona as tools any MCP host (Claude Code, Codex, Cursor) can call.",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
   "main": "dist/index.js",
   "bin": {
     "personaxis-mcp": "dist/index.js"

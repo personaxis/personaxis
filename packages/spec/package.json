@@ -4,6 +4,14 @@
   "description": "The personaxis.md spec as a package: canonical JSON Schemas (v1.0 + frozen 0.10 legacy), the five-state validator with version dispatch, and the twelve universal invariants. Single source consumed by the CLI, MCP server, SDK, and SaaS, replaces the manual byte-identical schema mirror.",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema/*": "./schema/*",
+    "./package.json": "./package.json"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
