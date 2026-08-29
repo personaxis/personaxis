@@ -31,13 +31,28 @@ jobs:
       # includes sdk, the old hand-ordered loop omitted it and swallowed failures). pnpm
       # rewrites workspace:* to the concrete version on publish. --no-git-checks since CI is
       # detached at the tag. A failed publish fails the job, no silent skips.
+      # A prerelease must NOT land on the `latest` dist-tag. npm publishes to `latest`
+      # by default whatever the version says, so `0.17.0-dev.0` would become what
+      # `npm i @personaxis/core` installs, and a dist-tag pointed at a dev build is not
+      # something you take back. The version decides the tag, so nobody has to remember.
+      - name: Decide the dist-tag from the version
+        id: disttag
+        run: |
+          VERSION=$(node -p "require('./packages/core/package.json').version")
+          case "$VERSION" in
+            *-*) TAG=next ;;
+            *)   TAG=latest ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publishing $VERSION under dist-tag $TAG"
+
       - name: Publish packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           # npm provenance attestation (id-token: write is granted above); ignored by
           # registries/tooling that don't support it.
           NPM_CONFIG_PROVENANCE: "true"
-        run: pnpm -r publish --access public --no-git-checks
+        run: pnpm -r publish --access public --no-git-checks --tag ${{ steps.disttag.outputs.tag }}
 
   binaries:
     runs-on: ${{ matrix.os }}
