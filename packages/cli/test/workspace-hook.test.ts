@@ -471,11 +471,23 @@ describe("what survives being written into a shell command", () => {
 		return match![1];
 	}
 
-	it("carries a token with no backslash in it", () => {
+	it("carries a token with no backslash in it, on every platform", () => {
 		// The whole fix in one assertion: nothing for a shell to eat.
+		//
+		// It said `toBe(process.platform !== "win32")`, which asserted the opposite of
+		// its own name everywhere but Windows, and it went unnoticed because CI only
+		// runs on `main` and this branch is developed on Windows. The release workflow
+		// found it, on Ubuntu, at the publish step.
+		//
+		// There is no platform where a backslash belongs here. On Windows the token is
+		// a bare pipe name, `personaxis-enforce-<digest>`, and `endpointAddress` puts
+		// the `\\.\pipe\` prefix back where no shell can reach it. Everywhere else it
+		// is a POSIX socket path, `<runtime dir>/personaxis-enforce-<digest>.sock`,
+		// whose separators are forward slashes. Both are already shell-safe, which is
+		// the property this is here to hold.
 		const token = endpointIn(hookCommandFor(root));
 
-		expect(token.includes(BACKSLASH)).toBe(process.platform !== "win32");
+		expect(token.includes(BACKSLASH)).toBe(false);
 	});
 
 	it("still names the same endpoint after a shell has had it", () => {
