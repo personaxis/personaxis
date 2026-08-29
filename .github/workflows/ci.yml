@@ -28,13 +28,23 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [20, 22]
+        # 20 because `engines` promises it and a promise nobody tests is a guess.
+        # 22 is in maintenance LTS, 24 is the active one and what a new install
+        # gets today. Leaving 24 out meant not testing the version most people
+        # actually run. This repository is public, so the matrix is free: what it
+        # costs is wall clock, and these run in parallel.
+        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` on purpose. The action reads `packageManager` from the root
+      # package.json, so CI and a laptop run the same pnpm. Pinned to 10.34.5
+      # because `minimumReleaseAge` in pnpm-workspace.yaml, the 48-hour hold that
+      # is this repository's defence against a compromised release, needs pnpm
+      # >= 10.16 to do anything at all. `version: 10` happened to satisfy that in
+      # CI and nothing said so, while a laptop on 10.13 had the setting written
+      # down and not enforced.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -64,8 +74,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -105,8 +113,6 @@ jobs:
         continue-on-error: true
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -153,8 +159,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
