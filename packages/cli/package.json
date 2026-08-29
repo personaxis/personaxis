@@ -38,34 +38,36 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "lint": "node ../../scripts/embed-assets.mjs && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
     "@personaxis/core": "workspace:*",
     "@personaxis/protocol": "workspace:*",
     "@personaxis/sdk": "workspace:*",
     "@personaxis/spec": "workspace:*",
     "@personaxis/tui": "workspace:*",
-    "@inquirer/prompts": "^7.10.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "gray-matter": "^4.0.3",
+    "ink": "^7.1.0",
+    "ink-text-input": "^6.0.0",
     "inquirer": "^12.5.2",
     "js-yaml": "^4.1.0",
-    "react": "^19.0.0",
-    "ink": "^7.1.0",
-    "ink-text-input": "^6.0.0"
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
-    "fast-check": "^4.8.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.0.0",
     "@types/react": "^19.0.0",
-    "ink-testing-library": "^4.0.0"
+    "@vitest/coverage-v8": "3.2.6",
+    "fast-check": "^4.8.0",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

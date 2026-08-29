@@ -17,6 +17,7 @@
 		"build": "pnpm -r run build",
 		"lint": "pnpm -r run lint",
 		"test": "pnpm -r run test",
+		"test:coverage": "pnpm -r run test:coverage",
 		"package": "node scripts/package.mjs",
 		"sync-mirror": "node scripts/sync-spec-mirror.mjs",
 		"check-mirror": "node scripts/sync-spec-mirror.mjs --check",

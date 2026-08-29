@@ -21,13 +21,15 @@
   "scripts": {
     "build": "node ./scripts/gen-schemas.mjs && tsc",
     "lint": "node ./scripts/gen-schemas.mjs && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "3.2.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   },

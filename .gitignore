@@ -33,3 +33,6 @@ docs/security/
 /SOUL.md
 /.hermes/
 /time.md
+
+# Coverage reports (the floor lives in vitest.floor.ts, the output does not)
+coverage/

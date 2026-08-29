@@ -2,6 +2,8 @@ import { availableParallelism } from "node:os";
 
 import { defineConfig } from "vitest/config";
 
+import { coverage } from "../../vitest.floor";
+
 // The property suites (PB-T1..T6, fast-check) run synchronous, CPU-heavy loops
 // that block a worker's event loop. In the default `threads` pool that block
 // starves vitest's MessagePort worker-RPC and trips "Timeout calling
@@ -30,5 +32,6 @@ export default defineConfig({
     // loads; no core test can ever read or clobber the real ~/.personaxis
     // (see test/setup-home.ts for the cli incident this prevents).
     setupFiles: ["./test/setup-home.ts"],
+    coverage: coverage("core"),
   },
 });
