@@ -17,6 +17,13 @@ on:
     branches: ["**"]
   pull_request:
 
+# Every job carries a time budget, and the numbers beside each one are measured
+# rather than guessed. Two reasons, and the second is the one that bites: a job
+# with no timeout that hangs runs for six hours by default, and on a metered
+# repository that is the month's allowance in one afternoon. This one is public
+# and unmetered, so here it is about noticing: a build that suddenly takes ten
+# times what it took is a regression somebody should hear about.
+
 permissions:
   contents: read
 
@@ -24,6 +31,10 @@ jobs:
   build:
     name: build & typecheck (${{ matrix.os }} / node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
+    # Measured 2026-08-30 on this workflow: 36s on ubuntu, 37 on macOS, 65 on
+    # windows. Ten minutes is roughly ten times the slowest, which is a budget
+    # that survives a slow runner and still catches something that hangs.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -71,6 +82,9 @@ jobs:
   test:
     name: test suite (ubuntu / node 22)
     runs-on: ubuntu-latest
+    # Measured: 137s here, 71s locally for the whole suite, and a local build of
+    # 8.5s. The gap is the install. Fifteen minutes is the budget.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -97,6 +111,8 @@ jobs:
   golden:
     name: golden test (validate CMO = PASS)
     runs-on: ubuntu-latest
+    # Measured: 26s.
+    timeout-minutes: 10
     steps:
       - name: Checkout cli
         uses: actions/checkout@v4
@@ -162,6 +178,8 @@ jobs:
   evals:
     name: governance evals (deterministic, no API keys)
     runs-on: ubuntu-latest
+    # Measured: 24s.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
