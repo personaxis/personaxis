@@ -112,7 +112,13 @@ jobs:
           path: persona.md
         continue-on-error: true
 
+      # This job checks the repository out into `cli/`, so the runner's working
+      # directory has no package.json and the action cannot find `packageManager`
+      # on its own. Pointing it at the manifest keeps one pnpm everywhere without
+      # writing a version down twice.
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: cli/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
