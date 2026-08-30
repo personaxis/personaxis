@@ -323,8 +323,11 @@ export const claudeCodeAdapter: HostAdapter = jsonHookAdapter({
 	// stream-json: without it the host prints only the final result, and the room
 	// would show a job that started, went silent, and finished.
 	launch: { bin: "claude", streamArgs: ["-p", "--output-format", "stream-json", "--verbose"] },
-	// Measured: the hook binary refuses a call before it runs, p95 0.0011 ms over 20k
-	// decisions, and end to end through a real socket in the contract test.
+	// Measured: the hook binary refuses a call before it runs, and end to end
+	// through a real socket in the contract test. The cost is held by
+	// `workspace-gate-regression.test.ts` rather than by this comment, which is the
+	// point of moving it there: it said p95 0.0011 ms and the measurement on
+	// 2026-08-30 was 0.021, twenty times off, because nothing re-ran it.
 	assurance: "verified",
 });
 
