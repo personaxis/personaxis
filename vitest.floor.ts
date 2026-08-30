@@ -22,14 +22,20 @@
  *
  * ## Two numbers here are honest but not comparable
  *
- * **`cli` reads low because of how it is tested, not how well.** Sixteen suites drive
- * the commands by spawning `node dist/index.js` and asserting on real output, and V8
- * coverage in the parent process cannot see a child process. Every command file
- * therefore reports 0% while being exercised end to end. Measured: 49 of 156 source
- * files at zero, and the same run shows 74% branch and 75% function coverage, which is
- * the giveaway. Capturing the child would mean `NODE_V8_COVERAGE` plus source maps in
- * the published build, which is a change to what ships and belongs in its own task.
- * Until then this floor guards against regression only, and is not a quality claim.
+ * **`cli` reads low because of how it is tested, not how well, and this is now
+ * measured rather than argued.** Sixteen suites drive the commands by spawning
+ * `node dist/index.js`, and V8 coverage in the parent cannot see a child, so every
+ * command file reports 0% while being exercised end to end.
+ *
+ * `scripts/coverage-subprocess.mjs` closes that gap without touching what ships:
+ * `NODE_V8_COVERAGE` is inherited by children, each spawn writes a profile, and
+ * `dist/x.js` maps to `src/x.ts` one to one because the build is plain `tsc`.
+ * Measured 2026-08-30: **137 of 145 source files are executed by a child process**,
+ * two of the remaining eight are type declarations with no runtime, and six are code
+ * nothing runs at all. Those six are named there with what would change each.
+ *
+ * So this floor is a regression guard on what the in-process run can see, and
+ * `pnpm coverage:subprocess` is the one that answers whether anything runs a file.
  *
  * **`spec` is genuinely low.** It is a schema package whose source is mostly branches
  * for cases the suite does not reach.
