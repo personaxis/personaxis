@@ -39,6 +39,16 @@ Beyond `validate`/`lint`/`init`:
 
 Mutations are clamped to envelopes declared in `personality.traits.*`, `affect.baseline.core_affect.*`, and `affect.baseline.mood.*`; in `locked`/non-human contexts the governance gate blocks out-of-policy mutations, and hard-enforced virtues are immutable for everyone.
 
+## How work gets verified
+
+Read [`docs/ENGINEERING.md`](docs/ENGINEERING.md) before changing anything that has a
+gate on it. It is the method rather than the style: measure before asserting and by
+more than one route, break a new test on purpose before trusting it, write a count that
+only moves one way, name every exemption, and never leave a gate that nothing runs.
+Each rule is there because breaking it cost something, and the cost is named.
+
+The platform repository follows the same document; it is not duplicated there.
+
 ## Build and test
 
 ```bash

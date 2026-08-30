@@ -24,6 +24,7 @@ report.
 docs/
   CONCEPTS_FAQ.md      START HERE: direct answers to the common conceptual questions
   HOW_IT_WORKS.md      the overview: what personaxis is, the loop, the security model
+  ENGINEERING.md       how work gets verified here: measurement, gates, ratchets, exemptions
   guides/              task-oriented entry points
     getting-started.md   by audience: developers / teams & enterprises / creators
     creating-personas.md which `create` door for which input, provenance review, iteration
