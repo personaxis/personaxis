@@ -29,6 +29,22 @@ unconditional ones are named here.
 **The repository owner can bypass it.** `bypass_actors` names the admin role, so this
 is a guard rail rather than a lock: it stops an accident, not a decision.
 
+## What is verified here, and what is not
+
+**The four check names are verified.** They were compared character by character
+against `gh run view --json jobs` on a real run of ci.yml, which is the only place the
+true names exist. This matters more than it sounds: a required check whose name does
+not match anything GitHub ever reports leaves every pull request stuck on "Expected, waiting for status to be
+reported", forever, with no way to tell from the UI that the
+name is simply wrong.
+
+**`bypass_actors` is not verified.** `actor_id: 5` is GitHub's base role id for
+administrator, which is the documented numbering, but nothing here has actually
+created a ruleset to confirm it. If the POST comes back complaining about
+`bypass_actors`, delete that whole block and run it again. The rule then applies to
+the owner too, which is a fine place to be: turning it off is a deliberate act rather
+than a habit.
+
 ## Applying it
 
 ```sh
