@@ -163,21 +163,63 @@ describe("what the cascade added, and could not have added before", () => {
 });
 
 describe("the decision still costs what it cost", () => {
-	it("stays far inside the budget over twenty thousand calls", async () => {
-		// The number that matters is p95, and the headroom is what invites somebody to
-		// put a file read in a guard. This fails long before a person would notice.
-		const handle = handler();
+	/**
+	 * The gate's cost, and the cost of doing nothing, measured the same way.
+	 *
+	 * A ceiling in milliseconds is a claim about the machine as much as about the
+	 * code. This test used to assert `p95 < 1ms` against a measured p95 of about
+	 * 0.02, which is fifty times of headroom: somebody could put a file read in a
+	 * guard, make the gate four hundred times slower, and this would stay green.
+	 * A budget nothing can breach is a budget nobody is keeping.
+	 *
+	 * So it asserts twice. An absolute ceiling loose enough to survive a slow CI
+	 * runner, and a RATIO against `await Promise.resolve()`, the cheapest possible
+	 * async operation. The ratio is what actually holds: when the machine is slow
+	 * both numbers rise together and it does not move, and any I/O sneaking into a
+	 * guard sends it through the roof, because a file read is thousands of times a
+	 * resolved promise.
+	 *
+	 * Measured 2026-08-30 over 20,000 calls: p50 0.0074 ms, p95 0.021, p99 0.058,
+	 * and a max of 3.8 that is the first call paying for warm-up. Against a base of
+	 * 0.0002 at p95, the ratio of totals is about 75.
+	 */
+	const CALLS = 20_000;
+	const CEILING_MS = 0.25;
+	const CEILING_RATIO = 300;
+
+	async function costOf(work: (index: number) => Promise<unknown>) {
 		const samples: number[] = [];
-
-		for (let index = 0; index < 20_000; index += 1) {
-			const started = performance.now();
-			await handle({ tool_name: "Read", args_text: `file-${index}`, cwd: "/work" });
-			samples.push(performance.now() - started);
+		const started = performance.now();
+		for (let index = 0; index < CALLS; index += 1) {
+			const at = performance.now();
+			await work(index);
+			samples.push(performance.now() - at);
 		}
-
+		const total = performance.now() - started;
 		samples.sort((left, right) => left - right);
-		const p95 = samples[Math.floor(samples.length * 0.95)]!;
+		return { total, p95: samples[Math.floor(samples.length * 0.95)]! };
+	}
 
-		expect(p95).toBeLessThan(1);
+	it("stays inside a budget that a regression could actually breach", async () => {
+		const handle = handler();
+		const gate = await costOf((index) =>
+			handle({ tool_name: "Read", args_text: `file-${index}`, cwd: "/work" }),
+		);
+		const base = await costOf(() => Promise.resolve());
+
+		expect(
+			gate.p95,
+			`p95 ${gate.p95.toFixed(4)} ms per decision. Something in a guard got expensive.`,
+		).toBeLessThan(CEILING_MS);
+
+		// The one that survives a different machine. Guarded against a base so fast
+		// it rounds to zero, which would make the ratio meaningless rather than
+		// strict.
+		expect(base.total, "the baseline is too small to divide by").toBeGreaterThan(0);
+		const ratio = gate.total / base.total;
+		expect(
+			ratio,
+			`the gate costs ${ratio.toFixed(0)}x an empty async call, ceiling ${CEILING_RATIO}x. This is what a file read inside a guard looks like.`,
+		).toBeLessThan(CEILING_RATIO);
 	});
 });
