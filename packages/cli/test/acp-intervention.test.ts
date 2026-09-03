@@ -10,7 +10,10 @@
  * happened.
  *
  * These tests are about the two layers this repository owns. The third, the gateway
- * bringing it down to the hub, is `W3` and is not deployed.
+ * bringing it down to the hub, is written and not deployed: it is `C1` of the v5
+ * checklist, a free-tier Worker needing `wrangler login`. Not `W3`, which is the
+ * Cloudflare Sandbox and needs a paid plan. They are different blocks and saying
+ * so matters, because one of them costs money and this one does not.
  */
 
 import type { WireEvent } from "@personaxis/protocol/workspace";
