@@ -116,16 +116,6 @@ export interface AcpTurnState {
  */
 
 /**
- * Whether a word is one of the five.
- *
- * Exists so the provider can decide before calling `productOf`, rather than
- * having the translation take `string` and lose the type on the way in.
- */
-export function isAcpStopReason(word: string): word is AcpStopReason {
-	return (ACP_STOP_REASONS as readonly string[]).includes(word);
-}
-
-/**
  * The translation. Total over the five words, and honest about anything else.
  */
 export function productOf(reason: string, state: AcpTurnState): TurnProduct {

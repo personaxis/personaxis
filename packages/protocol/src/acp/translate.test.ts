@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { ACP_STOP_REASONS, failureOf, isAcpStopReason, productOf } from "./translate.js";
+import { ACP_STOP_REASONS, failureOf, productOf } from "./translate.js";
 
 const NOTHING = { text: "", steps: 0 };
 
@@ -135,11 +135,5 @@ describe("the guard against the protocol moving underneath us", () => {
 
 		expect(shipped.length, "the schema should define stop reasons").toBeGreaterThan(0);
 		expect([...shipped].sort()).toEqual([...ACP_STOP_REASONS].sort());
-	});
-
-	it("recognises exactly those five and nothing else", () => {
-		for (const word of ACP_STOP_REASONS) expect(isAcpStopReason(word), word).toBe(true);
-		expect(isAcpStopReason("end_of_turn")).toBe(false);
-		expect(isAcpStopReason("")).toBe(false);
 	});
 });

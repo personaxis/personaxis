@@ -42,8 +42,13 @@ export {
 	type AcpUsage,
 } from "./acp/provider.js";
 export {
+	ACP_PROTOCOL_VERSION,
+	acpOverStdio,
+	type AcpClient,
+	type AcpConnection,
+} from "./acp/connect.js";
+export {
 	ACP_STOP_REASONS,
-	isAcpStopReason,
 	type AcpStopReason,
 	type AcpTurnState,
 	type CancelCause,

@@ -12,7 +12,9 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { HostSession } from "../src/workspace/host-session.js";
+import type { HostAgentName } from "@personaxis/protocol/workspace";
+
+import type { AgentRun } from "../src/workspace/job-runner.js";
 import { JobRunner } from "../src/workspace/job-runner.js";
 
 /**
@@ -60,32 +62,50 @@ function runner(options: {
 	onJobEnded?: (jobId: string) => void;
 	/** Called when a session is constructed, to observe the order of things. */
 	onStart?: () => void;
+	/**
+	 * Which host, and therefore which transport.
+	 *
+	 * `claude-code` declares an ACP adapter and so runs through the provider;
+	 * `codex` does not and so takes the old path. Every boundary test below runs
+	 * over whichever one this picks, which is how the consented scope is shown to
+	 * hold on both rather than on the one that happened to be wired.
+	 */
+	host?: HostAgentName;
 } = {}) {
 	const events: WireEvent[] = [];
 	const started: Array<{ cwd: string; prompt: string; command: string }> = [];
 	const stopped = vi.fn();
+	const permissions: Array<(ask: { toolName: string; rawInput: unknown }) => unknown> = [];
+	const fake = (): AgentRun => ({
+		run: options.sessionRuns ?? (() => Promise.resolve("completed")),
+		stop: stopped,
+	});
 
 	const instance = new JobRunner({
 		sink: { emit: (event) => events.push(event), finishJob: () => {} },
 		scope: options.scope ?? ["/work/repo"],
-		host: "claude-code",
+		host: options.host ?? "claude-code",
 		launcher: options.launcher ?? (() => ({ command: "claude", args: ["-p"] })),
 		...(options.maxConcurrent ? { maxConcurrent: options.maxConcurrent } : {}),
 		...(options.onPolicy ? { onPolicy: options.onPolicy } : {}),
 		...(options.onGateResolved ? { onGateResolved: options.onGateResolved as never } : {}),
 		...(options.onJobEnded ? { onJobEnded: options.onJobEnded } : {}),
+		// Both factories, recording the same three facts. A test that asserts on the
+		// consented directory should not have to know which transport carried the job.
 		createSession: (opts) => {
 			options.onStart?.();
 			started.push({ cwd: opts.cwd, prompt: opts.prompt, command: opts.command });
-			return {
-				run: options.sessionRuns ?? (() => Promise.resolve("completed")),
-				stop: stopped,
-				turns: 0,
-			} as unknown as HostSession;
+			return fake() as never;
+		},
+		createAcpSession: (opts) => {
+			options.onStart?.();
+			started.push({ cwd: opts.cwd, prompt: opts.prompt, command: opts.command });
+			permissions.push(opts.decide);
+			return fake();
 		},
 	});
 
-	return { instance, events, started, stopped };
+	return { instance, events, started, stopped, permissions };
 }
 
 const endings = (events: WireEvent[]) => events.filter((e) => e.kind === "persona.session.ended");
@@ -94,12 +114,39 @@ const endings = (events: WireEvent[]) => events.filter((e) => e.kind === "person
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 describe("running an assigned job", () => {
-	it("starts the agent with the prompt from the job", () => {
+	it("starts the agent with the prompt from the job, over ACP", () => {
 		const { instance, started } = runner({});
 		instance.handle(assign());
 
 		expect(started).toHaveLength(1);
-		expect(started[0]).toMatchObject({ prompt: "write the brief", command: "claude" });
+		// The ACP adapter, not the vendor binary: a session somebody can speak into
+		// rather than a shot with its input closed before it starts.
+		expect(started[0]).toMatchObject({
+			prompt: "write the brief",
+			command: "claude-agent-acp",
+		});
+	});
+
+	it("still starts a host that cannot hold a session, the old way", () => {
+		// Codex declares no ACP adapter. The old path is not a fallback anybody picks;
+		// it is what a host that cannot hold a session offers.
+		const { instance, started } = runner({ host: "codex" });
+		instance.handle(assign());
+
+		expect(started[0]).toMatchObject({ command: "claude" });
+	});
+
+	it("permits nothing on the ACP path until something is there to decide", async () => {
+		// Measured: the ACP adapter loads `settingSources` of ["user"] or [], and our
+		// hook lives in the project's settings, so it does not run here. A permissive
+		// default would be enforcement silently missing while the screens said otherwise.
+		const { instance, permissions } = runner({});
+		instance.handle(assign());
+
+		expect(permissions).toHaveLength(1);
+		const answer = await permissions[0]!({ toolName: "bash", rawInput: {} });
+		expect(answer).toMatchObject({ allow: false });
+		expect(String((answer as { reason: string }).reason)).toContain("hook does not reach it");
 	});
 
 	it("tells the room the session started before anything else can go wrong", () => {
@@ -366,7 +413,7 @@ describe("naming what the step left behind", () => {
 	/**
 	 * A session that writes a file and then ends, the way a real agent does.
 	 *
-	 * The default harness above never emits an ending, because `HostSession` is what
+	 * The default harness above never emits an ending, because the session is what
 	 * emits one and it is faked there. This one does, and the ordering it produces is
 	 * the whole point of these tests.
 	 */
@@ -379,16 +426,17 @@ describe("naming what the step left behind", () => {
 			scope: [dir],
 			host: "claude-code",
 			launcher: () => ({ command: "claude", args: ["-p"] }),
-			createSession: (opts) =>
-				({
-					run: async () => {
-						await writes();
-						opts.emit({ kind: "persona.session.ended", status: "completed", reason: null });
-						return "completed" as const;
-					},
-					stop: () => {},
-					turns: 0,
-				}) as unknown as HostSession,
+			// The ACP factory, because `claude-code` declares an adapter and so takes
+			// that path. The ordering under test is the runner's and is the same either
+			// way: the ending is held until the files are named.
+			createAcpSession: (opts) => ({
+				run: async () => {
+					await writes();
+					opts.emit({ kind: "persona.session.ended", status: "completed", reason: null });
+					return "completed" as const;
+				},
+				stop: () => {},
+			}),
 		});
 
 		return { instance, events, finished };

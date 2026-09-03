@@ -31,7 +31,9 @@
 import type { CompiledPolicy } from "@personaxis/core";
 import type { HostAgentName, ServerToDaemonMsg } from "@personaxis/protocol/workspace";
 
-import { HostSession } from "./host-session.js";
+import { AcpSession, type PermissionAnswer, type PermissionAsk } from "./acp-session.js";
+import { acpCommandFor } from "./host-adapter.js";
+import { HostSession, type SessionOutcome } from "./host-session.js";
 import { describePolicyProblem, policyFromRef } from "./policy-from-ref.js";
 import { describeFile, kindOf, producedBetween, scanDirectory } from "./produced-files.js";
 import { withinScope } from "./scope-guard.js";
@@ -92,12 +94,40 @@ export interface JobRunnerOptions {
 	onJobEnded?: (jobId: string) => void;
 	timeoutMs?: number;
 	now?: () => Date;
+	/**
+	 * Answers every permission an ACP-driven agent asks for.
+	 *
+	 * Absent means refuse, with the reason said out loud. That is the safe default and
+	 * it is not caution: measured on 2026-09-03, the ACP adapter drives Claude Code
+	 * with `settingSources` of `["user"]` or `[]`, and our hook lives in the PROJECT's
+	 * settings, so **the hook does not run on this path**. A daemon that allowed by
+	 * default here would have moved every job onto a road with the enforcement
+	 * silently missing, while every screen still reported a policy in force.
+	 *
+	 * `A3` supplies the real one, and it is the same `enforcementHandler` the hook
+	 * asks, rather than a second gate that could disagree with the first.
+	 */
+	decide?: (cwd: string, ask: PermissionAsk) => PermissionAnswer | Promise<PermissionAnswer>;
 	/** Injected for tests. */
 	createSession?: (options: ConstructorParameters<typeof HostSession>[0]) => HostSession;
+	/** Injected for tests. */
+	createAcpSession?: (options: ConstructorParameters<typeof AcpSession>[0]) => AgentRun;
+}
+
+/**
+ * What this runner needs of a session, whichever transport it holds.
+ *
+ * Two lines, because that is genuinely all it uses. A wider interface would invite
+ * this file to start knowing which kind it has, and the point of the seam is that it
+ * does not.
+ */
+export interface AgentRun {
+	run(): Promise<SessionOutcome>;
+	stop(): void;
 }
 
 interface RunningJob {
-	session: HostSession;
+	session: AgentRun;
 	reporter: JobReporter;
 	/**
 	 * Where it is running.
@@ -218,18 +248,13 @@ export class JobRunner {
 
 		const prompt = withPersona(message.persona_document, instruction);
 
-		const create = this.options.createSession ?? ((options) => new HostSession(options));
-		const session = create({
-			command: launch.command,
-			args: launch.args,
-			prompt,
-			cwd,
-			emit: (body) => {
-				// Everything except the ending goes straight through.
-				if (body.kind !== "persona.session.ended") {
-					reporter.reportWire(body);
-					return;
-				}
+		// Everything that ends a session goes through here, whichever transport ran it.
+		const emit = (body: Parameters<JobReporter["reportWire"]>[0]) => {
+			// Everything except the ending goes straight through.
+			if (body.kind !== "persona.session.ended") {
+				reporter.reportWire(body);
+				return;
+			}
 
 				// The ending is HELD until the files are named, and the order is not
 				// cosmetic. `persona.session.ended` is the reporter's terminal event:
@@ -239,9 +264,44 @@ export class JobRunner {
 				// record writer correctly ignores. Naming the files afterwards would
 				// have meant naming them into nothing.
 				void this.endAfterNamingFiles(reporter, cwd, before, body);
-			},
-			...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
-		});
+		};
+
+		/**
+		 * Which transport runs this job.
+		 *
+		 * ACP when the adapter declares one, because a session somebody can speak into
+		 * is strictly better than a shot nobody can, and because the old path is the
+		 * reason talking to a working persona is impossible rather than unbuilt.
+		 *
+		 * The old path stays for hosts with no adapter, which is Codex today. It is
+		 * not a fallback anybody chooses: it is what a host that cannot hold a session
+		 * offers, and it will disappear when the last one can.
+		 */
+		const acp = acpCommandFor(this.options.host);
+		const session: AgentRun = acp
+			? (this.options.createAcpSession ?? ((options) => new AcpSession(options)))({
+					command: acp.command,
+					args: acp.args,
+					prompt,
+					cwd,
+					emit,
+					decide: (ask) =>
+						this.options.decide?.(cwd, ask) ?? {
+							allow: false,
+							reason:
+								"this machine has nothing to answer permissions with on the ACP path, " +
+								"and the hook does not reach it",
+						},
+					...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
+				})
+			: (this.options.createSession ?? ((options) => new HostSession(options)))({
+					command: launch.command,
+					args: launch.args,
+					prompt,
+					cwd,
+					emit,
+					...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
+				});
 
 		this.running.set(jobId, { session, reporter, cwd });
 

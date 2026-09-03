@@ -204,7 +204,14 @@ function reaches(source: string): Set<string> {
  */
 const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
 	{ pkg: "core", departure: 176 },
-	{ pkg: "protocol", departure: 15 },
+	{
+		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
+		// doing its job on the commit after the one that earned it. The gate named the
+		// three left, and one of them, `isAcpStopReason`, turned out to be a function
+		// written for a caller that never appeared. It is gone rather than exempted.
+		pkg: "protocol",
+		departure: 12,
+	},
 	{ pkg: "tui", departure: 34 },
 ];
 

@@ -27,7 +27,7 @@
  * to make impossible, so the child is killed on the way out of every exit path.
  */
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, type SpawnFn, startAgent } from "./agent-process.js";
 
 import type { WireEmission } from "@personaxis/core";
 
@@ -58,7 +58,7 @@ export interface HostSessionOptions {
 	timeoutMs?: number;
 	env?: NodeJS.ProcessEnv;
 	/** Injected for tests. */
-	spawnFn?: typeof spawn;
+	spawnFn?: SpawnFn;
 }
 
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -92,7 +92,7 @@ export class HostSession {
 	 */
 	run(): Promise<SessionOutcome> {
 		return new Promise<SessionOutcome>((resolve) => {
-			const spawnFn = this.options.spawnFn ?? spawn;
+			const spawnFn = this.options.spawnFn;
 			const finish = (outcome: SessionOutcome, reason?: string) => {
 				this.clearTimer();
 				this.releaseExitHooks?.();
@@ -103,10 +103,15 @@ export class HostSession {
 
 			let child: ChildProcess;
 			try {
-				child = spawnFn(this.options.command, [...this.options.args, this.options.prompt], {
+				// `input: "ignore"`, which is the fact phase 11 exists to change: the
+				// prompt goes in as an argument and nothing can be said to it after.
+				child = startAgent({
+					command: this.options.command,
+					args: [...this.options.args, this.options.prompt],
 					cwd: this.options.cwd,
-					env: this.options.env,
-					stdio: ["ignore", "pipe", "pipe"],
+					input: "ignore",
+					...(this.options.env ? { env: this.options.env } : {}),
+					...(spawnFn ? { spawnFn } : {}),
 				});
 			} catch (error) {
 				// Synchronous throws happen: a command that is not a string, an

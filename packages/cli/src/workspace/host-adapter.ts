@@ -92,6 +92,30 @@ export interface HostLaunchSpec {
 	bin: string;
 	/** Everything before the prompt: the flags that make it print a machine-readable stream. */
 	streamArgs?: readonly string[];
+	/**
+	 * How to drive this host over the Agent Client Protocol, when something can.
+	 *
+	 * A different binary, not different flags. The vendor ships one program that talks
+	 * its own stream and another that adapts it to ACP, and pretending the second is a
+	 * mode of the first would mean the daemon guessing which one is on PATH.
+	 *
+	 * Absent means this host is only reachable the old way: prompt in as an argument,
+	 * stdout out, and nothing that can be said to it once it starts.
+	 */
+	acp?: {
+		readonly bin: string;
+		readonly args?: readonly string[];
+		/**
+		 * What the ACP adapter does NOT bring with it, in one sentence, because the
+		 * daemon's enforcement depends on the answer.
+		 *
+		 * For Claude Code, measured on 2026-09-03: the adapter drives the Agent SDK
+		 * with `settingSources: ["user"]` or `[]`, and our hook lives in the PROJECT's
+		 * `.claude/settings.json`. So the hook does not run on this path and the gate
+		 * has to answer `session/request_permission` itself.
+		 */
+		readonly hookReaches: boolean;
+	};
 }
 
 export interface HostAdapter {
@@ -322,7 +346,13 @@ export const claudeCodeAdapter: HostAdapter = jsonHookAdapter({
 	// Print mode with a machine-readable stream. --verbose is required alongside
 	// stream-json: without it the host prints only the final result, and the room
 	// would show a job that started, went silent, and finished.
-	launch: { bin: "claude", streamArgs: ["-p", "--output-format", "stream-json", "--verbose"] },
+	launch: {
+		bin: "claude",
+		streamArgs: ["-p", "--output-format", "stream-json", "--verbose"],
+		// `@agentclientprotocol/claude-agent-acp`, which is the rename of the package the
+		// plan named: `@zed-industries/claude-code-acp` was deprecated on the way here.
+		acp: { bin: "claude-agent-acp", hookReaches: false },
+	},
 	// Measured: the hook binary refuses a call before it runs, and end to end
 	// through a real socket in the contract test. The cost is held by
 	// `workspace-gate-regression.test.ts` rather than by this comment, which is the
@@ -466,4 +496,20 @@ export function launchCommandFor(
 	const adapter = adapterFor(name);
 	if (!adapter?.launch.streamArgs) return null;
 	return { command: adapter.launch.bin, args: [...adapter.launch.streamArgs] };
+}
+
+/**
+ * How to reach this host over ACP, and whether the hook comes along.
+ *
+ * `hookReaches` travels with the command rather than being looked up separately,
+ * because the two facts are only useful together: knowing how to start an agent
+ * without knowing what still enforces its calls is how a bridge ends up permissive
+ * by accident.
+ */
+export function acpCommandFor(
+	name: HostAgentName,
+): { command: string; args: string[]; hookReaches: boolean } | null {
+	const acp = adapterFor(name)?.launch.acp;
+	if (!acp) return null;
+	return { command: acp.bin, args: [...(acp.args ?? [])], hookReaches: acp.hookReaches };
 }

@@ -33,7 +33,16 @@ import { describe, expect, it } from "vitest";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 
 /** The agent binaries this repository knows how to shell out to. */
-const AGENT_BINARIES = ["claude", "codex", "openclaw", "hermes"] as const;
+const AGENT_BINARIES = [
+	"claude",
+	"codex",
+	"openclaw",
+	"hermes",
+	// The ACP adapter is a different program, not a flag on the first one, and it
+	// starts an agent just as much. Added when the bridge landed: a binary the rule
+	// does not name is a binary anywhere may launch.
+	"claude-agent-acp",
+] as const;
 
 /**
  * The one file allowed to name an agent binary, and the one allowed to start it.
@@ -42,19 +51,27 @@ const AGENT_BINARIES = ["claude", "codex", "openclaw", "hermes"] as const;
  * session runs one.
  */
 const MAY_DECLARE = "workspace/host-adapter.ts";
-const MAY_SPAWN = "workspace/host-session.ts";
+const MAY_SPAWN = "workspace/agent-process.ts";
 
 /**
  * Files in the daemon allowed to reach for `node:child_process`, and what for.
  *
- * Two, and the difference between them is the whole rule. `host-session` RUNS an
- * agent: it hands over a prompt and a working directory and waits. `machine` only
+ * Two, and the difference between them is the whole rule. `agent-process` STARTS an
+ * agent, for every transport there is; `machine` only
  * ASKS whether one is installed, by running `--version` and reading the answer,
  * which is how the daemon reports what a machine can host. A probe is not a run,
  * and collapsing them would either ban the probe or bless the run.
+ *
+ * `agent-process.ts` was extracted from `host-session.ts` on 2026-09-03, when the ACP
+ * bridge arrived and there were about to be two session models. **The alternative was
+ * an exemption for the second one, which would have been this rule being talked out
+ * of existence by the first thing it was written to catch.** The launcher takes an
+ * `input` parameter instead, and that parameter is the entire difference between the
+ * old path and the new one: `ignore` is a shot with the prompt as an argument, `pipe`
+ * is a session somebody can speak into.
  */
 const MAY_USE_CHILD_PROCESS: Record<string, string> = {
-	"workspace/host-session.ts": "runs the agent: prompt in, stream out",
+	"workspace/agent-process.ts": "starts the agent: the one launcher, for every transport",
 	"workspace/machine.ts": "probes `--version` to report which agents this machine has",
 };
 
