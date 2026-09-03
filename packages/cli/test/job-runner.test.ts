@@ -113,6 +113,19 @@ function runner(options: {
 	return { instance, events, started, stopped, permissions, delivered };
 }
 
+/**
+ * How long to wait for an ending that is held while the step's files are named.
+ *
+ * The runner gives itself two seconds to walk the directory before ending the job
+ * anyway. Vitest's default `waitFor` is one, so under load these tests gave up
+ * BEFORE the thing they were waiting for was due, and the red said the machine was
+ * busy rather than that the ordering was wrong. Measured on 2026-09-03: green alone,
+ * red under `pnpm -r`.
+ *
+ * A wait shorter than the budget it waits on is a test reporting on the machine.
+ */
+const NAMING_WAIT_MS = 8_000;
+
 const endings = (events: WireEvent[]) => events.filter((e) => e.kind === "persona.session.ended");
 
 /** Let the run's promise and its `finally` reach the microtask queue. */
@@ -535,7 +548,7 @@ describe("naming what the step left behind", () => {
 			});
 
 			instance.handle(assign({ working_dir: dir }));
-			await vi.waitFor(() => expect(endings(events)).toHaveLength(1));
+			await vi.waitFor(() => expect(endings(events)).toHaveLength(1), { timeout: NAMING_WAIT_MS });
 
 			const artifacts = events.filter((event) => event.kind === "artifact.created");
 			expect(artifacts).toHaveLength(1);
@@ -564,7 +577,7 @@ describe("naming what the step left behind", () => {
 			});
 
 			instance.handle(assign({ working_dir: dir }));
-			await vi.waitFor(() => expect(endings(events)).toHaveLength(1));
+			await vi.waitFor(() => expect(endings(events)).toHaveLength(1), { timeout: NAMING_WAIT_MS });
 
 			const order = events.map((event) => event.kind);
 			expect(order.indexOf("artifact.created")).toBeGreaterThan(-1);
@@ -586,7 +599,7 @@ describe("naming what the step left behind", () => {
 			const { instance, events } = runnerWritingInto(dir, async () => {});
 
 			instance.handle(assign({ working_dir: dir }));
-			await vi.waitFor(() => expect(endings(events)).toHaveLength(1));
+			await vi.waitFor(() => expect(endings(events)).toHaveLength(1), { timeout: NAMING_WAIT_MS });
 
 			expect(events.filter((event) => event.kind === "artifact.created")).toEqual([]);
 		} finally {

@@ -170,50 +170,53 @@ describe.skipIf(!built)("the hook, as the host runs it", () => {
 		expect(result.code).toBe(2);
 	}, SPAWNS);
 
-	it("adds almost nothing to the cost of starting a process", async () => {
-		// What the operator feels is process start, one socket round trip, exit.
-		// Measured on the development machine at p50 101 ms, p95 114 ms against a
-		// 150 ms budget, and ALMOST ALL OF IT IS NODE STARTING UP. That is the
-		// reason the hook is its own binary rather than a subcommand.
+	it("does not take a catastrophic amount of time to start", async () => {
+		// This used to be a 400 ms budget, and it could not hold. Measured on
+		// 2026-09-03, five interleaved pairs in three conditions:
 		//
-		// So the wall clock is measured against a baseline instead of against a
-		// constant, and that is not a softening. This same test asserted "under
-		// 1500 ms" and failed on a machine where `node -e "0"` took 3.1 seconds:
-		// it was reporting on the machine, not on the hook, and a red that means
-		// "your laptop is busy" teaches people to re-run the enforcement gate.
+		//                       floor   hook, no server   hook, with server
+		//     alone               78         200                205
+		//     under `pnpm -r`    190         790                896
 		//
-		// What it catches is unchanged and is the only thing worth catching here:
-		// the change that starts importing the engine into this path. That would
-		// show up as hundreds of milliseconds ON TOP of starting Node, whatever
-		// the machine.
+		// The socket round trip is 5 ms alone and 106 under load, so the harness's own
+		// server was not the problem. Loading the hook's module graph degrades FIVE
+		// times under load while starting bare Node degrades 2.4, so neither the
+		// difference (122 ms against 600) nor the ratio (2.6 against 4.2) is stable. No
+		// budget separates "somebody imported the engine" from "eight vitest instances
+		// are running" on that evidence.
+		//
+		// So the sensitivity moved somewhere that does not care how busy the machine
+		// is: `hook-stays-small.test.ts` walks the import graph and fails if the engine
+		// appears in it, which is the regression this was a proxy for. What is left
+		// here is a ceiling for catastrophe, scaled to the machine it runs on, and it
+		// is deliberately loose. Raising a tight number until it went green would have
+		// been the other way to make this pass, and that is how a gate becomes scenery.
 		const socket = serve(() => ({ verdict: "allow", rule: "ok", reason: "" }));
 
-		// Interleaved, and the MINIMUM of each rather than the median.
-		//
-		// Both matter under load. Measuring five baselines and then five hooks lets
-		// the two halves meet different machines when twenty other test files are
-		// spawning processes beside them, and the difference then reports on the
-		// contention rather than on the hook. The minimum is the sample that got the
-		// least interference, which is the one that says what the work actually costs.
 		const time = async (run: () => Promise<unknown>) => {
 			const started = Date.now();
 			await run();
 			return Date.now() - started;
 		};
 
-		const baseline: number[] = [];
-		const withHook: number[] = [];
+		const pairs: { floor: number; hook: number }[] = [];
 		for (let i = 0; i < 3; i++) {
-			baseline.push(await time(() => runNode(["-e", "0"])));
-			withHook.push(
-				await time(() => runHook(hostPayload({ tool_input: { command: "npm test" } }), socket)),
+			const floor = await time(() => runNode(["-e", "0"]));
+			const hook = await time(() =>
+				runHook(hostPayload({ tool_input: { command: "npm test" } }), socket),
 			);
+			pairs.push({ floor, hook });
 		}
 
-		const floor = Math.min(...baseline);
-		const fastest = Math.min(...withHook);
-		const overhead = fastest - floor;
-		expect(overhead, `hook cost ${fastest}ms over a ${floor}ms floor`).toBeLessThan(400);
+		// Ten times the cost of starting Node, on the pair that met the quietest
+		// machine. Measured worst case is 4.7, so this catches something an order of
+		// magnitude wrong and nothing else, which is all a wall clock can honestly do.
+		const ratios = pairs.map((pair) => pair.hook / Math.max(pair.floor, 1));
+		const best = Math.min(...ratios);
+		expect(
+			best,
+			`hook cost ${pairs.map((p) => `${p.hook}/${p.floor}`).join(", ")} against starting node`,
+		).toBeLessThan(10);
 	}, SPAWNS);
 
 	it("refuses a payload with no tool name, which is what a changed contract looks like", async () => {
