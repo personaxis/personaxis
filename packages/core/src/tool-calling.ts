@@ -62,6 +62,108 @@ export interface ToolCallConfig {
   apiKey?: string;
   maxTokens?: number;
   fetchImpl?: typeof fetch;
+  /**
+   * Called with assistant text as it arrives, when the endpoint streams (E4).
+   *
+   * Its presence is what asks for a stream, so a caller with nowhere to put the
+   * text does not pay for one. A caller that supplies it may still get nothing:
+   * plenty of endpoints ignore `stream` and answer with an ordinary body, and
+   * `readReply` handles both rather than demanding one.
+   */
+  onDelta?: (text: string) => void;
+}
+
+/**
+ * One assistant reply, however it arrived.
+ *
+ * The two paths converge here on purpose. A streamed reply and a whole one are the
+ * same object once the last chunk lands, and keeping them as one type is what stops
+ * the rest of the loop from having to know which it got.
+ */
+interface Reply {
+  content: string;
+  toolCalls: RawToolCall[];
+  usage?: Partial<TokenUsage>;
+}
+
+/**
+ * Reads a reply, streamed or whole.
+ *
+ * The decision is made from the RESPONSE, never from what we asked for. An endpoint
+ * that ignores `stream` and answers with a JSON body is ordinary: local runtimes do
+ * it, proxies do it, and a client that insisted on parsing events would see a valid
+ * answer as a protocol error. So the content type decides, and the request is only a
+ * request.
+ */
+async function readReply(res: Response, onDelta?: (text: string) => void): Promise<Reply> {
+  const kind = res.headers?.get?.("content-type") ?? "";
+  if (!kind.includes("text/event-stream") || !res.body) {
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string; tool_calls?: RawToolCall[] } }>;
+      usage?: Partial<TokenUsage>;
+    };
+    const msg = json.choices?.[0]?.message ?? {};
+    return { content: msg.content ?? "", toolCalls: msg.tool_calls ?? [], usage: json.usage };
+  }
+
+  // Assembled by index, which is how the wire identifies which call a fragment
+  // belongs to. Arguments arrive as a string in pieces and are concatenated, never
+  // parsed until the end: half a JSON object is not a smaller JSON object.
+  const parts = new Map<number, RawToolCall>();
+  let content = "";
+  let usage: Partial<TokenUsage> | undefined;
+  let pending = "";
+
+  const decoder = new TextDecoder();
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    pending += decoder.decode(chunk, { stream: true });
+    // Events are separated by a blank line, and a chunk can end mid-event. The tail
+    // is kept rather than parsed, because a truncated event parsed optimistically is
+    // a silently lost token.
+    const events = pending.split(/\r?\n\r?\n/);
+    pending = events.pop() ?? "";
+    for (const event of events) {
+      for (const line of event.split(/\r?\n/)) {
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        let frame: {
+          choices?: Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>;
+          usage?: Partial<TokenUsage>;
+        };
+        try {
+          frame = JSON.parse(data);
+        } catch {
+          // A frame we cannot read is skipped rather than fatal. The reply is still
+          // arriving, and ending the turn over one malformed event would throw away
+          // everything that came before it.
+          continue;
+        }
+        if (frame.usage) usage = frame.usage;
+        const delta = frame.choices?.[0]?.delta;
+        if (delta?.content) {
+          content += delta.content;
+          onDelta?.(delta.content);
+        }
+        for (const piece of delta?.tool_calls ?? []) {
+          const index = piece.index ?? 0;
+          const held = parts.get(index) ?? { id: "", type: "function" as const, function: { name: "", arguments: "" } };
+          if (piece.id) held.id = piece.id;
+          if (piece.function?.name) held.function.name = piece.function.name;
+          if (piece.function?.arguments) held.function.arguments += piece.function.arguments;
+          parts.set(index, held);
+        }
+      }
+    }
+  }
+
+  return {
+    content,
+    // In index order, because the model asked for them in one, and a set of calls
+    // reordered by a Map's insertion history is a different plan.
+    toolCalls: [...parts.entries()].sort(([one], [other]) => one - other).map(([, call]) => call),
+    ...(usage ? { usage } : {}),
+  };
 }
 
 function url(cfg: ToolCallConfig): string {
@@ -114,20 +216,26 @@ export async function requestToolCall(
       tool_choice: "auto",
       temperature: 0.3,
       max_tokens: cfg.maxTokens ?? 1024,
+      // Asked for only when somebody is listening. `stream_options` comes with it
+      // because a streamed reply reports no usage without it, and this loop enforces
+      // a token budget: streaming that quietly cost the budget its numbers would turn
+      // a hard stop into a run that never stops.
+      ...(cfg.onDelta ? { stream: true, stream_options: { include_usage: true } } : {}),
     };
     const res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
     if (res.ok) {
-      const json = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string; tool_calls?: RawToolCall[] } }>;
-        usage?: Partial<TokenUsage>;
-      };
-      const msg = json.choices?.[0]?.message ?? {};
-      const toolCalls = (msg.tool_calls ?? []).map((tc) => ({
+      const reply = await readReply(res, cfg.onDelta);
+      const toolCalls = reply.toolCalls.map((tc) => ({
         id: tc.id,
         name: tc.function.name,
         args: parseArgs(tc.function.arguments),
       }));
-      return { text: (msg.content ?? "").trim(), toolCalls, usedFallback: false, usage: extractUsage(json) };
+      return {
+        text: reply.content.trim(),
+        toolCalls,
+        usedFallback: false,
+        usage: extractUsage({ usage: reply.usage }),
+      };
     }
     // Auth/rate/server errors won't be fixed by the fallback, surface them.
     if (res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500) {

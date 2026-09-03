@@ -44,6 +44,8 @@ export type LoopEvent =
   // Agent loop (G1), governed task execution.
   | { type: "agent-step"; step: number }
   | { type: "agent-think"; text: string }
+  /** E4: assistant text as it arrives, so a screen shows the persona working. */
+  | { type: "agent-delta"; text: string }
   | { type: "tool-propose"; tool: string; args: Record<string, unknown> }
   | { type: "tool-verdict"; tool: string; decision: "allow" | "ask" | "deny"; reason: string }
   | { type: "tool-result"; tool: string; ok: boolean; output: string }

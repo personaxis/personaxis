@@ -34,6 +34,11 @@ export function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
     case "agent-think":
     case "agent-finish":
       return null;
+    // E4 streams the reply token by token. A transcript line per token would be a
+    // wall of one-character lines; the live phase label shows it instead, and the
+    // finished reply is printed once by the caller as it always was.
+    case "agent-delta":
+      return null;
     case "tool-propose":
       return chalk.cyan(`  → ${e.tool} ${chalk.dim(JSON.stringify(e.args).slice(0, 80))}`);
     case "tool-verdict": {

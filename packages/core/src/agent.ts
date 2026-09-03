@@ -677,7 +677,19 @@ export class PersonaAgent {
           }
         }
 
-        const res = await requestToolCall(this.opts.llm, messages, activeTools, this.preferFallback);
+        // E4: the text as it arrives, rather than a turn that blocks until the whole
+        // reply lands. A screen showing a spinner for forty seconds and a screen
+        // showing the persona thinking are the same run and not the same product.
+        //
+        // Only on the step path. The plan phase above asks a shaped question and
+        // discards the prose, so streaming it would put a draft plan on screen that
+        // nothing else ever refers to.
+        const res = await requestToolCall(
+          { ...this.opts.llm, onDelta: (text) => bus.emit({ type: "agent-delta", text }) },
+          messages,
+          activeTools,
+          this.preferFallback,
+        );
         if (res.usedFallback) this.preferFallback = true;
         tokens += res.usage?.total_tokens ?? 0;
         meter.observe(res.usage);

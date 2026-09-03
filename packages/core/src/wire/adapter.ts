@@ -249,6 +249,19 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 		case "tick-complete":
 			return { drop: "engine-internal" };
 
+		// E4's stream, and it stays local on purpose.
+		//
+		// This wire is DURABLE: everything on it is stored and acknowledged, which is
+		// what makes a resume gapless. A token-by-token delta on it would write the
+		// same sentence into the record a hundred times in pieces, and a record of
+		// fragments is not a record of what happened. The finished message is already
+		// here, once, under its own event.
+		//
+		// Showing a remote screen the persona typing is a different thing: an
+		// ephemeral channel that this protocol does not have. That is worth building
+		// and is not this.
+		case "agent-delta":
+
 		case "agent-budget":
 		case "verify-start":
 		case "verify-result":

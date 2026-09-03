@@ -120,7 +120,21 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // Which memories were RECALLED to answer this turn (emitted by the agent's resumeContext
   // before the loop listener below exists), collected here for the concise per-turn summary.
   const recalls: string[] = [];
+  // E4: what the persona is writing, right now, in the live region.
+  //
+  // Accumulated here rather than in `phaseFor`, which sees one event and cannot know
+  // what came before it. The tail rather than the head, because the interesting end of
+  // a sentence being written is the end of it, and a label that froze on the first
+  // eight words would look like a session that had stopped.
+  let speaking = "";
   bus.on((e) => {
+    if (e.type === "agent-delta") {
+      speaking = (speaking + e.text).replace(/\s+/g, " ");
+      ctx.phase?.(speaking.slice(-56).trimStart());
+      return;
+    }
+    // Anything else means the persona moved on to doing rather than saying.
+    speaking = "";
     ctx.phase?.(phaseFor(e));
     // V5.FIX.3: human phrasing ("2 user preferences: …"), not the cryptic "kind×N".
     if (e.type === "memory-recall") recalls.push(`${e.count} ${e.kind.replace(/_/g, " ")}${e.detail ? `: ${e.detail}` : ""}`);
