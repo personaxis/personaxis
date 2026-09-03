@@ -20,6 +20,8 @@ import { policyFromPersona } from "@personaxis/core";
 
 import { version } from "../generated/assets.js";
 import { enforcementSocketPath, serveEnforcement } from "../workspace/enforcement-endpoint.js";
+import { permissionFrom } from "../workspace/acp-gate.js";
+import type { PermissionAnswer, PermissionAsk } from "../workspace/acp-session.js";
 import { enforcementHandler } from "../workspace/enforcement-service.js";
 import { HOST_ADAPTERS } from "../workspace/host-adapter.js";
 import { PolicyCache } from "../workspace/policy-cache.js";
@@ -123,6 +125,15 @@ interface EnforcementRuntime {
 	 */
 	relay: GateRelay;
 	/**
+	 * Answers a permission an ACP-driven agent asks, from the same policy the hook
+	 * is enforced with.
+	 *
+	 * Carried on this object rather than rebuilt where the runner is, because a
+	 * second `enforcementHandler` would hold a second policy cache, and two caches
+	 * of one policy is two answers to one question waiting to happen.
+	 */
+	acpGate: (cwd: string, ask: PermissionAsk) => Promise<PermissionAnswer>;
+	/**
 	 * Records which persona acts in a directory.
 	 *
 	 * `connect` fills this from a local spec when it finds one. A persona created in
@@ -156,6 +167,50 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 		() => null;
 	const relay = new GateRelay({ runFor: (cwd) => runFor(cwd) as never });
 
+	/**
+	 * Which persona a working directory is acting as.
+	 *
+	 * Lifted out of the per-root loop when the ACP gate arrived, so the hook's socket
+	 * and an agent driven over the protocol get the SAME answer. Two copies of this
+	 * would be two ideas about who a call belongs to, and the divergence would surface
+	 * as one road enforcing a persona the other had never heard of.
+	 *
+	 * Longest match, so a persona in a subdirectory wins over the one at the root.
+	 */
+	const personaVersionFor = (cwd: string): string | null => {
+		let best: string | null = null;
+		let bestLength = -1;
+		for (const [candidate, id] of byRoot) {
+			if (cwd === candidate || cwd.replace(/\\/g, "/").startsWith(`${candidate.replace(/\\/g, "/")}/`)) {
+				if (candidate.length > bestLength) {
+					best = id;
+					bestLength = candidate.length;
+				}
+			}
+		}
+		return best;
+	};
+
+	/**
+	 * The gate an ACP-driven agent asks, which is the gate the hook asks.
+	 *
+	 * Built once, outside the per-root loop, because its dependencies are the same
+	 * for every root and a second instance would hold a second policy cache.
+	 *
+	 * Measured on 2026-09-03: the ACP adapter never loads project settings, so the
+	 * hook does not run on that path. Without this the daemon would be driving an
+	 * agent with nothing deciding for it, and every screen would still say a policy
+	 * was in force.
+	 */
+	const acpGate = permissionFrom(
+		enforcementHandler({
+			cache,
+			scope,
+			openGate: (gate) => relay.open(gate),
+			personaVersionFor,
+		}),
+	);
+
 	for (const root of scope) {
 		const personaVersionId = loadLocalPolicy(root, cache);
 		if (personaVersionId) byRoot.set(root, personaVersionId);
@@ -168,21 +223,7 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 			// The half of the gate that was missing. Without it every call a policy
 			// gated was refused for want of anyone to ask, forever.
 			openGate: (gate) => relay.open(gate),
-			personaVersionFor: (cwd) => {
-				// Longest match, so a persona in a subdirectory wins over the one
-				// at the repository root.
-				let best: string | null = null;
-				let bestLength = -1;
-				for (const [candidate, id] of byRoot) {
-					if (cwd === candidate || cwd.replace(/\\/g, "/").startsWith(`${candidate.replace(/\\/g, "/")}/`)) {
-						if (candidate.length > bestLength) {
-							best = id;
-							bestLength = candidate.length;
-						}
-					}
-				}
-				return best;
-			},
+			personaVersionFor,
 		});
 
 		try {
@@ -223,6 +264,7 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 		cache,
 		servers,
 		relay,
+		acpGate,
 		bind: (root, personaVersionId) => byRoot.set(root, personaVersionId),
 		attachRuns: (lookup) => {
 			runFor = lookup as never;
@@ -381,6 +423,10 @@ function holdTheWire(token: string, scope: string[], enforcement: EnforcementRun
 			// for having none.
 			// A person's answer comes down this socket and has to reach the hook that
 			// is still holding its call open.
+			// The persona's own policy answering the agent it drives, BEFORE the call
+			// runs rather than as a veto after. Same gate the hook asks, so one rule has
+			// one answer whichever road a call arrives on.
+			decide: (cwd, ask) => enforcement.acpGate(cwd, ask),
 			onGateResolved: (gateId, outcome) => relay.resolve(gateId, outcome),
 			// And a run that ended answers nothing more, so its gates stop waiting.
 			onJobEnded: (jobId) => relay.abandon(jobId),

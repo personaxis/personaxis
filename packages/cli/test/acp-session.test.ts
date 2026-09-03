@@ -34,7 +34,12 @@ interface Script {
 	/** Throws instead of answering the handshake. */
 	readonly refusesToStart?: string;
 	/** Asks permission for this tool before answering. */
-	readonly asks?: { readonly title: string; readonly options: readonly unknown[] };
+	readonly asks?: {
+		readonly title: string;
+		readonly name?: string;
+		readonly toolCallId?: string;
+		readonly options: readonly unknown[];
+	};
 }
 
 function session(
@@ -73,7 +78,14 @@ function session(
 					if (script.asks) {
 						permissionOutcomes.push(
 							await client.requestPermission({
-								toolCall: { title: script.asks.title, rawInput: {} },
+								toolCall: {
+									title: script.asks.title,
+									...(script.asks.name === undefined ? {} : { name: script.asks.name }),
+									...(script.asks.toolCallId === undefined
+										? {}
+										: { toolCallId: script.asks.toolCallId }),
+									rawInput: {},
+								},
 								options: script.asks.options,
 							}),
 						);
@@ -186,7 +198,33 @@ describe("nothing is permitted unless something says so", () => {
 		expect(skips.some((skip) => skip.detail === "no allow option offered")).toBe(true);
 	});
 
-	it("asks about the tool the agent named", async () => {
+	it("asks about the tool by NAME, never by the sentence a person reads", async () => {
+		// The gate matches rules against a tool name. A title ("Running ls in /work")
+		// matches nothing, so a session that sent it would produce a gate that refuses
+		// everything while appearing to work: correct-shaped and inert. This is the
+		// only thing that says which one crosses.
+		const seen: { toolName: string; callId?: string }[] = [];
+		const { acp } = session(
+			{
+				asks: {
+					name: "Bash",
+					title: "Running ls in /work",
+					toolCallId: "call_7",
+					options: ALLOW_ONCE,
+				},
+			},
+			(ask) => {
+				seen.push(ask as { toolName: string; callId?: string });
+				return { allow: false, reason: "no" };
+			},
+		);
+
+		await acp.run();
+		expect(seen[0]).toMatchObject({ toolName: "Bash", callId: "call_7" });
+	});
+
+	it("falls back to the title when the agent sent no name", async () => {
+		// Better than refusing for want of a name. It is a fallback and not the rule.
 		const seen: string[] = [];
 		const { acp } = session({ asks: { title: "bash", options: ALLOW_ONCE } }, (ask) => {
 			seen.push(ask.toolName);

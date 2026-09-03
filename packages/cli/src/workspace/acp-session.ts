@@ -59,8 +59,18 @@ export type SessionOutcome = "completed" | "failed" | "stopped";
 
 /** What the agent is asking to do, reduced to what a decision needs. */
 export interface PermissionAsk {
+	/**
+	 * The tool's NAME, never the title.
+	 *
+	 * A title is written for a person ("Reading a.ts") and a policy is written about a
+	 * tool ("Read"). Handing a gate the title gives it a string no rule can match, so
+	 * it refuses everything while appearing to work, which is the worst shape a
+	 * security check can have: correct-looking and inert.
+	 */
 	readonly toolName: string;
 	readonly rawInput: unknown;
+	/** So a verdict can be joined to the call it judged. */
+	readonly callId?: string;
 }
 
 /** The answer. `deny` carries the reason so the room can say why. */
@@ -204,10 +214,25 @@ export class AcpSession {
 	#client(): AcpClient {
 		return {
 			requestPermission: async (params) => {
-				const call = (params["toolCall"] ?? {}) as { title?: unknown; rawInput?: unknown };
+				const call = (params["toolCall"] ?? {}) as {
+					name?: unknown;
+					title?: unknown;
+					rawInput?: unknown;
+					toolCallId?: unknown;
+				};
+				// `name` first. The title is the human sentence and falling back to it is
+				// better than refusing for want of a name, but a gate judging a title is
+				// a gate that matches no rule.
+				const name =
+					typeof call.name === "string" && call.name
+						? call.name
+						: typeof call.title === "string" && call.title
+							? call.title
+							: "(unnamed)";
 				const answer = await this.options.decide({
-					toolName: typeof call.title === "string" ? call.title : "(unnamed)",
+					toolName: name,
 					rawInput: call.rawInput,
+					...(typeof call.toolCallId === "string" ? { callId: call.toolCallId } : {}),
 				});
 
 				if (answer.allow) {
