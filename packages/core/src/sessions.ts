@@ -97,8 +97,35 @@ export function ensureSession(personaPath: string, header: Omit<SessionHeader, "
   writeFileSync(p, JSON.stringify({ type: "header", ...header }) + "\n", "utf-8");
 }
 
-/** Append one turn. Requires the session to already exist (call ensureSession first).
- * Returns the turn's uuid (generated when not supplied) for parent_uuid threading. */
+/**
+ * Append one turn. Requires the session to already exist (call ensureSession first).
+ * Returns the turn's uuid (generated when not supplied) for parent_uuid threading.
+ *
+ * ## Why this is synchronous, and why there is no background writer
+ *
+ * There was one. `session-writer.ts` implemented the Codex rollout pattern: turns into
+ * an in-memory queue, a single background drain appending them in order, `flush()` to
+ * ack durability, plus a derived `sessions/index.json` so listing did not have to read
+ * every file. It was complete, tested, and called by nothing, and E11 deleted it
+ * rather than mounting it. The reasoning is here because this is where somebody will
+ * next wonder whether the sync write is a shortcut.
+ *
+ * **The async write is slower where it counts and less safe.** A queue loses its
+ * un-acked tail on a crash; `appendFileSync` of one JSON line loses nothing. And the
+ * cost it saves is a fraction of a millisecond, at the end of a turn that just spent
+ * seconds waiting for a model. Codex writes asynchronously because Codex writes far
+ * more; copying the mechanism without the volume is copying the shape.
+ *
+ * **The index solved a problem this product does not have.** Measured on 2026-09-04
+ * across every persona on the machine that wrote this: 21 sessions in the largest,
+ * 13 in the working repository. `listSessions` reads and parses those in the time it
+ * takes to decide whether to. An index is a cache, and a cache is a second thing that
+ * can be wrong; adding one before there is a measurement asking for it is exactly the
+ * kind of decision this repository does not make.
+ *
+ * When somebody has ten thousand sessions and a slow `listSessions` to point at, the
+ * index comes back, with the number that justified it.
+ */
 export function appendTurn(
   personaPath: string,
   id: string,

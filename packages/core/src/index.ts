@@ -45,7 +45,6 @@ export * from "./memory/facts.js";
 export * from "./memory/retrieval.js";
 export * from "./memory/consolidate.js";
 export * from "./sessions.js";
-export * from "./session-writer.js";
 export * from "./provenance.js";
 export * from "./injection.js";
 export * from "./config-scan.js";

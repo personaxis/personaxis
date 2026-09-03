@@ -151,10 +151,19 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 	{ name: "compactionEntry", until: "the loop holds the persona's record, not just a transcript" },
 	{ name: "driftAcross", until: "the loop holds the persona's record, not just a transcript" },
 
-	// The session index. E11 decides: mount it, or delete it with the reason written.
-	{ name: "readSessionIndex", until: "E11 decides whether the session index lives" },
-	{ name: "rebuildSessionIndex", until: "E11 decides whether the session index lives" },
-	{ name: "SessionWriter", until: "E11 decides whether the session index lives" },
+	// The session writer and its derived index are GONE. E11 asked for one of two
+	// answers and this is the other one: deleted, with the reasoning written on
+	// `appendTurn`, where the next person will ask why the write is synchronous.
+	//
+	// Deleting it orphaned one thing, and this list is where that gets said rather than
+	// quietly absorbed. `sessionsDir` was the writer's way of finding the folder, and
+	// inside this repository nothing else calls it now. It stays exported because it is
+	// part of the engine's surface for anyone consuming the SDK, and because the
+	// alternative is unexporting a path helper to satisfy a counter.
+	{
+		name: "sessionsDir",
+		until: "a caller outside `sessions.ts` needs it; its last one was the deleted writer",
+	},
 ];
 
 const EXEMPT = new Set(WAITING.map((entry) => entry.name));
