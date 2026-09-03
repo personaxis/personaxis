@@ -26,7 +26,7 @@
  */
 
 import { mapLoopEvent, type LoopEvent, type WireEmission } from "@personaxis/core";
-import type { WireEvent, WireSource } from "@personaxis/protocol/workspace";
+import type { WireAuthor, WireEvent, WireSource } from "@personaxis/protocol/workspace";
 
 import { guardDeep } from "./scope-guard.js";
 
@@ -127,10 +127,16 @@ export class JobReporter {
 	 * No call id is assigned here, and that is the point: the host names its own
 	 * calls and the hook is handed the same name, so an id minted on this side
 	 * would give one call two names.
+	 *
+	 * The author is a parameter rather than a default on this object because the
+	 * answer changes between two events a line apart: the daemon opening a session
+	 * and the agent it then drives are different authors on the same job. A default
+	 * would be right for one and quietly wrong for the other, which is the shape
+	 * this bug already had once.
 	 */
-	reportWire(body: WireEmission): void {
+	reportWire(body: WireEmission, author?: WireAuthor): void {
 		try {
-			this.options.sink.emit(this.envelope(this.guard(body)));
+			this.options.sink.emit(this.envelope(this.guard(body), author));
 			if (TERMINAL_KINDS.has(body.kind)) this.finish();
 		} catch (error) {
 			this.droppedCount++;
@@ -183,12 +189,15 @@ export class JobReporter {
 	 * sequence, and a producer that numbered its own events would give two
 	 * daemons on the same job two conflicting orders.
 	 */
-	private envelope(emission: WireEmission): WireEvent {
+	private envelope(emission: WireEmission, author?: WireAuthor): WireEvent {
 		return {
 			job_id: this.options.jobId,
 			seq: 0,
 			ts: this.options.now().toISOString(),
 			source: this.options.source,
+			// Omitted rather than guessed when nobody said. Absent means unknown, and
+			// a reader must not fill it in with the persona.
+			...(author === undefined ? {} : { author }),
 			...emission,
 		} as WireEvent;
 	}

@@ -29,7 +29,11 @@
  */
 
 import type { CompiledPolicy } from "@personaxis/core";
-import type { HostAgentName, ServerToDaemonMsg } from "@personaxis/protocol/workspace";
+import type {
+	HostAgentName,
+	ServerToDaemonMsg,
+	WireAuthor,
+} from "@personaxis/protocol/workspace";
 
 import { AcpSession, type PermissionAnswer, type PermissionAsk } from "./acp-session.js";
 import { acpCommandFor } from "./host-adapter.js";
@@ -50,6 +54,20 @@ import { JobReporter, type ReporterSink } from "./job-reporter.js";
  * job open for.
  */
 const NAMING_BUDGET_MS = 2_000;
+
+/**
+ * The daemon's own voice.
+ *
+ * For the things this file DECIDES rather than observes: that a session began,
+ * and that it refused to start one. Neither is the persona's and neither is the
+ * agent's, and before authorship existed on the wire both arrived looking like
+ * the persona had said them.
+ */
+const DAEMON: WireAuthor = {
+	kind: "runtime",
+	mechanism: "daemon",
+	reason: "the machine reporting on a job it was assigned",
+};
 
 /** How a given host agent is started. Absent means it is not installed here. */
 export type HostLauncher = (host: HostAgentName) => { command: string; args: string[] } | null;
@@ -193,7 +211,7 @@ export class JobRunner {
 			persona_id: message.persona_version_id,
 			persona_version_id: message.persona_version_id,
 			execution_location: "daemon",
-		});
+		}, DAEMON);
 
 		if (this.running.has(jobId)) {
 			// A duplicate assign, which a reconnect can produce. Starting a second agent
@@ -249,10 +267,10 @@ export class JobRunner {
 		const prompt = withPersona(message.persona_document, instruction);
 
 		// Everything that ends a session goes through here, whichever transport ran it.
-		const emit = (body: Parameters<JobReporter["reportWire"]>[0]) => {
-			// Everything except the ending goes straight through.
+		const emit = (body: Parameters<JobReporter["reportWire"]>[0], author: WireAuthor) => {
+			// Everything except the ending goes straight through, with its author.
 			if (body.kind !== "persona.session.ended") {
-				reporter.reportWire(body);
+				reporter.reportWire(body, author);
 				return;
 			}
 
@@ -263,7 +281,7 @@ export class JobRunner {
 				// a late event arriving at a job that is already over, which the
 				// record writer correctly ignores. Naming the files afterwards would
 				// have meant naming them into nothing.
-				void this.endAfterNamingFiles(reporter, cwd, before, body);
+				void this.endAfterNamingFiles(reporter, cwd, before, body, author);
 		};
 
 		/**
@@ -285,6 +303,7 @@ export class JobRunner {
 					prompt,
 					cwd,
 					emit,
+					agentName: this.options.host,
 					decide: (ask) =>
 						this.options.decide?.(cwd, ask) ?? {
 							allow: false,
@@ -300,6 +319,7 @@ export class JobRunner {
 					prompt,
 					cwd,
 					emit,
+					agentName: this.options.host,
 					...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
 				});
 
@@ -381,13 +401,14 @@ export class JobRunner {
 		cwd: string,
 		before: Promise<Awaited<ReturnType<typeof scanDirectory>>>,
 		ending: Parameters<JobReporter["reportWire"]>[0],
+		author: WireAuthor,
 	): Promise<void> {
 		const deadline = new Promise<void>((resolve) => {
 			setTimeout(resolve, NAMING_BUDGET_MS).unref?.();
 		});
 
 		await Promise.race([this.reportProduced(reporter, cwd, before), deadline]);
-		reporter.reportWire(ending);
+		reporter.reportWire(ending, author);
 	}
 
 	private async reportProduced(
@@ -418,7 +439,9 @@ export class JobRunner {
 	}
 
 	private refuse(reporter: JobReporter, reason: string): void {
-		reporter.reportWire({ kind: "persona.session.ended", status: "failed", reason });
+		// The daemon's refusal, not the agent's: no agent ever started. Signing it
+		// as one would report a program that does not exist as having given up.
+		reporter.reportWire({ kind: "persona.session.ended", status: "failed", reason }, DAEMON);
 	}
 }
 

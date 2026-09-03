@@ -41,6 +41,47 @@ export const WIRE_SOURCES: readonly WireSource[] = ["daemon", "hosted", "system"
  * reconnection possible: order is decided in one place or it is not decided at
  * all.
  */
+/**
+ * Who produced an event, which is not the same question as where it came from.
+ *
+ * `source` says which machine: a laptop, our cloud, the control plane, a person's
+ * click. It has never said WHO, and until this field existed every event arrived
+ * with nothing to attribute it to, so anything rendering a transcript had one
+ * default available and used it: the persona.
+ *
+ * That default is a lie in the case that matters most. A workspace job is executed
+ * by a vendor agent the persona governs but did not author. Its text, its reasoning
+ * and its tool calls are the component's, and showing them as the persona's is how a
+ * record ends up quoting somebody else's program as the thing your persona said.
+ * This is the ninth gap the reference study named.
+ *
+ * The vocabulary is deliberately the engine's `Author`, word for word, so the two
+ * records can converge later without a translation table in between.
+ */
+export type WireAuthor =
+	/** A person, named. */
+	| { kind: "human"; id: string }
+	/** The persona itself, acting. */
+	| { kind: "persona"; id: string }
+	/** A mounted component or a driven agent, by the name it is known by. */
+	| { kind: "component"; name: string }
+	/** The runtime, doing something nobody asked for. Always says which and why. */
+	| { kind: "runtime"; mechanism: string; reason: string };
+
+/** How an author reads, and how two are compared. Matches the engine's `authorId`. */
+export function wireAuthorId(author: WireAuthor): string {
+	switch (author.kind) {
+		case "human":
+			return `human:${author.id}`;
+		case "persona":
+			return `persona:${author.id}`;
+		case "component":
+			return `component:${author.name}`;
+		case "runtime":
+			return `runtime:${author.mechanism}`;
+	}
+}
+
 export interface WireEnvelope {
 	/** The job this event belongs to. */
 	job_id: string;
@@ -49,6 +90,15 @@ export interface WireEnvelope {
 	/** ISO-8601 in UTC. Producer clocks are never trusted for ordering. */
 	ts: string;
 	source: WireSource;
+	/**
+	 * Who produced it.
+	 *
+	 * Optional on the type so a producer built before this field still parses, and
+	 * **absent means unknown, never the persona**. A reader that fills the gap with
+	 * the persona reintroduces exactly the attribution this field exists to end, and
+	 * it would do it silently, on the events least likely to be checked.
+	 */
+	author?: WireAuthor;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────────────

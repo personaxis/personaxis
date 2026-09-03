@@ -113,6 +113,33 @@ const endings = (events: WireEvent[]) => events.filter((e) => e.kind === "person
 /** Let the run's promise and its `finally` reach the microtask queue. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
+describe("every event the daemon sends says who produced it", () => {
+	it("signs the session it opened, and the refusals it decided", async () => {
+		// Both are the daemon's own statements. Before authorship existed on the wire
+		// they arrived with nothing to attribute them to, so anything rendering a
+		// transcript had one default available and used it: the persona.
+		const { instance, events } = runner({ launcher: () => null });
+		instance.handle(assign());
+
+		expect(events.length).toBeGreaterThan(0);
+		for (const event of events) {
+			expect(event.author, event.kind).toMatchObject({ kind: "runtime", mechanism: "daemon" });
+		}
+	});
+
+	it("signs nothing as the persona, whichever transport ran the job", async () => {
+		for (const host of ["claude-code", "codex"] as const) {
+			const { instance, events } = runner({ host });
+			instance.handle(assign());
+			await settle();
+			expect(
+				events.filter((event) => event.author?.kind === "persona").map((e) => e.kind),
+				host,
+			).toEqual([]);
+		}
+	});
+});
+
 describe("running an assigned job", () => {
 	it("starts the agent with the prompt from the job, over ACP", () => {
 		const { instance, started } = runner({});

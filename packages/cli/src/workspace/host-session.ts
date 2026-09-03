@@ -30,6 +30,7 @@
 import { type ChildProcess, type SpawnFn, startAgent } from "./agent-process.js";
 
 import type { WireEmission } from "@personaxis/core";
+import type { WireAuthor } from "@personaxis/protocol/workspace";
 
 import { HostStreamTranslator, type SkipReason } from "./host-stream.js";
 
@@ -44,8 +45,16 @@ export interface HostSessionOptions {
 	prompt: string;
 	/** The directory the agent runs in. One of the consented ones. */
 	cwd: string;
-	/** Where translated events go. Normally `JobReporter.reportWire`. */
-	emit: (body: WireEmission) => void;
+	/**
+	 * Where translated events go, with who produced each one.
+	 *
+	 * The same split the ACP session makes, and it applies here for exactly the
+	 * same reason: everything this file translates came out of another vendor's
+	 * program. The persona governs it and did not write it. Only the ending is
+	 * ours, because it is the daemon's report about the run rather than anything
+	 * the agent said.
+	 */
+	emit: (body: WireEmission, author: WireAuthor) => void;
 	/** Told about lines that produced nothing, with the reason. */
 	onSkip?: (reason: SkipReason, detail: string) => void;
 	/**
@@ -57,6 +66,8 @@ export interface HostSessionOptions {
 	 */
 	timeoutMs?: number;
 	env?: NodeJS.ProcessEnv;
+	/** Names the agent in the record: `claude-code`, `codex`. Never `persona:self`. */
+	agentName?: string;
 	/** Injected for tests. */
 	spawnFn?: SpawnFn;
 }
@@ -66,6 +77,8 @@ const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 export class HostSession {
 	private child: ChildProcess | null = null;
 	private readonly translator: HostStreamTranslator;
+	/** Who the agent is, in the record. Never `persona:self`. */
+	private readonly agent: WireAuthor;
 	/** stdout arrives in chunks, not lines. What is left over waits here. */
 	private buffer = "";
 	/** The host's own last words when it fails to start. */
@@ -75,6 +88,7 @@ export class HostSession {
 	private releaseExitHooks: (() => void) | null = null;
 
 	constructor(private readonly options: HostSessionOptions) {
+		this.agent = { kind: "component", name: options.agentName ?? "agent" };
 		this.translator = new HostStreamTranslator({ onSkip: options.onSkip });
 	}
 
@@ -174,7 +188,9 @@ export class HostSession {
 					// report the end a second time with a different status.
 					this.ended = true;
 				}
-				this.options.emit(body);
+				// The agent's, including its own verdict on its run: `fromResult` is the
+				// host reporting how it finished, which is a thing the host said.
+				this.options.emit(body, this.agent);
 			}
 			index = this.buffer.indexOf("\n");
 		}
@@ -190,11 +206,17 @@ export class HostSession {
 	private endSession(outcome: SessionOutcome, reason?: string): void {
 		if (this.ended) return;
 		this.ended = true;
-		this.options.emit({
-			kind: "persona.session.ended",
-			status: outcome === "completed" ? "completed" : outcome === "stopped" ? "stopped" : "failed",
-			...(reason ? { reason } : {}),
-		} as WireEmission);
+		this.options.emit(
+			{
+				kind: "persona.session.ended",
+				status:
+					outcome === "completed" ? "completed" : outcome === "stopped" ? "stopped" : "failed",
+				...(reason ? { reason } : {}),
+			} as WireEmission,
+			// Ours. The agent said nothing, so this is the daemon reporting ABOUT it,
+			// and signing it as the agent would put our verdict in its mouth.
+			{ kind: "runtime", mechanism: "daemon", reason: `the agent ${outcome}` },
+		);
 	}
 
 	private kill(): void {

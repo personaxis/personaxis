@@ -48,7 +48,7 @@ import {
 	type AcpConnection,
 	type AcpProvider,
 } from "@personaxis/protocol";
-import type { WireEventBody } from "@personaxis/protocol/workspace";
+import type { WireAuthor, WireEventBody } from "@personaxis/protocol/workspace";
 
 import { type ChildProcess, type SpawnFn, startAgent } from "./agent-process.js";
 import { AcpWireTranslator, sessionEnded } from "./acp-wire.js";
@@ -83,8 +83,17 @@ export interface AcpSessionOptions {
 	prompt: string;
 	/** The directory the agent runs in. One of the consented ones. */
 	cwd: string;
-	/** Where translated events go. Normally `JobReporter.reportWire`. */
-	emit: (body: WireEventBody) => void;
+	/**
+	 * Where translated events go, with who produced each one.
+	 *
+	 * Two authors come out of this file and the difference is the whole of `A4`.
+	 * What the agent said, reasoned and called is the COMPONENT's: it is another
+	 * vendor's program, and the persona governs it rather than speaks through it.
+	 * What the daemon decided, which is that a session began and how it ended, is
+	 * the RUNTIME's. **Neither is ever the persona**, and a record that said so
+	 * would be quoting somebody else's program as the thing your persona wrote.
+	 */
+	emit: (body: WireEventBody, author: WireAuthor) => void;
 	/**
 	 * Answers every permission request. **No default, deliberately.**
 	 *
@@ -98,6 +107,8 @@ export interface AcpSessionOptions {
 	/** How long the agent may run before it is stopped. */
 	timeoutMs?: number;
 	env?: NodeJS.ProcessEnv;
+	/** Names the agent in the record: `claude-code`, `gemini-cli`, and so on. */
+	agentName?: string;
 	/** Injected for tests. */
 	spawnFn?: SpawnFn;
 	/** Injected for tests: skips the process and talks to a stream directly. */
@@ -113,8 +124,11 @@ export class AcpSession {
 	#ended = false;
 	readonly #translator: AcpWireTranslator;
 	readonly #collector = new AcpTurnCollector();
+	/** Who the agent is, in the record. Never `persona:self`. */
+	readonly #agent: WireAuthor;
 
 	constructor(private readonly options: AcpSessionOptions) {
+		this.#agent = { kind: "component", name: options.agentName ?? "agent" };
 		this.#translator = new AcpWireTranslator({
 			...(options.onSkip ? { onSkip: options.onSkip } : {}),
 		});
@@ -139,7 +153,7 @@ export class AcpSession {
 				connection,
 				sessionId: session.sessionId,
 				collector: this.#collector,
-				agentName: "claude-code",
+				agentName: this.options.agentName ?? "agent",
 			});
 			this.#provider = provider;
 
@@ -149,7 +163,7 @@ export class AcpSession {
 			// not. A provider that helped would be a second place a turn could end.
 			const runner = new run.TurnRunner({ provider });
 
-			for (const event of this.#translator.started()) this.options.emit(event);
+			for (const event of this.#translator.started()) this.options.emit(event, this.#agent);
 			const outcome = await runner.run({
 				turn: session.sessionId,
 				prompt: this.options.prompt,
@@ -159,7 +173,7 @@ export class AcpSession {
 				// record rests on being honest.
 				asker: { kind: "component", name: "workspace" },
 			});
-			for (const event of this.#translator.ended()) this.options.emit(event);
+			for (const event of this.#translator.ended()) this.options.emit(event, this.#agent);
 
 			return this.#finish(outcome.stopReason, outcome.failure);
 		} catch (error) {
@@ -259,7 +273,8 @@ export class AcpSession {
 				// translator builds what the room sees. They read the same notification
 				// and answer different questions about it.
 				this.#collector.sessionUpdate(params);
-				for (const event of this.#translator.update(params.update)) this.options.emit(event);
+				for (const event of this.#translator.update(params.update))
+					this.options.emit(event, this.#agent);
 			},
 		};
 	}
@@ -279,7 +294,14 @@ export class AcpSession {
 		if (this.#ended) return "failed";
 		this.#ended = true;
 		const event = sessionEnded(stopReason, failure);
-		this.options.emit(event);
+		// The runtime's, not the agent's. How a session ended is the daemon's report
+		// ABOUT the agent, and attributing it to the agent would put our own verdict
+		// in its mouth.
+		this.options.emit(event, {
+			kind: "runtime",
+			mechanism: "daemon",
+			reason: `the session ended ${stopReason}`,
+		});
 		// Read from the reason rather than from the event just built: one function
 		// decides what an ending is called, and asking it twice is how two answers
 		// to one question start to disagree.
