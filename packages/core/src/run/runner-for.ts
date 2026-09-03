@@ -53,6 +53,7 @@
 
 import { PersonaAgent, type AgentOptions } from "../agent.js";
 import { compile } from "../enforcement/policy-compile.js";
+import { permissionsFor } from "../tools/mounted.js";
 import { policyFromPersona } from "../enforcement/policy-from-persona.js";
 import { readAgentBudget } from "../governance.js";
 import { readVerification } from "../verification.js";
@@ -108,6 +109,12 @@ export function agentOptionsFor(
 	session: Omit<SessionOptions, "ledger" | "observer"> = {},
 ): AgentOptions {
 	const { conversation, ...rest } = session;
+	// Compiled once and read twice: the gate needs the executable form, and the
+	// catalogue needs the posture it was compiled from. Two calls would be two
+	// compilations of one document that could disagree.
+	const compiled = compile(
+		policyFromPersona(persona.frontmatter, { personaVersionId: persona.personaPath }),
+	);
 
 	return {
 		...rest,
@@ -129,7 +136,14 @@ export function agentOptionsFor(
 		// that could pass it would be changing the persona without editing it. Until E2
 		// nothing derived it on this path at all, so a persona running in our own loop
 		// was governed by the environment's sandbox and by nothing it had declared.
-		capability: compile(policyFromPersona(persona.frontmatter, { personaVersionId: persona.personaPath })),
+		capability: compiled,
+		// E12: what the persona may be OFFERED, derived from the posture it declared.
+		//
+		// Here for the same reason as the line above it: a posture is a property of who
+		// the persona is, and it is already written down, so nobody should have to state
+		// the same intent a second time as a list of permissions. A read-only persona
+		// stops being handed a file writer it would only be refused for using.
+		permissions: permissionsFor(compiled.policy.sandbox),
 	};
 }
 

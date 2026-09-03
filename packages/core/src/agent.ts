@@ -87,6 +87,8 @@ import { ask, deny, type GuardOutcome } from "./gate/verdict.js";
 import { runGuards } from "./gate/waterfall.js";
 import { nudgeFor } from "./run/breaker-guard.js";
 import { authorId } from "./record/entry.js";
+import { Kernel, type PermissionKey } from "./kernel/index.js";
+import { grantedPermissions, mountBuiltins, type ToolBench } from "./tools/mounted.js";
 
 /**
  * Where a compaction is allowed to happen.
@@ -175,6 +177,19 @@ export interface AgentOptions {
   timeoutMs?: number;
   /** Restrict the tool set (defaults to all TOOLS). */
   tools?: ToolSpec[];
+  /**
+   * What this persona is allowed to do, as kernel permissions (E12).
+   *
+   * When present, the built-in catalogue is assembled BY THE KERNEL: each tool is a
+   * component that declares the permission it needs, and a tool whose permission is
+   * absent is never offered rather than offered and then refused. That difference
+   * matters: a model handed a tool it may not use will use it, be refused, and try
+   * again in a slightly different shape, which is the loop the breaker exists to stop.
+   *
+   * Absent means every built-in, which is what every caller got before this existed.
+   * Withholding is a decision somebody makes, not a default they fall into.
+   */
+  permissions?: readonly PermissionKey[];
   /**
    * Tools contributed from outside the engine, added to whatever catalogue results.
    *
@@ -299,19 +314,40 @@ export class PersonaAgent {
    */
   private readonly capability?: ExecutablePolicy;
   private readonly tools: ToolSpec[];
+  /**
+   * The kernel bench, when this persona declared permissions.
+   *
+   * Held rather than closed, because closing it unwinds every component scope and
+   * empties the catalogue it produced. It lives as long as the agent does.
+   */
+  private readonly bench?: ToolBench;
   private preferFallback = false;
 
   constructor(private readonly opts: AgentOptions) {
     this.bus = opts.bus ?? new EventBus();
     this.policy = opts.policy ?? DEFAULT_POLICY;
     this.capability = opts.capability;
+    // E12: the built-ins come from the kernel when the persona declared permissions.
+    //
+    // `mountBuiltins` makes each tool a component that names the permission it needs,
+    // so the catalogue IS the set of components the kernel could activate. A withheld
+    // permission removes its tools by unwinding their scope, with no removal code
+    // anywhere: that is `EffectScope` doing the job it was written for.
+    //
+    // The bench is held for the life of the agent rather than closed here, because
+    // closing it would unwind every scope and empty the catalogue it just produced.
+    if (opts.permissions) {
+      this.bench = mountBuiltins(new Kernel(), grantedPermissions(opts.permissions));
+    }
+    const builtins = this.bench ? [...this.bench.tools] : TOOLS;
+
     // With a persona attached, the loop also gets the read-only memory tools
     // (memory_search / memory_get), honoring the persona's runtime.memory knobs.
-    let tools = opts.tools ?? TOOLS;
+    let tools = opts.tools ?? builtins;
     if (!opts.tools && opts.personaPath) {
       try {
         const fm = loadPersona(opts.personaPath).frontmatter as Record<string, unknown>;
-        tools = [...TOOLS, ...memoryTools(opts.personaPath, readMemoryKnobs(fm), { sessionId: opts.sessionId, llm: opts.llm })];
+        tools = [...builtins, ...memoryTools(opts.personaPath, readMemoryKnobs(fm), { sessionId: opts.sessionId, llm: opts.llm })];
       } catch {
         /* an unreadable persona must not kill the agent; memory tools are additive */
       }

@@ -14,7 +14,10 @@ import chalk from "chalk";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  ALL_TOOL_PERMISSIONS,
   DIALECTS,
+  permissionsFor,
+  policyFromPersona,
   readState,
   extractEnvelopes,
   verifyMemoryChain,
@@ -200,6 +203,31 @@ export async function runDoctorChecks(rootPersonaPath: string, arg = ""): Promis
   const warn = (s: string): string => (warnings++, chalk.yellow("  ! ") + s);
   const fix = (s: string): string[] =>
     wrapFix(s).map((line, i) => chalk.dim(i === 0 ? `      fix: ${line}` : `           ${line}`));
+
+  // E12: which built-in tools this persona is actually offered.
+  //
+  // Worth a line because the answer is now derived rather than fixed, and a person
+  // debugging "why did it not edit the file" needs to see that its posture never gave
+  // it a file writer. The tools it does not have are named too: an absence is the
+  // thing being explained, so listing only what is present would hide it.
+  try {
+    const posture = policyFromPersona(
+      loadPersonaFile(personaPath).data as unknown as Record<string, unknown>,
+      { personaVersionId: personaPath },
+    ).sandbox;
+    const held = new Set(permissionsFor(posture).map((permission) => permission.id));
+    const withheld = ALL_TOOL_PERMISSIONS.filter((permission) => !held.has(permission.id));
+    rows.push(
+      withheld.length === 0
+        ? ok(`tool permissions: all (${posture})`)
+        : ok(
+            `tool permissions: ${[...held].join(", ") || "none"} · withheld by ${posture}: ` +
+              withheld.map((permission) => permission.id).join(", "),
+          ),
+    );
+  } catch {
+    /* the spec already failed to load above, and said so there */
+  }
 
   // E7: which model families this build can read a tool call out of.
   //
