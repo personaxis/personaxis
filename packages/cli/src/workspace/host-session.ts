@@ -1,11 +1,28 @@
 /**
- * Running the host agent for a job the workspace sent.
+ * Running the host agent for a job the workspace sent. **One of three modes.**
  *
- * This is the half of the daemon that acts. The other half already existed: the
- * hook refuses a tool call before it runs, which works whether the call came
- * from a person typing in their terminal or from here. What was missing is
- * anything that starts the agent at all, so until now a workspace could watch a
- * machine and never give it work.
+ * This is the original one and it is no longer the only one, which is the thing
+ * worth saying at the top of it rather than in a release note. The three are in
+ * `2026-09-03-tres-modos-de-ejecucion`:
+ *
+ *   1. this: a shot at the vendor's binary, with the hook refusing tool calls
+ *   2. driving that vendor over ACP, where the gate answers before a call runs
+ *   3. being driven over ACP, where our persona runs inside somebody's editor
+ *
+ * **It is kept deliberately.** It is the only way to reach a host that does not
+ * speak ACP, which today is Codex, and retiring it would be dropping support for
+ * an agent out of tidiness. What it is not, any more, is the answer to "how does
+ * Personaxis enforce a policy": it is one answer, and the narrowest.
+ *
+ * The narrowness is one word. The launch is `stdio: ["ignore", ...]`, so nothing
+ * can be said to the agent once it starts. That was never a task left undone; it
+ * is why talking to a working persona was IMPOSSIBLE, and no screen above it
+ * could have changed that. See `agent-process.ts`, where the parameter that
+ * decides it now lives.
+ *
+ * The other half of the daemon already existed: the hook refuses a tool call
+ * before it runs, which works whether the call came from a person typing in
+ * their terminal or from here.
  *
  * The shape is deliberately small. Spawn the vendor's binary, read its stream a
  * line at a time, hand each line to the translator, and report what comes back.
