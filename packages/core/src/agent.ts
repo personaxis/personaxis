@@ -71,6 +71,26 @@ import { ToolInterceptor } from "./security/interceptor.js";
 import { Watchdog } from "./security/watchdog.js";
 import { runPlanPhase, type PlanPhaseConfig } from "./plan-run.js";
 import { tightenVerdict, maxTaint, type ContextTaint, type SandboxPosture } from "./security/consent.js";
+import { actionClassesFor } from "./enforcement/action-classes.js";
+import type { ExecutablePolicy } from "./enforcement/policy-compile.js";
+import { freezeCall } from "./gate/call.js";
+import { capabilityGuard, requirePolicy } from "./gate/capability.js";
+import { ask, deny, type GuardOutcome } from "./gate/verdict.js";
+import { runGuards } from "./gate/waterfall.js";
+
+/**
+ * A tool's own verdict, as a guard.
+ *
+ * The translation is one-way on purpose, and the asymmetry is the point: an `allow`
+ * becomes nothing at all, because a guard has no way to say allow and should not.
+ * Allow is the absence of an objection. Keeping that shape is what stops the tool
+ * gate from being able to rescue a call another guard already refused.
+ */
+function fromToolGate(verdict: CommandVerdict): GuardOutcome {
+  if (verdict.decision === "allow") return undefined;
+  const rule = `tool:${verdict.class.destructive ? "destructive" : "sandbox"}`;
+  return verdict.decision === "deny" ? deny(rule, verdict.reason) : ask(rule, verdict.reason);
+}
 
 export type ApprovalDecision = "approve" | "deny" | "always";
 export type OnApproval = (call: ToolCall, verdict: CommandVerdict) => Promise<ApprovalDecision>;
@@ -80,6 +100,21 @@ export interface AgentOptions {
   llm: ToolCallConfig;
   /** Sandbox/approval policy (from policyFromFrontmatter). */
   policy?: Policy;
+  /**
+   * The persona's compiled policy, which is the first axis of the gate.
+   *
+   * Optional in the type and NOT optional in effect: without it `requirePolicy`
+   * refuses every call, which is the intended reading of "a run with no policy". It
+   * is optional here because a caller that has no persona at all, a bare loop in a
+   * test, should be able to construct one and see the refusals rather than a type
+   * error about a document it does not have.
+   *
+   * Derived by `agentOptionsFor` from the persona's own frontmatter, beside the budget
+   * and the verification block, for the reason that file gives: these are properties
+   * of who the persona is, and a caller that could pass them would be changing the
+   * persona without editing it.
+   */
+  capability?: ExecutablePolicy;
   /** Persona identity document (system-prompt slot #1). */
   personaBody?: string;
   /** Structural self-awareness (role root/sub, own address, sub-tree, resource inventory). */
@@ -188,12 +223,23 @@ export class PersonaAgent {
   /** The full message array after the last run (for conversation continuity). */
   lastMessages?: ChatMessage[];
   private readonly policy: Policy;
+  /**
+   * The persona's compiled limits, which is the capability axis on this path.
+   *
+   * Held apart from `policy` because they are different documents answering different
+   * questions. `policy` is the environment: which root this run may write under, which
+   * sandbox posture the host offers. This is the persona: what it may never do,
+   * whatever machine it happens to be on. Folding them would make one of the two
+   * unwritable from where its author sits.
+   */
+  private readonly capability?: ExecutablePolicy;
   private readonly tools: ToolSpec[];
   private preferFallback = false;
 
   constructor(private readonly opts: AgentOptions) {
     this.bus = opts.bus ?? new EventBus();
     this.policy = opts.policy ?? DEFAULT_POLICY;
+    this.capability = opts.capability;
     // With a persona attached, the loop also gets the read-only memory tools
     // (memory_search / memory_get), honoring the persona's runtime.memory knobs.
     let tools = opts.tools ?? TOOLS;
@@ -716,18 +762,52 @@ export class PersonaAgent {
             }
           }
 
+          // E2: the tool's own gate is now ONE guard among several, not the decision.
+          //
+          // It used to be the whole answer here, and the consequence was that the
+          // persona's compiled policy governed every agent EXCEPT ours. `deny`, `allow`,
+          // its hard limits, its prohibited behaviours and its egress list were enforced
+          // on a Claude Code or a Codex driven through the daemon, and enforced nowhere
+          // on the loop this product ships. Measured on 2026-09-04: `gate/waterfall.ts`
+          // had exactly one caller, `enforcement-service.ts`, which is the daemon.
+          //
+          // The tool gate stays, because it answers something the policy cannot: whether
+          // this path escapes the workspace root of THIS run. It just answers alongside
+          // the others now, and the verdict is the lowest of them.
           const verdict = tool.gate(call.args, this.policy);
-          // K.04: tighten the coarse sandbox verdict with the HITL risk matrix (posture × taint ×
+          const argsText = JSON.stringify(call.args ?? {});
+          const decided = runGuards(
+            [
+              // Absent policy is a refusal with a name in the list, not a branch
+              // somewhere in this loop that a reader has to find.
+              requirePolicy(this.capability),
+              ...(this.capability ? [capabilityGuard(this.capability)] : []),
+              { name: "tool", check: () => fromToolGate(verdict) },
+            ],
+            freezeCall({
+              tool: call.name,
+              argsText,
+              actionClasses: actionClassesFor(call.name, argsText),
+              turn: call.id,
+            }),
+          );
+
+          // K.04: tighten the cascade's verdict with the HITL risk matrix (posture × taint ×
           // reversibility × sensitivity). Consent can only make it STRICTER: a destructive action
           // while the context is malicious-tainted is denied even if the gate would allow it.
-          const consented = tightenVerdict(verdict.decision, {
+          const consented = tightenVerdict(decided.verdict, {
             klass: verdict.class,
             sandbox: this.policy.sandbox as SandboxPosture,
             taint: contextTaint,
           });
-          const decisionReason = consented.decision !== verdict.decision
+          // Every reason, not the first. A call refused twice used to report once, and
+          // somebody who widened one limit and found the call still refused, with no hint
+          // why, concluded enforcement was broken.
+          const gateReason =
+            decided.contributions.map((entry) => entry.reason).join("; ") || verdict.reason;
+          const decisionReason = consented.decision !== decided.verdict
             ? `consent: ${consented.reasons.join("; ")}`
-            : verdict.reason;
+            : gateReason;
           bus.emit({ type: "tool-verdict", tool: call.name, decision: consented.decision, reason: decisionReason });
 
           let output: string;

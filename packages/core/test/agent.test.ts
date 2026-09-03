@@ -14,6 +14,9 @@ import { ensureState,
   loadPersona,
   readState,
   DEFAULT_POLICY,
+  compile,
+  type CompiledPolicy,
+  type ExecutablePolicy,
   type Policy,
   type LoopEvent,
 } from "../src/index.js";
@@ -26,6 +29,37 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function policy(over: Partial<Policy> = {}): Policy {
   return { ...DEFAULT_POLICY, workspaceRoot: dir, ...over };
+}
+
+/**
+ * The persona's compiled limits, which E2 made the loop require.
+ *
+ * Only the tests that actually execute something need one, and that asymmetry is the
+ * change working rather than a gap: a run with no compiled policy now refuses every
+ * call by name, so the two tests below that write a file had to say which persona
+ * they were writing as. The ones that assert a refusal did not, because they were
+ * already getting one.
+ *
+ * `danger-full-access` on purpose. The capability axis is not what these two are
+ * about, and a posture that refused the write on its own would let them pass while
+ * proving nothing about the approval flow they exist to check.
+ */
+function capability(over: Partial<CompiledPolicy> = {}): ExecutablePolicy {
+  return compile({
+    persona_version_id: "pv_test",
+    hash: "h",
+    compiled_at: new Date().toISOString(),
+    ttl_seconds: 3600,
+    deny: [],
+    allow: [],
+    hard_limits: [],
+    prohibited_behaviors: [],
+    egress_allowlist: [],
+    sandbox: "danger-full-access",
+    approval: "never",
+    gate_rules: [],
+    ...over,
+  });
 }
 
 /** A scripted OpenAI-style /chat/completions fetch. Each call returns the next item. */
@@ -79,6 +113,7 @@ describe("PersonaAgent (governed task execution)", () => {
         { tool: "finish", args: { summary: "done" } },
       ])),
       policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
       onApproval: async () => {
         asked++;
         return "deny";
@@ -96,6 +131,7 @@ describe("PersonaAgent (governed task execution)", () => {
         { tool: "finish", args: { summary: "wrote note" } },
       ])),
       policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
       onApproval: async () => "approve",
     });
     const res = await agent.run("write note");

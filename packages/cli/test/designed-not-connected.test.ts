@@ -79,8 +79,10 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 		name: "postureFor",
 		until: "a caller outside `gate/identity.ts` needs it; today only the mounted guard does",
 	},
-	{ name: "capabilityGuard", until: "E2 mounts it as a guard of the waterfall" },
-	{ name: "requirePolicy", until: "E2 mounts it as a guard of the waterfall" },
+	// `capabilityGuard` and `requirePolicy` came off with E2, which mounted the
+	// cascade inside `agent.ts`. This test went red on its own for both, the same way
+	// it did for `identityGuard`, which is the only reason anybody would have noticed
+	// that the exemptions had stopped being true.
 
 	// Third-party MCP tools. We are an MCP server and not a client, which is why the
 	// engine has six tools and the reference has 129.

@@ -52,6 +52,8 @@
  */
 
 import { PersonaAgent, type AgentOptions } from "../agent.js";
+import { compile } from "../enforcement/policy-compile.js";
+import { policyFromPersona } from "../enforcement/policy-from-persona.js";
 import { readAgentBudget } from "../governance.js";
 import { readVerification } from "../verification.js";
 import type { Ledger } from "./budget.js";
@@ -120,6 +122,14 @@ export function agentOptionsFor(
 		// checked by something it never declared, which is a claim its spec cannot
 		// support and nobody could audit from the file.
 		judge: persona.llm,
+		// The persona's own limits, compiled once per turn.
+		//
+		// Derived here for the same reason as the budget beside it: what a persona may
+		// never do is a property of who it is, identical for every caller, and a caller
+		// that could pass it would be changing the persona without editing it. Until E2
+		// nothing derived it on this path at all, so a persona running in our own loop
+		// was governed by the environment's sandbox and by nothing it had declared.
+		capability: compile(policyFromPersona(persona.frontmatter, { personaVersionId: persona.personaPath })),
 	};
 }
 
