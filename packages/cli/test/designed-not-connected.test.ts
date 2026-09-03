@@ -112,14 +112,25 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 
 const EXEMPT = new Set(WAITING.map((entry) => entry.name));
 
-/** Every `.ts` under a root, tests included: a test in another package is a real consumer. */
+/**
+ * Every source under a root, tests included: a test in another package is a real
+ * consumer.
+ *
+ * **`.tsx` counts, and leaving it out was a hole on the dangerous side.** Measured on
+ * 2026-09-03: 22 source files and 12 test files across `tui` and `cli` are `.tsx`,
+ * and the sweep could not see any of them. Invisible exports are a small problem, a
+ * package looking cleaner than it is. Invisible CONSUMERS are the bad one: an export
+ * reached only from a screen would come back an orphan, and the count would carry
+ * false names that nobody can act on, which is how a ratchet becomes a number people
+ * stop believing.
+ */
 function sources(root: string): string[] {
 	const found: string[] = [];
 	for (const entry of readdirSync(root)) {
 		const path = join(root, entry);
 		if (statSync(path).isDirectory()) {
 			found.push(...sources(path));
-		} else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
+		} else if ((entry.endsWith(".ts") || entry.endsWith(".tsx")) && !entry.endsWith(".d.ts")) {
 			found.push(path);
 		}
 	}
@@ -158,34 +169,109 @@ function reaches(source: string): Set<string> {
 	return names;
 }
 
-const CORE_FILES = sources(CORE_SRC).filter((path) => !path.includes(`${"generated"}`));
+/**
+ * The packages this rule can speak about, and why that is not all of them.
+ *
+ * A name counts as used when something OUTSIDE its own module reaches it, and the
+ * strongest version of that is another package, because importing across a package
+ * boundary is a dependency. That test only means something for a package something
+ * else depends on. Measured on 2026-09-03:
+ *
+ *     core      <- cli, evals, mcp, protocol, sdk, tui
+ *     protocol  <- cli, tui
+ *     spec      <- cli, evals
+ *     sdk       <- cli, mcp
+ *     tui       <- cli
+ *     mcp       <- nobody in this repository
+ *     evals     <- nobody
+ *     cli       <- nobody: it is the binary
+ *
+ * So `mcp`, `evals` and `cli` are left out, and the reason is a limit rather than an
+ * oversight worth writing down: their consumers are outside this tree, so every
+ * export would come back an orphan and the number would be noise. A ratchet that
+ * counts noise is a ratchet nobody can lower, and one nobody can lower is one that
+ * stops meaning anything.
+ *
+ * ## Why one number per package and not one number
+ *
+ * A single total would let a package go quietly wrong while another improved by the
+ * same amount, which is the failure the ratchet exists to prevent, one level up.
+ *
+ * `protocol` starts at whatever the ACP bridge leaves behind, and that is correct
+ * rather than unfortunate: `A1` built the provider and `A2` wires it into the
+ * daemon, so between the two commits it is designed and not connected, and this is
+ * the thing that says so out loud.
+ */
+const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
+	{ pkg: "core", departure: 176 },
+	{ pkg: "protocol", departure: 15 },
+	{ pkg: "tui", departure: 34 },
+];
 
 /**
- * Everything outside core, source and tests both.
+ * Watched by nothing, each with the measured reason.
  *
- * **Core's own tests are not here, and that is the whole measurement.** Every one of
- * the ten modules the audit found has passing tests; that is what made them look
- * finished. A test proves the code runs, which was never in question. What is in
- * question is whether anything reaches it, and a test sitting in the same package
- * cannot answer that. A test in another package can, because importing across a
- * package boundary is a dependency.
+ * `spec` and `sdk` were on the list above for one run and came back zero orphans,
+ * which looked like two clean packages and was **nothing having been read**. Their
+ * entire source is `index.ts`, plus generated code in `spec`, and the sweep skips a
+ * barrel on purpose: a barrel promises, it does not consume. A rule reporting zero
+ * because it looked at no files is the same failure as an empty sweep passing, and
+ * it is worse than a red one because it reads as good news.
+ *
+ * `mcp`, `evals` and `cli` are out for the other reason: nothing in this repository
+ * depends on them, so every export would come back an orphan and the number would be
+ * noise. `cli` is the binary.
+ *
+ * The test below is what stops this list growing by accident: a watched package that
+ * stops having files to sweep goes red instead of quietly reporting zero.
  */
-const CONSUMERS = readdirSync(PACKAGES)
-	.filter((name) => name !== "core")
-	.flatMap((name) => [join(PACKAGES, name, "src"), join(PACKAGES, name, "test")])
-	.filter((path) => {
-		try {
-			return statSync(path).isDirectory();
-		} catch {
-			return false;
-		}
-	})
-	.flatMap((root) => sources(root));
+const NOT_WATCHED = [
+	{ pkg: "spec", because: "its whole source is a barrel and generated code" },
+	{ pkg: "sdk", because: "its whole source is a barrel" },
+	{ pkg: "mcp", because: "nothing in this repository depends on it" },
+	{ pkg: "evals", because: "nothing depends on it" },
+	{ pkg: "cli", because: "it is the binary: nothing depends on it" },
+];
 
-describe("the engine's exports reach something", () => {
+/** Names exempt in a given package, with the task that connects each. */
+const WAITING_BY_PACKAGE: Record<string, typeof WAITING> = { core: WAITING };
+
+/** The package's own sources. Generated files are nobody's design. */
+function filesOf(pkg: string): string[] {
+	return sources(join(PACKAGES, pkg, "src")).filter((path) => !path.includes(`${"generated"}`));
+}
+
+/**
+ * Everything outside the package, source and tests both.
+ *
+ * **A package's own tests are not here, and that is the whole measurement.** Every
+ * one of the ten modules the audit found has passing tests; that is what made them
+ * look finished. A test proves the code runs, which was never in question. What is
+ * in question is whether anything reaches it, and a test sitting in the same package
+ * cannot answer that.
+ */
+function consumersOf(pkg: string): string[] {
+	return readdirSync(PACKAGES)
+		.filter((name) => name !== pkg)
+		.flatMap((name) => [join(PACKAGES, name, "src"), join(PACKAGES, name, "test")])
+		.filter((path) => {
+			try {
+				return statSync(path).isDirectory();
+			} catch {
+				return false;
+			}
+		})
+		.flatMap((root) => sources(root));
+}
+
+describe.each(WATCHED)("$pkg's exports reach something", ({ pkg, departure }) => {
+	const own = filesOf(pkg);
+	const waiting = WAITING_BY_PACKAGE[pkg] ?? [];
+	const exempt = new Set(waiting.map((entry) => entry.name));
+
 	// Built once: this is a whole-tree sweep and the packages are not small.
 	const imports = new Map<string, Set<string>>();
-	for (const file of [...CORE_FILES, ...CONSUMERS]) {
+	for (const file of [...own, ...consumersOf(pkg)]) {
 		imports.set(file, reaches(readFileSync(file, "utf8")));
 	}
 
@@ -197,23 +283,36 @@ describe("the engine's exports reach something", () => {
 	 * anything reaches it.
 	 */
 	function isUsed(name: string, from: string): boolean {
-		const own = from.replace(/\.ts$/, "");
+		const stem = from.replace(/\.tsx?$/, "");
 		for (const [file, names] of imports) {
 			if (file === from) continue;
-			const isOwnTest = file.includes(`${"test"}`) && file.includes(`${own.split(/[\\/]/).pop()}`);
+			const isOwnTest = file.includes(`${"test"}`) && file.includes(`${stem.split(/[\\/]/).pop()}`);
 			if (isOwnTest) continue;
 			if (names.has(name)) return true;
 		}
 		return false;
 	}
 
+	/**
+	 * What is actually examined: everything but the barrels.
+	 *
+	 * Split out from `own` because the guard below has to count the same thing the
+	 * loop does. It did not, for one run: it counted files READ, `sdk` had one file
+	 * and it was `index.ts`, and a package with nothing examined reported a clean
+	 * zero and passed the guard meant to catch exactly that. Measuring the wrong
+	 * quantity is the commonest way a gate reports on itself instead of its subject.
+	 */
+	const swept = own.filter((file) => !file.endsWith("index.ts") && !file.endsWith("index.tsx"));
+
 	const orphans: { name: string; module: string }[] = [];
-	for (const file of CORE_FILES) {
-		if (file.endsWith("index.ts")) continue; // a barrel promises, it does not consume
+	for (const file of swept) {
 		for (const name of exportsOf(readFileSync(file, "utf8"))) {
-			if (EXEMPT.has(name)) continue;
+			if (exempt.has(name)) continue;
 			if (!isUsed(name, file)) {
-				orphans.push({ name, module: relative(CORE_SRC, file).replaceAll("\\", "/") });
+				orphans.push({
+					name,
+					module: relative(join(PACKAGES, pkg, "src"), file).replaceAll("\\", "/"),
+				});
 			}
 		}
 	}
@@ -221,71 +320,88 @@ describe("the engine's exports reach something", () => {
 	/**
 	 * The line of departure, and it only moves one way.
 	 *
-	 * 177 exports in the engine reach nothing. Writing a reason for each would mean
-	 * inventing 177 reasons, and an invented reason is worse than a number: it reads as
-	 * a decision somebody made. So the ones that matter are named above with the task
-	 * that connects them, and the rest are a count that may go down and never up.
+	 * Writing a reason for each of core's 176 would mean inventing 176 reasons, and an
+	 * invented reason is worse than a number: it reads as a decision somebody made. So
+	 * the ones that matter are named above with the task that connects them, and the
+	 * rest are a count that may go down and never up.
 	 *
 	 * That is the same shape as the design drift ratchet in the other repository, for
 	 * the same reason: the rule is right, the existing violations are too many to fix
 	 * in one pass, and letting them grow is what actually kills a rule.
 	 *
-	 * Most of these are not subsystems. They are a helper exported when it was written
-	 * next to its one caller, and `export` is the default gesture. That is cheap to
-	 * fix and worth nothing to hurry.
+	 * **Every one of these numbers came from this gate, not from an author.** Each was
+	 * set by dropping it to zero and reading the list back. The 177 that stood here
+	 * before was one above the real count, which is a ceiling above today's value, and
+	 * a ceiling above today's value is permission.
 	 */
-	/**
-	 * Lowered from 177 to 176 on 2026-09-03, and **not by the commit that earned it**.
-	 *
-	 * Measured while opening the ACP bridge: the count was already 176 at `0396510`,
-	 * with the bridge in the tree and with it moved aside. So an earlier commit
-	 * connected something and left the number one too loose, and the ratchet spent
-	 * that time as permission rather than as a limit.
-	 *
-	 * Worth saying plainly because it is the second time in two days: on 2026-09-02
-	 * the raw-width ratchet in the other repository was written at 10 while its own
-	 * gate counted 9. **A ceiling above today's value is permission**, and the way to
-	 * avoid writing one is to ask the gate rather than the author.
-	 */
-	const DEPARTURE = 176;
+	it("read something, so a pass is not an empty sweep", () => {
+		// The guard that catches the failure `spec` and `sdk` walked into: zero orphans
+		// out of zero files read is not a clean package, it is a rule that was never
+		// applied, and it is indistinguishable from success unless something asks.
+		expect(swept.length, `${pkg}: nothing to sweep, so its zero means nothing`).toBeGreaterThan(0);
+		expect(imports.size, `${pkg}: no consumers read`).toBeGreaterThan(own.length);
+	});
 
 	it("has no more unreachable exports than the day this was written", () => {
-		// The message says the count and where to look, and does NOT claim to name the
-		// new one. It cannot: without a stored baseline list it only knows the total
-		// moved. Printing the first five and calling them new would be a failure
-		// message that sends somebody to the wrong file, which is worse than a bare
-		// number because it looks like help.
 		expect(
 			orphans.length,
-			orphans.length > DEPARTURE
-				? `${orphans.length - DEPARTURE} more unreachable export(s) than the ${DEPARTURE} this started at. ` +
+			orphans.length > departure
+				? `${orphans.length - departure} more unreachable export(s) in ${pkg} than the ${departure} this started at. ` +
 					`Diff this list against the previous run to see which: ` +
 					orphans.map((orphan) => `${orphan.module}:${orphan.name}`).join(" ")
 				: "",
-		).toBeLessThanOrEqual(DEPARTURE);
+		).toBeLessThanOrEqual(departure);
 	});
 
 	it("keeps the ratchet honest: the number is the count, not a comfortable round figure", () => {
 		// A ratchet nobody lowers is a ratchet that stopped meaning anything. When this
-		// goes red because the real count dropped, lower DEPARTURE in the same commit
+		// goes red because the real count dropped, lower the departure in the same commit
 		// that did the work.
-		expect(orphans.length, "the count fell; lower DEPARTURE to lock the gain in").toBe(DEPARTURE);
+		expect(orphans.length, `${pkg}: the count fell; lower its departure to lock the gain in`).toBe(
+			departure,
+		);
 	});
 
 	it("keeps every exemption honest: each says what would make it live", () => {
-		for (const entry of WAITING) {
-			expect(entry.until, `${entry.name} is exempt with no reason`).toBeTruthy();
-		}
+		// An empty list is a real state, not a skipped test: most packages have no
+		// exemptions, and `it.each([])` over one would be an error rather than a pass.
+		const silent = waiting.filter((entry) => !entry.until);
+		expect(silent.map((entry) => entry.name)).toEqual([]);
 	});
 
 	it("has no exemption for something that is already connected", () => {
 		// The other direction, and the one that rots. An entry that stayed after its
 		// phase landed is a hole in the sweep that nobody can see, because a passing
 		// test looks the same either way.
-		const connected = WAITING.filter((entry) => {
-			const defining = CORE_FILES.find((file) => exportsOf(readFileSync(file, "utf8")).includes(entry.name));
+		const connected = waiting.filter((entry) => {
+			const defining = own.find((file) =>
+				exportsOf(readFileSync(file, "utf8")).includes(entry.name),
+			);
 			return defining !== undefined && isUsed(entry.name, defining);
 		});
 		expect(connected.map((entry) => entry.name)).toEqual([]);
+	});
+});
+
+describe("the packages this rule cannot speak about", () => {
+	it("each says why, because a silent omission is a hole nobody can see", () => {
+		for (const entry of NOT_WATCHED) {
+			expect(entry.because, `${entry.pkg} is unwatched with no reason`).toBeTruthy();
+		}
+	});
+
+	it("names every package, so a new one cannot arrive unwatched and unmentioned", () => {
+		// The failure this catches: somebody adds `packages/browser`, it is neither
+		// watched nor excused, and the sweep stays green while a whole package goes
+		// unlooked-at. A new package has to be a decision, not a default.
+		const known = new Set([...WATCHED.map((w) => w.pkg), ...NOT_WATCHED.map((n) => n.pkg)]);
+		const onDisk = readdirSync(PACKAGES).filter((name) => {
+			try {
+				return statSync(join(PACKAGES, name, "package.json")).isFile();
+			} catch {
+				return false;
+			}
+		});
+		expect(onDisk.filter((name) => !known.has(name))).toEqual([]);
 	});
 });
