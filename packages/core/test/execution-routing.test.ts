@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import { ToolInterceptor } from "../src/security/interceptor.js";
 import { ForensicLog } from "../src/security/forensic-log.js";
+import { accept } from "../src/security/taint.js";
 import { toolByName } from "../src/tools/registry.js";
 import { localExecution, noExecution, type ExecutionPort } from "../src/ports/execution.js";
 import type { Policy } from "../src/sandbox.js";
@@ -74,6 +75,16 @@ function interceptor(execution: ExecutionPort): ToolInterceptor {
 	return new ToolInterceptor(policy(), new ForensicLog(), undefined, null, execution);
 }
 
+/**
+ * Reads a tool output, which is tainted since E13.
+ *
+ * The value no longer comes out of the interceptor as a bare string: reading it
+ * produces the taint in the same expression, so no caller can take one and leave
+ * the other. These tests care about the text, so they read it and drop the taint
+ * deliberately, which is a thing a test may do and the loop may not.
+ */
+const read = (output: Parameters<typeof accept<string>>[0]) => accept(output, "clean").value;
+
 describe("the interceptor acts through the port it was given", () => {
 	it("routes a command to the port instead of spawning", async () => {
 		const port = recordingPort();
@@ -84,7 +95,7 @@ describe("the interceptor acts through the port it was given", () => {
 		});
 
 		expect(port.calls).toEqual(["run:echo hello"]);
-		expect(outcome.output).toContain("from the port");
+		expect(read(outcome.output)).toContain("from the port");
 	});
 
 	it("routes a write to the port, and the local filesystem stays untouched", async () => {
@@ -132,7 +143,7 @@ describe("the interceptor acts through the port it was given", () => {
 			{ id: "1", name: "run_command", args: { command: "ls" } },
 		);
 
-		expect(outcome.output).toContain("the sandbox failed to start");
+		expect(read(outcome.output)).toContain("the sandbox failed to start");
 		expect(existsSync(join(root, "anything"))).toBe(false);
 	});
 });

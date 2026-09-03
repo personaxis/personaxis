@@ -79,6 +79,7 @@ import {
   type TraceNode,
 } from "./causal-trace.js";
 import { tightenVerdict, maxTaint, type ContextTaint, type SandboxPosture } from "./security/consent.js";
+import { accept, type Accepted } from "./security/taint.js";
 import { actionClassesFor } from "./enforcement/action-classes.js";
 import type { ExecutablePolicy } from "./enforcement/policy-compile.js";
 import { freezeCall } from "./gate/call.js";
@@ -1060,15 +1061,24 @@ export class PersonaAgent {
             } else {
               if (decision === "always") this.policy.allow.push(escapeRegExp(firstArg(call)));
               const r = await interceptor.run(tool, call);
-              output = r.output;
-              contextTaint = maxTaint(contextTaint, r.outputVerdict);
+              // E13: the value and the taint arrive together, from one call. There is
+              // no expression that takes one and leaves the other.
+              //
+              // Annotated rather than inferred, and that is the brand doing its job:
+              // `Tainted` is keyed by a symbol its module does not export, so the shape
+              // is deliberately unspellable from here and inference has nothing to walk.
+              // Naming the result is the cost of a boundary a caller cannot forge.
+              const accepted: Accepted<string> = accept(r.output, contextTaint);
+              output = accepted.value;
+              contextTaint = accepted.taint;
               if (r.ok) producedWork = true;
               else { errorCount++; noteFail(call); }
             }
           } else {
             const r = await interceptor.run(tool, call);
-            output = r.output;
-            contextTaint = maxTaint(contextTaint, r.outputVerdict);
+            const accepted: Accepted<string> = accept(r.output, contextTaint);
+            output = accepted.value;
+            contextTaint = accepted.taint;
             if (r.ok) producedWork = true;
             else { errorCount++; noteFail(call); }
           }

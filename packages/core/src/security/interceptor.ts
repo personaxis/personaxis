@@ -13,6 +13,7 @@
 
 import { EventBus } from "../events.js";
 import { ingestUntrusted } from "./ingest.js";
+import { fromOutside, type Tainted } from "./taint.js";
 import { runHooks, type HooksConfig } from "../hooks.js";
 import type { ToolSpec } from "../tools/registry.js";
 import type { ToolCall } from "../tool-calling.js";
@@ -21,7 +22,22 @@ import { localExecution, type ExecutionPort } from "../ports/execution.js";
 import { ForensicLog, type ForensicRecord } from "./forensic-log.js";
 
 export interface InterceptOutcome {
-  output: string;
+  /**
+   * What the tool returned, marked as having come from outside (E13).
+   *
+   * Tainted rather than a plain string, and that IS the defence. It used to be a
+   * string beside an `outputVerdict`, with the loop writing
+   * `contextTaint = maxTaint(contextTaint, r.outputVerdict)` next to it: correct, and
+   * correct in the way that lasts until somebody adds a second place that runs a tool
+   * and copies the four lines that matter and not the fifth. Nothing fails then. The
+   * taint simply stops accumulating, the consent matrix stops tightening, and a
+   * destructive call during a malicious-tainted turn is allowed by a check that ran
+   * and had nothing to check.
+   *
+   * `accept` is the only way to read it, and it returns the combined taint in the same
+   * object, so forgetting is a type error rather than an oversight.
+   */
+  output: Tainted<string>;
   ok: boolean;
   outputVerdict: "clean" | "suspicious" | "malicious";
   record: Readonly<ForensicRecord>;
@@ -90,6 +106,14 @@ export class ToolInterceptor {
       ok,
       outputVerdict: ingested.verdict,
     });
-    return { output, ok, outputVerdict: ingested.verdict, record };
+    return {
+      // Marked at the boundary, and the boundary is here: this is the moment somebody
+      // else's text enters this process. Everything downstream inherits the obligation
+      // from the type rather than from a convention.
+      output: fromOutside(output, ingested.verdict, `tool:${tool.name}`),
+      ok,
+      outputVerdict: ingested.verdict,
+      record,
+    };
   }
 }

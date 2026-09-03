@@ -66,6 +66,7 @@ export * from "./tools/registry.js";
 export * from "./tools/define.js";
 export * from "./tools/dialects.js";
 export * from "./tools/mounted.js";
+export * from "./security/taint.js";
 export * from "./tools/mcp-adapter.js";
 export * from "./loop-breaker.js";
 export * from "./planner.js";
