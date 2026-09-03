@@ -88,11 +88,27 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 	// connects to the servers `personaxis mcp add` registered and adapts everything they
 	// advertise. This test went red on its own for it, as it did for the three before.
 
-	// Effort levels and what a destination declares it accepts.
-	{ name: "resolveEffort", until: "E8 mounts the model seam" },
-	{ name: "forDestination", until: "E8 mounts the model seam" },
-	{ name: "mayReplay", until: "E8 mounts the model seam" },
-	{ name: "EFFORT_LADDER", until: "E8 mounts the model seam" },
+	// `forDestination` came off with E8, which put the seam in front of every request
+	// and gave it a table of destinations to read. These three did not, and each for
+	// its own reason rather than one shared excuse.
+	//
+	// `resolveEffort` and `EFFORT_LADDER` are reached from inside `model-seam.ts`, by
+	// the function that now runs in production. A use inside the defining module is
+	// not one this rule can see.
+	{
+		name: "resolveEffort",
+		until: "a caller outside `model-seam.ts` needs it; today only the mounted `forDestination` does",
+	},
+	{
+		name: "EFFORT_LADDER",
+		until: "a caller outside `model-seam.ts` needs it; today only `resolveEffort` does",
+	},
+	// `mayReplay` is different and worth saying plainly: it has no consumer because
+	// the thing it decides about does not exist yet. It asks whether reasoning issued
+	// by one destination may be replayed at another, and this engine does not keep
+	// reasoning with its issuer stamped. Measured on 2026-09-04: nothing reads
+	// `reasoning_content` or any equivalent, so there is no artifact to replay.
+	{ name: "mayReplay", until: "the engine keeps issued reasoning, which nothing does today" },
 
 	// Comparing two runs of the same persona, and reading why one decision led to the
 	// next.

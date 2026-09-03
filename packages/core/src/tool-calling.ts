@@ -9,6 +9,8 @@
  * *proposes* a tool call; the agent loop gates + executes.
  */
 
+import { capabilitiesFor } from "./run/destinations.js";
+import { forDestination, type Effort } from "./run/model-seam.js";
 import { repairToolArgs } from "./tool-repair.js";
 import { readDialect } from "./tools/dialects.js";
 import type { ToolSpec } from "./tools/registry.js";
@@ -95,6 +97,17 @@ export interface ToolCallConfig {
    * prefix match, so marking a prefix that changes every turn buys nothing at all.
    */
   cachePrefix?: boolean;
+  /**
+   * How hard this destination is being asked to think (E8).
+   *
+   * Resolved against what the destination declares it accepts, never sent raw. A
+   * level a destination does not know is a 400, and a level silently swapped for a
+   * stronger one is a bill nobody can explain, so `resolveEffort` steps DOWN or drops
+   * the field entirely.
+   */
+  effort?: Effort;
+  /** Told when the asked-for effort had to be stepped down, so it can be recorded. */
+  onEffortDowngrade?: (from: Effort, to: Effort | undefined, destination: string) => void;
 }
 
 /**
@@ -263,6 +276,25 @@ export async function requestToolCall(
 ): Promise<ToolCallResponse> {
   const fetchImpl = cfg.fetchImpl ?? fetch;
 
+  // E8: the seam, asked before the request is built rather than after it fails.
+  //
+  // `forDestination` copies as well as resolving, which is the other half of the rule
+  // it carries: anything done per destination happens on a copy, because a sanitiser
+  // that trimmed a shared tool registry in place left it permanently trimmed for every
+  // other provider. Nothing here mutates `messages` or `tools`.
+  const destination = capabilitiesFor(cfg.endpoint, cfg.model);
+  const shaped = cfg.effort
+    ? forDestination(
+        { destination: destination.id, effort: cfg.effort, messages: [], tools: [] },
+        destination,
+      )
+    : undefined;
+  const effort = shaped?.effort;
+  if (cfg.effort && effort !== cfg.effort) {
+    // A downgrade nobody can see is a downgrade somebody argues about later.
+    cfg.onEffortDowngrade?.(cfg.effort, effort, destination.id);
+  }
+
   if (!preferFallback) {
     const body = {
       model: cfg.model,
@@ -279,6 +311,12 @@ export async function requestToolCall(
       // a token budget: streaming that quietly cost the budget its numbers would turn
       // a hard stop into a run that never stops.
       ...(cfg.onDelta ? { stream: true, stream_options: { include_usage: true } } : {}),
+      // E8: the effort this destination declared it accepts, or nothing at all.
+      //
+      // Absent is the ordinary case and the safe one. Only a destination in the table
+      // declares an effort vocabulary, so a local runtime somebody started this
+      // morning never receives a field it would reject.
+      ...(effort ? { reasoning_effort: effort } : {}),
     };
     const res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
     if (res.ok) {

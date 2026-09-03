@@ -74,6 +74,8 @@ export {
 	type Transport,
 } from "./model-seam.js";
 
+export { capabilitiesFor } from "./destinations.js";
+
 export {
 	deepen,
 	delegate,
