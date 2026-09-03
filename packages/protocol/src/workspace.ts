@@ -393,6 +393,26 @@ export type ServerToDaemonMsg =
 			 */
 			step?: StepContext;
 			/**
+			 * Which agent runs this persona, when the workspace has an opinion.
+			 *
+			 * `Machine.hostAgents` has always been a list a machine reports about
+			 * itself, read by one screen and deciding nothing: the daemon picked the
+			 * first agent it found at `connect` and used it for every job for the rest
+			 * of the session. So a workspace could see which agents a machine had and
+			 * could not ask for one, and a persona tuned for a particular agent ran on
+			 * whatever happened to be installed first.
+			 *
+			 * A PROPOSAL, like `working_dir`, and refused the same way. The machine
+			 * answers with what it has: asking for an agent it did not install is a
+			 * refusal with a reason, never a silent fallback to something else. A
+			 * persona that says it needs Codex and quietly gets Claude Code is a run
+			 * whose result nobody can attribute to a choice.
+			 *
+			 * Absent means "whatever this machine would have used", which is what
+			 * every daemon written before this field did.
+			 */
+			host_agent?: HostAgentName;
+			/**
 			 * Which consented directory this job's project works in.
 			 *
 			 * A PROPOSAL and never an instruction. The daemon ran everything in the

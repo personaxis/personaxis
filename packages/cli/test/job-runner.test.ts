@@ -54,7 +54,7 @@ function assign(overrides: Partial<Extract<ServerToDaemonMsg, { type: "job.assig
 
 function runner(options: {
 	scope?: string[];
-	launcher?: () => { command: string; args: string[] } | null;
+	launcher?: (host: HostAgentName) => { command: string; args: string[] } | null;
 	maxConcurrent?: number;
 	sessionRuns?: () => Promise<"completed" | "failed" | "stopped">;
 	onPolicy?: () => void;
@@ -198,6 +198,59 @@ describe("something a person writes to a job already running", () => {
 
 		expect(delivered).toEqual([]);
 		expect(events).toEqual([]);
+	});
+});
+
+describe("which agent runs this persona", () => {
+	it("uses the one the workspace asked for, not the machine's first", async () => {
+		// `Machine.hostAgents` has always been a list a machine reports about itself,
+		// read by one screen and deciding nothing: the daemon picked the first agent it
+		// found at connect and used it for every job of the session. A workspace could
+		// see which agents a machine had and could not ask for one.
+		const { instance, started } = runner({ host: "claude-code" });
+		instance.handle(assign({ host_agent: "codex" } as never));
+
+		// Codex declares no ACP adapter, so the old transport ran it: the point is that
+		// the CHOICE decided the road, not the machine's default.
+		expect(started[0]!.command).toBe("claude");
+	});
+
+	it("refuses an agent this machine does not have, naming what was asked for", async () => {
+		// Never a quiet fallback. A persona that says it needs Codex and silently gets
+		// Claude Code is a run whose result nobody can attribute to a choice.
+		const { instance, events } = runner({
+			launcher: (host) => (host === "claude-code" ? { command: "claude", args: [] } : null),
+		});
+		instance.handle(assign({ host_agent: "codex" } as never));
+
+		const ending = events.find((event) => event.kind === "persona.session.ended");
+		expect(ending).toMatchObject({ status: "failed" });
+		expect(String((ending as { reason?: string }).reason)).toContain("codex");
+		expect(String((ending as { reason?: string }).reason)).toContain("not installed");
+	});
+
+	it("falls back to the machine's own agent when the workspace has no opinion", async () => {
+		// Which is what every daemon written before this field did.
+		const { instance, started } = runner({});
+		instance.handle(assign());
+		expect(started[0]!.command).toBe("claude-agent-acp");
+	});
+
+	it("names the agent the job actually got, not the machine's default", async () => {
+		// The record has to say which agent ran, and a job that overrode the default
+		// would otherwise be attributed to the one the daemon happened to start with.
+		const { instance, events } = runner({ host: "claude-code" });
+		instance.handle(assign({ host_agent: "codex" } as never));
+		instance.handle({
+			type: "intervention.deliver",
+			job_id: "job_1",
+			intervention_id: "i1",
+			body: "steer",
+			user_id: "u",
+		} as never);
+
+		const said = events.find((event) => event.kind === "agent.thought.streamed");
+		expect(String((said as { text?: string }).text)).toContain("codex");
 	});
 });
 

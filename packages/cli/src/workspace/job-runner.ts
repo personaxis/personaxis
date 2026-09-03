@@ -165,6 +165,8 @@ export interface AgentRun {
 
 interface RunningJob {
 	session: AgentRun;
+	/** Which agent this job actually got, which is not always the machine's default. */
+	host: HostAgentName;
 	reporter: JobReporter;
 	/**
 	 * Where it is running.
@@ -259,9 +261,19 @@ export class JobRunner {
 			);
 		}
 
-		const launch = this.options.launcher(this.options.host);
+		// The workspace may ASK for an agent. It may not have one it did not
+		// install: the answer is a refusal that names what was asked for, never a
+		// quiet fallback. A persona that says it needs Codex and silently gets
+		// Claude Code is a run whose result nobody can attribute to a choice.
+		const host = message.host_agent ?? this.options.host;
+		const launch = this.options.launcher(host);
 		if (!launch) {
-			return this.refuse(reporter, `no ${this.options.host} agent is installed on this machine`);
+			return this.refuse(
+				reporter,
+				message.host_agent
+					? `the workspace asked for ${message.host_agent}, which is not installed on this machine`
+					: `no ${host} agent is installed on this machine`,
+			);
 		}
 
 		const instruction = readPrompt(message.trigger_context);
@@ -318,7 +330,7 @@ export class JobRunner {
 		 * offers, and it will disappear when the last one can.
 		 */
 		const stepMeta = metaFor(message.step);
-		const acp = acpCommandFor(this.options.host);
+		const acp = acpCommandFor(host);
 		const session: AgentRun = acp
 			? (this.options.createAcpSession ?? ((options) => new AcpSession(options)))({
 					command: acp.command,
@@ -326,7 +338,7 @@ export class JobRunner {
 					prompt,
 					cwd,
 					emit,
-					agentName: this.options.host,
+					agentName: host,
 					// The same fact as data. An agent that can read it does not have to
 					// parse the sentence above out of its own prompt.
 					...(stepMeta === undefined ? {} : { meta: stepMeta }),
@@ -345,11 +357,11 @@ export class JobRunner {
 					prompt,
 					cwd,
 					emit,
-					agentName: this.options.host,
+					agentName: host,
 					...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
 				});
 
-		this.running.set(jobId, { session, reporter, cwd });
+		this.running.set(jobId, { session, reporter, cwd, host });
 
 		// What the step leaves behind, named after it finishes.
 		//
@@ -410,7 +422,7 @@ export class JobRunner {
 			job.reporter.reportWire(
 				{
 					kind: "agent.thought.streamed",
-					text: `this machine cannot deliver a message to a ${this.options.host} agent while it works`,
+					text: `this machine cannot deliver a message to a ${job.host} agent while it works`,
 				},
 				DAEMON,
 			);
