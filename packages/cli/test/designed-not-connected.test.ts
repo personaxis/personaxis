@@ -110,15 +110,21 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 	// `reasoning_content` or any equivalent, so there is no artifact to replay.
 	{ name: "mayReplay", until: "the engine keeps issued reasoning, which nothing does today" },
 
-	// Comparing two runs of the same persona, and reading why one decision led to the
-	// next.
-	{ name: "compareRuns", until: "E9 mounts regression" },
-	{ name: "describeComparison", until: "E9 mounts regression" },
-	{ name: "SCORE_DROP_THRESHOLD", until: "E9 mounts regression" },
-	{ name: "BEHAVIORAL_FLIP_THRESHOLD", until: "E9 mounts regression" },
-	{ name: "buildTrace", until: "E9 mounts the causal trace" },
-	{ name: "describeTrace", until: "E9 mounts the causal trace" },
-	{ name: "traceIsInteresting", until: "E9 mounts the causal trace" },
+	// E9 mounted both halves. `compareRuns` and `describeComparison` are called by
+	// `personaxis-evals --compare`; `buildTrace`, `describeTrace` and `traceIsInteresting`
+	// by the loop, which now returns a trace on every result.
+	//
+	// The two thresholds stayed, and for the sweep's own reason rather than a gap: both
+	// are read inside `regression.ts` by the comparison that now runs in production, and
+	// a use inside the defining module is not one this rule can see.
+	{
+		name: "SCORE_DROP_THRESHOLD",
+		until: "a caller outside `regression.ts` needs it; today only the mounted `compareRuns` does",
+	},
+	{
+		name: "BEHAVIORAL_FLIP_THRESHOLD",
+		until: "a caller outside `regression.ts` needs it; today only the mounted `compareRuns` does",
+	},
 
 	// The loop breaker as a guard, and layered resolution with a policy tier.
 	{ name: "breakerGuard", until: "E10 mounts it" },

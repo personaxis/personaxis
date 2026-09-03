@@ -70,6 +70,14 @@ import { ForensicLog, type ForensicRecord } from "./security/forensic-log.js";
 import { ToolInterceptor } from "./security/interceptor.js";
 import { Watchdog } from "./security/watchdog.js";
 import { runPlanPhase, type PlanPhaseConfig } from "./plan-run.js";
+import {
+  buildTrace,
+  describeTrace,
+  traceIsInteresting,
+  unambiguousSteps,
+  type CausalTrace,
+  type TraceNode,
+} from "./causal-trace.js";
 import { tightenVerdict, maxTaint, type ContextTaint, type SandboxPosture } from "./security/consent.js";
 import { actionClassesFor } from "./enforcement/action-classes.js";
 import type { ExecutablePolicy } from "./enforcement/policy-compile.js";
@@ -250,6 +258,15 @@ export interface AgentResult {
    * never taken, and a caller cannot tell those apart from a number alone.
    */
   compactions: readonly CompactionRecord[];
+  /**
+   * Why this run did what it did, when there is anything to say.
+   *
+   * Built at write time from the plan's declared tools and the calls that ran, never
+   * reconstructed afterwards. A call the plan did not unambiguously name lands under
+   * , which is the honest answer and also the interesting one: a run
+   * that departed from its plan is the run somebody is investigating.
+   */
+  trace: CausalTrace;
 }
 
 const GUARD =
@@ -476,6 +493,15 @@ export class PersonaAgent {
     // E6: what each compaction cost, so the caller is told rather than trusting
     // that a run which felt slow did or did not rewrite its own transcript.
     const compactions: CompactionRecord[] = [];
+    // E9: the material a causal trace is built from, collected as it happens.
+    //
+    // At write time rather than reconstructed afterwards, which is the design decision
+    // `causal-trace.ts` opens with: a reconstruction matches a call to the nearest plan
+    // step by time, and is right until a step retries or the model works out of order,
+    // and then it confidently attributes an action to an intention it never had.
+    const intents = new Map<number, string>();
+    const stepOfTool = new Map<string, number>();
+    const traceNodes: TraceNode[] = [];
     // Refine the window from the endpoint in the background (best-effort).
     void resolveContextWindow(this.opts.llm).then((w) => (meter.limit = w)).catch(() => {});
 
@@ -614,9 +640,16 @@ export class PersonaAgent {
             stoppedBy: "plan",
           },
           compactions,
+          trace: buildTrace(intents, traceNodes),
         };
       }
       messages.push({ role: "system", content: planning.anchor });
+      // E9: the plan's steps become the intentions a trace is read against, and the
+      // tools they declare become the only honest way to attribute a call to one.
+      planning.steps.forEach((step, index) => {
+        intents.set(index + 1, step.note?.trim() || step.tool);
+      });
+      for (const [tool, step] of unambiguousSteps(planning.steps)) stepOfTool.set(tool, step);
     }
 
     const spent = (steps: number, goalMet = false, confidence?: number): AgentBudgetSpent => ({
@@ -655,11 +688,23 @@ export class PersonaAgent {
               .filter((n) => n !== FINISH_TOOL),
           ),
         ];
+        // E9: the causal trace goes to the reflection, when there is one worth reading.
+        //
+        // This is what the trace was written for, and `traceIsInteresting` says which
+        // runs qualify: a run that went exactly to plan tells a reflecting persona
+        // nothing the outcome does not already carry. A step that failed, or work that
+        // happened outside the plan entirely, is the part worth abstracting a lesson
+        // from, and it is the part a raw transcript buries.
+        const causal = buildTrace(intents, traceNodes);
+        const reflection = traceIsInteresting(causal)
+          ? `${messages.map((m) => `${m.role}: ${m.content ?? ""}`).join("\n").slice(-5000)}\n\n## Why it went that way\n${describeTrace(causal)}`
+          : messages.map((m) => `${m.role}: ${m.content ?? ""}`).join("\n").slice(-6000);
+
         const res = await runPostmortem(
           { outcome, steps: step, failuresBeforeSuccess: errorCount },
           {
             task,
-            transcript: messages.map((m) => `${m.role}: ${m.content ?? ""}`).join("\n").slice(-6000),
+            transcript: reflection,
             outcome,
             toolsUsed,
           },
@@ -686,6 +731,15 @@ export class PersonaAgent {
       );
       for (const r of result.results) bus.emit({ type: "verify-result", verifier: r.verifier, pass: r.pass, reason: r.reason });
       bus.emit({ type: "verify-complete", passed: result.passed, passes: result.passes, quorum: result.quorum });
+      // E9: verification belongs in the trace, because "the plan said to do this, it was
+      // done, and the check said it did not work" is the shape of the answer somebody is
+      // usually after. It carries no plan step: it is about the run, not about one step.
+      traceNodes.push({
+        kind: "verification",
+        seq: traceNodes.length,
+        label: `${result.passes}/${result.quorum} gates`,
+        ok: result.passed,
+      });
       this.lastVerification = result;
       if (result.passed || verification.mode === "advisory") return "accept";
       // mode === blocking and failed:
@@ -715,7 +769,7 @@ export class PersonaAgent {
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, compactions };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
         }
 
         // K.07: honor an out-of-band abort. The watchdog enforces the WALL-CLOCK ceiling on a
@@ -729,7 +783,7 @@ export class PersonaAgent {
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, compactions };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
         }
 
         bus.emit({ type: "agent-step", step });
@@ -803,12 +857,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
-            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
           }
           continue; // retry
         }
@@ -968,6 +1022,18 @@ export class PersonaAgent {
             else { errorCount++; noteFail(call); }
           }
 
+          // E9: the call as a trace node, with the plan step that named its tool when
+          // exactly one did. Ambiguous cases carry no step and read as "not part of the
+          // plan", which is uncertain rather than wrong.
+          traceNodes.push({
+            kind: "tool-call",
+            seq: traceNodes.length,
+            label: `${call.name} ${JSON.stringify(call.args).slice(0, 80)}`,
+            callId: call.id,
+            ok: !output.startsWith("error") && !output.startsWith("denied"),
+            ...(stepOfTool.has(call.name) ? { planStep: stepOfTool.get(call.name)! } : {}),
+          });
+
           // J.6: track the run's task state (survives compaction) and offload a large output
           // to a handle instead of pushing 100k of it into the context.
           if (typeof call.args.path === "string") taskState.noteFile(call.args.path);
@@ -992,7 +1058,7 @@ export class PersonaAgent {
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
             this.persist(task, "stopped", summary, step);
-            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, compactions };
+            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
           }
         }
 
@@ -1002,12 +1068,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
-            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
           }
           // retry: loop continues; the failure note is already in messages.
         }
@@ -1015,11 +1081,11 @@ export class PersonaAgent {
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
       this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
-      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, compactions };
+      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
       this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
-      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, compactions };
+      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.
       watchdog.stop();

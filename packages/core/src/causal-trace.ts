@@ -132,6 +132,32 @@ export function describeTrace(trace: CausalTrace): string {
 }
 
 /**
+ * Which plan step a call belongs to, when the plan makes that unambiguous.
+ *
+ * The header of this file forbids attributing by proximity, and this is not that. A plan
+ * step declares the TOOL it intends to use, so a call to that tool is either the step
+ * that named it or it is not part of the plan at all. That is identity, not nearness.
+ *
+ * The ambiguity rule is where the whole thing is decided. When two steps declare the
+ * same tool, a call to it could be either, and picking the earlier one would be a guess
+ * dressed as a fact. So the answer is nothing, and the call lands under "not part of the
+ * plan", which reads as uncertain rather than as wrong. A wrong causal link is worse
+ * than no causal link, in a document whose value is that it can be trusted.
+ *
+ * Returns a map from tool name to step number, holding only the unambiguous ones.
+ */
+export function unambiguousSteps(plan: readonly { readonly tool: string }[]): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const step of plan) counts.set(step.tool, (counts.get(step.tool) ?? 0) + 1);
+
+	const attributable = new Map<string, number>();
+	plan.forEach((step, index) => {
+		if (counts.get(step.tool) === 1) attributable.set(step.tool, index + 1);
+	});
+	return attributable;
+}
+
+/**
  * Whether a trace is worth attaching to a post-mortem.
  *
  * A trace of a run that went exactly to plan tells a reflecting persona nothing it does not
