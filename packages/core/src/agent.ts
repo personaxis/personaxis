@@ -279,7 +279,22 @@ export class PersonaAgent {
     this.tools = tools;
   }
 
-  private systemPrompt(): string {
+  /**
+   * The part of the prompt that does not change between turns.
+   *
+   * E5 split this from what the persona currently remembers, and the split is the
+   * whole of prompt caching rather than a tidiness pass. A provider caches a PREFIX:
+   * it charges 1.25x to write one and 0.1x to read it, and the discount applies only
+   * up to the first token that differs. Recent memory used to sit inside this string,
+   * and recent memory changes every time a turn is recorded, so the prefix differed
+   * at the memory block on every single turn and no cache could ever hit.
+   *
+   * Everything here is fixed for the life of a session: the guard, the identity
+   * document, the environment, the awareness block, the standing goal. What the
+   * persona knows right now goes after it, in its own message, where it costs a cache
+   * write of its own and nothing else.
+   */
+  private stablePrefix(): string {
     return [
       GUARD,
       "",
@@ -292,7 +307,6 @@ export class PersonaAgent {
       `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
       this.opts.awareness ? `\n${this.opts.awareness}` : "",
       this.opts.goal ? `\n# Standing goal\n${this.opts.goal}` : "",
-      this.resumeContext(),
     ].filter(Boolean).join("\n");
   }
 
@@ -492,9 +506,21 @@ export class PersonaAgent {
       ? renderGuides(guidesFor(activeSkills, this.opts.skillGuides))
       : null;
 
+    // E5: the stable half first, then what changes. The order is the cache.
+    //
+    // A provider matches a prefix and stops at the first token that differs, so
+    // anything volatile ahead of something stable makes the stable part uncacheable
+    // too. Memory is the volatile part and it used to be inside the identity message,
+    // which meant the identity, the guard and the awareness block were re-read from
+    // scratch on every turn of every session.
+    const remembered = this.resumeContext();
     const messages: ChatMessage[] = [
-      { role: "system", content: this.systemPrompt() },
+      { role: "system", content: this.stablePrefix() },
       ...(guideBlock ? [{ role: "system" as const, content: guideBlock }] : []),
+      // After the guides, because a guide is fixed for the session too and memory is
+      // not. Everything that changes per turn belongs on the far side of everything
+      // that does not.
+      ...(remembered.trim() ? [{ role: "system" as const, content: remembered }] : []),
       ...(this.opts.priorMessages ?? []),
       // V7.A1: environment changes are SYSTEM speech, not the user's words.
       ...(this.opts.envNote ? [{ role: "system" as const, content: this.opts.envNote }] : []),

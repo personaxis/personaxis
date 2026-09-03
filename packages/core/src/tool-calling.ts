@@ -71,6 +71,19 @@ export interface ToolCallConfig {
    * `readReply` handles both rather than demanding one.
    */
   onDelta?: (text: string) => void;
+  /**
+   * Marks the stable prefix as cacheable, for providers whose cache is explicit.
+   *
+   * Off by default, and that is the careful direction rather than the lazy one. Two
+   * families of provider exist and they disagree: one caches any repeated prefix on
+   * its own and needs nothing, the other caches only what a request marks and
+   * REJECTS the marking if it does not know it. Sending the mark everywhere would
+   * turn a cost optimisation into a 400 on somebody's local runtime.
+   *
+   * What makes the mark worth anything is `stablePrefix` in the loop: a cache is a
+   * prefix match, so marking a prefix that changes every turn buys nothing at all.
+   */
+  cachePrefix?: boolean;
 }
 
 /**
@@ -194,6 +207,40 @@ function parseArgs(raw: string): Record<string, unknown> {
 }
 
 /**
+ * The transcript with a cache breakpoint on its stable prefix.
+ *
+ * One breakpoint, on the LAST leading system message, and both halves of that are
+ * deliberate. Last, because a provider caches everything up to the mark and a mark on
+ * the first of three system messages would leave the other two paying full price
+ * every turn. Leading, because the first user message is where per-turn text starts
+ * and marking past it would mark something that differs on every request, which buys
+ * a cache write and never a read.
+ *
+ * The content becomes an array of blocks, which is how the marking is expressed. A
+ * provider that does not know the field would reject it, which is why this only runs
+ * when the caller asked for it.
+ */
+function markedForCache(messages: ChatMessage[]): unknown[] {
+	let last = -1;
+	for (let index = 0; index < messages.length; index += 1) {
+		if (messages[index]!.role !== "system") break;
+		last = index;
+	}
+	if (last < 0) return messages;
+
+	return messages.map((message, index) =>
+		index === last
+			? {
+					...message,
+					content: [
+						{ type: "text", text: message.content, cache_control: { type: "ephemeral" } },
+					],
+				}
+			: message,
+	);
+}
+
+/**
  * Request the next action. `preferFallback` lets the caller skip the native
  * attempt once it has learned the endpoint doesn't support `tools`.
  */
@@ -208,7 +255,7 @@ export async function requestToolCall(
   if (!preferFallback) {
     const body = {
       model: cfg.model,
-      messages,
+      messages: cfg.cachePrefix ? markedForCache(messages) : messages,
       tools: tools.map((t) => ({
         type: "function",
         function: { name: t.name, description: t.description, parameters: t.parameters },
