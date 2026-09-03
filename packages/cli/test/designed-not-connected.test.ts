@@ -234,7 +234,20 @@ describe("the engine's exports reach something", () => {
 	 * next to its one caller, and `export` is the default gesture. That is cheap to
 	 * fix and worth nothing to hurry.
 	 */
-	const DEPARTURE = 177;
+	/**
+	 * Lowered from 177 to 176 on 2026-09-03, and **not by the commit that earned it**.
+	 *
+	 * Measured while opening the ACP bridge: the count was already 176 at `0396510`,
+	 * with the bridge in the tree and with it moved aside. So an earlier commit
+	 * connected something and left the number one too loose, and the ratchet spent
+	 * that time as permission rather than as a limit.
+	 *
+	 * Worth saying plainly because it is the second time in two days: on 2026-09-02
+	 * the raw-width ratchet in the other repository was written at 10 while its own
+	 * gate counted 9. **A ceiling above today's value is permission**, and the way to
+	 * avoid writing one is to ask the gate rather than the author.
+	 */
+	const DEPARTURE = 176;
 
 	it("has no more unreachable exports than the day this was written", () => {
 		// The message says the count and where to look, and does NOT claim to name the
