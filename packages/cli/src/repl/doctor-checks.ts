@@ -14,6 +14,7 @@ import chalk from "chalk";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  DIALECTS,
   readState,
   extractEnvelopes,
   verifyMemoryChain,
@@ -199,6 +200,15 @@ export async function runDoctorChecks(rootPersonaPath: string, arg = ""): Promis
   const warn = (s: string): string => (warnings++, chalk.yellow("  ! ") + s);
   const fix = (s: string): string[] =>
     wrapFix(s).map((line, i) => chalk.dim(i === 0 ? `      fix: ${line}` : `           ${line}`));
+
+  // E7: which model families this build can read a tool call out of.
+  //
+  // Worth a line in a health check because the failure it covers is invisible from
+  // the outside. An open model behind a server with no tool parser answers with the
+  // call written as text, so `tool_calls` is empty, nothing runs, nothing errors, and
+  // the only symptom is a persona that talks about acting. Somebody debugging that
+  // needs to know the runtime will read it anyway, and which shapes it knows.
+  rows.push(ok(`tool-call dialects: ${DIALECTS.map((dialect) => dialect.name).join(", ")}`));
 
   const llm = llmConfig({
     personaPath,

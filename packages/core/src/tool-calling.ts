@@ -10,6 +10,7 @@
  */
 
 import { repairToolArgs } from "./tool-repair.js";
+import { readDialect } from "./tools/dialects.js";
 import type { ToolSpec } from "./tools/registry.js";
 
 export interface ChatMessage {
@@ -45,6 +46,16 @@ export interface ToolCallResponse {
   text: string;
   toolCalls: ToolCall[];
   usedFallback: boolean;
+  /**
+   * E7: the model family whose syntax was read out of the text, when one was.
+   *
+   * Present means the endpoint did not parse a call the model made, which is a
+   * deployment missing its tool parser rather than anything about this run. Worth
+   * reporting because it is invisible otherwise: the reply looks like prose.
+   */
+  dialect?: string;
+  /** Tools it named that were not offered this turn, dropped rather than run. */
+  unknownTools?: readonly string[];
   /** Token accounting from the provider (for budget enforcement), when reported. */
   usage?: TokenUsage;
 }
@@ -277,6 +288,37 @@ export async function requestToolCall(
         name: tc.function.name,
         args: parseArgs(tc.function.arguments),
       }));
+      // E7: a call the endpoint did not parse, still written in the model's own
+      // syntax. Only when the native path found none, so a well-formed reply is never
+      // re-read, and only for tools offered this turn.
+      if (toolCalls.length === 0) {
+        const reading = readDialect(
+          reply.content,
+          tools.map((tool) => tool.name),
+        );
+        if (reading && reading.calls.length > 0) {
+          return {
+            text: reading.text,
+            toolCalls: [...reading.calls],
+            usedFallback: false,
+            usage: extractUsage({ usage: reply.usage }),
+            dialect: reading.dialect,
+          };
+        }
+        if (reading) {
+          // Recognised the shape and none of the names. Reported so a deployment
+          // missing its parser is visible, rather than a run that quietly did nothing.
+          return {
+            text: reply.content.trim(),
+            toolCalls: [],
+            usedFallback: false,
+            usage: extractUsage({ usage: reply.usage }),
+            dialect: reading.dialect,
+            unknownTools: reading.unknown,
+          };
+        }
+      }
+
       return {
         text: reply.content.trim(),
         toolCalls,

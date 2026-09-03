@@ -65,6 +65,7 @@ export * from "./loop.js";
 export * from "./tools/exec.js";
 export * from "./tools/registry.js";
 export * from "./tools/define.js";
+export * from "./tools/dialects.js";
 export * from "./tools/mcp-adapter.js";
 export * from "./loop-breaker.js";
 export * from "./planner.js";
