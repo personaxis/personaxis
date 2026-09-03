@@ -77,13 +77,20 @@ function runner(options: {
 	const stopped = vi.fn();
 	const permissions: Array<(ask: { toolName: string; rawInput: unknown }) => unknown> = [];
 	const delivered: { id: string; userId: string; body: string }[] = [];
+	const held: string[] = [];
 	const fake = (canIntervene: boolean): AgentRun => ({
 		run: options.sessionRuns ?? (() => Promise.resolve("completed")),
 		stop: stopped,
 		// Only the ACP session has one. The old transport's agent was started with
 		// its input closed, and a method that existed and did nothing would be worse
 		// than its absence.
-		...(canIntervene ? { intervene: (i) => delivered.push(i) } : {}),
+		...(canIntervene
+			? {
+					intervene: (i) => delivered.push(i),
+					pause: () => held.push("pause"),
+					resume: () => held.push("resume"),
+				}
+			: {}),
 	});
 
 	const instance = new JobRunner({
@@ -110,7 +117,7 @@ function runner(options: {
 		},
 	});
 
-	return { instance, events, started, stopped, permissions, delivered };
+	return { instance, events, started, stopped, permissions, delivered, held };
 }
 
 /**
@@ -181,6 +188,38 @@ describe("something a person writes to a job already running", () => {
 
 		expect(delivered).toEqual([]);
 		expect(events).toEqual([]);
+	});
+});
+
+describe("hold, and let go", () => {
+	it("routes pause and resume to the session that is running", async () => {
+		// Both were in the protocol with nothing to receive them: a browser could send
+		// them and the gateway wrote an event saying somebody asked, while the agent
+		// carried on. A record that says a run was paused and a run that was not.
+		const { instance, held } = runner({});
+		instance.handle(assign());
+		instance.handle({ type: "job.pause", job_id: "job_1" } as never);
+		instance.handle({ type: "job.resume", job_id: "job_1" } as never);
+
+		expect(held).toEqual(["pause", "resume"]);
+	});
+
+	it("ignores them for a job that is not running", async () => {
+		const { instance, held, events } = runner({});
+		instance.handle({ type: "job.pause", job_id: "nobody" } as never);
+
+		expect(held).toEqual([]);
+		expect(events).toEqual([]);
+	});
+
+	it("ignores them on a transport that cannot hold, rather than pretending", async () => {
+		// Codex runs to completion in one shot: there is no next turn to hold before.
+		// A pause it accepted and did nothing about would be a button that lies.
+		const { instance, held } = runner({ host: "codex" });
+		instance.handle(assign());
+		instance.handle({ type: "job.pause", job_id: "job_1" } as never);
+
+		expect(held).toEqual([]);
 	});
 });
 

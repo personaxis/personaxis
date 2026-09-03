@@ -384,6 +384,20 @@ export type ServerToDaemonMsg =
 			persona_document?: string;
 	  }
 	| { type: "job.stop"; job_id: string }
+	/**
+	 * Hold, and let go.
+	 *
+	 * A browser has been able to send `pause` and `resume` since this protocol was
+	 * written, and neither had a road past the room: the gateway wrote an event
+	 * saying somebody asked and the agent carried on. `stop` had the same shape on
+	 * that path while a second, working route existed elsewhere, which is worse
+	 * than no button: the record said the run was stopped and it was not.
+	 *
+	 * What a pause can honestly mean is written where it is implemented. It is not
+	 * freezing a process somebody else is running.
+	 */
+	| { type: "job.pause"; job_id: string }
+	| { type: "job.resume"; job_id: string }
 	| { type: "policy.push"; persona_version_id: string; policy: CompiledPolicyRef }
 	| {
 			type: "gate.resolved";

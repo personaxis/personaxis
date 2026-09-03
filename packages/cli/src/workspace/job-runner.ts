@@ -150,6 +150,15 @@ export interface AgentRun {
 	 * method that existed and quietly did nothing would be worse than its absence.
 	 */
 	intervene?(intervention: { id: string; userId: string; body: string }): void;
+	/**
+	 * Finishes the turn in flight and holds before the next, until `resume`.
+	 *
+	 * Optional for the same reason `intervene` is: a session whose agent runs to
+	 * completion in one shot has no next turn to hold, so a `pause` it accepted
+	 * and did nothing about would be a button that lies.
+	 */
+	pause?(): void;
+	resume?(): void;
 }
 
 interface RunningJob {
@@ -180,6 +189,8 @@ export class JobRunner {
 		if (message.type === "job.assign") this.assign(message);
 		else if (message.type === "job.stop") this.stop(message.job_id);
 		else if (message.type === "intervention.deliver") this.intervene(message);
+		else if (message.type === "job.pause") this.running.get(message.job_id)?.session.pause?.();
+		else if (message.type === "job.resume") this.running.get(message.job_id)?.session.resume?.();
 		else if (message.type === "gate.resolved") {
 			// A person answered. Until this line existed the message arrived and
 			// nothing matched on it, which is the same shape of bug as `job.assign`

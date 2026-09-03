@@ -156,6 +156,24 @@ export class AcpSession {
 	 * not something an agent is required to understand.
 	 */
 	readonly #waiting: { id: string; userId: string; body: string }[] = [];
+	/**
+	 * Held, and what releases it.
+	 *
+	 * A pause cannot freeze a turn. The agent is another process, mid-work, and
+	 * nothing we can send makes it stop between two thoughts; ACP's own answer to
+	 * that is `session/cancel`, which ends the turn rather than suspending it.
+	 *
+	 * So what a pause honestly means here is: **finish this turn, and do not begin
+	 * the next one until somebody says.** That is a real thing to want, and with
+	 * the intervention queue beside it it is the whole steering loop: hold, say
+	 * what you meant, let go.
+	 *
+	 * A person who wants the work to stop NOW is asking for stop, which is a
+	 * different verb with a different answer, and conflating them would give
+	 * somebody a pause that quietly killed their run.
+	 */
+	#paused = false;
+	#released: (() => void) | null = null;
 	/** Who the agent is, in the record. Never `persona:self`. */
 	readonly #agent: WireAuthor;
 
@@ -212,7 +230,11 @@ export class AcpSession {
 			});
 
 			while (this.#waiting.length > 0 && KEEPS_LISTENING.has(outcome.stopReason)) {
-				const next = this.#waiting.shift()!;
+				// Between turns, which is the only place a pause can be honoured.
+				await this.#hold();
+				// A stop while held empties the queue, so there may be nothing left.
+				const next = this.#waiting.shift();
+				if (!next) break;
 				// A person asked, so the turn says a person asked. Attributing an
 				// intervention to the workspace would lose the only fact that makes it
 				// an intervention rather than more of the job.
@@ -256,6 +278,14 @@ export class AcpSession {
 		}
 	}
 
+	/** Waits while paused. Returns at once when nobody is holding. */
+	async #hold(): Promise<void> {
+		if (!this.#paused) return;
+		await new Promise<void>((release) => {
+			this.#released = release;
+		});
+	}
+
 	/** One turn, opened and closed on the wire, with who asked for it. */
 	async #turn(
 		runner: run.TurnRunner,
@@ -281,6 +311,9 @@ export class AcpSession {
 		// that was deliberately ended would be the daemon carrying out an instruction
 		// after being told to stop.
 		this.#waiting.length = 0;
+		// And a stop releases a hold, or the run would sit forever waiting for a
+		// resume that stopping means nobody is going to send.
+		this.resume();
 	}
 
 	/**
@@ -294,6 +327,29 @@ export class AcpSession {
 	 * know whether the agent happens to be mid-turn to know what becomes of what it
 	 * just said. It lands in the next turn, and the room hears when it did.
 	 */
+	/**
+	 * Finish the turn in flight, then hold.
+	 *
+	 * Idempotent, because a person pressing a button twice is not an error and a
+	 * second pause that reset the wait would make the first one unreleasable.
+	 */
+	pause(): void {
+		this.#paused = true;
+	}
+
+	/** Let go. Does nothing if nobody was holding, which is not an error either. */
+	resume(): void {
+		this.#paused = false;
+		const release = this.#released;
+		this.#released = null;
+		release?.();
+	}
+
+	/** Whether it is holding, for a caller that wants to say so. */
+	get paused(): boolean {
+		return this.#paused;
+	}
+
 	intervene(intervention: { id: string; userId: string; body: string }): void {
 		if (this.#ended) return;
 		this.#waiting.push(intervention);
