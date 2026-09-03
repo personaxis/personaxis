@@ -73,7 +73,12 @@ function runner(options: {
 	host?: HostAgentName;
 } = {}) {
 	const events: WireEvent[] = [];
-	const started: Array<{ cwd: string; prompt: string; command: string }> = [];
+	const started: Array<{
+		cwd: string;
+		prompt: string;
+		command: string;
+		meta?: Record<string, unknown>;
+	}> = [];
 	const stopped = vi.fn();
 	const permissions: Array<(ask: { toolName: string; rawInput: unknown }) => unknown> = [];
 	const delivered: { id: string; userId: string; body: string }[] = [];
@@ -111,7 +116,12 @@ function runner(options: {
 		},
 		createAcpSession: (opts) => {
 			options.onStart?.();
-			started.push({ cwd: opts.cwd, prompt: opts.prompt, command: opts.command });
+			started.push({
+				cwd: opts.cwd,
+				prompt: opts.prompt,
+				command: opts.command,
+				...(opts.meta === undefined ? {} : { meta: opts.meta }),
+			});
 			permissions.push(opts.decide);
 			return fake(true);
 		},
@@ -188,6 +198,40 @@ describe("something a person writes to a job already running", () => {
 
 		expect(delivered).toEqual([]);
 		expect(events).toEqual([]);
+	});
+});
+
+describe("where the agent is in a service", () => {
+	const step = { service: "Weekly brief", step: 2, of: 4, name: "Draft it" };
+
+	it("reaches the agent as a sentence AND as data, from one fact", async () => {
+		// It used to reach it as prose and only as prose, so an agent could not ask
+		// which step it was on: it could only re-read the paragraph it was given.
+		const { instance, started } = runner({});
+		instance.handle(assign({ step } as never));
+
+		expect(started[0]!.prompt).toContain("step 2 of 4");
+		expect(started[0]!.prompt).toContain("Weekly brief");
+		expect(started[0]!.meta?.["personaxis.step"]).toMatchObject({ step: 2, of: 4 });
+	});
+
+	it("says nothing about a service when the run belongs to none", async () => {
+		const { instance, started } = runner({});
+		instance.handle(assign());
+
+		expect(started[0]!.prompt).not.toContain("step 1 of");
+		expect(started[0]!.meta).toBeUndefined();
+	});
+
+	it("keeps the instruction as the last thing the agent reads", async () => {
+		// Order matters in a prompt and this is the part that was already right: who
+		// you are, then where you are, then what you were asked.
+		const { instance, started } = runner({});
+		instance.handle(assign({ step, trigger_context: { prompt: "summarise it" } } as never));
+
+		const prompt = started[0]!.prompt;
+		expect(prompt.indexOf("step 2 of 4")).toBeLessThan(prompt.indexOf("summarise it"));
+		expect(prompt.trimEnd().endsWith("summarise it")).toBe(true);
 	});
 });
 

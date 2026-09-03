@@ -56,6 +56,7 @@ export interface AcpAgentConnection {
 	prompt(params: {
 		sessionId: string;
 		prompt: readonly { type: "text"; text: string }[];
+		_meta?: Record<string, unknown>;
 	}): Promise<{ stopReason: string; usage?: AcpUsage | null }>;
 	cancel(params: { sessionId: string }): Promise<void>;
 }
@@ -257,6 +258,15 @@ export interface AcpProviderOptions {
 	readonly collector: AcpTurnCollector;
 	/** Names the agent in the record. `claude-code`, `gemini-cli`, and so on. */
 	readonly agentName?: string;
+	/**
+	 * Metadata for every turn, on the protocol's own `_meta`.
+	 *
+	 * ACP reserves that field for exactly this and says implementations must make no
+	 * assumptions about keys in it, which is why what goes there is namespaced by
+	 * whoever puts it. An agent that does not know the key ignores it, and one built
+	 * against us reads a fact it would otherwise have to find in a sentence.
+	 */
+	readonly meta?: Record<string, unknown>;
 }
 
 /**
@@ -353,6 +363,7 @@ export function acpLoop(options: AcpProviderOptions): AcpProvider {
 				const pending = connection.prompt({
 					sessionId,
 					prompt: [{ type: "text", text: context.request.prompt }],
+					...(options.meta === undefined ? {} : { _meta: options.meta }),
 				});
 
 				// Already aborted before the turn began is a real case: a person who

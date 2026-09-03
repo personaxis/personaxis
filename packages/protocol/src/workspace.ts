@@ -338,6 +338,34 @@ export type DaemonMsg =
 	/** Acknowledges what the daemon has applied of what the server sent it. */
 	| { type: "ack"; job_id: string; seq: number };
 
+/**
+ * A step of a service, as the thing running it needs to know about itself.
+ *
+ * Mirrors what a `ServiceStep` actually is rather than a convenient subset:
+ * services are a straight line of contiguous positions, each step is one persona
+ * doing one thing, and approval sits on the step that PRODUCES the work rather than
+ * on the one that consumes it.
+ */
+export interface StepContext {
+	/** What the service is called, in the words somebody typed. */
+	readonly service: string;
+	/** Which step this is. One-based and contiguous, as the column is. */
+	readonly step: number;
+	/** How many the service has, so an agent can tell a middle from an end. */
+	readonly of: number;
+	/** What this step is called. Absent falls back to the persona's own name. */
+	readonly name?: string;
+	/**
+	 * Whether a person has to say yes before the next step starts.
+	 *
+	 * Worth telling the agent, and not only the runtime: what somebody approves is
+	 * an outcome they can read, and an agent that knows a human is about to read
+	 * this writes a different handover than one producing an intermediate nobody
+	 * will see.
+	 */
+	readonly approvalBefore?: boolean;
+}
+
 export type ServerToDaemonMsg =
 	| { type: "registered"; machine_id: string }
 	| {
@@ -346,6 +374,24 @@ export type ServerToDaemonMsg =
 			persona_version_id: string;
 			policy: CompiledPolicyRef;
 			trigger_context: Record<string, unknown>;
+			/**
+			 * Where this run sits in the service it belongs to.
+			 *
+			 * The step used to reach the agent as PROSE, glued in front of the
+			 * instruction by whoever built the prompt, and that is a loss rather than a
+			 * shortcut: an agent cannot ask a paragraph which step it is on, how many
+			 * are left, or whether a person has to approve what it produces before the
+			 * next one starts. It could only re-read the sentence it was given.
+			 *
+			 * As data it is one source with two renderings: the daemon writes the
+			 * sentence FROM this for an agent that reads only text, and passes the same
+			 * fields as protocol metadata for one that can read them. Two renderings of
+			 * one fact cannot disagree; a sentence and a field can.
+			 *
+			 * Absent means a run that is not part of a service, which is most of them:
+			 * somebody pressing Run on a persona.
+			 */
+			step?: StepContext;
 			/**
 			 * Which consented directory this job's project works in.
 			 *

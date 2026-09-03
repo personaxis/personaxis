@@ -40,6 +40,8 @@ interface Script {
 	readonly waitForCancel?: boolean;
 	/** Throws instead of answering, which is a dead connection from our side. */
 	readonly explodes?: string;
+	/** Metadata the provider should put on the turn. */
+	readonly meta?: Record<string, unknown>;
 }
 
 const SESSION = "session-under-test";
@@ -52,9 +54,11 @@ function connect(script: Script): {
 	provider: AcpProvider;
 	cancels: string[];
 	prompts: string[];
+	metas: unknown[];
 } {
 	const cancels: string[] = [];
 	const prompts: string[] = [];
+	const metas: unknown[] = [];
 	let cancelled: (() => void) | undefined;
 
 	const clientToAgent = new TransformStream<Uint8Array, Uint8Array>();
@@ -73,8 +77,9 @@ function connect(script: Script): {
 			cancels.push(params.sessionId);
 			cancelled?.();
 		},
-		prompt: async (params: { sessionId: string; prompt: unknown }) => {
+		prompt: async (params: { sessionId: string; prompt: unknown; _meta?: unknown }) => {
 			prompts.push(JSON.stringify(params.prompt));
+			metas.push(params._meta);
 			const tokens = (): { usage?: { totalTokens: number } } =>
 				script.sessionTokens === undefined
 					? {}
@@ -146,9 +151,11 @@ function connect(script: Script): {
 			sessionId: SESSION,
 			collector,
 			agentName: "scripted",
+			...(script.meta === undefined ? {} : { meta: script.meta }),
 		}),
 		cancels,
 		prompts,
+		metas,
 	};
 }
 
@@ -434,5 +441,37 @@ describe("all seven, end to end", () => {
 			"refused",
 			"stopped",
 		]);
+	});
+});
+
+describe("metadata on the turn", () => {
+	it("crosses the wire, so a fact does not have to be parsed out of English", async () => {
+		// The step travels here as data. An agent built against us reads which step it
+		// is on; every agent that exists today reads the sentence the daemon writes
+		// from the same object, and the two cannot disagree because there is one.
+		const meta = { "personaxis.step": { service: "Weekly brief", step: 2, of: 4 } };
+		const { provider, metas } = connect({ meta });
+
+		await provider.run(context().ctx);
+
+		expect(metas[0]).toEqual(meta);
+	});
+
+	it("is absent when there is none, rather than an empty bag", async () => {
+		// `_meta: {}` says a thing was considered and found empty. Absent says it never
+		// applied, which is true of most runs: somebody pressing Run on a persona.
+		const { provider, metas } = connect({});
+		await provider.run(context().ctx);
+		expect(metas[0]).toBeUndefined();
+	});
+
+	it("rides every turn of the session, not only the first", async () => {
+		const meta = { "personaxis.step": { service: "S", step: 1, of: 2 } };
+		const { provider, metas } = connect({ meta });
+
+		await provider.run(context().ctx);
+		await provider.run(context().ctx);
+
+		expect(metas).toEqual([meta, meta]);
 	});
 });

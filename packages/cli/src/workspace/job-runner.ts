@@ -32,6 +32,7 @@ import type { CompiledPolicy } from "@personaxis/core";
 import type {
 	HostAgentName,
 	ServerToDaemonMsg,
+	StepContext,
 	WireAuthor,
 } from "@personaxis/protocol/workspace";
 
@@ -41,6 +42,7 @@ import { HostSession, type SessionOutcome } from "./host-session.js";
 import { describePolicyProblem, policyFromRef } from "./policy-from-ref.js";
 import { describeFile, kindOf, producedBetween, scanDirectory } from "./produced-files.js";
 import { withinScope } from "./scope-guard.js";
+import { describeStep, metaFor } from "./step-context.js";
 import { JobReporter, type ReporterSink } from "./job-reporter.js";
 
 /**
@@ -284,7 +286,7 @@ export class JobRunner {
 		// cannot apply: the hook asks by working directory, not by persona.
 		this.options.onPolicy?.(policy.policy, cwd);
 
-		const prompt = withPersona(message.persona_document, instruction);
+		const prompt = withPersona(message.persona_document, instruction, message.step);
 
 		// Everything that ends a session goes through here, whichever transport ran it.
 		const emit = (body: Parameters<JobReporter["reportWire"]>[0], author: WireAuthor) => {
@@ -315,6 +317,7 @@ export class JobRunner {
 		 * not a fallback anybody chooses: it is what a host that cannot hold a session
 		 * offers, and it will disappear when the last one can.
 		 */
+		const stepMeta = metaFor(message.step);
 		const acp = acpCommandFor(this.options.host);
 		const session: AgentRun = acp
 			? (this.options.createAcpSession ?? ((options) => new AcpSession(options)))({
@@ -324,6 +327,9 @@ export class JobRunner {
 					cwd,
 					emit,
 					agentName: this.options.host,
+					// The same fact as data. An agent that can read it does not have to
+					// parse the sentence above out of its own prompt.
+					...(stepMeta === undefined ? {} : { meta: stepMeta }),
 					decide: (ask) =>
 						this.options.decide?.(cwd, ask) ?? {
 							allow: false,
@@ -523,13 +529,25 @@ export class JobRunner {
  * is nearly right and fails in the case that matters: a persona document that
  * happens to contain an imperative sentence.
  */
-function withPersona(document: string | undefined, instruction: string): string {
+/**
+ * Who you are, where you are, and what you were asked.
+ *
+ * The middle one is new and is generated from `message.step` rather than written
+ * here, so the sentence the agent reads and the metadata the turn carries cannot
+ * drift. See `step-context.ts`.
+ */
+function withPersona(
+	document: string | undefined,
+	instruction: string,
+	step: StepContext | undefined,
+): string {
 	const identity = document?.trim();
-	if (!identity) return instruction;
+	const where = describeStep(step);
+	if (!identity && !where) return instruction;
 
 	return [
-		identity,
-		"",
+		...(identity ? [identity, ""] : []),
+		...(where ? [where, ""] : []),
 		"---",
 		"",
 		"What you have been asked to do in this run:",

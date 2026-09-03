@@ -110,6 +110,15 @@ export interface AcpSessionOptions {
 	/** Names the agent in the record: `claude-code`, `gemini-cli`, and so on. */
 	agentName?: string;
 	/**
+	 * Protocol metadata for every turn of this session.
+	 *
+	 * Where the step travels as data. It rides on the request rather than being
+	 * said in the prompt, so an agent built against us can read which step it is
+	 * on without parsing English, and the sentence in the prompt is generated
+	 * from the same object rather than written beside it.
+	 */
+	meta?: Record<string, unknown>;
+	/**
 	 * Told when each turn opens and closes.
 	 *
 	 * The runner's own seam, and the place the record will be written from when
@@ -210,6 +219,7 @@ export class AcpSession {
 				sessionId: session.sessionId,
 				collector: this.#collector,
 				agentName: this.options.agentName ?? "agent",
+				...(this.options.meta === undefined ? {} : { meta: this.options.meta }),
 			});
 			this.#provider = provider;
 
