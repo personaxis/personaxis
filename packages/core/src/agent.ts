@@ -138,6 +138,15 @@ export interface AgentOptions {
   /** Restrict the tool set (defaults to all TOOLS). */
   tools?: ToolSpec[];
   /**
+   * Tools contributed from outside the engine, added to whatever catalogue results.
+   *
+   * Separate from `tools` because they answer different questions. `tools` says "the
+   * catalogue IS this", which a caller wanting a three-tool agent needs. This says
+   * "and also these", which is what every contributor needs: an MCP server mounted by
+   * `personaxis mcp add`, and whatever else arrives by protocol later.
+   */
+  extraTools?: ToolSpec[];
+  /**
    * J.2: skills the persona has (with their `allowed_tools`), used to subset the tool catalog
    * per task so the model is not shown every tool at once. Opt-in: when absent, the full tool set
    * is used, unchanged.
@@ -250,6 +259,22 @@ export class PersonaAgent {
       } catch {
         /* an unreadable persona must not kill the agent; memory tools are additive */
       }
+    }
+    // E3: tools from elsewhere, added rather than substituted.
+    //
+    // `tools` REPLACES the catalogue, which is right for a caller that wants exactly
+    // three tools and wrong for every source that contributes some. Mounting MCP
+    // servers through it would have silently dropped the built-ins and the memory
+    // tools, and the failure would look like a persona that forgot how to read a file.
+    //
+    // Names collide by accident and never silently. A contributed tool that repeats
+    // one already in the catalogue is dropped, because the model chooses by name and
+    // two entries under one name is a coin flip about which code runs. MCP tools carry
+    // their server's prefix so they cannot reach this by ordinary means, but a caller
+    // could contribute anything and the rule has to hold for what it is given.
+    if (opts.extraTools?.length) {
+      const known = new Set(tools.map((tool) => tool.name));
+      tools = [...tools, ...opts.extraTools.filter((tool) => !known.has(tool.name))];
     }
     this.tools = tools;
   }

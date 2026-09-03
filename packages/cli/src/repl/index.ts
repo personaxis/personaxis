@@ -25,6 +25,7 @@ import { runCommandCenter } from "../command-center.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
 import { loadMergedConfig } from "../config.js";
+import { mountRegistered } from "../mcp/mount.js";
 import { matchPermission, callDetail } from "../permissions.js";
 import { readHooksConfig, runHooks } from "@personaxis/core";
 import { replyLine, userLine, fmtK, firstRunModelHint } from "./render.js";
@@ -167,6 +168,30 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   const ctx = makeCtx(personaPath, meter);
   // SessionStart user hook (V2-F3.C14): best-effort, never blocks startup.
   void runHooks("SessionStart", { persona: personaPath }, readHooksConfig(personaPath)).catch(() => {});
+
+  // E3: the MCP servers the operator registered, mounted once for the session.
+  //
+  // Here rather than in `turn.ts`, and that is the whole reason it is a session
+  // concern: a runner is built per turn, so mounting there would start somebody's
+  // programs again on every message. It also matches what E5 will need, a tool
+  // catalogue that is fixed for the session, since a catalogue that changed mid
+  // conversation invalidates the prompt cache it is part of.
+  //
+  // Costs nothing when no server is registered, which is the ordinary case, because
+  // an empty list connects to nothing.
+  const mcp = await mountRegistered({
+    onFailure: (failure) =>
+      stdout.write(
+        chalk.yellow(`  · MCP server "${failure.name}" did not start`) +
+          chalk.dim(`: ${failure.reason}\n`),
+      ),
+  });
+  ctx.mcp = mcp;
+  if (mcp.tools.length > 0) {
+    stdout.write(
+      chalk.dim(`  · ${mcp.tools.length} tool(s) from ${mcp.servers.length} MCP server(s)\n`),
+    );
+  }
 
   // --continue / --resume [id]: rehydrate a saved conversation before the UI starts.
   if (opts.continueLast || opts.resume !== undefined) {

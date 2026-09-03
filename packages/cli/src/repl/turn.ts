@@ -133,6 +133,10 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     { personaPath: ctx.handle.personaPath, frontmatter: fm, llm },
     {
       policy: buildPolicy(ctx),
+      // Mounted once when the session opened, handed to every turn. They are added to
+      // the catalogue rather than replacing it, so a persona that gained a GitHub
+      // server has not lost the ability to read a file.
+      ...(ctx.mcp && ctx.mcp.tools.length > 0 ? { extraTools: [...ctx.mcp.tools] } : {}),
       personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
       awareness: buildAwarenessBlock(ctx.handle.personaPath, awarenessOpts(ctx, llm.model)),
       goal: readGoalText(ctx.handle),

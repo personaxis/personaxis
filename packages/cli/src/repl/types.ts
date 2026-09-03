@@ -20,6 +20,7 @@ import type {
   ChatMessage,
 } from "@personaxis/core";
 import type { LineRole } from "@personaxis/tui/screen";
+import type { Mounted } from "../mcp/mount.js";
 
 export interface ReplOptions {
   persona?: string;
@@ -111,6 +112,14 @@ export interface Ctx {
   suspend?: (fn: () => Promise<void>) => Promise<void>;
   /** V7.A6: wipe screen + transcript buffer, for switching to another conversation. */
   clearScreen?: () => void;
+  /**
+   * The MCP servers mounted for this session, and the tools they contributed.
+   *
+   * On the session rather than on the turn because these are running processes. A
+   * runner is built per turn, so mounting there would start the same programs again
+   * on every message the person types.
+   */
+  mcp?: Mounted;
 }
 
 /** A running background daemon, described well enough to be understood at a glance. */

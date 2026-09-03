@@ -163,6 +163,15 @@ export function ensureCtxSession(ctx: Ctx, seedMsg: string, kind?: SessionKind):
  * Idempotent per ctx (guarded by ctx.sessionClosed); best-effort by design.
  */
 export function closeSession(ctx: Ctx): void {
+  // The MCP servers, first and unconditionally.
+  //
+  // Before the early return, because a session that never wrote a turn still started
+  // whatever the operator registered, and those are processes. Not awaited, because
+  // this function is synchronous and three callers away from a `process.exit`: the
+  // transport kills its child on close, and a child that outlives us loses its stdin,
+  // which is how a server built to the protocol learns to stop.
+  void ctx.mcp?.close();
+
   if (!ctx.sessionStarted || ctx.sessionClosed) return;
   ctx.sessionClosed = true;
   const p = ctx.handle.personaPath;

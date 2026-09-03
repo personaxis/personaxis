@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@personaxis/core": "workspace:*",
     "@personaxis/protocol": "workspace:*",
     "@personaxis/sdk": "workspace:*",
@@ -68,7 +69,8 @@
     "fast-check": "^4.8.0",
     "ink-testing-library": "^4.0.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "zod": "4.4.3"
   },
   "engines": {
     "node": ">=20.0.0"

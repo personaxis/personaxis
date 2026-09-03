@@ -84,9 +84,9 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 	// it did for `identityGuard`, which is the only reason anybody would have noticed
 	// that the exemptions had stopped being true.
 
-	// Third-party MCP tools. We are an MCP server and not a client, which is why the
-	// engine has six tools and the reference has 129.
-	{ name: "mcpToolToSpec", until: "E3 makes the engine an MCP client" },
+	// `mcpToolToSpec` came off with E3, which made the engine an MCP client: `mcp/mount.ts`
+	// connects to the servers `personaxis mcp add` registered and adapts everything they
+	// advertise. This test went red on its own for it, as it did for the three before.
 
 	// Effort levels and what a destination declares it accepts.
 	{ name: "resolveEffort", until: "E8 mounts the model seam" },

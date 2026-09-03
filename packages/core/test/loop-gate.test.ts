@@ -96,7 +96,11 @@ function scripted(steps: Array<{ tool: string; args: object }>): typeof fetch {
 /** Runs one proposed call and hands back what the gate said about it. */
 async function verdictFor(
 	call: { tool: string; args: object },
-	options: { capability?: ReturnType<typeof persona>; policy?: Policy } = {},
+	options: {
+		capability?: ReturnType<typeof persona>;
+		policy?: Policy;
+		extraTools?: ConstructorParameters<typeof PersonaAgent>[0]["extraTools"];
+	} = {},
 ) {
 	const events: LoopEvent[] = [];
 	const agent = new PersonaAgent({
@@ -107,6 +111,7 @@ async function verdictFor(
 		},
 		policy: options.policy ?? environment(),
 		...(options.capability ? { capability: options.capability } : {}),
+		...(options.extraTools ? { extraTools: options.extraTools } : {}),
 	});
 	agent.bus.on((event) => events.push(event));
 	await agent.run("do it");
@@ -209,6 +214,79 @@ describe("the tool's own gate, now one voice among several", () => {
 		);
 
 		expect(verdict?.decision).toBe("deny");
+	});
+});
+
+describe("a tool contributed from outside the engine", () => {
+	/**
+	 * What an MCP server's tool looks like once `mcpToolToSpec` has mapped it: a
+	 * prefixed name, its own gate, and nothing else that marks it as foreign. The point
+	 * of E3 is that there is no second path for anything to miss, so what is checked
+	 * here is that it is treated exactly like a built-in.
+	 */
+	const contributed = {
+		name: "github:create_issue",
+		description: "opens an issue",
+		category: "mcp" as const,
+		parameters: { type: "object" as const, properties: {} },
+		gate: () => ({ decision: "allow" as const, reason: "full access", class: { writesFiles: false, network: true, destructive: false, escapesWorkspace: false } }),
+		execute: async () => "opened #1",
+	};
+
+	it("is added to the catalogue rather than replacing it", async () => {
+		// `tools` substitutes, which is right for a caller that wants exactly three
+		// tools and wrong for a source that contributes some. Mounting MCP through it
+		// would have silently dropped the built-ins, and the symptom would be a persona
+		// that had forgotten how to read a file.
+		const agent = new PersonaAgent({
+			llm: { endpoint: "http://x/v1", model: "m", fetchImpl: scripted([{ tool: "finish", args: {} }]) },
+			policy: environment(),
+			capability: persona(),
+			extraTools: [contributed],
+		});
+
+		const names = (agent as unknown as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name);
+		expect(names).toContain("github:create_issue");
+		expect(names).toContain("read_file");
+	});
+
+	it("passes the same gate as a built-in, and the persona can forbid it", async () => {
+		// The verification E3 was written against. A tool from a third-party server is
+		// still the persona's to refuse, and it is refused by the persona's own policy
+		// rather than by anything the server or the adapter decided.
+		const verdict = await verdictFor(
+			{ tool: "github:create_issue", args: {} },
+			{ capability: persona({ deny: ["create_issue"] }), extraTools: [contributed] },
+		);
+
+		expect(verdict?.decision).toBe("deny");
+	});
+
+	it("runs when the persona did not forbid it", async () => {
+		// The control. Without it a catalogue that never mounted the tool at all would
+		// pass the test above, because an unknown tool is refused too.
+		const verdict = await verdictFor(
+			{ tool: "github:create_issue", args: {} },
+			{ capability: persona(), extraTools: [contributed] },
+		);
+
+		expect(verdict?.decision).toBe("allow");
+	});
+
+	it("cannot take a name the catalogue already has", async () => {
+		// A contributed tool that repeats a built-in name is dropped. The model chooses
+		// by name, so two entries under one name is a coin flip about which code runs,
+		// and the losing side of that flip is somebody else's process.
+		const agent = new PersonaAgent({
+			llm: { endpoint: "http://x/v1", model: "m", fetchImpl: scripted([{ tool: "finish", args: {} }]) },
+			policy: environment(),
+			capability: persona(),
+			extraTools: [{ ...contributed, name: "write_file", execute: async () => "theirs" }],
+		});
+
+		const tools = (agent as unknown as { tools: Array<{ name: string; category?: string }> }).tools;
+		expect(tools.filter((tool) => tool.name === "write_file")).toHaveLength(1);
+		expect(tools.find((tool) => tool.name === "write_file")?.category).not.toBe("mcp");
 	});
 });
 
