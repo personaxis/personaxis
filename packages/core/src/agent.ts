@@ -85,6 +85,8 @@ import { freezeCall } from "./gate/call.js";
 import { capabilityGuard, requirePolicy } from "./gate/capability.js";
 import { ask, deny, type GuardOutcome } from "./gate/verdict.js";
 import { runGuards } from "./gate/waterfall.js";
+import { nudgeFor } from "./run/breaker-guard.js";
+import { authorId } from "./record/entry.js";
 
 /**
  * Where a compaction is allowed to happen.
@@ -965,6 +967,19 @@ export class PersonaAgent {
               // somewhere in this loop that a reader has to find.
               requirePolicy(this.capability),
               ...(this.capability ? [capabilityGuard(this.capability)] : []),
+              // E10 tried to put `breakerGuard` here and took it out again, measured.
+              //
+              // A stop IS a refusal and belongs in a cascade, but this loop already
+              // returns the moment the breaker says stop, and the breaker is assessed
+              // once per step after the calls have run. So a guard here can never see a
+              // stop: by the time there is another call to refuse, the run is over. It
+              // would sit in the list, pass every test, and refuse nothing.
+              //
+              // Reaching it needs the breaker recorded per CALL rather than per step,
+              // which makes it fire sooner inside a multi-call step and is a change to
+              // how sensitive the breaker is. That is a product decision about
+              // interrupting somebody's work, not a wiring detail, so it is not taken
+              // here.
               { name: "tool", check: () => fromToolGate(verdict) },
             ],
             freezeCall({
@@ -1049,10 +1064,21 @@ export class PersonaAgent {
         if (!finishedThisStep) {
           breaker.record({ producedWork, failingSignature: producedWork ? null : firstFailSig });
           const bv = breaker.assess();
-          if (bv.action === "nudge") {
-            // One hint to change approach, as SYSTEM speech (not the user's words).
-            messages.push({ role: "system", content: `Loop check: ${bv.reason}. Step back and try a genuinely different approach, or call finish if the task cannot proceed.` });
-            bus.emit({ type: "agent-think", text: `[loop-breaker] ${bv.reason}` });
+          const nudge = nudgeFor(bv);
+          if (nudge) {
+            // E10: the hint carries WHO put it there.
+            //
+            // It went in unlabelled, which renders in a transcript as a real request
+            // from the person. That is the fourth independent sighting of the same
+            // rule in this repository, and the reason it is an invariant of the record
+            // rather than a precaution in one file.
+            messages.push({
+              role: "system",
+              content:
+                `[${authorId(nudge.author)}] Loop check: ${nudge.text}. ` +
+                "Step back and try a genuinely different approach, or call finish if the task cannot proceed.",
+            });
+            bus.emit({ type: "agent-think", text: `[loop-breaker] ${nudge.text}` });
           } else if (bv.action === "stop") {
             bus.emit({ type: "agent-stop-condition", reason: "loop_breaker", step });
             const summary = lastText || `stopped: ${bv.reason}`;

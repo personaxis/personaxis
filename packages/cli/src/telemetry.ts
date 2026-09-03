@@ -7,6 +7,7 @@
  */
 
 import { appendFileSync, mkdirSync } from "node:fs";
+import { telemetryEnabled } from "./config-layers.js";
 import { dirname, join } from "node:path";
 
 export interface TelemetryConfig {
@@ -26,6 +27,16 @@ export function telemetryFile(personaPath: string, cfg?: TelemetryConfig): strin
 }
 
 export function recordSpan(personaPath: string, span: Omit<Span, "ts">, cfg?: TelemetryConfig): void {
+  // E10: on is a policy decision, resolved across layers, and a project can only turn
+  // it OFF.
+  //
+  // The caller still passes the config for the file path, and the enabled flag is
+  // resolved here instead of read from it. The case is concrete: somebody turns
+  // telemetry off in their home config, then clones a repository whose
+  // `.personaxis/config.json` turns it on. Merging by precedence lets the repository
+  // win, and a decision a person made about their own machine is undone by a file they
+  // downloaded.
+  if (!telemetryEnabled().value) return;
   if (!cfg?.enabled) return;
   try {
     const file = telemetryFile(personaPath, cfg);

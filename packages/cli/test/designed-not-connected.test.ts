@@ -126,18 +126,30 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 		until: "a caller outside `regression.ts` needs it; today only the mounted `compareRuns` does",
 	},
 
-	// The loop breaker as a guard, and layered resolution with a policy tier.
-	{ name: "breakerGuard", until: "E10 mounts it" },
-	{ name: "nudgeFor", until: "E10 mounts it" },
-	{ name: "resolveLayered", until: "E10 mounts config layers" },
-	{ name: "resolvePolicyTier", until: "E10 mounts config layers" },
-	{ name: "CONFIG_LAYERS", until: "E10 mounts config layers" },
+	// E10 mounted `nudgeFor`, `resolveLayered` and `resolvePolicyTier`. Two entries stayed
+	// and each says its own reason.
+	//
+	// `breakerGuard` was wired into the loop's cascade and taken back out, measured: the
+	// breaker is assessed once per step AFTER the calls have run, and the loop returns
+	// immediately on a stop, so by the time there is another call to refuse the run is
+	// over. It sat in the guard list, passed every test, and refused nothing. A guard
+	// that never fires is worse than an absent one, because it reads as covered.
+	// Reaching it needs the breaker recorded per call rather than per step, which changes
+	// how readily it interrupts somebody's work: a product decision, not a wiring one.
+	{ name: "breakerGuard", until: "the breaker is recorded per call, which is a decision about interrupting work" },
 
-	// Compaction that carries its own author and its measured drift. Waiting on E6,
-	// which is where compaction moves to explicit cut points.
-	{ name: "compactionAuthor", until: "E6 compacts at explicit cut points" },
-	{ name: "compactionEntry", until: "E6 compacts at explicit cut points" },
-	{ name: "driftAcross", until: "E6 compacts at explicit cut points" },
+
+	// Compaction that carries its own author and its measured drift.
+	//
+	// E6 landed and did NOT mount these, which is worth saying rather than leaving the
+	// old `until` pointing at a phase that is closed. E6 was about WHEN a compaction may
+	// happen and what it costs in tokens, and it delivered that. These three write the
+	// compaction into the persona's RECORD and measure whether the persona moved, and
+	// the loop does not hold the persona's record: it holds a transcript. Giving it one
+	// is what E9's neighbours do, and it is not a line of wiring.
+	{ name: "compactionAuthor", until: "the loop holds the persona's record, not just a transcript" },
+	{ name: "compactionEntry", until: "the loop holds the persona's record, not just a transcript" },
+	{ name: "driftAcross", until: "the loop holds the persona's record, not just a transcript" },
 
 	// The session index. E11 decides: mount it, or delete it with the reason written.
 	{ name: "readSessionIndex", until: "E11 decides whether the session index lives" },
@@ -238,7 +250,7 @@ function reaches(source: string): Set<string> {
  * the thing that says so out loud.
  */
 const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
-	{ pkg: "core", departure: 176 },
+	{ pkg: "core", departure: 175 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the
@@ -362,7 +374,7 @@ describe.each(WATCHED)("$pkg's exports reach something", ({ pkg, departure }) =>
 	/**
 	 * The line of departure, and it only moves one way.
 	 *
-	 * Writing a reason for each of core's 176 would mean inventing 176 reasons, and an
+	 * Writing a reason for each of core's 175 would mean inventing 175 reasons, and an
 	 * invented reason is worse than a number: it reads as a decision somebody made. So
 	 * the ones that matter are named above with the task that connects them, and the
 	 * rest are a count that may go down and never up.
