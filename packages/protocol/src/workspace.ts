@@ -391,7 +391,23 @@ export type ServerToDaemonMsg =
 			call_id: string;
 			outcome: "approved" | "denied" | "expired";
 	  }
-	| { type: "intervention.deliver"; job_id: string; intervention_id: string; body: string }
+	/**
+	 * Something a person wrote to a persona that is already working.
+	 *
+	 * `user_id` was added when the daemon first became able to deliver one. The
+	 * room already had it, on `intervention.enqueued`, and it was not carried down
+	 * because nothing downstream could do anything with an intervention at all.
+	 * The turn it becomes is asked for by a PERSON, and a turn that could not say
+	 * who asked would have to claim the workspace did, which is the one field the
+	 * record rests on being honest.
+	 */
+	| {
+			type: "intervention.deliver";
+			job_id: string;
+			intervention_id: string;
+			body: string;
+			user_id: string;
+	  }
 	/**
 	 * Acknowledges durable storage, which is what makes resume gapless.
 	 *

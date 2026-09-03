@@ -76,9 +76,14 @@ function runner(options: {
 	const started: Array<{ cwd: string; prompt: string; command: string }> = [];
 	const stopped = vi.fn();
 	const permissions: Array<(ask: { toolName: string; rawInput: unknown }) => unknown> = [];
-	const fake = (): AgentRun => ({
+	const delivered: { id: string; userId: string; body: string }[] = [];
+	const fake = (canIntervene: boolean): AgentRun => ({
 		run: options.sessionRuns ?? (() => Promise.resolve("completed")),
 		stop: stopped,
+		// Only the ACP session has one. The old transport's agent was started with
+		// its input closed, and a method that existed and did nothing would be worse
+		// than its absence.
+		...(canIntervene ? { intervene: (i) => delivered.push(i) } : {}),
 	});
 
 	const instance = new JobRunner({
@@ -95,23 +100,76 @@ function runner(options: {
 		createSession: (opts) => {
 			options.onStart?.();
 			started.push({ cwd: opts.cwd, prompt: opts.prompt, command: opts.command });
-			return fake() as never;
+			return fake(false) as never;
 		},
 		createAcpSession: (opts) => {
 			options.onStart?.();
 			started.push({ cwd: opts.cwd, prompt: opts.prompt, command: opts.command });
 			permissions.push(opts.decide);
-			return fake();
+			return fake(true);
 		},
 	});
 
-	return { instance, events, started, stopped, permissions };
+	return { instance, events, started, stopped, permissions, delivered };
 }
 
 const endings = (events: WireEvent[]) => events.filter((e) => e.kind === "persona.session.ended");
 
 /** Let the run's promise and its `finally` reach the microtask queue. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+describe("something a person writes to a job already running", () => {
+	it("reaches the session, which the daemon silently dropped until now", async () => {
+		// `intervention.deliver` was defined in the protocol and carried by the socket,
+		// and `handle` matched three message types of which it was not one. The frame
+		// arrived and nothing happened: the same shape `job.assign` had before the
+		// runner existed, which is why nobody noticed.
+		const { instance, delivered } = runner({});
+		instance.handle(assign());
+		instance.handle({
+			type: "intervention.deliver",
+			job_id: "job_1",
+			intervention_id: "i1",
+			body: "use the other tone",
+			user_id: "u_david",
+		} as never);
+
+		expect(delivered).toEqual([
+			{ id: "i1", userId: "u_david", body: "use the other tone" },
+		]);
+	});
+
+	it("says so when the transport cannot carry one, rather than dropping it", async () => {
+		// A person watching a run on such a host would otherwise wait for words that
+		// can never arrive.
+		const { instance, events, delivered } = runner({ host: "codex" });
+		instance.handle(assign());
+		instance.handle({
+			type: "intervention.deliver",
+			job_id: "job_1",
+			intervention_id: "i1",
+			body: "steer",
+			user_id: "u",
+		} as never);
+
+		expect(delivered).toEqual([]);
+		expect(events.some((event) => event.kind === "agent.thought.streamed")).toBe(true);
+	});
+
+	it("ignores one for a job that is not running, because that is a race and not a fault", async () => {
+		const { instance, events, delivered } = runner({});
+		instance.handle({
+			type: "intervention.deliver",
+			job_id: "job_gone",
+			intervention_id: "i1",
+			body: "hello",
+			user_id: "u",
+		} as never);
+
+		expect(delivered).toEqual([]);
+		expect(events).toEqual([]);
+	});
+});
 
 describe("every event the daemon sends says who produced it", () => {
 	it("signs the session it opened, and the refusals it decided", async () => {

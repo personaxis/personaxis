@@ -109,6 +109,16 @@ export interface AcpSessionOptions {
 	env?: NodeJS.ProcessEnv;
 	/** Names the agent in the record: `claude-code`, `gemini-cli`, and so on. */
 	agentName?: string;
+	/**
+	 * Told when each turn opens and closes.
+	 *
+	 * The runner's own seam, and the place the record will be written from when
+	 * the two records converge in `L1`. It is here now rather than later because
+	 * the turn already carries the fact that matters and nothing was reading it:
+	 * `asker` says whether a turn was the job or a person steering it, and until
+	 * something is handed the request, that distinction exists and reaches nobody.
+	 */
+	observer?: run.TurnObserver;
 	/** Injected for tests. */
 	spawnFn?: SpawnFn;
 	/** Injected for tests: skips the process and talks to a stream directly. */
@@ -117,6 +127,20 @@ export interface AcpSessionOptions {
 
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
+/**
+ * The endings after which the agent is still there to be spoken to.
+ *
+ * `answered` obviously. `budget` and `stopped` too: both are turns that ran and
+ * closed, and a session whose last turn hit a ceiling has not gone anywhere. The
+ * ones missing are the ones where talking would be talking to nothing: a failure,
+ * a refusal, an interruption somebody asked for, and an empty turn.
+ *
+ * Getting this wrong in the generous direction is the expensive way: the room
+ * would report an intervention applied to an agent that had already stopped
+ * listening, and a person would believe their words landed.
+ */
+const KEEPS_LISTENING = new Set(["answered", "budget", "stopped"]);
+
 export class AcpSession {
 	#child: ChildProcess | null = null;
 	#provider: AcpProvider | null = null;
@@ -124,6 +148,14 @@ export class AcpSession {
 	#ended = false;
 	readonly #translator: AcpWireTranslator;
 	readonly #collector = new AcpTurnCollector();
+	/**
+	 * What people said while the agent was working, waiting for a turn to say it in.
+	 *
+	 * Not delivered mid-turn, and that is the protocol rather than a shortcut: ACP
+	 * runs one prompt turn at a time and a second prompt sent into a live one is
+	 * not something an agent is required to understand.
+	 */
+	readonly #waiting: { id: string; userId: string; body: string }[] = [];
 	/** Who the agent is, in the record. Never `persona:self`. */
 	readonly #agent: WireAuthor;
 
@@ -135,10 +167,16 @@ export class AcpSession {
 	}
 
 	/**
-	 * Run one turn to completion.
+	 * Run the job, and then whatever anybody said to it while it was running.
 	 *
 	 * Resolves rather than rejects on a failed run: a failure is an outcome the room
 	 * needs reported, not an exception for the caller to translate a second time.
+	 *
+	 * More than one turn, because that is what an intervention needs to exist. ACP
+	 * runs one prompt turn at a time, so something written mid-turn cannot interrupt
+	 * the current one; what it can do is be the next one, on a session that stayed
+	 * open. That is the difference between steering a persona and watching it, and it
+	 * is the thing the old path made impossible rather than left unbuilt.
 	 */
 	async run(): Promise<SessionOutcome> {
 		try {
@@ -161,19 +199,50 @@ export class AcpSession {
 
 			// The runner closes every turn on every path, which is why this file does
 			// not. A provider that helped would be a second place a turn could end.
-			const runner = new run.TurnRunner({ provider });
-
-			for (const event of this.#translator.started()) this.options.emit(event, this.#agent);
-			const outcome = await runner.run({
-				turn: session.sessionId,
-				prompt: this.options.prompt,
-				// A program drove this turn, and neither `human` nor `persona` is true
-				// of a job a workspace sent. `component` is the third kind, and it
-				// exists because the other two were both lies in the one field the
-				// record rests on being honest.
-				asker: { kind: "component", name: "workspace" },
+			const runner = new run.TurnRunner({
+				provider,
+				...(this.options.observer ? { observer: this.options.observer } : {}),
 			});
-			for (const event of this.#translator.ended()) this.options.emit(event, this.#agent);
+
+			// The job's own turn, and then one for each thing somebody wrote while it
+			// was running.
+			let outcome = await this.#turn(runner, session.sessionId, this.options.prompt, {
+				kind: "component",
+				name: "workspace",
+			});
+
+			while (this.#waiting.length > 0 && KEEPS_LISTENING.has(outcome.stopReason)) {
+				const next = this.#waiting.shift()!;
+				// A person asked, so the turn says a person asked. Attributing an
+				// intervention to the workspace would lose the only fact that makes it
+				// an intervention rather than more of the job.
+				outcome = await this.#turn(runner, session.sessionId, next.body, {
+					kind: "human",
+					id: next.userId,
+				});
+				// Reported after the turn it was delivered in, never when it was queued.
+				// `applied` has to mean the agent saw it, or a person watching believes
+				// something landed that is still sitting in a list.
+				this.options.emit(
+					{ kind: "intervention.applied", intervention_id: next.id },
+					{
+						kind: "runtime",
+						mechanism: "daemon",
+						reason: "the daemon delivered what somebody wrote",
+					},
+				);
+			}
+
+			// Anything still queued when the agent stopped listening is said so, rather
+			// than dropped. A person who steered into a run that had already failed
+			// needs to know their words went nowhere.
+			for (const abandoned of this.#waiting) {
+				this.options.onSkip?.(
+					"no-events",
+					`intervention ${abandoned.id} never delivered: the session ended ${outcome.stopReason}`,
+				);
+			}
+			this.#waiting.length = 0;
 
 			return this.#finish(outcome.stopReason, outcome.failure);
 		} catch (error) {
@@ -187,6 +256,19 @@ export class AcpSession {
 		}
 	}
 
+	/** One turn, opened and closed on the wire, with who asked for it. */
+	async #turn(
+		runner: run.TurnRunner,
+		sessionId: string,
+		prompt: string,
+		asker: { kind: "component"; name: string } | { kind: "human"; id: string },
+	): Promise<run.TurnOutcome> {
+		for (const event of this.#translator.started()) this.options.emit(event, this.#agent);
+		const outcome = await runner.run({ turn: sessionId, prompt, asker });
+		for (const event of this.#translator.ended()) this.options.emit(event, this.#agent);
+		return outcome;
+	}
+
 	/**
 	 * Ends the turn in progress, saying which of our reasons it was.
 	 *
@@ -195,6 +277,26 @@ export class AcpSession {
 	 */
 	stop(cause: "interrupted" | "stopped" = "interrupted"): void {
 		this.#provider?.stop(cause);
+		// Nothing queued survives a stop. Delivering somebody's words into a session
+		// that was deliberately ended would be the daemon carrying out an instruction
+		// after being told to stop.
+		this.#waiting.length = 0;
+	}
+
+	/**
+	 * Somebody said something to a persona that is already working.
+	 *
+	 * The thing that was impossible. The old path launches the agent with its input
+	 * closed, so no amount of screen above it could have delivered this: every layer
+	 * that would have carried it ended at a pipe that was never opened.
+	 *
+	 * Queued rather than delivered, even between turns, so a caller does not have to
+	 * know whether the agent happens to be mid-turn to know what becomes of what it
+	 * just said. It lands in the next turn, and the room hears when it did.
+	 */
+	intervene(intervention: { id: string; userId: string; body: string }): void {
+		if (this.#ended) return;
+		this.#waiting.push(intervention);
 	}
 
 	#connect(): AcpConnection {

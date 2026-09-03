@@ -142,6 +142,14 @@ export interface JobRunnerOptions {
 export interface AgentRun {
 	run(): Promise<SessionOutcome>;
 	stop(): void;
+	/**
+	 * Takes something a person wrote mid-run, when the transport can carry one.
+	 *
+	 * Optional, and the optionality is the honest shape rather than a convenience: a
+	 * session whose agent was started with its input closed cannot accept one, and a
+	 * method that existed and quietly did nothing would be worse than its absence.
+	 */
+	intervene?(intervention: { id: string; userId: string; body: string }): void;
 }
 
 interface RunningJob {
@@ -171,6 +179,7 @@ export class JobRunner {
 	handle(message: ServerToDaemonMsg): void {
 		if (message.type === "job.assign") this.assign(message);
 		else if (message.type === "job.stop") this.stop(message.job_id);
+		else if (message.type === "intervention.deliver") this.intervene(message);
 		else if (message.type === "gate.resolved") {
 			// A person answered. Until this line existed the message arrived and
 			// nothing matched on it, which is the same shape of bug as `job.assign`
@@ -361,6 +370,42 @@ export class JobRunner {
 	 * No proposal means the first consented directory, which is what every daemon
 	 * did before this field existed.
 	 */
+	/**
+	 * Somebody wrote to a persona that is already working.
+	 *
+	 * **The daemon silently dropped this message until now.** It was defined in the
+	 * protocol, the socket carried it, and `handle` matched three types of which this
+	 * was not one, so the frame arrived and nothing happened. That is the same shape
+	 * as `job.assign` before the runner existed: everything in place except the one
+	 * line that acts, which is why nobody noticed.
+	 *
+	 * A job that is not running is not an error worth an event. The workspace can send
+	 * one for a job that finished a second ago, and answering that with a failure
+	 * would report a race as a fault.
+	 */
+	private intervene(message: Extract<ServerToDaemonMsg, { type: "intervention.deliver" }>): void {
+		const job = this.running.get(message.job_id);
+		if (!job) return;
+		if (!job.session.intervene) {
+			// The old transport cannot take one: its agent was started with its input
+			// closed. Said out loud rather than dropped, because a person watching a run
+			// on such a host would otherwise wait for words that can never arrive.
+			job.reporter.reportWire(
+				{
+					kind: "agent.thought.streamed",
+					text: `this machine cannot deliver a message to a ${this.options.host} agent while it works`,
+				},
+				DAEMON,
+			);
+			return;
+		}
+		job.session.intervene({
+			id: message.intervention_id,
+			userId: message.user_id,
+			body: message.body,
+		});
+	}
+
 	private directoryFor(proposed: string | undefined): string | null {
 		if (!proposed) return this.options.scope[0] ?? null;
 		return withinScope(proposed, this.options.scope) ? proposed : null;
