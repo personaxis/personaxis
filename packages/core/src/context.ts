@@ -165,8 +165,21 @@ export async function compactMessages(
   const keepLastN = opts.keepLastN ?? 10;
   if (meter.pct < threshold) return { messages, compacted: false };
 
-  const system = messages.find((m) => m.role === "system");
-  const rest = messages.filter((m) => m !== system);
+  // THE WHOLE leading system block, not the first message of it.
+  //
+  // It used to keep `messages.find(m => m.role === "system")`, one message, and drop
+  // every other system message with the transcript. That already lost a persona its
+  // skill guides on any long run, and E5 made it worse by splitting the prompt: the
+  // identity, the guides and what the persona remembers are three messages now, and
+  // this kept the first and threw the other two away.
+  //
+  // The leading block is also exactly the cacheable prefix, so keeping it whole is
+  // the same rule read from the other side: compaction rewrites the transcript, and
+  // it must not touch what comes before it.
+  let prefixEnd = 0;
+  while (prefixEnd < messages.length && messages[prefixEnd]!.role === "system") prefixEnd += 1;
+  const prefix = messages.slice(0, prefixEnd);
+  const rest = messages.slice(prefixEnd);
   if (rest.length <= keepLastN + 1) return { messages, compacted: false };
 
   const older = rest.slice(0, rest.length - keepLastN);
@@ -193,7 +206,7 @@ export async function compactMessages(
   const pinnedMsg: ChatMessage[] = opts.pinned?.trim()
     ? [{ role: "system", content: opts.pinned.trim() }]
     : [];
-  const next = [...(system ? [system] : []), ...pinnedMsg, summaryMsg, ...recent];
+  const next = [...prefix, ...pinnedMsg, summaryMsg, ...recent];
   meter.used = estimateMessagesTokens(next);
   return { messages: next, compacted: true, summary, removed: older.length };
 }

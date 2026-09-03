@@ -79,6 +79,34 @@ import { ask, deny, type GuardOutcome } from "./gate/verdict.js";
 import { runGuards } from "./gate/waterfall.js";
 
 /**
+ * Where a compaction is allowed to happen.
+ *
+ * Named rather than implied by a threshold, because the two are not the same event.
+ * One is a decision taken before work starts, where rewriting the transcript is
+ * cheapest. The other is a window that filled anyway, which is a fact worth
+ * reporting rather than a step that quietly costs more than the last one.
+ */
+export type CutPoint = "turn-start" | "window-full";
+
+/** One compaction that happened, with what it cost. */
+export interface CompactionRecord {
+  readonly cut: CutPoint;
+  readonly step: number;
+  readonly removed: number;
+  /** Tokens in the window before and after, so the saving is a number. */
+  readonly before: number;
+  readonly after: number;
+}
+
+/**
+ * The point where the window is full enough that not compacting fails the turn.
+ *
+ * Above the ordinary threshold on purpose: everything between the two is handled at
+ * the start of a turn, and reaching this one means that was not enough.
+ */
+const HARD_COMPACT_THRESHOLD = 0.92;
+
+/**
  * A tool's own verdict, as a guard.
  *
  * The translation is one-way on purpose, and the asymmetry is the point: an `allow`
@@ -213,6 +241,15 @@ export interface AgentResult {
   finished: boolean;
   budget: AgentBudgetReport;
   verification?: ConsensusResult;
+  /**
+   * Every compaction this run did, with where and what it cost.
+   *
+   * Reported rather than counted internally, because E6's whole point is that a
+   * compaction is measured and not supposed. Empty is the ordinary case and says so:
+   * a run that never filled its window is different from one whose measurements were
+   * never taken, and a caller cannot tell those apart from a number alone.
+   */
+  compactions: readonly CompactionRecord[];
 }
 
 const GUARD =
@@ -436,6 +473,9 @@ export class PersonaAgent {
     const startTime = Date.now();
     const meter = this.opts.meter ?? new ContextMeter(cachedContextWindow(this.opts.llm.model));
     const compactThreshold = this.opts.compactThreshold ?? 0.8;
+    // E6: what each compaction cost, so the caller is told rather than trusting
+    // that a run which felt slow did or did not rewrite its own transcript.
+    const compactions: CompactionRecord[] = [];
     // Refine the window from the endpoint in the background (best-effort).
     void resolveContextWindow(this.opts.llm).then((w) => (meter.limit = w)).catch(() => {});
 
@@ -573,6 +613,7 @@ export class PersonaAgent {
             wallSeconds: Number(((Date.now() - startTime) / 1000).toFixed(1)),
             stoppedBy: "plan",
           },
+          compactions,
         };
       }
       messages.push({ role: "system", content: planning.anchor });
@@ -674,7 +715,7 @@ export class PersonaAgent {
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, compactions };
         }
 
         // K.07: honor an out-of-band abort. The watchdog enforces the WALL-CLOCK ceiling on a
@@ -688,17 +729,42 @@ export class PersonaAgent {
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, compactions };
         }
 
         bus.emit({ type: "agent-step", step });
 
-        // Context management: compact BEFORE sending if near the window (headroom).
-        if (meter.pct >= compactThreshold) {
-          const c = await compactMessages(messages, meter, { llm: this.opts.llm, threshold: compactThreshold, pinned: taskState.render() });
+        // E6: compaction happens at a named cut point, and is counted.
+        //
+        // It used to run on any step whose meter had crossed the threshold, which is
+        // "somewhere in the middle of the work, whenever". Two costs, and the second
+        // is the one nobody sees. A summarised transcript is a different transcript,
+        // so every token after the prefix has to be re-read by the provider: the
+        // compaction that saved context spent the cache. And a compaction mid-chain
+        // rewrites the history a tool call is still reasoning about.
+        //
+        // So there are exactly two cut points and they are named. `turn-start` is the
+        // cheap, predictable one: before any work, where a rewrite costs the least.
+        // `window-full` is the safety valve, and it is the one that gets counted and
+        // reported, because reaching it means the first one was not enough and that
+        // is a fact about this persona rather than an accident of this run.
+        const cut: CutPoint | null =
+          step === 1 && meter.pct >= compactThreshold
+            ? "turn-start"
+            : meter.pct >= HARD_COMPACT_THRESHOLD
+              ? "window-full"
+              : null;
+        if (cut) {
+          const before = meter.used;
+          const c = await compactMessages(messages, meter, {
+            llm: this.opts.llm,
+            threshold: cut === "turn-start" ? compactThreshold : HARD_COMPACT_THRESHOLD,
+            pinned: taskState.render(),
+          });
           if (c.compacted) {
             messages.length = 0;
             messages.push(...c.messages);
+            compactions.push({ cut, step, removed: c.removed ?? 0, before, after: meter.used });
             bus.emit({ type: "context-compacted", removed: c.removed ?? 0, usedAfter: meter.used });
           }
         }
@@ -737,12 +803,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
-            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions };
           }
           continue; // retry
         }
@@ -926,7 +992,7 @@ export class PersonaAgent {
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
             this.persist(task, "stopped", summary, step);
-            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification };
+            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, compactions };
           }
         }
 
@@ -936,12 +1002,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
-            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions };
           }
           // retry: loop continues; the failure note is already in messages.
         }
@@ -949,11 +1015,11 @@ export class PersonaAgent {
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
       this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
-      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification };
+      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, compactions };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
       this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
-      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification };
+      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, compactions };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.
       watchdog.stop();
