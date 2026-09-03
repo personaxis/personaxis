@@ -12,11 +12,12 @@
  * to be real, and why running out of it is a refusal.
  */
 
-import type { PolicyDecision } from "@personaxis/core";
-import { gate } from "@personaxis/core";
+import type { ActionClass, PolicyDecision } from "@personaxis/core";
+import { actionClassesFor, gate } from "@personaxis/core";
 
 import type { EnforceReply, EnforceRequest } from "./enforcement-endpoint.js";
 import { callFor, cachedPolicyGuard, noPersonaGuard, scopeGuard } from "./enforcement-guards.js";
+import type { IdentityAxis } from "./identity-axis.js";
 import type { PolicyCache } from "./policy-cache.js";
 
 /** How long a person has, before the gate answers for them. */
@@ -76,11 +77,27 @@ export interface EnforcementDeps {
 	/**
 	 * Extra guards this deployment mounts, judged alongside the built-in ones.
 	 *
-	 * The identity axis arrives through here, and so does anything a component adds
-	 * while it is active. They cannot loosen anything: the type they return has no
-	 * allow case, so mounting one can only ever make the daemon refuse more.
+	 * Anything a component adds while it is active arrives through here. They cannot
+	 * loosen anything: the type they return has no allow case, so mounting one can
+	 * only ever make the daemon refuse more.
 	 */
 	guards?: readonly gate.Guard[];
+	/**
+	 * The second axis, for this call.
+	 *
+	 * Its own dependency rather than another entry in `guards`, and the comment there
+	 * used to claim otherwise. Measured when E1 came to mount it: the identity axis
+	 * cannot be a fixed guard, because it needs two things from the request. Which
+	 * persona's envelope applies depends on the directory, and what the call would do
+	 * to a coordinate has to be in the call BEFORE it is frozen, or the guard reads an
+	 * empty list and refuses nothing while every screen says the axis is in force.
+	 *
+	 * Null means this machine has no envelope to measure against here, which is not an
+	 * allow: the cascade already refuses a directory with no persona under its own
+	 * name. It means the identity question has no referent, which is a different thing
+	 * from the call being safe on that axis.
+	 */
+	identity?: (request: EnforceRequest, classes: readonly ActionClass[]) => IdentityAxis | null;
 }
 
 /**
@@ -93,7 +110,14 @@ export interface EnforcementDeps {
 export function enforcementHandler(deps: EnforcementDeps) {
 	return async function handle(request: EnforceRequest): Promise<EnforceReply> {
 		const personaVersionId = deps.personaVersionFor(request.cwd);
-		const call = callFor(request, request.tool_use_id ?? "hook");
+		// Derived once and handed to both, because the axis reads the classes to tell a
+		// write from a read and the frozen call carries them into the record.
+		const classes = actionClassesFor(request.tool_name, request.args_text);
+		const axis = deps.identity?.(request, classes);
+		const call = callFor(request, request.tool_use_id ?? "hook", {
+			actionClasses: classes,
+			effects: axis?.effects,
+		});
 
 		// Every guard runs, so a call refused twice reports both reasons. The old chain
 		// returned at the first one, and somebody who widened a scope then found the
@@ -112,6 +136,7 @@ export function enforcementHandler(deps: EnforcementDeps) {
 			// and nothing else, which is an allow.
 			guards.push(noPersonaGuard(request.cwd));
 		}
+		guards.push(...(axis?.guards ?? []));
 		guards.push(...(deps.guards ?? []));
 
 		const result = gate.runGuards(guards, call);
@@ -138,16 +163,20 @@ export function enforcementHandler(deps: EnforcementDeps) {
 			};
 		}
 
-		// An ask, which only the policy raises today. The rule it named is carried
-		// through so the gate that opens is traceable to what asked for it.
+		// An ask. The rule that raised it is carried through so the gate that opens is
+		// traceable to what asked for it.
 		// The decision the guard actually saw, rather than a second lookup. Asking the
 		// cache again could return a different answer, and the gate that opened would
 		// then not be the one that asked for it.
 		const decision = policyDecision;
 		if (decision?.verdict !== "gate") {
-			// Only the policy raises an ask today, so reaching here without its gate rule
-			// means something else did, and there is no configured gate to open. Refusing
-			// is the honest answer: inventing one would open a gate nobody set up.
+			// Reaching here without the policy's gate rule means something else raised the
+			// ask, and there is no configured gate to open for it. Since E1 that is a real
+			// case rather than a defensive branch: the identity axis asks whenever a band
+			// crossing is the layer's to review, and a persona whose policy gates nothing
+			// has no rule saying who to ask or for how long. Refusing is the honest
+			// answer, and the axis's own reason travels with it, because inventing a gate
+			// rule would open a gate nobody set up and route it at nobody.
 			const asking = result.contributions.find((entry) => entry.verdict === "ask");
 			return {
 				verdict: "deny",

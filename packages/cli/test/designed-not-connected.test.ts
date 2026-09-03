@@ -62,12 +62,23 @@ const CORE_SRC = join(PACKAGES, "core", "src");
  * delete: between them they are most of what the next phases exist to wire up.
  */
 const WAITING: { readonly name: string; readonly until: string }[] = [
-	// The second axis of the gate. `enforcement-service.ts` says in a comment that the
-	// identity axis arrives through `deps.guards`, and `connect.ts`, the only
-	// production construction, passes no guards. So the differentiator runs in tests.
-	{ name: "identityGuard", until: "E1 mounts it in the daemon" },
-	{ name: "examine", until: "E1 mounts the identity axis" },
-	{ name: "postureFor", until: "E1 mounts the identity axis" },
+	// The second axis of the gate. `identityGuard` came off this list when E1 mounted
+	// it in the daemon, and this test is what said so: it went red on its own for
+	// holding an exemption that had stopped being true.
+	//
+	// These two did not, and the reason is the sweep's own limit rather than a gap in
+	// the wiring. Both are reached from inside `gate/identity.ts`, by the guard that
+	// now runs in production, and a use inside the defining module is not a use this
+	// rule can see. They stay exported because the property tests in `core` weigh them
+	// on their own, which is worth more than a smaller export surface.
+	{
+		name: "examine",
+		until: "a caller outside `gate/identity.ts` needs it; today only the mounted guard does",
+	},
+	{
+		name: "postureFor",
+		until: "a caller outside `gate/identity.ts` needs it; today only the mounted guard does",
+	},
 	{ name: "capabilityGuard", until: "E2 mounts it as a guard of the waterfall" },
 	{ name: "requirePolicy", until: "E2 mounts it as a guard of the waterfall" },
 

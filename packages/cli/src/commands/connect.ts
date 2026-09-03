@@ -23,6 +23,7 @@ import { enforcementSocketPath, serveEnforcement } from "../workspace/enforcemen
 import { permissionFrom } from "../workspace/acp-gate.js";
 import type { PermissionAnswer, PermissionAsk } from "../workspace/acp-session.js";
 import { enforcementHandler } from "../workspace/enforcement-service.js";
+import { identityOver } from "../workspace/identity-axis.js";
 import { HOST_ADAPTERS } from "../workspace/host-adapter.js";
 import { PolicyCache } from "../workspace/policy-cache.js";
 import {
@@ -202,12 +203,25 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 	 * agent with nothing deciding for it, and every screen would still say a policy
 	 * was in force.
 	 */
+	/**
+	 * The second axis, built once over the consented scope.
+	 *
+	 * The differentiator, and until E1 it ran only in tests: `gate/identity.ts` had
+	 * zero consumers, so a call that would push a coordinate outside the envelope its
+	 * persona declared was refused nowhere. It is passed to both handlers below,
+	 * because an agent driven over ACP and an agent running under the hook are the
+	 * same agent in the same directory, and one of them enforcing less would be a way
+	 * around the gate rather than a second road to it.
+	 */
+	const identity = identityOver(scope);
+
 	const acpGate = permissionFrom(
 		enforcementHandler({
 			cache,
 			scope,
 			openGate: (gate) => relay.open(gate),
 			personaVersionFor,
+			identity,
 		}),
 	);
 
@@ -224,6 +238,7 @@ function startEnforcement(scope: string[]): EnforcementRuntime {
 			// gated was refused for want of anyone to ask, forever.
 			openGate: (gate) => relay.open(gate),
 			personaVersionFor,
+			identity,
 		});
 
 		try {

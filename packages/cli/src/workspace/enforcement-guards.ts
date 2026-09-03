@@ -27,7 +27,7 @@
  */
 
 import { actionClassesFor, gate } from "@personaxis/core";
-import type { PolicyDecision } from "@personaxis/core";
+import type { ActionClass, PolicyDecision } from "@personaxis/core";
 
 import type { EnforceRequest } from "./enforcement-endpoint.js";
 import type { PolicyCache } from "./policy-cache.js";
@@ -138,12 +138,32 @@ export function cachedPolicyGuard(
 	};
 }
 
+/**
+ * What the caller already knows about the call, so it is not derived twice.
+ *
+ * The classes are computed before this is reached, because the identity axis needs
+ * them to tell a write from a read, and a second `actionClassesFor` here would be
+ * one derivation with two call sites: the day the table changes, the axis and the
+ * frozen call would disagree about what the same call is.
+ */
+export interface CallExtras {
+	readonly actionClasses?: readonly ActionClass[];
+	/** What the call declares it would do to declared coordinates, when it does. */
+	readonly effects?: readonly gate.CoordinateEffect[];
+}
+
 /** Turns a hook request into the frozen call the cascade judges. */
-export function callFor(request: EnforceRequest, turn: string): gate.FrozenCall {
+export function callFor(
+	request: EnforceRequest,
+	turn: string,
+	extras: CallExtras = {},
+): gate.FrozenCall {
 	return gate.freezeCall({
 		tool: request.tool_name,
 		argsText: request.args_text,
-		actionClasses: actionClassesFor(request.tool_name, request.args_text) as never,
+		actionClasses: (extras.actionClasses ??
+			actionClassesFor(request.tool_name, request.args_text)) as never,
+		effects: extras.effects ?? [],
 		turn,
 		// The hook's own id, when the host gave one, so the proposal, the verdict and
 		// the result share an identity across three processes rather than two.
