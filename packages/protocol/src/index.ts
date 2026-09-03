@@ -41,6 +41,17 @@ export {
 	type AcpProviderOptions,
 	type AcpUsage,
 } from "./acp/provider.js";
+/**
+ * Being driven, which is the other half of the bridge. Decision D1 of the plan:
+ * we drive forty agents, and our personas install into the editors people use.
+ */
+export {
+	serveAcpOverStdio,
+	servedStopReason,
+	type AcpServedAgent,
+	type AcpServedClient,
+	type ServedStopReason,
+} from "./acp/serve.js";
 export {
 	ACP_PROTOCOL_VERSION,
 	acpOverStdio,
