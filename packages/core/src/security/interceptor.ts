@@ -14,6 +14,35 @@
 import { EventBus } from "../events.js";
 import { ingestUntrusted } from "./ingest.js";
 import { fromOutside, type Tainted } from "./taint.js";
+import { CredentialBroker } from "./broker.js";
+
+/**
+ * Fills every reference in a call's arguments, on a copy.
+ *
+ * On a copy because the original arguments are what the gate froze and what the record
+ * holds: rewriting them in place would make the record say the call carried a
+ * credential, which is both untrue and the exact thing this is for.
+ *
+ * Only string values are walked. A credential arriving as a number or a boolean is not
+ * a case that exists, and pretending to handle it would be code nobody can test.
+ */
+function fillArgs(
+  broker: CredentialBroker,
+  args: Record<string, unknown>,
+): { args: Record<string, unknown>; missing: string[] } {
+  const filled: Record<string, unknown> = {};
+  const missing: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value !== "string") {
+      filled[key] = value;
+      continue;
+    }
+    const result = broker.fill(value);
+    filled[key] = result.text;
+    missing.push(...result.missing);
+  }
+  return { args: filled, missing: [...new Set(missing)] };
+}
 import { runHooks, type HooksConfig } from "../hooks.js";
 import type { ToolSpec } from "../tools/registry.js";
 import type { ToolCall } from "../tool-calling.js";
@@ -57,6 +86,15 @@ export class ToolInterceptor {
      * hosted job, and it would work perfectly, on the wrong machine.
      */
     private readonly execution: ExecutionPort = localExecution(),
+    /**
+     * E14: holds the credentials the agent may USE and may never see.
+     *
+     * Optional, and absent is the ordinary case: a persona with no credentials
+     * configured has nothing to exchange. When present, references in the arguments
+     * become values one line before execution and every value is scrubbed out of the
+     * result, so nothing downstream, including the record, ever holds one.
+     */
+    private readonly broker?: CredentialBroker,
   ) {}
 
   /**
@@ -75,8 +113,43 @@ export class ToolInterceptor {
   async run(tool: ToolSpec, call: ToolCall): Promise<InterceptOutcome> {
     let output: string;
     let ok = true;
+    // E14: references become values HERE, one line before the bytes leave, and never
+    // sooner. Anything that substituted earlier would have produced a string holding a
+    // credential, and that string gets logged by somebody eventually.
+    //
+    // The arguments the gate judged and the record kept are the ones with the
+    // reference still in them, which is the property that makes this safe to audit: a
+    // record entry can be read by anyone without leaking anything.
+    const filled = this.broker ? fillArgs(this.broker, call.args) : { args: call.args, missing: [] };
+    if (filled.missing.length > 0) {
+      // Named and refused rather than sent. Leaving the literal `{{secret:x}}` in place
+      // sends a request some servers log verbatim, and substituting an empty string
+      // sends one that reads as an authentication bug for as long as it takes somebody
+      // to find this line.
+      const record = this.forensic.append({
+        kind: "tool-call",
+        tool: tool.name,
+        decision: "deny",
+        executed: false,
+        reason: `no credential for ${filled.missing.join(", ")}`,
+      });
+      return {
+        output: fromOutside(
+          `error: this machine holds no credential named ${filled.missing.join(", ")}`,
+          "clean",
+          `tool:${tool.name}`,
+        ),
+        ok: false,
+        outputVerdict: "clean",
+        record,
+      };
+    }
     try {
-      output = await tool.execute(call.args, this.policy, this.execution);
+      output = await tool.execute(filled.args, this.policy, this.execution);
+      // And back through the broker on the way out. Skipping this undoes the rest: an
+      // agent that can send a header can send something that echoes it back, and the
+      // secret arrives in output it was never meant to hold.
+      if (this.broker) output = this.broker.scrub(output);
     } catch (e) {
       output = `execution error: ${(e as Error).message}`;
       ok = false;
