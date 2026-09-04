@@ -3,6 +3,8 @@ import { defineTool } from "../define.js";
 
 import { readGate } from "../gates.js";
 
+import { missingPathNote, whatIsNearby } from "./nearby.js";
+
 export const readFileTool = defineTool({
   name: "read_file",
   category: "fs",
@@ -22,8 +24,11 @@ export const readFileTool = defineTool({
     // V3.1: a missing file is an ANSWER, not a failure. Marking it "error:" zeroed step
     // progress and tripped the no_progress / execution_error stop conditions, so an
     // optional read could abort a whole run without a reply.
-    return r.error === "file not found"
-      ? `note: ${r.path} does not exist. Continue with what you have.`
-      : `error: ${r.error}`;
+    // E31: the runtime used to tell the persona to give up here, and measured
+    // against a real model it obeyed: seven of the eight times this branch fired,
+    // the task was abandoned. It hands over the neighbouring names instead. See
+    // `nearby.ts` for why a better sentence was tried, measured and discarded.
+    if (r.error !== "file not found") return `error: ${r.error}`;
+    return missingPathNote(r.path, await whatIsNearby(r.path, policy, execution));
   },
 });
