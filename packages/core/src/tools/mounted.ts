@@ -153,10 +153,44 @@ export function builtinManifest(): PluginManifest {
 	return read.manifest;
 }
 
+/** What changed between two snapshots of the catalogue. */
+export interface BenchChange {
+	readonly added: readonly string[];
+	readonly removed: readonly string[];
+}
+
 /** A live catalogue: the tools whose components are currently active. */
 export interface ToolBench {
-	/** What the model should be offered right now. */
+	/**
+	 * What the model may be offered right now.
+	 *
+	 * K5: the last SNAPSHOT, minus anything no longer contributed. Which gives the rule in
+	 * its strongest form: BETWEEN BOUNDARIES THIS IS A SUBSET OF THE LAST SNAPSHOT. A name
+	 * the session has already been shown may leave and come back; a name it has never seen
+	 * cannot appear until a boundary. The asymmetry below is the row rather than a
+	 * compromise between two half-rules.
+	 *
+	 * An ADDITION waits for `refresh`. Tool declarations sit inside the cached prompt
+	 * prefix, so a tool appearing mid-session invalidates everything behind it and the
+	 * provider re-reads the transcript, which costs money for a capability nobody has
+	 * asked for yet. `K2` made that possible by letting a plugin wake in the middle of a
+	 * session; this is the other half of it.
+	 *
+	 * A REMOVAL does not wait, and it costs exactly the same prefix. It is paid because
+	 * the alternative is worse than money: a model handed a tool it may not use will use
+	 * it, be refused, and try again in a slightly different shape, which is the loop the
+	 * breaker exists to stop, and it spends the turn's budget on calls that were never
+	 * going to run.
+	 */
 	readonly tools: readonly ToolSpec[];
+	/**
+	 * Takes a new snapshot, and says what moved.
+	 *
+	 * Called at a boundary where the prefix is being rewritten anyway, which is what
+	 * makes an addition free: `E6` named exactly two of those, and at both of them the
+	 * transcript is already being replaced.
+	 */
+	refresh(): BenchChange;
 	/** Stops every component and empties the catalogue. */
 	close(): void;
 }
@@ -184,14 +218,31 @@ export function mountBuiltins(kernel: Kernel, permissions: PermissionSource): To
 	kernel.provide(PERMISSIONS, permissions);
 	const unmounts = NEEDED.map((entry) => kernel.mount(componentFor(entry)));
 
+	// K3: read from the point rather than filtered from a list this module keeps. The
+	// order is contribution order, which for components is mount order, which is the
+	// order they are declared above. That is the cache discipline E5 established: a
+	// catalogue that reshuffled between turns would move the prompt prefix for no reason
+	// a person could see.
+	const contributed = (): readonly ToolSpec[] => kernel.extensions.of(TOOL_POINT);
+
+	// K5: what the model has been shown. Starts as everything available at mount, so a
+	// caller that never refreshes behaves exactly as it did before this existed.
+	let snapshot: readonly ToolSpec[] = contributed();
+
 	return {
 		get tools() {
-			// K3: read from the point rather than filtered from a list this module keeps.
-			// The order is contribution order, which for components is mount order, which
-			// is the order they are declared above. That is the cache discipline E5
-			// established: a catalogue that reshuffled between turns would move the prompt
-			// prefix for no reason a person could see.
-			return kernel.extensions.of(TOOL_POINT);
+			const live = new Set(contributed());
+			return snapshot.filter((tool) => live.has(tool));
+		},
+		refresh() {
+			const before = new Set(snapshot.map((tool) => tool.name));
+			const now = contributed();
+			const after = new Set(now.map((tool) => tool.name));
+			snapshot = now;
+			return {
+				added: now.map((tool) => tool.name).filter((name) => !before.has(name)),
+				removed: [...before].filter((name) => !after.has(name)),
+			};
 		},
 		close: () => {
 			for (const unmount of unmounts) unmount();

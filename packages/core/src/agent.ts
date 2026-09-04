@@ -91,7 +91,7 @@ import { breakerGuard, nudgeFor } from "./run/breaker-guard.js";
 import { LatencyMeter, type LatencyReport } from "./run/latency.js";
 import { authorId } from "./record/entry.js";
 import { Kernel, type PermissionKey } from "./kernel/index.js";
-import { grantedPermissions, mountBuiltins, type ToolBench } from "./tools/mounted.js";
+import { ALL_TOOL_PERMISSIONS, grantedPermissions, mountBuiltins, type ToolBench } from "./tools/mounted.js";
 
 /**
  * Where a compaction is allowed to happen.
@@ -224,6 +224,19 @@ export interface AgentOptions {
    * Withholding is a decision somebody makes, not a default they fall into.
    */
   permissions?: readonly PermissionKey[];
+  /**
+   * K5: the kernel to mount the built-ins on, when the caller owns one.
+   *
+   * Without it the agent makes its own and nobody else can reach it, which means nothing
+   * can be withdrawn and no plugin can be contributed for the life of the agent. That is
+   * what made `K5`'s rule unobservable through this class: a catalogue that cannot change
+   * needs no rule about when it may.
+   *
+   * With one, the caller decides. An operator revoking a permission mid-session and a
+   * plugin waking under `K2` both reach a running persona, and both then obey `K5`:
+   * a removal at once, an addition at the next boundary.
+   */
+  kernel?: Kernel;
   /**
    * Tools contributed from outside the engine, added to whatever catalogue results.
    *
@@ -376,7 +389,7 @@ export class PersonaAgent {
    * unwritable from where its author sits.
    */
   private readonly capability?: ExecutablePolicy;
-  private readonly tools: ToolSpec[];
+  private tools: ToolSpec[];
   /**
    * The kernel bench, when this persona declared permissions.
    *
@@ -384,7 +397,32 @@ export class PersonaAgent {
    * empties the catalogue it produced. It lives as long as the agent does.
    */
   private readonly bench?: ToolBench;
+  /**
+   * K5: everything in the catalogue that the kernel does not own.
+   *
+   * Memory tools, and whatever a caller contributed. They are not components, nothing can
+   * withdraw them, and rebuilding them would mean re-reading a persona from disk every
+   * turn to arrive at the same list. Held apart so a refresh replaces the kernel's half
+   * and leaves this one exactly where it was.
+   */
+  private readonly notFromKernel: ToolSpec[] = [];
   private preferFallback = false;
+
+  /**
+   * K5: re-reads the bench, so what the model is shown is what the kernel now holds.
+   *
+   * A no-op without a bench, which is every caller that passed its own tools or none:
+   * the catalogue is then the caller's and nothing here owns it.
+   *
+   * The memory tools and anything a caller added are NOT rebuilt. They are not components
+   * and nothing can withdraw them, so rebuilding would mean re-reading a persona from
+   * disk at every turn to arrive at the same list.
+   */
+  private refreshCatalogue(): void {
+    if (!this.bench) return;
+    this.bench.refresh();
+    this.tools = [...this.bench.tools, ...this.notFromKernel];
+  }
 
   constructor(private readonly opts: AgentOptions) {
     this.bus = opts.bus ?? new EventBus();
@@ -399,8 +437,11 @@ export class PersonaAgent {
     //
     // The bench is held for the life of the agent rather than closed here, because
     // closing it would unwind every scope and empty the catalogue it just produced.
-    if (opts.permissions) {
-      this.bench = mountBuiltins(new Kernel(), grantedPermissions(opts.permissions));
+    if (opts.permissions || opts.kernel) {
+      this.bench = mountBuiltins(
+        opts.kernel ?? new Kernel(),
+        grantedPermissions(opts.permissions ?? ALL_TOOL_PERMISSIONS),
+      );
     }
     const builtins = this.bench ? [...this.bench.tools] : TOOLS;
 
@@ -432,6 +473,13 @@ export class PersonaAgent {
       tools = [...tools, ...opts.extraTools.filter((tool) => !known.has(tool.name))];
     }
     this.tools = tools;
+    // K5: which half a refresh may replace. Everything the kernel did not contribute is
+    // kept apart now, while the two are still distinguishable; after this the catalogue
+    // is one list and telling them apart would mean guessing by name.
+    if (this.bench) {
+      const fromKernel = new Set(this.bench.tools.map((tool) => tool.name));
+      this.notFromKernel.push(...tools.filter((tool) => !fromKernel.has(tool.name)));
+    }
   }
 
   /**
@@ -687,6 +735,15 @@ export class PersonaAgent {
     const outputStore = new ToolOutputStore();
     // The read_output/grep_output tools are meta (always in the subset) so the model can pull an
     // offloaded output back once it sees a handle.
+    // K5: the catalogue is re-read at the START OF A TURN, which is one of the two cut
+    // points E6 named and the cheap one. Before this the agent copied the bench once, in
+    // its constructor, and never looked again: a permission withdrawn mid-session left the
+    // tool on offer for the rest of the agent's life, which is precisely what
+    // `mounted.ts` argues must not happen, and a plugin woken by K2 could never arrive.
+    //
+    // Nothing is re-read between turns other than here, because a tool appearing inside a
+    // turn moves the prefix the provider has already cached.
+    this.refreshCatalogue();
     const baseTools = [...this.tools, ...outputStoreTools(outputStore)];
 
     // J.2: subset the tools shown to the model to what this task's skills need, so a large
@@ -1016,6 +1073,11 @@ export class PersonaAgent {
           if (c.compacted) {
             messages.length = 0;
             messages.push(...c.messages);
+            // K5: the other named cut point. The transcript has just been rewritten, so
+            // the cached prefix is already spent and a tool arriving now costs nothing
+            // extra. This is why the row asks for a COMPACTION boundary rather than any
+            // convenient moment.
+            this.refreshCatalogue();
             // A compaction with no plan cannot happen: `compactMessages` builds one on
             // the branch that sets `compacted`. The fallback is an empty plan carrying
             // the numbers rather than a cast, so a future branch that compacts without
