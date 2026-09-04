@@ -23,7 +23,13 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { DEFAULT_POLICY, PersonaAgent, requestToolCall, type ChatMessage } from "../src/index.js";
+import {
+	ALL_TOOL_PERMISSIONS,
+	DEFAULT_POLICY,
+	PersonaAgent,
+	requestToolCall,
+	type ChatMessage,
+} from "../src/index.js";
 
 let dir: string;
 beforeEach(() => {
@@ -151,6 +157,59 @@ describe("what the loop puts before what", () => {
 		const messages = await sent(path, "one");
 
 		expect(messages.some((message) => message.content.includes("Ada"))).toBe(true);
+	});
+});
+
+describe("the scope of the moment, which is not part of the identity", () => {
+	it("keeps the confinement out of the system prompt", async () => {
+		// E20, the finding that cuts against us and is measured: with the confinement
+		// mode in the stable system prompt, five of twelve turns ended with no tool call
+		// at all. A system prompt is who you are, and a restriction written there reads
+		// as part of the identity.
+		const path = personaWithMemory("nothing in particular");
+		const messages = await sent(path, "one");
+
+		expect(messages[0]?.content).not.toContain("sandbox:");
+		expect(messages[0]?.content).toContain("# Identity");
+	});
+
+	it("still tells the persona what it may do right now", async () => {
+		// The control, and it is the point: the answer is not to hide the limits. A
+		// persona that does not know its posture guesses, acts, and is refused for
+		// guessing wrong, which is worse than being told.
+		const path = personaWithMemory("nothing in particular");
+		const messages = await sent(path, "one");
+		const scope = messages.find((message) => message.content.includes("# Right now"));
+
+		expect(scope?.role).toBe("system");
+		expect(scope?.content).toContain("sandbox: danger-full-access");
+	});
+
+	it("says it is about the turn and not about the persona", async () => {
+		// The sentence is doing the work the placement cannot do alone. Moving text and
+		// leaving it reading like a description of the agent would move the problem.
+		const path = personaWithMemory("nothing in particular");
+		const messages = await sent(path, "one");
+		const scope = messages.find((message) => message.content.includes("# Right now"));
+
+		expect(scope?.content).toContain("not a description of who you are");
+	});
+
+	it("keeps the identity byte-identical when the posture changes", async () => {
+		// Which is E5's rule arriving at the same place from the other side: the posture
+		// moves when somebody presses shift+tab, so anything holding it in the prefix
+		// breaks the cache on every change.
+		const path = personaWithMemory("nothing in particular");
+		const permissive = await sent(path, "one");
+		const restricted = await sent(path, "two", {
+			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "read-only" },
+			// Read-only would otherwise leave the catalogue without a writer, which is E12
+			// working and not what this test is about.
+			permissions: ALL_TOOL_PERMISSIONS,
+		});
+
+		expect(permissive[0]?.content).toBe(restricted[0]?.content);
+		expect(restricted.some((message) => message.content.includes("sandbox: read-only"))).toBe(true);
 	});
 });
 

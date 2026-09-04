@@ -397,10 +397,41 @@ export class PersonaAgent {
       "# Environment",
       `os: ${process.platform} (use commands valid for this OS, e.g. PowerShell/cmd on win32)`,
       `workspace: ${this.policy.workspaceRoot}`,
-      `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
+      // E20: the confinement mode is NOT here any more. See `scopeOfTheMoment`.
       this.opts.awareness ? `\n${this.opts.awareness}` : "",
       this.opts.goal ? `\n# Standing goal\n${this.opts.goal}` : "",
     ].filter(Boolean).join("\n");
+  }
+
+  /**
+   * What this persona may do RIGHT NOW, as an execution-context contribution.
+   *
+   * E20, and it is the finding that cuts against us. The study measured it: with the
+   * confinement mode written into the stable system prompt, **five of twelve turns
+   * ended with no tool call at all**. Telling an agent its limits can stop it acting.
+   *
+   * The resolution is not to hide the limits, which would leave a persona guessing at
+   * what it may do and being refused for guessing wrong. It is WHERE they are told.
+   * A system prompt is who you are, and a restriction written there reads as part of
+   * the identity: "I am a restricted agent". The same sentence in the execution
+   * context reads as a fact about this moment: "right now, this". The study's own
+   * delegation tells its children exactly the same things and keeps the system prompt
+   * identical, which is where the answer came from.
+   *
+   * It also has to be here for the reason E5 cares about: the posture changes when
+   * somebody presses shift+tab, and anything that changes per turn belongs on the far
+   * side of everything that does not, or the prefix stops matching and the cache never
+   * reads.
+   *
+   * What is NOT yet measured is whether moving it fixes the paralysis. That needs a
+   * real model over a dozen turns, and it is `E28`.
+   */
+  private scopeOfTheMoment(): string {
+    return [
+      "# Right now",
+      `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
+      "This is the scope of this turn, not a description of who you are. Act within it.",
+    ].join("\n");
   }
 
   /**
@@ -626,6 +657,8 @@ export class PersonaAgent {
       // not. Everything that changes per turn belongs on the far side of everything
       // that does not.
       ...(remembered.trim() ? [{ role: "system" as const, content: remembered }] : []),
+      // E20: the confinement of this turn, out of the identity and into the moment.
+      { role: "system" as const, content: this.scopeOfTheMoment() },
       ...(this.opts.priorMessages ?? []),
       // V7.A1: environment changes are SYSTEM speech, not the user's words.
       ...(this.opts.envNote ? [{ role: "system" as const, content: this.opts.envNote }] : []),
