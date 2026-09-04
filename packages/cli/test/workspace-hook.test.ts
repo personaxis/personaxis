@@ -41,6 +41,11 @@ function policy(overrides: Partial<CompiledPolicy> = {}): CompiledPolicy {
 		allow: [] as string[],
 		hard_limits: [] as string[],
 		prohibited_behaviors: [] as string[],
+		// E30: absent until `compile` started refusing what it cannot enforce, so this
+		// stub was never a `CompiledPolicy` and `hashPolicy` was hashing a shape no real
+		// policy has. Empty is the right value here and not a placeholder: these tests
+		// are about the gate, and an empty allowlist reaches nothing.
+		egress_allowlist: [] as string[],
 		sandbox: "danger-full-access" as const,
 		approval: "never" as const,
 		gate_rules: [],

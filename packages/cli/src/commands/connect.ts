@@ -446,7 +446,25 @@ function holdTheWire(token: string, scope: string[], enforcement: EnforcementRun
 			// And a run that ended answers nothing more, so its gates stop waiting.
 			onJobEnded: (jobId) => relay.abandon(jobId),
 			onPolicy: (policy, cwd) => {
-				cache.put(policy);
+				// E30: `compile` refuses a policy it cannot enforce, and that refusal
+				// arrives here, on a callback from the wire. Caught rather than allowed to
+				// escape, for two reasons that point the same way. A throw out of a socket
+				// handler takes the whole daemon's connection with it, so one bad push
+				// would stop this machine enforcing anything anywhere. And the directory
+				// is deliberately left UNBOUND: a policy nobody could compile is a policy
+				// nobody can enforce, so calls there are refused for having no persona,
+				// which is the closed answer. What was missing before was the sentence
+				// saying why.
+				try {
+					cache.put(policy);
+				} catch (error) {
+					console.error(
+						chalk.red(
+							`refused a policy for ${cwd}: ${error instanceof Error ? error.message : String(error)}`,
+						),
+					);
+					return;
+				}
 				// Without this the machine holds the policy and still cannot say who it
 				// belongs to in that directory, so every call there is refused for having
 				// no persona while the policy sits in the cache unused.

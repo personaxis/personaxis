@@ -55,6 +55,15 @@ const policyArb: fc.Arbitrary<CompiledPolicy> = fc.record({
 	prohibited_behaviors: fc.array(fc.constantFrom("Fabricating sources or data."), {
 		maxLength: 2,
 	}),
+	// E30: this was ABSENT, so five hundred generated policies a run were not
+	// `CompiledPolicy` at all, and had been since the generator was written. Nothing
+	// could say so: `fc.record` is typed by what you give it and the tests themselves
+	// never met a type checker until E32. Compiling one now refuses it, which is how it
+	// surfaced. Generated rather than empty, because an empty list reaches nothing and a
+	// property that only ever saw the denying case is a property with one branch.
+	egress_allowlist: fc.array(fc.constantFrom("api.github.com", "example.com"), {
+		maxLength: 2,
+	}),
 	sandbox,
 	approval,
 	gate_rules: fc.array(gateRule, { maxLength: 3 }),
@@ -152,7 +161,12 @@ describe("precedence holds over generated policies", () => {
 		);
 	});
 
-	it("compiles without throwing on any policy, including invalid regex", () => {
+	it("compiles a well-formed policy without throwing, invalid regex included", () => {
+		// Narrowed from "any policy" by E30, and the narrowing is the point rather than a
+		// retreat. A bad PATTERN must never take a policy down: that would stop a persona
+		// working over a typo, so it compiles to something that matches nothing. A bad
+		// SHAPE is the opposite case and now throws, because the alternative was measured
+		// and it is a guard failing mid-call in the persona's own voice.
 		fc.assert(
 			fc.property(fc.array(fc.string(), { maxLength: 4 }), (sources) => {
 				const policy: CompiledPolicy = {
@@ -164,6 +178,7 @@ describe("precedence holds over generated policies", () => {
 					allow: sources,
 					hard_limits: [],
 					prohibited_behaviors: [],
+					egress_allowlist: [],
 					sandbox: "workspace-write",
 					approval: "never",
 					gate_rules: [],

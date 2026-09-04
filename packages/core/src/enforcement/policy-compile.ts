@@ -66,6 +66,27 @@ export interface CompiledPolicy {
 }
 
 /**
+ * The key that says this came out of `compile()`. Real at runtime, and not exported.
+ *
+ * E30: the same shape `E13` uses for taint, and here for the same reason. This type was
+ * structural, so anything with the right fields WAS one as far as the compiler was
+ * concerned, and two ways of getting a wrong one were open. Somebody builds it by hand,
+ * which is what happened while measuring `E28`: a policy with `persona_id` where
+ * `persona_version_id` belongs and no `ttl_seconds` made a guard throw
+ * `Cannot read properties of undefined (reading 'length')`, the cascade contained it by
+ * denying, and the turn ended with the persona saying it could not access the
+ * repository. From outside that is indistinguishable from a model that will not work,
+ * and it cost twenty minutes to tell apart. Or it arrives off a wire: this type holds
+ * `RegExp[]` and a `Map`, neither of which survives JSON, so a parsed policy has the
+ * right shape for TypeScript and explodes on every call.
+ *
+ * A module-scoped `Symbol()` is inferred as a `unique symbol` and exists at runtime, so
+ * the brand is enforced by the compiler AND is really there. Not exporting it is what
+ * closes both doors at once: nothing outside this file can write the property.
+ */
+const COMPILED = Symbol("personaxis.compiled-policy");
+
+/**
  * The compiled form the daemon actually evaluates against.
  *
  * Separate from the wire shape above because it holds compiled regexes and
@@ -73,6 +94,8 @@ export interface CompiledPolicy {
  * version and the daemon caches it.
  */
 export interface ExecutablePolicy {
+	/** Phantom at the type level, present at runtime. See `COMPILED`. */
+	readonly [COMPILED]: true;
 	policy: CompiledPolicy;
 	deny: RegExp[];
 	allow: RegExp[];
@@ -139,8 +162,70 @@ export function keywordsFor(limit: string): string[] {
  * becomes a pattern that matches nothing, and the reason is that a persona with
  * one bad deny line should lose that line, not stop being enforceable.
  */
+/**
+ * What a policy has to have before anything is allowed to evaluate against it.
+ *
+ * E30: `compile` used to take whatever it was handed. The fields are listed by what the
+ * evaluator DEREFERENCES rather than by what the interface declares, because a missing
+ * declared field that nothing reads is a tidiness problem and a missing dereferenced one
+ * is a guard that throws mid-call.
+ */
+const REQUIRED_LISTS = [
+	"deny",
+	"allow",
+	"hard_limits",
+	"prohibited_behaviors",
+	"egress_allowlist",
+	"gate_rules",
+] as const satisfies readonly (keyof CompiledPolicy)[];
+
+const REQUIRED_TEXT = [
+	"persona_version_id",
+	"hash",
+	"compiled_at",
+	"sandbox",
+	"approval",
+] as const satisfies readonly (keyof CompiledPolicy)[];
+
+/**
+ * Everything wrong with a policy, in one list.
+ *
+ * All of them rather than the first, because a shape somebody is building by hand is
+ * usually wrong in more than one place, and an API that reveals one fault per attempt
+ * teaches people that it is hostile rather than that they are close.
+ */
+function faultsIn(policy: CompiledPolicy): string[] {
+	const faults: string[] = [];
+	const seen = policy as unknown as Record<string, unknown>;
+
+	for (const field of REQUIRED_LISTS) {
+		if (!Array.isArray(seen[field])) faults.push(`${field} must be an array`);
+	}
+	for (const field of REQUIRED_TEXT) {
+		if (typeof seen[field] !== "string") faults.push(`${field} must be a string`);
+	}
+	if (typeof seen["ttl_seconds"] !== "number") faults.push("ttl_seconds must be a number");
+
+	return faults;
+}
+
+/**
+ * Turns a policy into the only thing the gate will evaluate against.
+ *
+ * Throws rather than returning a result, and fails at the door rather than in a guard.
+ * A policy that cannot be compiled is not a policy, and the alternative was measured:
+ * the fault surfaces deep inside the cascade, gets contained by the rule that a guard
+ * which did not decide has not allowed, and reaches the person as the persona refusing
+ * to work. Failing here names it instead.
+ */
 export function compile(policy: CompiledPolicy): ExecutablePolicy {
+	const faults = faultsIn(policy);
+	if (faults.length > 0) {
+		throw new Error(`this policy cannot be compiled: ${faults.join("; ")}`);
+	}
+
 	return {
+		[COMPILED]: true,
 		policy,
 		deny: compilePatterns(policy.deny),
 		allow: compilePatterns(policy.allow),
