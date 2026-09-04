@@ -46,7 +46,9 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mcpToolToSpec, type McpToolDescriptor, type ToolSpec } from "@personaxis/core";
+import { kernel, mcpToolToSpec, type McpToolDescriptor, type ToolSpec } from "@personaxis/core";
+
+const { readManifest } = kernel;
 
 import { loadConfig } from "../config.js";
 import { version } from "../generated/assets.js";
@@ -130,6 +132,14 @@ export interface MountOptions {
 	 */
 	readonly transportFor?: (name: string, spec: McpServerSpec) => Transport;
 	readonly timeoutMs?: number;
+	/**
+	 * K4: told which advertised tools were refused, and why.
+	 *
+	 * Reported rather than swallowed. A tool that silently does not appear is a server the
+	 * operator installed and cannot work out why it does nothing, and the answer is
+	 * usually one malformed field the server's author would fix in a minute.
+	 */
+	readonly onRefused?: (refused: readonly string[]) => void;
 }
 
 /**
@@ -140,6 +150,38 @@ export interface MountOptions {
  * tools" and "could not be reached" apart, and an operator debugging a server needs
  * that difference more than anything else this function could tell them.
  */
+/**
+ * K4: whether a tool a server advertises may be shown to a model at all.
+ *
+ * Through `readManifest`, which is the same door a local plugin comes through, so there is
+ * one answer to "is this describable" rather than one per source. Built as a one-tool
+ * manifest on purpose: the reader refuses a whole manifest for one bad tool, and here the
+ * right granularity is the tool.
+ *
+ * The name is checked PREFIXED, because the prefixed one is what the model sees.
+ */
+function whyRefused(server: string, descriptor: McpToolDescriptor): readonly string[] {
+	const readOnly = descriptor.annotations?.readOnlyHint === true;
+	const read = readManifest({
+		name: `mcp.${server}`,
+		version: "0.0.0",
+		contributes: {
+			tools: [
+				{
+					name: `${server}:${descriptor.name}`,
+					description:
+						descriptor.description ??
+						`MCP tool "${descriptor.name}" from server "${server}".`,
+					category: "mcp",
+					isReadOnly: readOnly,
+					isConcurrencySafe: readOnly && descriptor.annotations?.idempotentHint === true,
+				},
+			],
+		},
+	});
+	return read.ok ? [] : read.faults;
+}
+
 export async function mountServer(
 	name: string,
 	spec: McpServerSpec,
@@ -168,7 +210,25 @@ export async function mountServer(
 	await client.connect(transport, { timeout });
 	const listed = await client.listTools(undefined, { timeout });
 
-	const tools = listed.tools.map((descriptor) =>
+	// K4: what the server SAYS about itself goes through the manifest reader before any of
+	// it reaches a prompt. This is the untrusted boundary and it is worth being exact about
+	// where the danger is: the code runs in the server's own process, which is the whole
+	// point of MCP and was already true. What crosses into ours is DESCRIPTION, and a
+	// description is injected into the model's context, so a server needs no execution at
+	// all to attack: it only needs to be listed.
+	//
+	// Per tool rather than per server, which follows this file's own rule one level down: a
+	// server that advertises one malformed tool costs that tool and not the other twelve.
+	const refused: string[] = [];
+	const accepted = listed.tools.filter((descriptor) => {
+		const faults = whyRefused(name, descriptor as McpToolDescriptor);
+		if (faults.length === 0) return true;
+		refused.push(`${name}:${(descriptor as McpToolDescriptor).name} (${faults.join("; ")})`);
+		return false;
+	});
+	if (refused.length > 0) options.onRefused?.(refused);
+
+	const tools = accepted.map((descriptor) =>
 		mcpToolToSpec(name, descriptor as McpToolDescriptor, async (toolName, args) => {
 			try {
 				const result = await client.callTool({ name: toolName, arguments: args });

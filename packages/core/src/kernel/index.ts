@@ -38,6 +38,16 @@ export {
 export { EffectScope, once, type Disposer } from "./effects.js";
 
 export {
+	catalogue,
+	readManifest,
+	type Catalogue,
+	type Contributions,
+	type ManifestRead,
+	type PluginManifest,
+	type ToolContribution,
+} from "./manifest.js";
+
+export {
 	Extensions,
 	extensionPoint,
 	type ExtensionPoint,

@@ -208,3 +208,57 @@ describe("what comes back from a call", () => {
 		expect(textOf({})).toBe("");
 	});
 });
+
+describe("K4: what a server says about itself, before it reaches a prompt", () => {
+	it("refuses a tool whose name is not something a model can be shown", async () => {
+		// The danger here is not execution: an MCP server's code runs in its own process
+		// and always did. What crosses into ours is DESCRIPTION, and a description goes
+		// into the model's context, so a server needs no execution at all to attack. It
+		// only needs to be listed.
+		const transport = await serverOffering([
+			{ name: "fine", run: () => said("ok") },
+			{ name: "a".repeat(80), run: () => said("ok") },
+		]);
+		const refused: string[] = [];
+
+		const mounted = await mountServer("tools", { command: "unused" }, {
+			transportFor: () => transport,
+			onRefused: (list) => refused.push(...list),
+		});
+
+		expect(mounted.tools.map((tool) => tool.name)).toEqual(["tools:fine"]);
+		expect(refused).toHaveLength(1);
+		expect(refused[0]).toContain("plain identifier");
+	});
+
+	it("costs the server one tool and not the other twelve", async () => {
+		// This file's own rule, one level down. A server that advertises one malformed
+		// tool keeps the rest, because the alternative is an operator who installed five
+		// servers and cannot tell which one stopped working.
+		const transport = await serverOffering([
+			{ name: "one", run: () => said("ok") },
+			{ name: "b".repeat(80), run: () => said("ok") },
+			{ name: "two", run: () => said("ok") },
+		]);
+
+		const mounted = await mountServer("tools", { command: "unused" }, {
+			transportFor: () => transport,
+		});
+
+		expect(mounted.tools.map((tool) => tool.name)).toEqual(["tools:one", "tools:two"]);
+	});
+
+	it("says nothing when everything a server offers is describable", async () => {
+		const transport = await twoTools();
+		let told = false;
+
+		await mountServer("tools", { command: "unused" }, {
+			transportFor: () => transport,
+			onRefused: () => {
+				told = true;
+			},
+		});
+
+		expect(told).toBe(false);
+	});
+});
