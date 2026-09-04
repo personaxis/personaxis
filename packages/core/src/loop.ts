@@ -380,9 +380,12 @@ export class LivingLoop {
             bus.emit({ type: "error", message: `memory chain broken at #${chain.brokenAt}; refusing write` });
             continue;
           }
-          this.storage.ledger.append(this.handle.personaPath, entry);
-          bus.emit({ type: "memory", entry });
-          written.push(entry);
+          // E33: what LANDED, not what was prepared. The commit re-anchors under a
+          // lock when another process appended first, so the prepared entry's hash can
+          // be stale, and this hash is what the evaluation below names.
+          const stored = this.storage.ledger.append(this.handle.personaPath, entry);
+          bus.emit({ type: "memory", entry: stored });
+          written.push(stored);
           memoriesWritten++;
         }
       } else if (signal.memories.length > 0) {

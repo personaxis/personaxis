@@ -19,6 +19,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, rea
 import { dirname, join, basename } from "node:path";
 import type { ProvenanceSource } from "./appraisal.js";
 import { deviceIdentity } from "./device.js";
+import { withStateLock } from "./lock.js";
 import { readEvaluations } from "./memory-kinds.js";
 
 /**
@@ -213,11 +214,49 @@ export function prepareMemoryEntry(
   return { ...base, hash: hashEntryV1(base) };
 }
 
-/** Commit a prepared entry to the append-only log. */
-export function commitMemoryEntry(personaPath: string, entry: MemoryEntry): void {
+/**
+ * Commit a prepared entry to the append-only log, and RETURN WHAT WAS ACTUALLY WRITTEN.
+ *
+ * E33. A chain has exactly one writer, and the per-device split (`episodic.<id>.jsonl`)
+ * answers that for two machines. It does not answer it for two PROCESSES: they share a
+ * device id, so they share the file, and "one writer" stops being true for a reason the
+ * filename cannot see. Phase 13 is built on several personas per machine, so this is
+ * the shape of the failure that would meet it there: both entries land, both name the
+ * same predecessor, and the integrity check reports a break it cannot attribute.
+ *
+ * The fix is the one this repo already made for the same problem one file over.
+ * `lock.ts` exists because "multiple processes write a persona's state.json by design
+ * (REPL + serve + watch + MCP + hooks). Without a lock, read→modify→write races lose
+ * mutation_log entries, unacceptable for a governed, audited runtime." That is this
+ * situation word for word, so it gets the same answer rather than a second mechanism.
+ *
+ * WHY RE-ANCHOR RATHER THAN JUST LOCK. The race lives BETWEEN prepare and commit:
+ * `prepareMemoryEntry` reads the tail to compute `prev_hash`, and by the time the entry
+ * is committed another process may have appended. Locking only the write would produce
+ * two well-formed lines that both follow the same predecessor, which is exactly the
+ * break, just with a lock held. So the tail is re-read inside the lock and the entry is
+ * re-sealed against what is actually there.
+ *
+ * Which is why this returns the entry. A caller that kept the prepared one would be
+ * holding a hash that is not in the file, and `scoreMemoryEntry` uses that hash as the
+ * identity of what it scored: the evaluation would name an entry that does not exist.
+ * The common case re-seals to the identical bytes, and the return costs nothing there.
+ */
+export function commitMemoryEntry(personaPath: string, entry: MemoryEntry): MemoryEntry {
   const p = memoryPath(personaPath);
   mkdirSync(dirname(p), { recursive: true });
-  appendFileSync(p, JSON.stringify(entry) + "\n", "utf-8");
+  return withStateLock(p, () => {
+    const tail = lastHash(personaPath);
+    const settled: MemoryEntry =
+      tail === entry.prev_hash
+        ? entry
+        : (() => {
+            const { hash: _stale, ...base } = { ...entry, prev_hash: tail };
+            return { ...base, hash: hashEntryV1(base) };
+          })();
+    appendFileSync(p, JSON.stringify(settled) + "\n", "utf-8");
+    return settled;
+  });
 }
 
 /**

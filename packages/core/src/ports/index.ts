@@ -102,8 +102,15 @@ export interface ChainVerification {
 export interface LedgerStore {
   /** All episodic entries (the hash-chained ledger), oldest→newest. */
   read(key: string): MemoryEntry[];
-  /** Append one entry, extending the hash chain. */
-  append(key: string, entry: MemoryEntry): void;
+  /**
+   * Append one entry, extending the hash chain, and return WHAT WAS WRITTEN.
+   *
+   * E33: the commit re-anchors under a lock, because between preparing an entry and
+   * committing it another process on this machine may have appended. A caller that
+   * kept the prepared entry would hold a hash that is not in the file, and the
+   * evaluation written against that hash would name an entry nobody can find.
+   */
+  append(key: string, entry: MemoryEntry): MemoryEntry;
   /** Verify the chain is intact (tamper-evidence). */
   verify(key: string): ChainVerification;
   /** Erase an entry's content while keeping the chain verifiable (right-to-delete). */

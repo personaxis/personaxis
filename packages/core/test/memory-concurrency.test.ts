@@ -8,15 +8,24 @@
  * follow from each other.
  *
  * The split it made is per DEVICE (`episodic.<deviceId>.jsonl`), which answers the
- * question it was asked. This asks the next one: two personas on ONE device share a
- * device id, so if they also share a persona path they share the file, and "one writer"
- * stops being true for a reason the filename cannot see.
+ * question it was asked. It does not answer the next one: two personas on ONE device
+ * share a device id, so if they also share a persona path they share the file, and "one
+ * writer" stops being true for a reason the filename cannot see.
+ *
+ * E33 closed that with the answer this repo already gave one file over: the same lock
+ * `state.json` uses, plus a re-anchor inside it, because the race lives BETWEEN reading
+ * the tail and appending and locking only the write would produce two well-formed lines
+ * that both follow the same predecessor.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, existsSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commitMemoryEntry, PersonaAgent, prepareMemoryEntry, readLiveMemory, verifyMemoryChain } from "../src/index.js";
+
+const here = fileURLToPath(new URL(".", import.meta.url));
 
 let dir: string;
 let personaPath: string;
@@ -36,40 +45,83 @@ describe("episodic memory under concurrent writers (E19)", () => {
     expect(verifyMemoryChain(personaPath).ok).toBe(true);
   });
 
-  it("INTERLEAVED writers on one path break the chain, and the check says so", () => {
-    // Not a race in the timing sense: this is the deterministic shape of one. Each
-    // writer prepares an entry against the state it can see and commits afterwards,
-    // which is exactly what two processes on one device do when they interleave.
+  it("INTERLEAVED writers on one path keep the chain intact, because the commit re-anchors", () => {
+    // The deterministic shape of the race, not a timing trick: each writer prepares an
+    // entry against the tail it can see, and commits afterwards. Before E33 both landed
+    // naming the same predecessor and the chain no longer followed.
     const a = prepareMemoryEntry(personaPath, { content: "from persona A", source: "internal" });
     const b = prepareMemoryEntry(personaPath, { content: "from persona B", source: "internal" });
-    commitMemoryEntry(personaPath, a);
-    commitMemoryEntry(personaPath, b);
+    expect(a.prev_hash).toBe(b.prev_hash); // they did see the same tail
 
-    // Both landed, and both claim the same predecessor, so the chain no longer follows.
+    const landedA = commitMemoryEntry(personaPath, a);
+    const landedB = commitMemoryEntry(personaPath, b);
+
     expect(readLiveMemory(personaPath)).toHaveLength(2);
-    expect(a.prev_hash).toBe(b.prev_hash);
-    const verdict = verifyMemoryChain(personaPath);
-    expect(verdict.ok).toBe(false);
-    expect(verdict.brokenAt).toBeDefined();
+    // B was re-sealed against what was actually there, which is A.
+    expect(landedB.prev_hash).toBe(landedA.hash);
+    expect(landedB.hash).not.toBe(b.hash);
+    expect(verifyMemoryChain(personaPath).ok).toBe(true);
   });
 
-  it("the integrity check is what catches it, so it must not be optimistic", () => {
-    // A verifier that returned ok on a broken chain would make the property above
-    // unobservable, and the whole guarantee rests on it. Asserted separately from the
-    // case that produces the break, so a change to either is visible.
+  it("the entry that LANDED is returned, so nobody keeps a hash that is not in the file", () => {
+    // `scoreMemoryEntry` names what it scored by hash. A caller holding the prepared
+    // entry after a re-anchor would write an evaluation about an entry nobody can find.
     const first = prepareMemoryEntry(personaPath, { content: "one", source: "internal" });
+    const stale = prepareMemoryEntry(personaPath, { content: "two", source: "internal" });
     commitMemoryEntry(personaPath, first);
-    expect(verifyMemoryChain(personaPath).ok).toBe(true);
+    const landed = commitMemoryEntry(personaPath, stale);
 
-    const forked = prepareMemoryEntry(personaPath, { content: "two", source: "internal" });
-    commitMemoryEntry(personaPath, forked);
-    expect(verifyMemoryChain(personaPath).ok).toBe(true);
+    const hashes = readLiveMemory(personaPath).map((e) => e.hash);
+    expect(hashes).toContain(landed.hash);
+    expect(hashes).not.toContain(stale.hash);
+  });
 
-    // Now the shape that a second writer produces: an entry anchored to a predecessor
-    // that is no longer the tail.
-    const stale = { ...forked, content: "three", ts: new Date().toISOString() };
-    commitMemoryEntry(personaPath, stale);
-    expect(verifyMemoryChain(personaPath).ok).toBe(false);
+  it("an uncontended write is returned unchanged, so re-anchoring costs nothing normally", () => {
+    // The common case must not churn: if the tail is what the entry already names,
+    // the bytes written are the bytes prepared.
+    const only = prepareMemoryEntry(personaPath, { content: "alone", source: "internal" });
+    const landed = commitMemoryEntry(personaPath, only);
+    expect(landed).toEqual(only);
+  });
+
+  it("REAL PROCESSES: six at once on one persona still leave one verifiable chain", async () => {
+    // The only test here that exercises the LOCK. Within one process the re-anchor is
+    // enough on its own, so every other case in this file would pass with the lock
+    // removed, and a negative control said so. Two processes can read the same tail at
+    // the same instant and both re-anchor to it; only the lock stops that.
+    //
+    // Runs against `dist`, so it needs a build. Skipped rather than failed when there
+    // is none: a test that fails because nobody ran `pnpm build` teaches people to
+    // ignore it.
+    const dist = join(here, "..", "dist", "index.js");
+    if (!existsSync(dist)) return;
+
+    const script = join(here, "fixtures", "append-one-memory.mjs");
+    await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        new Promise<void>((resolve, reject) => {
+          const child = spawn(process.execPath, [script, personaPath, `process ${i}`], { stdio: "ignore" });
+          child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`exit ${code}`))));
+          child.on("error", reject);
+        }),
+      ),
+    );
+
+    // Every writer landed, and the chain still follows.
+    expect(readLiveMemory(personaPath)).toHaveLength(6);
+    expect(verifyMemoryChain(personaPath).ok).toBe(true);
+  }, 30_000);
+
+  it("many interleaved writers still produce one verifiable chain", () => {
+    // Ten entries all prepared against an empty log, then committed in order: the
+    // worst case the shape allows, and the one the per-device split could not survive.
+    const prepared = Array.from({ length: 10 }, (_, i) =>
+      prepareMemoryEntry(personaPath, { content: `writer ${i}`, source: "internal" }),
+    );
+    for (const e of prepared) commitMemoryEntry(personaPath, e);
+
+    expect(readLiveMemory(personaPath)).toHaveLength(10);
+    expect(verifyMemoryChain(personaPath).ok).toBe(true);
   });
 });
 

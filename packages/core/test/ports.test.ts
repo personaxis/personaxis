@@ -97,7 +97,7 @@ describe("F3.3 storage ports", () => {
         sink: () => ({ append: async (batch) => { entries = [...entries, ...batch]; } }),
       },
       memory: { readSemantic: () => "", consolidate: () => ({ ok: true, path: "", count: 0 }) },
-      ledger: { read: () => [], append: () => {}, verify: () => ({ ok: true }), redact: () => ({ redacted: true }) },
+      ledger: { read: () => [], append: (_k, e) => e, verify: () => ({ ok: true }), redact: () => ({ redacted: true }) },
     };
 
     const signal: AppraisalSignal = {
@@ -140,7 +140,9 @@ describe("F3.3 storage ports", () => {
       memory: { readSemantic: () => "", consolidate: () => ({ ok: true, path: "", count: 0 }) },
       ledger: {
         read: () => [],
-        append: (_k, e) => { appended.push(e.content); },
+        // E33: a store returns what it wrote, because the commit re-anchors under a
+        // lock and the caller needs the entry that actually landed.
+        append: (_k, e) => { appended.push(e.content); return e; },
         verify: () => { verifyCalls++; return { ok: true }; },
         redact: () => ({ redacted: true }),
       },
