@@ -52,7 +52,7 @@
 
 import { KernelError, type RecordableFailure, asKernelError, recordable } from "./errors.js";
 import { EffectScope } from "./effects.js";
-import { EventBus, event } from "./bus.js";
+import { EventBus, event, type EventDecl } from "./bus.js";
 import {
 	PERMISSIONS,
 	type PermissionKey,
@@ -65,6 +65,16 @@ import {
 export type ComponentState =
 	/** Waiting for a service or a permission that is not there. Not an error. */
 	| "pending"
+	/**
+	 * K2: it could resolve, and nothing has asked for it yet.
+	 *
+	 * A separate word from `pending` on purpose, because they are opposite facts that
+	 * would otherwise share a name. Pending means something is MISSING and a person may
+	 * need to go and provide it. Dormant means everything is there and the component is
+	 * waiting to be needed, which is the healthy state for most of what is installed.
+	 * Collapsing the two would send somebody looking for a provider that is not absent.
+	 */
+	| "dormant"
 	/** Resolved and running. */
 	| "active"
 	/** It was active and something it needed went away. Its effects are unwound. */
@@ -98,6 +108,26 @@ export interface Component {
 	readonly name: string;
 	readonly needs?: readonly ServiceKey<unknown>[];
 	readonly requires?: readonly PermissionKey[];
+	/**
+	 * K2: the events that wake it. Absent means "as soon as it can", which is what every
+	 * component did before this existed and what the built-ins still do.
+	 *
+	 * With hundreds of plugins and several personas on one machine, activating
+	 * everything to find out what exists is a cost paid at every start for work that
+	 * mostly will not be needed in that session. `K1` made the catalogue readable
+	 * without running anything; this is what that buys.
+	 *
+	 * **Notify events only, and it is not an implementation limit.** A waking listener
+	 * that could delay or veto the event that woke it would be part of the mechanism
+	 * rather than a thing the mechanism starts, which is the same argument `LIFECYCLE`
+	 * makes one type up. A component declaring a waterfall or awaited event as its
+	 * trigger is refused at mount, by name.
+	 *
+	 * An event that fired BEFORE the component was mounted does not wake it. Waking is
+	 * about what happens next, and replaying history into a component that was not there
+	 * would activate it for work that is already finished.
+	 */
+	readonly activatesOn?: readonly EventDecl<unknown, void>[];
 	activate(context: ComponentContext): void | (() => void);
 }
 
@@ -125,6 +155,14 @@ export const LIFECYCLE = event<LifecycleEvent>("kernel.lifecycle", "notify", { r
 interface Mounted {
 	readonly component: Component;
 	state: ComponentState;
+	/**
+	 * K2: whether anything has asked for it yet.
+	 *
+	 * True from the start for a component that declared no waking events, so the
+	 * behaviour of everything written before this is unchanged by construction rather
+	 * than by a flag somebody has to set.
+	 */
+	awake: boolean;
 	epoch: string | undefined;
 	scope: EffectScope | undefined;
 	failure: RecordableFailure | undefined;
@@ -241,17 +279,47 @@ export class Kernel {
 				{ subject: component.name },
 			);
 		}
+		// K2: refused here rather than at the first dispatch, so a component with an
+		// impossible trigger fails when it is installed and not when its event happens to
+		// fire, which could be days later and in front of a person.
+		for (const decl of component.activatesOn ?? []) {
+			if (decl.mode !== "notify") {
+				throw new KernelError(
+					"service_duplicate",
+					`"${component.name}" wakes on "${decl.name}", which dispatches as ` +
+						`"${decl.mode}". A component may only be woken by a notify event: one ` +
+						"that could delay or veto what woke it is part of the mechanism, not " +
+						"something the mechanism starts.",
+					{ subject: component.name },
+				);
+			}
+		}
+
 		const entry: Mounted = {
 			component,
-			state: "pending",
+			awake: (component.activatesOn ?? []).length === 0,
+			state: (component.activatesOn ?? []).length === 0 ? "pending" : "dormant",
 			epoch: undefined,
 			scope: undefined,
 			failure: undefined,
 			reported: undefined,
 		};
 		this.mounted.push(entry);
+
+		// K2: the subscriptions belong to the kernel and not to the component's own
+		// scope, because that scope does not exist until it activates. They are dropped
+		// when it unmounts, below.
+		const wakers = (component.activatesOn ?? []).map((decl) =>
+			this.bus.onNotify(decl, `kernel.wake.${component.name}`, () => {
+				if (entry.awake) return;
+				entry.awake = true;
+				this.settle();
+			}),
+		);
+
 		this.settle();
 		return () => {
+			for (const stop of wakers) stop();
 			const at = this.mounted.indexOf(entry);
 			if (at < 0) return;
 			this.mounted.splice(at, 1);
@@ -339,6 +407,14 @@ export class Kernel {
 	}
 
 	private reconcile(entry: Mounted): void {
+		// K2: before resolution, because a dormant component's dependencies are not the
+		// question. Asking whether a service is present for something nobody has needed
+		// is work done at every start for every plugin, which is the cost this removes.
+		if (!entry.awake) {
+			this.transition(entry, "dormant", "waiting to be needed");
+			return;
+		}
+
 		const resolution = this.resolve(entry.component);
 
 		if (!resolution.ok) {
