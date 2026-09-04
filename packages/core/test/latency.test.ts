@@ -7,7 +7,7 @@
  * the worst turn survives being averaged away.
  */
 import { describe, it, expect } from "vitest";
-import { PersonaAgent, type ExecutablePolicy } from "../src/index.js";
+import { PersonaAgent, type Policy } from "../src/index.js";
 // By its path, not through the barrel: the meter is an internal of the loop and its
 // only caller is agent.ts. Exporting it publicly to make a test shorter would widen
 // the package's surface for the test's convenience.
@@ -15,19 +15,14 @@ import { LatencyMeter } from "../src/run/latency.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-function policy(over: Partial<ExecutablePolicy> = {}): ExecutablePolicy {
+/** The SANDBOX policy, which is what `PersonaAgent.policy` takes. See cache-metering. */
+function policy(over: Partial<Policy> = {}): Policy {
   return {
-    persona_id: "t",
-    persona_version: "1.0.0",
-    hash: "h",
-    allow: ["*"],
-    deny: [],
-    hard_limits: [],
-    prohibited_behaviors: [],
-    egress_allowlist: [],
     sandbox: "danger-full-access",
     approval: "never",
-    gate_rules: [],
+    allow: [],
+    deny: [],
+    workspaceRoot: process.cwd(),
     ...over,
   };
 }

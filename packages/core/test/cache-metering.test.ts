@@ -9,21 +9,26 @@
  * cacheable without anyone noticing.
  */
 import { describe, it, expect } from "vitest";
-import { ContextMeter, PersonaAgent, type ExecutablePolicy } from "../src/index.js";
+import { ContextMeter, PersonaAgent, type Policy } from "../src/index.js";
 
-function policy(over: Partial<ExecutablePolicy> = {}): ExecutablePolicy {
+/**
+ * The SANDBOX policy, which is what `PersonaAgent.policy` takes.
+ *
+ * Written wrong the first time, and worth the note: this used to be typed
+ * `ExecutablePolicy` and shaped like a `CompiledPolicy`, so it was neither of the two
+ * things it claimed to be. Nothing complained, because no package type-checks its own
+ * tests, and JavaScript happily read `sandbox` off an object that had it by accident.
+ * These tests measure token accounting, so a broken policy did not change their
+ * result, which is exactly what makes the mistake worth writing down rather than
+ * quietly fixing.
+ */
+function policy(over: Partial<Policy> = {}): Policy {
   return {
-    persona_id: "t",
-    persona_version: "1.0.0",
-    hash: "h",
-    allow: ["*"],
-    deny: [],
-    hard_limits: [],
-    prohibited_behaviors: [],
-    egress_allowlist: [],
     sandbox: "danger-full-access",
     approval: "never",
-    gate_rules: [],
+    allow: [],
+    deny: [],
+    workspaceRoot: process.cwd(),
     ...over,
   };
 }
