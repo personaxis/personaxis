@@ -126,17 +126,14 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 		until: "a caller outside `regression.ts` needs it; today only the mounted `compareRuns` does",
 	},
 
-	// E10 mounted `nudgeFor`, `resolveLayered` and `resolvePolicyTier`. Two entries stayed
-	// and each says its own reason.
+	// E10 mounted `nudgeFor`, `resolveLayered` and `resolvePolicyTier`, and left
+	// `breakerGuard` exempt because it was measured UNREACHABLE: the breaker was
+	// recorded once per step, after the calls had run, and the loop returned the moment
+	// it said stop, so a guard in the cascade never saw one.
 	//
-	// `breakerGuard` was wired into the loop's cascade and taken back out, measured: the
-	// breaker is assessed once per step AFTER the calls have run, and the loop returns
-	// immediately on a stop, so by the time there is another call to refuse the run is
-	// over. It sat in the guard list, passed every test, and refused nothing. A guard
-	// that never fires is worse than an absent one, because it reads as covered.
-	// Reaching it needs the breaker recorded per call rather than per step, which changes
-	// how readily it interrupts somebody's work: a product decision, not a wiring one.
-	{ name: "breakerGuard", until: "the breaker is recorded per call, which is a decision about interrupting work" },
+	// E22 recorded the breaker per CALL and the guard came off this list. It is the one
+	// entry here that was resolved by a decision rather than by wiring, which is the
+	// point of writing the `until` as a condition instead of a task id.
 
 
 	// Compaction that carries its own author and its measured drift.

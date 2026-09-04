@@ -143,17 +143,167 @@ describe("a run that repeats without getting anywhere", () => {
 		expect(events.some((event) => event.type === "agent-stop-condition")).toBe(true);
 	});
 
-	it("does NOT refuse through the cascade, because the loop stops first", async () => {
-		// The measurement that took `breakerGuard` back out of the cascade.
+	it("stops the repetition INSIDE a step, once several calls arrive at once", async () => {
+		// What E22 bought, and the only shape that shows it.
 		//
-		// A stop IS a refusal and belongs in a cascade in principle. In this loop it
-		// cannot get there: the breaker is assessed once per step, after the calls have
-		// run, and the loop returns immediately on a stop. By the time there is another
-		// call to refuse, the run is over.
+		// The breaker is recorded per CALL now, so the fourth identical refused call in
+		// one step meets a cascade that already knows about the first three. Before, the
+		// breaker was recorded once per step, so a model proposing six identical calls in
+		// a single message got all six run and refused, and the stop arrived afterwards.
+		//
+		// With one call per step the two are the same sequence, which is why every other
+		// test in this file still passes unchanged.
+		const events: LoopEvent[] = [];
+		const agent = new PersonaAgent({
+			llm: {
+				endpoint: "http://x/v1",
+				model: "m",
+				fetchImpl: (async (url: string) => {
+					if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+					return {
+						ok: true,
+						status: 200,
+						headers: new Headers({ "content-type": "application/json" }),
+						json: async () => ({
+							choices: [
+								{
+									message: {
+										content: "",
+										// Six identical refused calls, in ONE message.
+										tool_calls: Array.from({ length: 6 }, (_, index) => ({
+											id: `c${index}`,
+											type: "function",
+											function: { name: "read_file", arguments: '{"path":"forbidden.txt"}' },
+										})),
+									},
+								},
+							],
+						}),
+					};
+				}) as unknown as typeof fetch,
+			},
+			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "danger-full-access" },
+			capability: persona({ deny: ["forbidden"] }),
+			maxSteps: 2,
+		});
+		agent.bus.on((event) => events.push(event));
+
+		await agent.run("try it six times at once");
+
+		const verdicts = events.filter((event) => event.type === "tool-verdict") as Array<{ reason: string }>;
+		expect(
+			verdicts.some((verdict) => /repeated the same failing action|no progress in/.test(verdict.reason)),
+			"the breaker should have refused one of the later calls in the same step",
+		).toBe(true);
+	});
+
+	it("stops a STALL inside a step, when the calls differ but none get anywhere", async () => {
+		// The other branch of the breaker, and the one `producedWork` decides. Repetition
+		// is recognised by an identical failing signature; a stall is recognised by a
+		// stretch with no progress whatever the calls were. Seven different refused paths
+		// in one step is a stall and not a repetition.
+		//
+		// Two controls needed this: `producedWork: true` and `producedWork: false` both
+		// left every other test in this file green, because repetition only reads the
+		// signature and nothing here ran long enough to stall.
+		const events: LoopEvent[] = [];
+		const agent = new PersonaAgent({
+			llm: {
+				endpoint: "http://x/v1",
+				model: "m",
+				fetchImpl: (async (url: string) => {
+					if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+					return {
+						ok: true,
+						status: 200,
+						headers: new Headers({ "content-type": "application/json" }),
+						json: async () => ({
+							choices: [
+								{
+									message: {
+										content: "",
+										tool_calls: Array.from({ length: 7 }, (_, index) => ({
+											id: `c${index}`,
+											type: "function",
+											// A DIFFERENT forbidden path each time, so no two share a signature.
+											function: { name: "read_file", arguments: `{"path":"forbidden-${index}.txt"}` },
+										})),
+									},
+								},
+							],
+						}),
+					};
+				}) as unknown as typeof fetch,
+			},
+			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "danger-full-access" },
+			capability: persona({ deny: ["forbidden"] }),
+			maxSteps: 2,
+		});
+		agent.bus.on((event) => events.push(event));
+
+		await agent.run("try seven different things at once");
+
+		const verdicts = events.filter((event) => event.type === "tool-verdict") as Array<{ reason: string }>;
+		expect(verdicts.some((verdict) => /no progress in/.test(verdict.reason))).toBe(true);
+	});
+
+	it("does not stop a long run that IS getting somewhere", async () => {
+		// The control on the other side, and it has to be long: a healthy run of two or
+		// three calls never approaches the stall threshold, so a breaker that counted
+		// every call as failing would pass a short test and interrupt real work.
+		const events: LoopEvent[] = [];
+		const agent = new PersonaAgent({
+			llm: {
+				endpoint: "http://x/v1",
+				model: "m",
+				fetchImpl: (async (url: string) => {
+					if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+					return {
+						ok: true,
+						status: 200,
+						headers: new Headers({ "content-type": "application/json" }),
+						json: async () => ({
+							choices: [
+								{
+									message: {
+										content: "",
+										tool_calls: Array.from({ length: 8 }, (_, index) => ({
+											id: `ok${index}`,
+											type: "function",
+											function: { name: "list_dir", arguments: '{"path":"."}' },
+										})),
+									},
+								},
+							],
+						}),
+					};
+				}) as unknown as typeof fetch,
+			},
+			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "danger-full-access" },
+			capability: persona(),
+			maxSteps: 2,
+		});
+		agent.bus.on((event) => events.push(event));
+
+		await agent.run("do eight useful things at once");
+
+		const verdicts = events.filter((event) => event.type === "tool-verdict") as Array<{ reason: string }>;
+		expect(
+			verdicts.some((verdict) => /repeated the same failing action|no progress in/.test(verdict.reason)),
+		).toBe(false);
+	});
+
+	it("does not reach the cascade when each step holds a single call", async () => {
+		// The other half of E22, and the reason it was worth asking before doing it.
+		//
+		// When a step holds ONE call, recording per call and recording per step are the
+		// same sequence: the loop still returns the moment the breaker says stop, so the
+		// guard has nothing left to refuse. Nothing about this shape changed, which is
+		// what keeps the escalation people already know from moving under them.
 		//
 		// Asserted on the breaker's OWN words rather than on a bare `deny`, which is
-		// what made this visible: written the loose way, the mutation that removed the
-		// guard stayed green, because the persona's policy denies every one of these
+		// what made all of this visible: written the loose way, the mutation that removed
+		// the guard stayed green, because the persona's policy denies every one of these
 		// calls anyway.
 		const { events } = await runRepeating();
 		const verdicts = events.filter((event) => event.type === "tool-verdict") as Array<{

@@ -86,7 +86,7 @@ import { freezeCall } from "./gate/call.js";
 import { capabilityGuard, requirePolicy } from "./gate/capability.js";
 import { ask, deny, type GuardOutcome } from "./gate/verdict.js";
 import { runGuards } from "./gate/waterfall.js";
-import { nudgeFor } from "./run/breaker-guard.js";
+import { breakerGuard, nudgeFor } from "./run/breaker-guard.js";
 import { authorId } from "./record/entry.js";
 import { Kernel, type PermissionKey } from "./kernel/index.js";
 import { grantedPermissions, mountBuiltins, type ToolBench } from "./tools/mounted.js";
@@ -926,6 +926,9 @@ export class PersonaAgent {
           if (firstFailSig === null) firstFailSig = toolSignature(call.name, call.args);
         };
         for (const call of res.toolCalls) {
+          // Whether THIS call did real work, which is what the breaker now records.
+          //  stays as the step-level answer the budget reads.
+          let callProduced = false;
           if (call.name === FINISH_TOOL) {
             finishedThisStep = { summary: typeof call.args.summary === "string" ? call.args.summary : "done" };
             // a finish call still needs a tool-result entry for transcript validity
@@ -1004,19 +1007,18 @@ export class PersonaAgent {
               // somewhere in this loop that a reader has to find.
               requirePolicy(this.capability),
               ...(this.capability ? [capabilityGuard(this.capability)] : []),
-              // E10 tried to put `breakerGuard` here and took it out again, measured.
+              // E22: a stop is a refusal, so it belongs here, and since the breaker is
+              // recorded per CALL it can actually be seen from here.
               //
-              // A stop IS a refusal and belongs in a cascade, but this loop already
-              // returns the moment the breaker says stop, and the breaker is assessed
-              // once per step after the calls have run. So a guard here can never see a
-              // stop: by the time there is another call to refuse, the run is over. It
-              // would sit in the list, pass every test, and refuse nothing.
+              // E10 put this in and took it back out, measured: with the breaker
+              // recorded once per step, and the loop returning the moment it said stop,
+              // a guard here never saw one. It sat in the list, passed every test, and
+              // refused nothing, which reads as covered and is worse than absent.
               //
-              // Reaching it needs the breaker recorded per CALL rather than per step,
-              // which makes it fire sooner inside a multi-call step and is a change to
-              // how sensitive the breaker is. That is a product decision about
-              // interrupting somebody's work, not a wiring detail, so it is not taken
-              // here.
+              // Per call, the second call of a step sees what the first one did. A model
+              // hammering the same refused call inside one step is stopped inside that
+              // step, rather than after it.
+              breakerGuard(breaker),
               { name: "tool", check: () => fromToolGate(verdict) },
             ],
             freezeCall({
@@ -1071,7 +1073,7 @@ export class PersonaAgent {
               const accepted: Accepted<string> = accept(r.output, contextTaint);
               output = accepted.value;
               contextTaint = accepted.taint;
-              if (r.ok) producedWork = true;
+              if (r.ok) { producedWork = true; callProduced = true; }
               else { errorCount++; noteFail(call); }
             }
           } else {
@@ -1079,7 +1081,7 @@ export class PersonaAgent {
             const accepted: Accepted<string> = accept(r.output, contextTaint);
             output = accepted.value;
             contextTaint = accepted.taint;
-            if (r.ok) producedWork = true;
+            if (r.ok) { producedWork = true; callProduced = true; }
             else { errorCount++; noteFail(call); }
           }
 
@@ -1101,6 +1103,24 @@ export class PersonaAgent {
           if (output.startsWith("error") || output.startsWith("denied")) taskState.noteError(`${call.name}: ${output.slice(0, 120)}`);
           const shown = outputStore.offload(call.name, output).text;
           messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: shown });
+
+          // E22: recorded per CALL, which is what makes the stop reachable.
+          //
+          // It used to be recorded once per step, after every call in it had run, and
+          // the loop returned immediately on a stop. So `breakerGuard` could sit in the
+          // cascade and never fire: by the time there was another call to refuse, the
+          // run was over. Per call, the second call of a step sees what the first one
+          // did, and a model hammering the same refused call inside one step is stopped
+          // inside that step.
+          //
+          // The cost is real and was the reason to ask before doing it: a step with
+          // several calls now reaches the threshold sooner than the same work spread
+          // over several steps. That is measured in `loop-breaker-guard.test.ts` rather
+          // than asserted here.
+          breaker.record({
+            producedWork: callProduced,
+            failingSignature: callProduced ? null : toolSignature(call.name, call.args),
+          });
         }
 
         stepProgress = producedWork ? 1 : 0;
@@ -1108,7 +1128,6 @@ export class PersonaAgent {
         // J.4: loop breaker. A finish this step short-circuits below, so only assess when the
         // run is actually continuing.
         if (!finishedThisStep) {
-          breaker.record({ producedWork, failingSignature: producedWork ? null : firstFailSig });
           const bv = breaker.assess();
           const nudge = nudgeFor(bv);
           if (nudge) {

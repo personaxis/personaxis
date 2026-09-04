@@ -347,7 +347,7 @@ describe("what the axis says when it has nothing to measure against", () => {
 });
 
 describe("what the axis costs, since it reads a disk on the hot path", () => {
-	it("decides well inside the budget that keeps enforcement switched on", async () => {
+	it("costs a bounded MULTIPLE of the same decision without it", async () => {
 		// `workspace-gate-regression.test.ts` says the headroom over the 150 ms budget
 		// "is exactly what invites somebody to put a file read or a network call in a
 		// guard", and this axis is somebody doing that: a spec and a state file, read on
@@ -355,29 +355,54 @@ describe("what the axis costs, since it reads a disk on the hot path", () => {
 		// disk already permit.
 		//
 		// So it gets measured rather than assumed. Measured on 2026-09-04, over 200
-		// decisions against a persona on disk: p95 0.52 ms, mean 0.35 ms. That is a
-		// third of one percent of the budget, and roughly three hundred times what the
-		// decision cost without the axis, which is the honest way to say it: the ratio is
-		// large and the number is small.
+		// decisions against a persona on disk: p95 0.52 ms, mean 0.35 ms. A third of one
+		// percent of the budget.
 		//
-		// The ceiling sits about ten times above the measurement, which is what a ceiling
-		// is for. It catches a change of kind, a network call or an unbounded parse, and
-		// does not go red because a laptop was busy.
+		// ## Why this asserts a RATIO and not a millisecond count
+		//
+		// It asserted `p95 < 5ms` first, and that version passed alone and failed inside
+		// the full suite: eight vitest workers on one laptop, and a number that is fine
+		// on an idle machine is not fine on a busy one. A test that fails because the
+		// machine was loaded teaches people to rerun instead of read, which is exactly
+		// how a real failure gets waved through.
+		//
+		// So both halves are measured in the same loop, on the same machine, in the same
+		// second: the daemon WITH the axis and the daemon without it. Load moves both
+		// together and the ratio stays put. What the ceiling still catches is the thing
+		// worth catching, a change of KIND: a network call or an unbounded parse in a
+		// guard costs orders of magnitude, not a factor of a few.
 		const root = workspaceWith({});
-		const handle = daemon(root);
+		const withAxis = daemon(root);
+		const withoutAxis = daemon(root, { identity: undefined });
 		const call = writeOf(root, { "personality.traits.honesty_humility": 0.72 });
 
 		const runs = 200;
-		const timings: number[] = [];
-		for (let index = 0; index < runs; index += 1) {
-			const started = performance.now();
-			await handle(call);
-			timings.push(performance.now() - started);
-		}
-		timings.sort((one, other) => one - other);
-		const p95 = timings[Math.floor(runs * 0.95)] ?? 0;
+		const cost = async (handle: (request: never) => Promise<unknown>): Promise<number> => {
+			const timings: number[] = [];
+			for (let index = 0; index < runs; index += 1) {
+				const started = performance.now();
+				await handle(call as never);
+				timings.push(performance.now() - started);
+			}
+			timings.sort((one, other) => one - other);
+			// The median rather than a p95: a tail is where a busy machine shows up, and
+			// the middle is where the work does.
+			return timings[Math.floor(runs / 2)] ?? 0;
+		};
 
-		expect(p95).toBeLessThan(5);
+		// Interleaved rather than one after the other, so a slow patch of the machine
+		// lands on both and not on whichever ran second.
+		const baselineFirst = await cost(withoutAxis as never);
+		const axisFirst = await cost(withAxis as never);
+		const baselineSecond = await cost(withoutAxis as never);
+		const axisSecond = await cost(withAxis as never);
+
+		const baseline = Math.max((baselineFirst + baselineSecond) / 2, 0.001);
+		const axis = (axisFirst + axisSecond) / 2;
+
+		expect(axis / baseline, `axis ${axis.toFixed(4)}ms vs baseline ${baseline.toFixed(4)}ms`).toBeLessThan(
+			500,
+		);
 	});
 });
 
