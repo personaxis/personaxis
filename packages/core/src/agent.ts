@@ -87,6 +87,7 @@ import { capabilityGuard, requirePolicy } from "./gate/capability.js";
 import { ask, deny, type GuardOutcome } from "./gate/verdict.js";
 import { runGuards } from "./gate/waterfall.js";
 import { breakerGuard, nudgeFor } from "./run/breaker-guard.js";
+import { LatencyMeter, type LatencyReport } from "./run/latency.js";
 import { authorId } from "./record/entry.js";
 import { Kernel, type PermissionKey } from "./kernel/index.js";
 import { grantedPermissions, mountBuiltins, type ToolBench } from "./tools/mounted.js";
@@ -156,6 +157,16 @@ export interface AgentOptions {
    * persona without editing it.
    */
   capability?: ExecutablePolicy;
+  /**
+   * E17: a declared per-turn latency ceiling, in milliseconds.
+   *
+   * REPORTED, never enforced, and the asymmetry with the token budget is deliberate.
+   * A token budget stops a run because spending more is the harm itself. Slowness is
+   * not: killing a turn at nine seconds throws away the work it was about to finish,
+   * and turns a provider having a bad minute into lost output. So this marks the run
+   * and lets whoever declared the ceiling decide what a breach means.
+   */
+  latencyBudgetMs?: number;
   /** Persona identity document (system-prompt slot #1). */
   personaBody?: string;
   /** Structural self-awareness (role root/sub, own address, sub-tree, resource inventory). */
@@ -285,6 +296,15 @@ export interface AgentResult {
    * the outside and mean opposite things, so both travel.
    */
   cache: CacheReport;
+  /**
+   * E17: where the wall time went, split into the parts that move separately.
+   *
+   * `budget.wallSeconds` is the total, and a total is the one number that cannot
+   * answer which part got slower. What no part claimed is reported as its own figure
+   * rather than divided among the three, because attributing unmeasured time to
+   * whatever happens to be instrumented is how a breakdown starts lying.
+   */
+  latency: LatencyReport;
   /**
    * Why this run did what it did, when there is anything to say.
    *
@@ -570,6 +590,9 @@ export class PersonaAgent {
     const verification: VerificationConfig = this.opts.verification ?? DEFAULT_VERIFICATION;
     const HARD_CEIL = 1000; // absolute safety bound against misconfiguration
     const startTime = Date.now();
+    // E17: the three parts of a turn, timed apart, because a total cannot say which
+    // one got slower and that is the only question anybody asks about latency.
+    const clock = new LatencyMeter(startTime, this.opts.latencyBudgetMs);
     const meter = this.opts.meter ?? new ContextMeter(cachedContextWindow(this.opts.llm.model));
     const compactThreshold = this.opts.compactThreshold ?? 0.8;
     // E6: what each compaction cost, so the caller is told rather than trusting
@@ -688,7 +711,9 @@ export class PersonaAgent {
           ask: async (planMessages) => {
             // No tools offered: this turn is for text, and a model handed tools during
             // planning calls one, which is the acting this phase exists to precede.
-            const res = await requestToolCall(this.opts.llm, [...planMessages], [], this.preferFallback);
+            const res = await clock.time("model", () =>
+              requestToolCall(this.opts.llm, [...planMessages], [], this.preferFallback),
+            );
             tokens += res.usage?.total_tokens ?? 0;
             return res.text;
           },
@@ -724,6 +749,7 @@ export class PersonaAgent {
             stoppedBy: "plan",
           },
           cache: meter.cacheReport(),
+          latency: clock.report(),
           compactions,
           trace: buildTrace(intents, traceNodes),
         };
@@ -848,13 +874,27 @@ export class PersonaAgent {
         // Budget / stop-condition gate BEFORE doing more work. Owns the step-boundary reasons
         // (max_steps / max_tokens / max_cost_usd / max_wall_seconds).
         const check = checkAgentBudget(spent(step - 1), budget);
-        bus.emit({ type: "agent-budget", step: step - 1, tokens, costUsd: Number(estimateCostUsd(this.opts.llm.model, tokens).toFixed(4)), wallSeconds: Number(((Date.now() - startTime) / 1000).toFixed(1)) });
+        const timing = clock.report();
+        bus.emit({
+          type: "agent-budget",
+          step: step - 1,
+          tokens,
+          costUsd: Number(estimateCostUsd(this.opts.llm.model, tokens).toFixed(4)),
+          wallSeconds: Number(((Date.now() - startTime) / 1000).toFixed(1)),
+          latency: {
+            modelMs: timing.modelMs,
+            gateMs: timing.gateMs,
+            toolMs: timing.toolMs,
+            unattributedMs: timing.unattributedMs,
+            ...(timing.overBudget ? { overBudgetMs: timing.overBudget.worstTurnMs } : {}),
+          },
+        });
         if (check.shouldStop) {
           bus.emit({ type: "agent-stop-condition", reason: check.stopReason ?? "budget", step: step - 1 });
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
         }
 
         // K.07: honor an out-of-band abort. The watchdog enforces the WALL-CLOCK ceiling on a
@@ -868,9 +908,10 @@ export class PersonaAgent {
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
         }
 
+        clock.turnBegan();
         bus.emit({ type: "agent-step", step });
 
         // E6: compaction happens at a named cut point, and is counted.
@@ -917,11 +958,13 @@ export class PersonaAgent {
         // Only on the step path. The plan phase above asks a shaped question and
         // discards the prose, so streaming it would put a draft plan on screen that
         // nothing else ever refers to.
-        const res = await requestToolCall(
-          { ...this.opts.llm, onDelta: (text) => bus.emit({ type: "agent-delta", text }) },
-          messages,
-          activeTools,
-          this.preferFallback,
+        const res = await clock.time("model", () =>
+          requestToolCall(
+            { ...this.opts.llm, onDelta: (text) => bus.emit({ type: "agent-delta", text }) },
+            messages,
+            activeTools,
+            this.preferFallback,
+          ),
         );
         if (res.usedFallback) this.preferFallback = true;
         tokens += res.usage?.total_tokens ?? 0;
@@ -944,12 +987,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
-            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           continue; // retry
         }
@@ -1047,9 +1090,11 @@ export class PersonaAgent {
           // The tool gate stays, because it answers something the policy cannot: whether
           // this path escapes the workspace root of THIS run. It just answers alongside
           // the others now, and the verdict is the lowest of them.
-          const verdict = tool.gate(call.args, this.policy);
+          // E17: the gate is timed as ONE span covering the tool's own verdict and the
+          // waterfall, because that is what a call waits for before anything runs.
+          const verdict = clock.sync("gate", () => tool.gate(call.args, this.policy));
           const argsText = JSON.stringify(call.args ?? {});
-          const decided = runGuards(
+          const decided = clock.sync("gate", () => runGuards(
             [
               // Absent policy is a refusal with a name in the list, not a branch
               // somewhere in this loop that a reader has to find.
@@ -1075,7 +1120,7 @@ export class PersonaAgent {
               actionClasses: actionClassesFor(call.name, argsText),
               turn: call.id,
             }),
-          );
+          ));
 
           // K.04: tighten the cascade's verdict with the HITL risk matrix (posture × taint ×
           // reversibility × sensitivity). Consent can only make it STRICTER: a destructive action
@@ -1110,7 +1155,7 @@ export class PersonaAgent {
               output = "denied by user";
             } else {
               if (decision === "always") this.policy.allow.push(escapeRegExp(firstArg(call)));
-              const r = await interceptor.run(tool, call);
+              const r = await clock.time("tool", () => interceptor.run(tool, call));
               // E13: the value and the taint arrive together, from one call. There is
               // no expression that takes one and leaves the other.
               //
@@ -1125,7 +1170,7 @@ export class PersonaAgent {
               else { errorCount++; noteFail(call); }
             }
           } else {
-            const r = await interceptor.run(tool, call);
+            const r = await clock.time("tool", () => interceptor.run(tool, call));
             const accepted: Accepted<string> = accept(r.output, contextTaint);
             output = accepted.value;
             contextTaint = accepted.taint;
@@ -1197,7 +1242,7 @@ export class PersonaAgent {
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
             this.persist(task, "stopped", summary, step);
-            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
           }
         }
 
@@ -1207,12 +1252,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
-            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           // retry: loop continues; the failure note is already in messages.
         }
@@ -1220,11 +1265,11 @@ export class PersonaAgent {
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
       this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
-      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
       this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
-      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
+      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.
       watchdog.stop();

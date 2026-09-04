@@ -127,6 +127,8 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // a sentence being written is the end of it, and a label that froze on the first
   // eight words would look like a session that had stopped.
   let speaking = "";
+  /** E17: the last per-step latency breakdown seen this turn. */
+  let lastLatency: { modelMs: number; gateMs: number; toolMs: number; unattributedMs: number; overBudgetMs?: number } | undefined;
   bus.on((e) => {
     if (e.type === "agent-delta") {
       speaking = (speaking + e.text).replace(/\s+/g, " ");
@@ -138,6 +140,9 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     ctx.phase?.(phaseFor(e));
     // V5.FIX.3: human phrasing ("2 user preferences: …"), not the cryptic "kind×N".
     if (e.type === "memory-recall") recalls.push(`${e.count} ${e.kind.replace(/_/g, " ")}${e.detail ? `: ${e.detail}` : ""}`);
+    // E17: keep the last breakdown, so the turn block can say WHERE the time went
+    // rather than only how much there was of it.
+    if (e.type === "agent-budget" && e.latency) lastLatency = e.latency;
     const l = renderEvent(ctx.theme, e);
     if (l) ctx.out(l, "activity");
   });
@@ -271,6 +276,23 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   if (memWrites) rows.push(["memory", `+${memWrites} episodic` + (memWriteKinds.length ? ` (${memWriteKinds[memWriteKinds.length - 1]})` : "")]);
   for (const k of memKinds) rows.push(["memory", k]);
   if (evals.length) pushAll("evaluated", evals, 4);
+  // E17: shown when the turn was slow enough for a person to have noticed, or when a
+  // declared ceiling was passed. Two seconds is a judgement, not a measurement, and it
+  // is here rather than in the engine because it is about what is worth reading: a
+  // breakdown printed after every fast turn is noise, and noise is what stops a slow
+  // turn's breakdown from being read on the day it matters.
+  if (lastLatency) {
+    const l = lastLatency;
+    const totalMs = l.modelMs + l.gateMs + l.toolMs + l.unattributedMs;
+    if (l.overBudgetMs !== undefined || totalMs >= 2000) {
+      const s = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
+      rows.push([
+        "latency",
+        `model ${s(l.modelMs)} · gate ${s(l.gateMs)} · tools ${s(l.toolMs)} · other ${s(l.unattributedMs)}` +
+          (l.overBudgetMs !== undefined ? chalk.yellow(`  ⚠ slowest turn ${s(l.overBudgetMs)}, past the declared ceiling`) : ""),
+      ]);
+    }
+  }
   if (rows.length) {
     const block = [
       chalk.dim(`  ┊ ${chalk.bold("this turn")}`),
@@ -391,9 +413,14 @@ export function buildRoster(rootCtx: Ctx): Roster {
 export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85): Promise<void> {
   const llm = llmConfig(ctxModelArg(ctx));
   if (!llm || ctx.meter.pct < threshold) return;
+  const before = ctx.meter.used;
   try {
     const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold });
     if (!r.compacted) return;
+    // E18: this compaction happens OUTSIDE the agent loop, so the loop's own
+    // bookkeeping never sees it. A session that compacted here and reported zero
+    // compactions would be reporting on the agent, not on the session.
+    ctx.meter.compacted(before, ctx.meter.used);
     ctx.conversation = r.messages.filter((m) => m.role !== "system");
     if (r.summary) {
       ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");

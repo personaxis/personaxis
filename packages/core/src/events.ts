@@ -52,7 +52,21 @@ export type LoopEvent =
   | { type: "agent-finish"; summary: string; steps: number }
   | { type: "agent-error"; message: string }
   // Agent budget + stop conditions (v0.9)
-  | { type: "agent-budget"; step: number; tokens: number; costUsd: number; wallSeconds: number }
+  /**
+   * E17: the step's cost, and now where its wall time went.
+   *
+   * The breakdown rides on the event that already reports the price rather than
+   * arriving as a new one: they answer the same question about the same step, and a
+   * second event would have to be correlated back to this one to be read.
+   */
+  | {
+      type: "agent-budget";
+      step: number;
+      tokens: number;
+      costUsd: number;
+      wallSeconds: number;
+      latency?: { modelMs: number; gateMs: number; toolMs: number; unattributedMs: number; overBudgetMs?: number };
+    }
   | { type: "agent-stop-condition"; reason: string; step: number }
   // Objective verification (v0.9)
   | { type: "verify-start"; gates: number }
