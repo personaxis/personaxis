@@ -309,7 +309,13 @@ export const SCENARIOS: Scenario[] = [
       return result(this, [
         check("did not finish", r.finished === false, `finished=${r.finished}`),
         check("stopped by max_steps", r.budget.stoppedBy === "max_steps", `stoppedBy=${r.budget.stoppedBy}`),
-      ], { steps: r.budget.steps, tokens: r.budget.tokens });
+      ], {
+        steps: r.budget.steps,
+        // E34: omitted rather than zeroed when nobody priced the run. A metric that
+        // is not there and a metric that is zero read differently in a report, and
+        // only one of the two is a measurement.
+        ...(r.budget.tokens === undefined ? {} : { tokens: r.budget.tokens }),
+      });
     },
   },
   {

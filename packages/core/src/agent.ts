@@ -288,8 +288,19 @@ export interface AgentOptions {
 
 export interface AgentBudgetReport {
   steps: number;
-  tokens: number;
-  costUsd: number;
+  /**
+   * E34: absent when no provider call reported usage, rather than zero.
+   *
+   * Optional because the two are different facts and the difference is the whole reason
+   * `TurnOutcome.cost` is optional one layer up. Required numbers meant a provider that
+   * said nothing was recorded as having cost nothing, so the seam's careful "absent, not
+   * zero" was defended in a place that could never see the difference.
+   *
+   * Steps and wall seconds stay required: the runtime counts those itself, whatever the
+   * provider says.
+   */
+  tokens?: number;
+  costUsd?: number;
   wallSeconds: number;
   stoppedBy: string | null;
 }
@@ -633,6 +644,10 @@ export class PersonaAgent {
     void resolveContextWindow(this.opts.llm).then((w) => (meter.limit = w)).catch(() => {});
 
     let tokens = 0;
+    // E34: whether ANYBODY priced this run, which is not the same question as whether it
+    // cost zero. Tracked beside the total rather than read off the meter, because the
+    // meter is only told about the step calls and the planning call is a model call too.
+    let priced = false;
     let deniedCount = 0;
     let errorCount = 0;
     let retriesLeft = verification.maxRetries;
@@ -759,6 +774,10 @@ export class PersonaAgent {
               requestToolCall(this.opts.llm, [...planMessages], [], this.preferFallback),
             );
             tokens += res.usage?.total_tokens ?? 0;
+            if (res.usage) priced = true;
+            // E34: the planning call is a model call, and it was never shown to the meter,
+            // so every cache report this run produced was missing it.
+            meter.observe(res.usage);
             return res.text;
           },
           tools: activeTools,
@@ -818,10 +837,19 @@ export class PersonaAgent {
       confidence,
       goalMet,
     });
+    // E34: the price is ABSENT when nobody reported one, and this is what makes the
+    // distinction the seam defends actually reachable. `costOf` has always had two careful
+    // branches for "a turn nobody priced and a turn that cost nothing are different facts",
+    // and both were dead: the fields were required numbers, so a provider that said nothing
+    // was written down as having cost zero, one layer below where anybody could tell.
     const report = (steps: number, stoppedBy: string | null): AgentBudgetReport => ({
       steps,
-      tokens,
-      costUsd: Number(estimateCostUsd(this.opts.llm.model, tokens).toFixed(4)),
+      ...(priced
+        ? {
+            tokens,
+            costUsd: Number(estimateCostUsd(this.opts.llm.model, tokens).toFixed(4)),
+          }
+        : {}),
       wallSeconds: Number(((Date.now() - startTime) / 1000).toFixed(1)),
       stoppedBy,
     });
@@ -1018,6 +1046,7 @@ export class PersonaAgent {
         );
         if (res.usedFallback) this.preferFallback = true;
         tokens += res.usage?.total_tokens ?? 0;
+        if (res.usage) priced = true;
         meter.observe(res.usage);
         if (!res.usage) meter.estimate(messages);
         bus.emit({ type: "context-meter", used: meter.used, limit: meter.limit, pct: Number(meter.pct.toFixed(3)) });
