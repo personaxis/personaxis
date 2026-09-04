@@ -65,6 +65,26 @@ const RULES: readonly Rule[] = [
 		because: "a shell command that reaches the network",
 	},
 	{
+		// E26: a write done with `>` is still a write.
+		//
+		// The rows above earn a write class for reaching the network, publishing, or
+		// deleting. None of them looked at redirection, so `echo x > secrets.env`
+		// classified as NOTHING, and everything hanging off `external_write` stopped
+		// looking: the gate, the identity axis, and the rule deciding whether a call
+		// touches the persona's own state. The shell's oldest way to write a file was
+		// the one way the table could not see.
+		//
+		// What the pattern deliberately does NOT match: `2>&1` and `>&2`, which
+		// redirect a stream onto another stream and create no file. The `&` after the
+		// arrow is the whole discriminator, and `2> log.txt` DOES match, because that
+		// one writes. `>=` and `->` are excluded for the same reason: they are
+		// comparison and arrow syntax, not redirection.
+		tool: /^bash|^shell|^run_command|^execute/i,
+		args: /(?:[^-=<>&]|^)>>?\s*(?![&=])[A-Za-z0-9._~/\\$"'(]|\btee\b|\bdd\b[^|]*\bof=|\bOut-File\b|\bSet-Content\b|\bAdd-Content\b/i,
+		classes: ["external_write"],
+		because: "a shell command that writes through redirection",
+	},
+	{
 		tool: /^bash|^shell|^run_command|^execute/i,
 		args: /\bgit\s+push\b|\bnpm\s+publish\b|\bdocker\s+push\b|\bterraform\s+apply\b/i,
 		classes: ["external_write", "network_egress"],
