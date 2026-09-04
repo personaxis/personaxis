@@ -12,6 +12,7 @@
 import type { CommandVerdict, Policy } from "../sandbox.js";
 import type { ExecutionPort } from "../ports/execution.js";
 import { BUILTIN_TOOLS } from "./builtin/index.js";
+import type { ActionClass } from "../enforcement/action-classes.js";
 
 /**
  * Namespace a tool belongs to (J.1). Used to subset the catalog per active skill
@@ -34,6 +35,21 @@ export interface ToolSpec {
   isReadOnly: boolean;
   /** FR.7: true when concurrent invocations of THIS tool cannot interfere. */
   isConcurrencySafe: boolean;
+  /**
+   * K6: the action classes this tool can produce, when it says so.
+   *
+   * Optional here and REQUIRED of a contribution, and the asymmetry is the point. The
+   * built-ins are in the inference table by name and have been since it was written; a
+   * plugin is not and never will be. Measured: `github:create_issue` infers to an empty
+   * list, so a tool that writes to a remote service is weighed as nothing on the axis
+   * that exists to weigh it.
+   *
+   * A declaration widens and never shrinks. It is unioned with whatever the runtime can
+   * infer, because a capability that could shrink its own classification would be
+   * marking its own homework, and this is the one place where the subject of the
+   * measurement supplies the input.
+   */
+  envelope?: readonly ActionClass[];
   /** Decide allow | ask | deny for these args under the policy. Pure. */
   gate(args: Record<string, unknown>, policy: Policy): CommandVerdict;
   /** Perform the action; returns a text observation for the model. */

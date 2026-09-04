@@ -47,6 +47,8 @@
  * guarantees that nothing runs while you are deciding.
  */
 
+import { ACTION_CLASSES } from "../enforcement/action-classes.js";
+import type { ActionClass } from "../enforcement/action-classes.js";
 import type { ToolCategory } from "../tools/registry.js";
 
 /**
@@ -71,6 +73,26 @@ export interface ToolContribution {
 	readonly isConcurrencySafe: boolean;
 	/** Permission ids this tool needs, as text. Turning them into keys is a later step. */
 	readonly requires?: readonly string[];
+	/**
+	 * K6: the action classes this capability can produce. Required, and not defaulted.
+	 *
+	 * This is the envelope, and it is a different question from the permission. A
+	 * permission says whether this persona may use the tool at all. An envelope says what
+	 * the tool can DO, which is what the second axis weighs against what the persona
+	 * declared it will not do. A browser may be permitted and still not be allowed to
+	 * POST, because the persona said it does not publish on anyone's behalf.
+	 *
+	 * Required because the alternative was measured and it is worse than a gap: action
+	 * classes are otherwise INFERRED from a regex table over the tool's name and its
+	 * arguments, and that table has never seen a plugin. `github:create_issue` infers to
+	 * an EMPTY list, so a tool that writes to a remote service is weighed as nothing at
+	 * all on the axis that exists to weigh it.
+	 *
+	 * What a declaration cannot do is shrink anything. It is what the capability ADMITS
+	 * to, and the runtime still infers what it can see: the two are unioned, because
+	 * trusting a stranger's "at most" is exactly the thing not to do.
+	 */
+	readonly envelope: readonly string[];
 }
 
 /** Everything a plugin contributes, by kind. */
@@ -170,6 +192,20 @@ function toolFaults(value: unknown, at: string): string[] {
 		if (typeof value[flag] !== "boolean") faults.push(`${at}.${flag} must be a boolean`);
 	}
 	faults.push(...stringListFaults(value["requires"], `${at}.requires`));
+
+	// K6: present, an array, and every entry a class that exists. An unknown class is
+	// refused rather than ignored, because ignoring it turns a typo into silence on the
+	// axis the entry was written to raise.
+	const envelope = value["envelope"];
+	if (!Array.isArray(envelope)) {
+		faults.push(`${at}.envelope must be an array of action classes`);
+	} else {
+		for (const entry of envelope) {
+			if (!ACTION_CLASSES.includes(entry as ActionClass)) {
+				faults.push(`${at}.envelope has "${String(entry)}", which is not an action class`);
+			}
+		}
+	}
 
 	return faults;
 }

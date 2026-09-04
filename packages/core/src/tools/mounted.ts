@@ -47,6 +47,7 @@ import { writeFileTool } from "./builtin/write-file.js";
 import { catalogue, readManifest, type PluginManifest } from "../kernel/manifest.js";
 import { extensionPoint } from "../kernel/extension.js";
 import { CORE_VERSION } from "../generated/version.js";
+import type { ActionClass } from "../enforcement/action-classes.js";
 import type { SandboxPosture } from "../security/consent.js";
 import type { ToolSpec } from "./registry.js";
 
@@ -64,6 +65,44 @@ export const TOOL_PERMISSIONS = {
 	writeFiles: permissionKey("tools.write"),
 	runCommands: permissionKey("tools.command"),
 } as const;
+
+/**
+ * K6: what each built-in can DO, as opposed to what it needs permission for.
+ *
+ * Declared here rather than on each tool, because these six are the one set the
+ * inference table already knows by name: the declaration is belt to its braces, and
+ * keeping it in one column is what makes it readable next to the permission it is not.
+ *
+ * `run_command` is the honest ugly one. A shell can do anything, so its envelope is
+ * everything, and that is not a failure of the declaration: it is the reason a persona
+ * that declares narrow limits should not be given a shell in the first place.
+ */
+const ENVELOPES: Readonly<Record<string, readonly ActionClass[]>> = {
+	read_file: [],
+	list_dir: [],
+	write_file: ["external_write"],
+	edit_file: ["external_write"],
+	run_command: [
+		"external_write",
+		"file_delete",
+		"network_egress",
+		"credential_access",
+		"spend",
+		"email_send",
+	],
+	finish: [],
+};
+
+/**
+ * One built-in, with its envelope attached, built once.
+ *
+ * K6: ONE place computes it. It was two, and a negative control caught them drifting:
+ * breaking the envelope on the contributed spec left the manifest, which read the table
+ * directly, saying the right thing about a tool that no longer carried it.
+ */
+function declaredTool(tool: ToolSpec): ToolSpec {
+	return { ...tool, envelope: ENVELOPES[tool.name] ?? [] };
+}
 
 /** Which permission each built-in needs, or none. */
 const NEEDED: ReadonlyArray<{ tool: ToolSpec; permission?: PermissionKey }> = [
@@ -103,11 +142,19 @@ export const TOOL_POINT = extensionPoint<ToolSpec>("tools");
  * contributes through the same door and a reader asking what is offered asks one place.
  */
 function componentFor(entry: { tool: ToolSpec; permission?: PermissionKey }): Component {
+	// K6: built once, outside `activate`, so re-activating contributes the same object
+	// rather than a fresh copy of it. Not tidiness: a snapshot that compared objects would
+	// stop recognising a tool that came back, which is exactly what happened.
+	const declared = declaredTool(entry.tool);
+
 	return {
 		name: `tool.${entry.tool.name}`,
 		...(entry.permission ? { requires: [entry.permission] } : {}),
 		activate: (context) => {
-			context.contribute(TOOL_POINT, entry.tool);
+			// K6: the tool with its envelope attached. Attached here rather than written
+			// into each builtin's own file, so the column above stays the one place a
+			// reader compares "what it needs" against "what it can do".
+			context.contribute(TOOL_POINT, declared);
 		},
 	};
 }
@@ -133,6 +180,9 @@ export function builtinManifest(): PluginManifest {
 				category: entry.tool.category,
 				isReadOnly: entry.tool.isReadOnly,
 				isConcurrencySafe: entry.tool.isConcurrencySafe,
+				// The same function the component contributes through, so the manifest and
+				// the spec cannot describe different tools.
+				envelope: [...(declaredTool(entry.tool).envelope ?? [])],
 				...(entry.permission ? { requires: [entry.permission.id] } : {}),
 			})),
 		},
@@ -231,8 +281,16 @@ export function mountBuiltins(kernel: Kernel, permissions: PermissionSource): To
 
 	return {
 		get tools() {
-			const live = new Set(contributed());
-			return snapshot.filter((tool) => live.has(tool));
+			// By NAME and not by object identity, and the difference is a regression this
+			// caught: attaching an envelope made each contribution a new object, so an
+			// identity comparison stopped recognising a tool that had come back. The
+			// catalogue is about names the model has been shown; the object handed over is
+			// whatever is live now, so a name that survives gets the current implementation
+			// rather than the one from the last snapshot.
+			const live = new Map(contributed().map((tool) => [tool.name, tool] as const));
+			return snapshot
+				.map((tool) => live.get(tool.name))
+				.filter((tool): tool is ToolSpec => tool !== undefined);
 		},
 		refresh() {
 			const before = new Set(snapshot.map((tool) => tool.name));

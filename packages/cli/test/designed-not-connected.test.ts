@@ -279,7 +279,7 @@ function reaches(source: string): Set<string> {
  * the thing that says so out loud.
  */
 const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
-	{ pkg: "core", departure: 174 },
+	{ pkg: "core", departure: 173 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the

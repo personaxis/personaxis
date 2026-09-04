@@ -1258,7 +1258,18 @@ export class PersonaAgent {
             freezeCall({
               tool: call.name,
               argsText,
-              actionClasses: actionClassesFor(call.name, argsText),
+              // K6: what the capability DECLARED, plus what the runtime can infer. The
+              // union and never one or the other: a plugin is not in the inference table
+              // and never will be, so without the declaration `github:create_issue`
+              // weighs as nothing at all; and a declaration that could REPLACE the
+              // inference would let a capability classify itself down, which is the one
+              // place the subject of a measurement supplies its own input.
+              actionClasses: [
+                ...new Set([
+                  ...(tool?.envelope ?? []),
+                  ...actionClassesFor(call.name, argsText),
+                ]),
+              ].sort(),
               turn: call.id,
             }),
           ));

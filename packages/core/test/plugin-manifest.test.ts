@@ -26,6 +26,7 @@ function tool(over: Record<string, unknown> = {}): Record<string, unknown> {
 		category: "net",
 		isReadOnly: true,
 		isConcurrencySafe: true,
+		envelope: ["network_egress"],
 		...over,
 	};
 }

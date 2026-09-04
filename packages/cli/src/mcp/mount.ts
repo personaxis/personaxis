@@ -175,6 +175,9 @@ function whyRefused(server: string, descriptor: McpToolDescriptor): readonly str
 					category: "mcp",
 					isReadOnly: readOnly,
 					isConcurrencySafe: readOnly && descriptor.annotations?.idempotentHint === true,
+					// K6: the same envelope `mcpToolToSpec` gives it, so the manifest the
+					// reader sees and the spec the gate weighs describe one tool.
+					envelope: readOnly ? ["network_egress"] : ["network_egress", "external_write"],
 				},
 			],
 		},
