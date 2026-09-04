@@ -104,6 +104,24 @@ export function estimateMessagesTokens(messages: ChatMessage[]): number {
 }
 
 /**
+ * E18: the session's cache accounting. Every field is what a provider reported or a
+ * count of how often it reported anything; nothing here is inferred.
+ */
+export interface CacheReport {
+  /** Did ANY call come back with cache numbers? False means silence, not a miss. */
+  reported: boolean;
+  /** Calls whose usage was reported at all. */
+  calls: number;
+  /** Of those, how many carried cache figures. */
+  callsReportingCache: number;
+  readTokens: number;
+  writeTokens: number;
+  promptTokens: number;
+  /** Share of prompt tokens served from cache. Undefined while nothing was reported. */
+  hitRate?: number;
+}
+
+/**
  * Tracks how full the context window is across a session. `used` is the size of
  * the last prompt sent (the live context), preferring provider-reported tokens.
  */
@@ -111,16 +129,79 @@ export class ContextMeter {
   used = 0;
   readonly startedAt = Date.now();
 
+  /** E18: cache accounting, summed over the session. See `cacheReport`. */
+  private cacheReads = 0;
+  private cacheWrites = 0;
+  private promptTokens = 0;
+  private calls = 0;
+  private callsReportingCache = 0;
+  private compactions = 0;
+  private tokensFreed = 0;
+
   constructor(public limit: number) {}
 
   /** Record the provider's reported usage for the last call. */
   observe(usage?: TokenUsage): void {
     if (usage?.prompt_tokens) this.used = usage.prompt_tokens;
+    if (!usage) return;
+    this.calls += 1;
+    this.promptTokens += usage.prompt_tokens ?? 0;
+    const read = usage.cache_read_tokens;
+    const write = usage.cache_write_tokens;
+    if (read === undefined && write === undefined) return;
+    this.callsReportingCache += 1;
+    this.cacheReads += read ?? 0;
+    this.cacheWrites += write ?? 0;
+  }
+
+  /**
+   * E18: what the cache actually did this session, as numbers rather than as faith.
+   *
+   * `E5` shaped a stable prompt prefix and `E6` gave compaction named cut points, and
+   * both are bets on the provider serving a cached prefix. Neither was ever observed.
+   * This reports what the provider said, and says plainly when it said nothing:
+   * `reported: false` is not a miss, it is silence, and treating silence as a miss (or
+   * as a hit) is how a prefix that stopped being cacheable stays invisible.
+   *
+   * `hitRate` is the share of PROMPT tokens served from cache, not the share of calls:
+   * a call that reads 8k cached tokens and one that reads 40 are not the same event,
+   * and the bill is denominated in tokens.
+   */
+  cacheReport(): CacheReport {
+    const reported = this.callsReportingCache > 0;
+    return {
+      reported,
+      calls: this.calls,
+      callsReportingCache: this.callsReportingCache,
+      readTokens: this.cacheReads,
+      writeTokens: this.cacheWrites,
+      promptTokens: this.promptTokens,
+      hitRate: reported && this.promptTokens > 0 ? this.cacheReads / this.promptTokens : undefined,
+    };
   }
 
   /** Fallback: estimate from the current message array. */
   estimate(messages: ChatMessage[]): void {
     this.used = Math.max(this.used, estimateMessagesTokens(messages));
+  }
+
+  /**
+   * E18: record a compaction against the SESSION.
+   *
+   * `AgentResult.compactions` already carries one record per compaction, and this is
+   * not a second copy of it: that array is per RUN and holds the detail, while a
+   * session outlives its runs and is what somebody is looking at when they type
+   * /context. The run's array was also, as of E18, read by nobody at all: E6 measured
+   * the cost and then had nowhere to put it.
+   */
+  compacted(before: number, after: number): void {
+    this.compactions += 1;
+    this.tokensFreed += Math.max(0, before - after);
+  }
+
+  /** How many times this session compacted, and what that bought. */
+  compactionReport(): { count: number; tokensFreed: number } {
+    return { count: this.compactions, tokensFreed: this.tokensFreed };
   }
 
   get pct(): number {

@@ -529,6 +529,29 @@ export const COMMANDS: CommandDef[] = [
       }
       if (limit) lines.push(`  ${chalk.dim("⛶")} ${"Free space".padEnd(17)} ${fmtK(free).padStart(7)}  ${pctOf(free).padStart(6)}`);
       if (limit && m.pct >= 0.8) lines.push(chalk.yellow("  ⚠ near the limit, /compact summarizes older turns to free room"));
+
+      // E18: what the prompt cache did this session. Three states, and they are not
+      // the same: the provider said nothing, it served part of the prompt, or it
+      // served none of it. The last one is the interesting one, because a stable
+      // prefix that never gets read back is a prefix being rebuilt every turn.
+      const cache = m.cacheReport();
+      if (!cache.reported) {
+        lines.push(chalk.dim(`  ⛁ Prompt cache      ${"—".padStart(7)}  not reported by this provider`));
+      } else {
+        const pct = `${Math.round((cache.hitRate ?? 0) * 100)}%`;
+        const detail = `${fmtK(cache.readTokens)} of ${fmtK(cache.promptTokens)} prompt tokens served from cache · ${fmtK(cache.writeTokens)} written`;
+        lines.push(
+          cache.readTokens === 0 && cache.calls > 1
+            ? chalk.yellow(`  ⚠ Prompt cache      ${pct.padStart(7)}  ${detail}; the prefix is being rebuilt every turn`)
+            : `  ${chalk.cyan("⛁")} ${"Prompt cache".padEnd(17)} ${pct.padStart(7)}  ${chalk.dim(detail)}`,
+        );
+      }
+      const compacted = m.compactionReport();
+      if (compacted.count > 0) {
+        lines.push(
+          `  ${chalk.cyan("⛁")} ${"Compactions".padEnd(17)} ${String(compacted.count).padStart(7)}  ${chalk.dim(`${fmtK(compacted.tokensFreed)} tokens freed this session`)}`,
+        );
+      }
       if (arg?.trim() === "all") {
         lines.push("", chalk.bold("  Memory files"));
         lines.push(`  ${chalk.dim("├")} memory.md: ${fmtK(est(semantic))}`);

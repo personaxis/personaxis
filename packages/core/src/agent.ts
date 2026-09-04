@@ -64,7 +64,7 @@ import { factsView, renderFacts } from "./memory/facts.js";
 import { recallWindow, memoryTools } from "./memory/retrieval.js";
 import { sessionBrief, isInfraErrorReply } from "./memory/consolidate.js";
 import { ensureState, loadPersona } from "./persona.js";
-import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow } from "./context.js";
+import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow, type CacheReport } from "./context.js";
 import { LoopBreaker, toolSignature } from "./loop-breaker.js";
 import { ForensicLog, type ForensicRecord } from "./security/forensic-log.js";
 import { ToolInterceptor } from "./security/interceptor.js";
@@ -276,6 +276,15 @@ export interface AgentResult {
    * never taken, and a caller cannot tell those apart from a number alone.
    */
   compactions: readonly CompactionRecord[];
+  /**
+   * E18: what the prompt cache did this run, as reported by the provider.
+   *
+   * `E5` shaped a stable prefix and `E6` gave compaction named cut points, and both
+   * are bets that the provider serves that prefix from cache. Nothing observed
+   * whether it does. A `hitRate` of zero and a `reported: false` look identical from
+   * the outside and mean opposite things, so both travel.
+   */
+  cache: CacheReport;
   /**
    * Why this run did what it did, when there is anything to say.
    *
@@ -714,6 +723,7 @@ export class PersonaAgent {
             wallSeconds: Number(((Date.now() - startTime) / 1000).toFixed(1)),
             stoppedBy: "plan",
           },
+          cache: meter.cacheReport(),
           compactions,
           trace: buildTrace(intents, traceNodes),
         };
@@ -844,7 +854,7 @@ export class PersonaAgent {
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
         }
 
         // K.07: honor an out-of-band abort. The watchdog enforces the WALL-CLOCK ceiling on a
@@ -858,7 +868,7 @@ export class PersonaAgent {
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
         }
 
         bus.emit({ type: "agent-step", step });
@@ -894,6 +904,8 @@ export class PersonaAgent {
             messages.length = 0;
             messages.push(...c.messages);
             compactions.push({ cut, step, removed: c.removed ?? 0, before, after: meter.used });
+            // E18: and against the session, which outlives this run and is what /context reads.
+            meter.compacted(before, meter.used);
             bus.emit({ type: "context-compacted", removed: c.removed ?? 0, usedAfter: meter.used });
           }
         }
@@ -932,12 +944,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
-            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           continue; // retry
         }
@@ -1185,7 +1197,7 @@ export class PersonaAgent {
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
             this.persist(task, "stopped", summary, step);
-            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
           }
         }
 
@@ -1195,12 +1207,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
-            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
           }
           // retry: loop continues; the failure note is already in messages.
         }
@@ -1208,11 +1220,11 @@ export class PersonaAgent {
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
       this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
-      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
       this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
-      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, compactions, trace: buildTrace(intents, traceNodes) };
+      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), compactions, trace: buildTrace(intents, traceNodes) };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.
       watchdog.stop();

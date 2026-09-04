@@ -41,6 +41,15 @@ export interface TokenUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  /**
+   * E18: prompt tokens the provider served from ITS cache, and tokens it charged to
+   * write that cache. Optional because most endpoints report neither, and absent has
+   * to stay distinguishable from zero: "the provider said nothing" and "the cache
+   * missed" are different facts, and reading the first as the second is how a prefix
+   * that stopped being cacheable goes unnoticed for months.
+   */
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
 }
 
 export interface ToolCallResponse {
@@ -62,11 +71,38 @@ export interface ToolCallResponse {
   usage?: TokenUsage;
 }
 
+/**
+ * E18: the two spellings of cache accounting, because this loop speaks one message
+ * dialect and marks the cache in another.
+ *
+ * The request body is OpenAI-shaped while `markedForCache` writes Anthropic's
+ * `cache_control` block, which is what a proxy in front of both accepts. So the reply
+ * can come back either way: Anthropic reports `cache_read_input_tokens` and
+ * `cache_creation_input_tokens` at the top of `usage`, OpenAI reports
+ * `prompt_tokens_details.cached_tokens` and never bills a write at all.
+ *
+ * Neither is invented when missing. A number that is absent stays absent.
+ */
+function extractCache(u: Record<string, unknown>): { read?: number; write?: number } {
+  const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const details = u.prompt_tokens_details as { cached_tokens?: unknown } | undefined;
+  const read = num(u.cache_read_input_tokens) ?? num(u.cache_read_tokens) ?? num(details?.cached_tokens);
+  const write = num(u.cache_creation_input_tokens) ?? num(u.cache_write_tokens);
+  return { ...(read !== undefined ? { read } : {}), ...(write !== undefined ? { write } : {}) };
+}
+
 function extractUsage(json: { usage?: Partial<TokenUsage> }): TokenUsage | undefined {
   const u = json.usage;
   if (!u) return undefined;
   const total = u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
-  return { prompt_tokens: u.prompt_tokens ?? 0, completion_tokens: u.completion_tokens ?? 0, total_tokens: total };
+  const cache = extractCache(u as Record<string, unknown>);
+  return {
+    prompt_tokens: u.prompt_tokens ?? 0,
+    completion_tokens: u.completion_tokens ?? 0,
+    total_tokens: total,
+    ...(cache.read !== undefined ? { cache_read_tokens: cache.read } : {}),
+    ...(cache.write !== undefined ? { cache_write_tokens: cache.write } : {}),
+  };
 }
 
 export interface ToolCallConfig {
