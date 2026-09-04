@@ -40,14 +40,14 @@ const TSC = join(ROOT, "node_modules", "typescript", "bin", "tsc");
  * one getting worse. Lower one when you fix something; never raise one.
  */
 const CEILING = {
-  core: 44,
-  cli: 18,
+  core: 8,
+  cli: 10,
   evals: 0,
   mcp: 0,
   protocol: 0,
   sdk: 0,
   spec: 0,
-  tui: 4,
+  tui: 0,
 };
 
 /** `tsc` complains that test files sit outside `rootDir`. That is about layout, not types. */

@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { AgentResult } from "../src/agent.js";
 
 import {
 	Ledger,
@@ -26,6 +27,54 @@ import {
 	type LoopProvider,
 	type TurnRequest,
 } from "../src/run/index.js";
+
+/**
+ * An `AgentResult`, filled out.
+ *
+ * E32: these stubs were missing `cache` and `latency`, which `E18` and `E17` added to
+ * the result and nothing came back to the tests for, because no test in this repository
+ * was ever type-checked. `productOf` reads neither, so nothing broke and nothing could
+ * report it either. They are supplied here rather than at twelve call sites, and only
+ * because an `AgentResult` HAS them: a test that spelled them out at every call site would be saying
+ * they matter to the translation, and they do not.
+ */
+function resultOf(
+	over: Pick<AgentResult, "summary" | "steps" | "finished"> &
+		Partial<Pick<AgentResult, "budget" | "compactions">>,
+): AgentResult {
+	// Assigned rather than spread: spreading a partial widens every optional key with
+	// `| undefined`, which `exactOptionalPropertyTypes` refuses, and the refusal is
+	// right. An absent key and a key set to undefined are different states here.
+	return {
+		summary: over.summary,
+		steps: over.steps,
+		finished: over.finished,
+		budget: over.budget ?? {
+			steps: over.steps,
+			tokens: 0,
+			costUsd: 0,
+			wallSeconds: 0,
+			stoppedBy: null,
+		},
+		compactions: over.compactions ?? [],
+		cache: {
+			reported: false,
+			calls: 0,
+			callsReportingCache: 0,
+			readTokens: 0,
+			writeTokens: 0,
+			promptTokens: 0,
+		},
+		latency: {
+			modelMs: 0,
+			gateMs: 0,
+			toolMs: 0,
+			totalMs: 0,
+			unattributedMs: 0,
+			calls: { model: 0, gate: 0, tool: 0 },
+		},
+	};
+}
 
 const asked: TurnRequest = {
 	turn: "t1",
@@ -77,7 +126,11 @@ describe.each(providers.map((make) => [make().name, make] as const))(
 			const closed: string[] = [];
 			const runner = new TurnRunner({
 				provider: make(),
-				observer: { closed: (outcome) => closed.push(outcome.stopReason) },
+				observer: {
+					closed: (outcome) => {
+						closed.push(outcome.stopReason);
+					},
+				},
 			});
 
 			for (let index = 0; index < 5; index += 1) {
@@ -161,13 +214,13 @@ describe("a second provider is not a special case", () => {
 describe("the loop we already have goes through the same seam", () => {
 	it("calls an answered run answered", () => {
 		expect(
-			productOf({
+			productOf(resultOf({
 				summary: "the branch is clean",
 				steps: 3,
 				finished: true,
 				compactions: [],
 				budget: { steps: 3, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: null },
-			}),
+			})),
 		).toEqual({
 			answer: "the branch is clean",
 			steps: 3,
@@ -186,7 +239,15 @@ describe("the loop we already have goes through the same seam", () => {
 		// A scripted provider has no budget to read. Reporting zero would turn "nothing
 		// to say" into "checked, and it cost nothing", and a total over ten turns reads
 		// identically whether all ten were priced or none were.
-		const product = productOf({ summary: "done", steps: 1, finished: true, compactions: [] });
+		//
+		// E32: the cast is deliberate and it is a FINDING rather than a convenience. This
+		// case is unreachable through the declared types: `AgentResult.budget` is
+		// required and `AgentBudgetReport.tokens` and `.costUsd` are required NUMBERS, so
+		// the loop reports 0 for a provider that said nothing and `costOf`'s two careful
+		// "absent, not zero" branches can never be taken. The distinction is defended at
+		// the seam and destroyed one layer earlier. See E34.
+		const unpriced = { summary: "done", steps: 1, finished: true, compactions: [] } as never;
+		const product = productOf(unpriced);
 
 		expect(product).toEqual({ answer: "done", steps: 1, stopReason: "answered", compactions: [] });
 		expect("cost" in product).toBe(false);
@@ -196,14 +257,14 @@ describe("the loop we already have goes through the same seam", () => {
 		// A turn that was refused or ran out still cost what it cost, and dropping the
 		// price on the unhappy paths is how a bill comes out lower than the work.
 		const budget = { steps: 2, tokens: 900, costUsd: 0.04, wallSeconds: 1, stoppedBy: "tool_denied" };
-		const refused = productOf({ summary: "", steps: 2, finished: false, budget, compactions: [] } as never);
-		const ranOut = productOf({
+		const refused = productOf(resultOf({ summary: "", steps: 2, finished: false, budget, compactions: [] }));
+		const ranOut = productOf(resultOf({
 			summary: "",
 			steps: 2,
 			finished: false,
 			compactions: [],
 			budget: { ...budget, stoppedBy: "max_steps" },
-		} as never);
+		}));
 
 		expect(refused.stopReason).toBe("refused");
 		expect(refused.cost).toEqual({ tokens: 900, usd: 0.04 });
@@ -216,13 +277,13 @@ describe("the loop we already have goes through the same seam", () => {
 		// delivered, which is what the reasoning behind the old assertion was actually
 		// about and what `answered(reason)` still says; the reference reaches the same
 		// place by spending one more tool-free call to summarise on exhaustion.
-		const product = productOf({
+		const product = productOf(resultOf({
 			summary: "here is what I found so far",
 			steps: 9,
 			finished: false,
 			compactions: [],
 			budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
-		});
+		}));
 
 		expect(product.stopReason).toBe("budget");
 		expect(product.answer).toBe("here is what I found so far");
@@ -232,13 +293,13 @@ describe("the loop we already have goes through the same seam", () => {
 	it("says a budget stop ran out of room even when it produced nothing", () => {
 		// This asserted `empty`, which reports "the model produced nothing usable" for a
 		// turn that never got the chance. The reason and the answer are separate facts.
-		const product = productOf({
+		const product = productOf(resultOf({
 			summary: "",
 			steps: 9,
 			finished: false,
 			compactions: [],
 			budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
-		});
+		}));
 
 		expect(product.stopReason).toBe("budget");
 		expect(product.answer).toBe("");
@@ -248,26 +309,26 @@ describe("the loop we already have goes through the same seam", () => {
 		// The distinction the SDK was about to lose: `AgentResult.finished` is the field
 		// that says the task completed, and `answered` is now the only reason that means
 		// it. Nothing else in the closed set does.
-		const finished = productOf({
+		const finished = productOf(resultOf({
 			summary: "done",
 			steps: 2,
 			finished: true,
 			compactions: [],
 			budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "goal_met" },
-		});
+		}));
 
 		expect(finished.stopReason).toBe("answered");
 	});
 
 	it("calls a run the gate stopped refused", () => {
 		expect(
-			productOf({
+			productOf(resultOf({
 				summary: "",
 				steps: 1,
 				finished: false,
 				compactions: [],
 				budget: { steps: 1, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "tool_denied" },
-			}).stopReason,
+			})).stopReason,
 		).toBe("refused");
 	});
 
@@ -276,13 +337,13 @@ describe("the loop we already have goes through the same seam", () => {
 		// not to make: a stop nobody classified came out as a turn that ran and produced
 		// nothing. A wrong reason is a reason somebody acts on, so an unknown stop fails
 		// and carries the word, which is how whoever added it finds out where it landed.
-		const product = productOf({
+		const product = productOf(resultOf({
 			summary: "",
 			steps: 2,
 			finished: false,
 			compactions: [],
 			budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "something_new" },
-		});
+		}));
 
 		expect(product.stopReason).toBe("failed");
 		expect(product.failure?.message).toContain("something_new");
@@ -294,13 +355,13 @@ describe("the loop we already have goes through the same seam", () => {
 		// Nothing read the stop reason in production, so nothing showed it; the moment
 		// the REPL went through the seam, the record would have stored a runtime string
 		// as a message authored by the persona, hash-chained and unfixable.
-		const product = productOf({
+		const product = productOf(resultOf({
 			summary: "agent error: the model hung up",
 			steps: 0,
 			finished: false,
 			compactions: [],
 			budget: { steps: 0, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "error" },
-		});
+		}));
 
 		expect(product.stopReason).toBe("failed");
 		expect(product.answer).toBe("");
@@ -308,13 +369,13 @@ describe("the loop we already have goes through the same seam", () => {
 	});
 
 	it("calls a rejected verification failed, not an answer of the words verification failed", () => {
-		const product = productOf({
+		const product = productOf(resultOf({
 			summary: "verification failed",
 			steps: 4,
 			finished: false,
 			compactions: [],
 			budget: { steps: 4, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "verification_failed" },
-		});
+		}));
 
 		expect(product.stopReason).toBe("failed");
 		expect(product.answer).toBe("");
@@ -325,13 +386,13 @@ describe("the loop we already have goes through the same seam", () => {
 		// same fact as a denied tool: the turn could not continue past something it
 		// needed. They used to fall through to "answered if there is text".
 		for (const stoppedBy of ["tool_denied", "loop_breaker", "plan"]) {
-			const product = productOf({
+			const product = productOf(resultOf({
 				summary: "as far as I got",
 				steps: 2,
 				finished: false,
 				compactions: [],
 				budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy },
-			});
+			}));
 
 			expect({ stoppedBy, reason: product.stopReason }).toEqual({ stoppedBy, reason: "refused" });
 		}
@@ -351,13 +412,13 @@ describe("the loop we already have goes through the same seam", () => {
 		] as const;
 
 		for (const [stoppedBy, reason] of cases) {
-			const product = productOf({
+			const product = productOf(resultOf({
 				summary: "here is what I have",
 				steps: 5,
 				finished: false,
 				compactions: [],
 				budget: { steps: 5, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy },
-			});
+			}));
 
 			expect({ stoppedBy, reason: product.stopReason }).toEqual({ stoppedBy, reason });
 			expect({ stoppedBy, delivered: answered(product.stopReason!) }).toEqual({

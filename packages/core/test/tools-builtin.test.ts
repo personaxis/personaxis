@@ -7,6 +7,14 @@
 import { describe, it, expect } from "vitest";
 import { TOOLS, toolByName, validateToolArgs, type ToolCategory } from "../src/tools/registry.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
+import { noExecution } from "../src/ports/execution.js";
+
+/**
+ * E32: the third argument is the ExecutionPort, WHERE the action happens, and these
+ * calls were leaving it out. One that refuses everything rather than a live one, so
+ * the call also asserts what it should: none of these tools touches the machine.
+ */
+const INERT = noExecution("this tool must not act");
 
 const EXPECTED: Array<{ name: string; category: ToolCategory; isReadOnly: boolean }> = [
   { name: "run_command", category: "shell", isReadOnly: false },
@@ -40,6 +48,6 @@ describe("the built-in catalog (J.1b)", () => {
   it("preserves behavior: finish returns its summary, gates still decide", async () => {
     const finish = toolByName("finish")!;
     expect(finish.gate({ summary: "done" }, DEFAULT_POLICY).decision).toBe("allow");
-    expect(await finish.execute({ summary: "all done" }, DEFAULT_POLICY)).toBe("all done");
+    expect(await finish.execute({ summary: "all done" }, DEFAULT_POLICY, INERT)).toBe("all done");
   });
 });

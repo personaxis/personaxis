@@ -1,4 +1,5 @@
-// A whole run, from engine event to the frame that leaves the machine.
+
+import type { RegisterFrame } from "../src/workspace/connection.js";// A whole run, from engine event to the frame that leaves the machine.
 //
 // The unit tests either side of this one prove the reporter correlates calls
 // and the connection queues and resumes. Neither proves the two together
@@ -21,14 +22,17 @@ import { JobReporter } from "../src/workspace/job-reporter.js";
 
 const SECRET = "ghp_abcdefghijklmnopqrstuvwxyz012345";
 
-const REGISTER = {
+// E32: typed rather than frozen with `as const`. The frame declares mutable arrays, so
+// a readonly literal is not one, and the stub was quietly a different shape from what
+// the daemon actually sends.
+const REGISTER: RegisterFrame = {
 	machine_name: "ana-macbook",
 	os: "darwin",
 	daemon_version: "0.16.4",
 	host_agents: [],
 	working_dirs: ["/work"],
 	cached_policies: [],
-} as const;
+};
 
 /** A socket that records what was written and can be dropped on command. */
 function fakeSocket() {

@@ -82,23 +82,32 @@ describe("what may be evaluated against", () => {
 	});
 
 	it("cannot come back off a wire, because half of it does not serialise", () => {
-		// `RegExp[]` and a `Map` do not survive JSON: the regexes come back as `{}` and
-		// so does the map. Before the brand this had the right shape for TypeScript and
-		// threw on every call, which is the same disguise as the hand-built one.
-		const roundTripped = JSON.parse(JSON.stringify(compile(policy({ deny: ["rm -rf"] }))));
+		// `RegExp[]` and a `Map` do not survive JSON: the regexes come back as `{}` and so
+		// does the map. Before the brand this had the right shape for TypeScript and threw
+		// on every call, which is the same disguise as the hand-built one.
+		//
+		// A CORRECTION, and the type checker is what made it: the first version of this
+		// asserted `@ts-expect-error` on the raw `JSON.parse` result, and the directive
+		// came back unused. `JSON.parse` returns `any`, and `any` defeats every brand
+		// there has ever been. So what the brand actually buys on this path is narrower
+		// than I first wrote: it does not stop `any`, it stops the parsed value once
+		// somebody types it, which is the only form in which a careful caller handles one.
+		const parsed = JSON.parse(
+			JSON.stringify(compile(policy({ deny: ["rm -rf"] }))),
+		) as Record<string, unknown>;
 
-		expect(roundTripped.deny).toEqual([{}]);
-		expect(roundTripped.gatesByClass).toEqual({});
+		expect(parsed["deny"]).toEqual([{}]);
+		expect(parsed["gatesByClass"]).toEqual({});
 
 		const neverCalled = (): unknown =>
 			// @ts-expect-error what came back from the wire is not an executable policy
-			evaluate(roundTripped, { tool: "shell", args_text: "ls", action_classes: [] });
+			evaluate(parsed, { tool: "shell", args_text: "ls", action_classes: [] });
 		expect(typeof neverCalled).toBe("function");
 
 		// And what forcing it past the type gets you, which is the failure this replaces:
 		// not a refusal anybody can read, a throw from inside the cascade.
 		expect(() =>
-			evaluate(roundTripped as never, { tool: "shell", args_text: "ls", action_classes: [] }),
+			evaluate(parsed as never, { tool: "shell", args_text: "ls", action_classes: [] }),
 		).toThrow(/is not a function/);
 	});
 

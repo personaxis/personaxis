@@ -24,6 +24,13 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { mountAll, mountServer, textOf, MAX_RESULT } from "../src/mcp/mount.js";
+import { noExecution } from "@personaxis/core";
+
+/** E32: the third argument is WHERE the action happens. A mounted MCP tool talks to
+ * its server, not to this machine, so a port that refuses everything is the truthful
+ * stub and the call says so. */
+const INERT = noExecution("an MCP tool acts through its server");
+
 
 type Result = { content: Array<{ type: string; text?: string }> };
 
@@ -75,7 +82,7 @@ describe("a server's tools in our catalogue", () => {
 		const mounted = await mountServer("tools", { command: "unused" }, { transportFor: () => transport });
 		const search = mounted.tools.find((tool) => tool.name === "tools:search");
 
-		expect(await search?.execute({ text: "hello" }, {} as never)).toBe("found: hello");
+		expect(await search?.execute({ text: "hello" }, {} as never, INERT)).toBe("found: hello");
 	});
 
 	it("hand back an error as a result when the server has gone away", async () => {
@@ -90,7 +97,7 @@ describe("a server's tools in our catalogue", () => {
 		const search = mounted.tools.find((tool) => tool.name === "tools:search");
 		await mounted.close();
 
-		const answer = await search?.execute({ text: "hello" }, {} as never);
+		const answer = await search?.execute({ text: "hello" }, {} as never, INERT);
 		expect(answer).toContain("error calling tools:search");
 	});
 

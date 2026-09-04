@@ -228,6 +228,12 @@ describe("a tool contributed from outside the engine", () => {
 		name: "github:create_issue",
 		description: "opens an issue",
 		category: "mcp" as const,
+		// E32: both were absent, and they are not decoration: they decide whether the
+		// loop may run this tool alongside another. A contributed tool that declares
+		// neither is a stub that does not resemble the thing it stands for. A remote
+		// call is neither read-only nor safe to run twice at once, so both are false.
+		isReadOnly: false,
+		isConcurrencySafe: false,
 		parameters: { type: "object" as const, properties: {} },
 		gate: () => ({ decision: "allow" as const, reason: "full access", class: { writesFiles: false, network: true, destructive: false, escapesWorkspace: false } }),
 		execute: async () => "opened #1",

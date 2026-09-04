@@ -18,28 +18,32 @@ import fc from "fast-check";
 import {
 	compile,
 	evaluate,
-	type ActionClass,
 	type ApprovalPosture,
 	type CompiledPolicy,
 	type GateRule,
 	type SandboxPosture,
 } from "../../src/enforcement/policy-compile.js";
+import { ACTION_CLASSES, type ActionClass } from "../../src/enforcement/action-classes.js";
 import { NUM_RUNS, PROP_TIMEOUT } from "./arbitraries.js";
 
-const ACTION_CLASSES: ActionClass[] = [
-	"read",
-	"local_write",
-	"external_write",
-	"file_delete",
-	"spend",
-	"network",
-];
+/**
+ * E32: the real list, imported rather than retyped.
+ *
+ * What was here was six names and THREE OF THEM DO NOT EXIST: `read`, `local_write` and
+ * `network`. So half of every generated gate rule named a class the gate can never be
+ * shown, and three classes that are real were never generated at all: `email_send`,
+ * `network_egress` and `credential_access`. A deny-precedence property suite that has
+ * never seen the class for sending mail or the one for reading a credential is not
+ * testing what its name says. Nothing could report it, because until E32 no test in this
+ * repository was ever type-checked.
+ */
+const GENERATED_CLASSES: readonly ActionClass[] = ACTION_CLASSES;
 
 const sandboxArb = fc.constantFrom<SandboxPosture>("read-only", "workspace-write", "danger-full-access");
 const approvalArb = fc.constantFrom<ApprovalPosture>("untrusted", "on-failure", "on-request", "never");
 
 const gateRuleArb: fc.Arbitrary<GateRule> = fc.record({
-	action_class: fc.constantFrom(...ACTION_CLASSES),
+	action_class: fc.constantFrom(...GENERATED_CLASSES),
 	required_approvals: fc.integer({ min: 1, max: 3 }),
 	route: fc.constant({}),
 	timeout_seconds: fc.integer({ min: 30, max: 3600 }),
@@ -88,7 +92,7 @@ describe("PB-deny-1: a matching deny is final", () => {
 					policyAroundDeny(["rm\\s+-rf"]),
 					noiseArb,
 					noiseArb,
-					fc.array(fc.constantFrom(...ACTION_CLASSES), { maxLength: 3 }),
+					fc.array(fc.constantFrom(...GENERATED_CLASSES), { maxLength: 3 }),
 					(policy, before, after, classes) => {
 						const decision = evaluate(compile(policy), {
 							tool: "bash",
@@ -118,7 +122,7 @@ describe("PB-deny-1: a matching deny is final", () => {
 					const decision = evaluate(compile(policy), {
 						tool: "bash",
 						args_text: `curl https://example.com ${noise}`,
-						action_classes: ["network"],
+						action_classes: ["network_egress"],
 					});
 					expect(decision.verdict).toBe("deny");
 				}),
@@ -146,7 +150,7 @@ describe("PB-deny-1: a matching deny is final", () => {
 				egress_allowlist: ["*"],
 				sandbox: "danger-full-access",
 				approval: "never",
-				gate_rules: ACTION_CLASSES.map((action_class) => ({
+				gate_rules: GENERATED_CLASSES.map((action_class) => ({
 					action_class,
 					required_approvals: 1,
 					route: {},
@@ -155,7 +159,7 @@ describe("PB-deny-1: a matching deny is final", () => {
 			};
 
 			fc.assert(
-				fc.property(noiseArb, fc.array(fc.constantFrom(...ACTION_CLASSES), { maxLength: 3 }), (noise, classes) => {
+				fc.property(noiseArb, fc.array(fc.constantFrom(...GENERATED_CLASSES), { maxLength: 3 }), (noise, classes) => {
 					const decision = evaluate(compile(policy), {
 						tool: "bash",
 						args_text: `cat ${noise}secrets.env`,
@@ -181,7 +185,9 @@ describe("PB-deny-2: position and company do not matter", () => {
 					fc.array(fc.constantFrom("nothing-to-match-here", "zzz-unused"), { maxLength: 5 }),
 					fc.integer({ min: 0, max: 5 }),
 					(padding, at) => {
-						const deny = [...padding];
+						// Widened on purpose: the padding arbitrary infers a union of its two
+						// literals, and the pattern being spliced in is neither of them.
+						const deny: string[] = [...padding];
 						deny.splice(Math.min(at, deny.length), 0, "shutdown");
 
 						const policy: CompiledPolicy = {
@@ -202,7 +208,7 @@ describe("PB-deny-2: position and company do not matter", () => {
 						expect(evaluate(compile(policy), {
 							tool: "bash",
 							args_text: "shutdown -h now",
-							action_classes: ["local_write"],
+							action_classes: [],
 						}).verdict).toBe("deny");
 					},
 				),
@@ -280,7 +286,7 @@ describe("PB-deny-2: position and company do not matter", () => {
 						const decision = evaluate(compile(policy), {
 							tool: "ls",
 							args_text: `ls ${harmless}`,
-							action_classes: ["read"],
+							action_classes: [],
 						});
 						if (decision.verdict === "deny") expect(decision.rule).not.toContain("deny:");
 					},
@@ -322,7 +328,7 @@ describe("PB-deny-3: the subject cannot be escaped", () => {
 						expect(evaluate(compile(policy), {
 							tool,
 							args_text: `${noise} ~/.ssh/id_rsa`,
-							action_classes: ["read"],
+							action_classes: [],
 						}).verdict).toBe("deny");
 					},
 				),
@@ -390,7 +396,7 @@ describe("PB-deny-3: the subject cannot be escaped", () => {
 					const decision = evaluate(compile(policy), {
 						tool,
 						args_text: args,
-						action_classes: ["read"],
+						action_classes: [],
 					});
 					// Exactly one verdict, always. "No decision" is the shape that becomes a
 					// fail-open one refactor later.
@@ -430,7 +436,7 @@ describe("PB-deny-4: it refuses only what it was told to", () => {
 					const decision = evaluate(compile(policy), {
 						tool: "ls",
 						args_text: `ls ${path}`,
-						action_classes: ["read"],
+						action_classes: [],
 					});
 					expect(decision.verdict).not.toBe("deny");
 				}),
@@ -463,7 +469,7 @@ describe("PB-deny-4: it refuses only what it was told to", () => {
 					const decision = evaluate(compile(policy), {
 						tool: "ls",
 						args_text: noise,
-						action_classes: ["read"],
+						action_classes: [],
 					});
 					if (decision.verdict === "deny") expect(decision.rule).not.toContain("deny:");
 				}),

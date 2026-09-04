@@ -6,6 +6,11 @@ import { describe, it, expect, vi } from "vitest";
 import { mcpToolToSpec } from "../src/tools/mcp-adapter.js";
 import { validateToolArgs } from "../src/tools/registry.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
+import { noExecution } from "../src/ports/execution.js";
+
+/** E32: the third argument is WHERE the action happens; this adapter must not act. */
+const INERT = noExecution("this tool must not act");
+
 
 const forecast = {
   name: "get_forecast",
@@ -34,7 +39,7 @@ describe("mcpToolToSpec (J.1c)", () => {
   it("relays execute to the injected transport with the UNPREFIXED tool name", async () => {
     const call = vi.fn(async (_name: string, _args: Record<string, unknown>) => "sunny, 22C");
     const spec = mcpToolToSpec("weather", forecast, call);
-    expect(await spec.execute({ city: "Lima" }, DEFAULT_POLICY)).toBe("sunny, 22C");
+    expect(await spec.execute({ city: "Lima" }, DEFAULT_POLICY, INERT)).toBe("sunny, 22C");
     expect(call).toHaveBeenCalledWith("get_forecast", { city: "Lima" });
   });
 

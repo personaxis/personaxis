@@ -6,6 +6,14 @@
 import { describe, it, expect } from "vitest";
 import { ToolOutputStore, outputStoreTools, OFFLOAD_THRESHOLD, PREVIEW_CHARS } from "../src/tool-output-store.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
+import { noExecution } from "../src/ports/execution.js";
+
+/**
+ * E32: the third argument is the ExecutionPort, WHERE the action happens, and these
+ * calls were leaving it out. One that refuses everything rather than a live one, so
+ * the call also asserts what it should: none of these tools touches the machine.
+ */
+const INERT = noExecution("this tool must not act");
 
 describe("ToolOutputStore", () => {
   it("passes a small output through unchanged (no offload)", () => {
@@ -60,7 +68,7 @@ describe("outputStoreTools", () => {
     const store = new ToolOutputStore();
     store.offload("run_command", Array.from({ length: 200 }, (_, i) => `L${i}`).join("\n").padEnd(OFFLOAD_THRESHOLD + 1));
     const [read] = outputStoreTools(store);
-    const out = await read.execute({ handle: "out-1", offset: 10, limit: 3 }, DEFAULT_POLICY);
+    const out = await read.execute({ handle: "out-1", offset: 10, limit: 3 }, DEFAULT_POLICY, INERT);
     expect(out).toContain("L10");
     expect(out).toContain("L12");
   });
@@ -71,7 +79,7 @@ describe("outputStoreTools", () => {
     const [read, grep] = outputStoreTools(store);
     expect(read.isReadOnly && grep.isReadOnly).toBe(true);
     expect(read.gate({}, DEFAULT_POLICY).decision).toBe("allow");
-    const out = await grep.execute({ handle: "out-1", pattern: "ERROR" }, DEFAULT_POLICY);
+    const out = await grep.execute({ handle: "out-1", pattern: "ERROR" }, DEFAULT_POLICY, INERT);
     expect(out).toContain("beta ERROR here");
   });
 });

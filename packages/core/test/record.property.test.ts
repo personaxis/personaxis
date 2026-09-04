@@ -95,7 +95,7 @@ function chainOf(steps: readonly { author: Author; field: string; to: number }[]
 			field: step.field,
 			from: 0,
 			to: step.to,
-			requested: step.to,
+			delta: step.to,
 			clamped: false,
 			blocked: false,
 			reason: "generated",
