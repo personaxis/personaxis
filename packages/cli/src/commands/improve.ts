@@ -68,7 +68,8 @@ export function runMode(target?: string, newMode?: ImprovementMode): ModeResult 
   // autobiographical, a change of self-improvement posture is an identity-level milestone.
   if (readMemoryTypes(matter(raw).data as Record<string, unknown>).autobiographical) {
     try {
-      appendAutobiographical(path, { event: "improvement mode changed", detail: `${previous} → ${newMode}`, tags: ["mode"] });
+      // Owned by the user: this milestone exists because a person ran the command.
+      appendAutobiographical(path, { event: "improvement mode changed", detail: `${previous} → ${newMode}`, tags: ["mode"], owner: "user" });
     } catch {
       /* milestone logging is best-effort */
     }

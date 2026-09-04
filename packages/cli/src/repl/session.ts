@@ -183,7 +183,8 @@ export function closeSession(ctx: Ctx): void {
     }
     if (memTypes.autobiographical && listSessions(p).length === 1) {
       const already = readAutobiographical(p).some((e) => e.tags.includes("first-conversation"));
-      if (!already) appendAutobiographical(p, { event: "first conversation with the user", tags: ["milestone", "first-conversation"] });
+      // Owned internal: the engine counted its own sessions to know this, nobody said it.
+      if (!already) appendAutobiographical(p, { event: "first conversation with the user", tags: ["milestone", "first-conversation"], owner: "internal" });
     }
     if (memTypes.semantic && readConsolidationMode(fm) === "auto") consolidateSemantic(p);
     pruneMemory(p, readMemoryKnobs(fm).retentionDays);

@@ -18,7 +18,10 @@ import {
   readMemoryKnobs,
   consolidateSemantic,
   pruneMemory,
+  MEMORY_CAPS,
+  overflowPath,
 } from "@personaxis/core";
+import { readFileSync } from "node:fs";
 import type { Ctx } from "../types.js";
 import type { MemoryKindRow } from "./memory.js";
 
@@ -43,6 +46,19 @@ export function openInEditor(path: string): string {
 }
 
 const preview = (s: string, n = 88): string => s.replace(/\n+/g, " ").slice(0, n);
+
+/**
+ * E16: how many rows the write cap moved out of a kind's live log. The overflow file
+ * is never read back into context, so without this number a capped log looks like a
+ * log that simply stopped growing.
+ */
+function archivedCount(personaPath: string, file: string): number {
+  try {
+    return readFileSync(overflowPath(personaPath, file), "utf-8").split("\n").filter((l) => l.trim()).length;
+  } catch {
+    return 0; // no overflow file: the cap has never been reached
+  }
+}
 
 export function memoryKindRows(ctx: Ctx): MemoryKindRow[] {
   const p = ctx.handle.personaPath;
@@ -74,6 +90,8 @@ export function memoryKindRows(ctx: Ctx): MemoryKindRow[] {
       name: "procedural",
       enabled: on("procedural"),
       count: procedural.length,
+      cap: MEMORY_CAPS.procedural.maxEntries,
+      archived: archivedCount(p, "procedural.jsonl"),
       file: join(dir, "memory", "procedural.jsonl"),
       entries: () => procedural.map((e) => preview(JSON.stringify(e))),
     },
@@ -81,6 +99,8 @@ export function memoryKindRows(ctx: Ctx): MemoryKindRow[] {
       name: "autobiographical",
       enabled: on("autobiographical"),
       count: auto.length,
+      cap: MEMORY_CAPS.autobiographical.maxEntries,
+      archived: archivedCount(p, "autobiographical.jsonl"),
       file: join(dir, "memory", "autobiographical.jsonl"),
       entries: () => auto.map((e) => preview(JSON.stringify(e))),
     },
@@ -88,13 +108,19 @@ export function memoryKindRows(ctx: Ctx): MemoryKindRow[] {
       name: "preferences",
       enabled: on("preferences"),
       count: Object.keys(prefs ?? {}).length,
-      file: join(dir, "memory", "preferences.jsonl"),
+      cap: MEMORY_CAPS.user_preferences.maxEntries,
+      // The map is last-wins and REFUSES at the cap rather than evicting, so it never
+      // overflows. `.json`, not `.jsonl`: this row pointed at a file that never exists,
+      // so opening it in an editor always failed.
+      file: join(dir, "memory", "preferences.json"),
       entries: () => Object.entries(prefs ?? {}).map(([k, v]) => `${chalk.cyan(k)} ${preview(JSON.stringify(v))}`),
     },
     {
       name: "evaluations",
       enabled: on("evaluations"),
       count: evals.length,
+      cap: MEMORY_CAPS.evaluations.maxEntries,
+      archived: archivedCount(p, "evaluations.jsonl"),
       file: join(dir, "memory", "evaluations.jsonl"),
       entries: () => evals.map((e) => `${chalk.dim(e.target)} ${e.dimension} ${e.score.toFixed(2)} ${preview(e.rationale ?? "", 60)}`),
     },

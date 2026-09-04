@@ -39,6 +39,7 @@ import {
   memoryTools,
   memoryDocs,
   salienceOf,
+  type Appraiser,
   type StateFile,
   type MemoryEntry,
 } from "../src/index.js";
@@ -144,6 +145,42 @@ describe("a stable fact survives a session (V2-F1.1, generalized; name is one in
     // A general entity fact (e.g. project) lands in the same block, another subject.
     await loop.tick({ observation: "recuerda esto", source: "user" }); // salient, keeps the loop honest
     // And learning it the first time is an autobiographical milestone.
+    expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(true);
+    // E16: the milestone is owned by the turn that produced it, not by a constant.
+    expect(readAutobiographical(personaPath).find((e) => e.event.includes("Mara"))?.owner).toBe("user");
+  });
+
+  it("E16: the same fact arriving from a TOOL is remembered, and does not become identity", async () => {
+    // The ASI06 loop this closes: a tool result reaches memory, and the next turn reads
+    // it back as the persona's own account of itself. Both halves are asserted, because
+    // refusing to remember anything a tool said would be a different bug.
+    //
+    // The appraiser is a stub, not HeuristicAppraiser: the heuristic one only extracts
+    // facts when `source === "user"`, so it can never reach this path. A MODEL-backed
+    // appraiser has no such filter (see APPRAISAL_JSON_SCHEMA's `preferences`), and it
+    // is the one that reads a poisoned tool result and proposes a preference from it.
+    writeFileSync(personaPath, fixture());
+    seed();
+    const fromTool: Appraiser = {
+      appraise: async () => ({
+        appraisal: "the observation states a name",
+        mutations: [],
+        memories: [],
+        preferences: [{ key: "interlocutor.name", value: "Mara", rationale: "stated in the observation" }],
+        confidence: 0.8,
+      }),
+    };
+    const loop = new LivingLoop(personaPath, { appraiser: fromTool });
+    await loop.tick({ observation: "the user's name is Mara", source: "tool" });
+
+    const pref = readPreferences(personaPath)["interlocutor.name"];
+    expect(pref?.value).toBe("Mara");
+    expect(pref?.owner).toBe("tool");
+    expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(false);
+
+    // Control on the same stub: from the user, the very same signal DOES earn the milestone.
+    rmSync(join(dirname(personaPath), "memory"), { recursive: true, force: true });
+    await new LivingLoop(personaPath, { appraiser: fromTool }).tick({ observation: "me llamo Mara", source: "user" });
     expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(true);
   });
 

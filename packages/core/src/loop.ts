@@ -26,7 +26,7 @@ import {
   prepareMemoryEntry,
   readMemoryTypes,
 } from "./memory.js";
-import { appendAutobiographical, getPreference, recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
+import { appendAutobiographical, getPreference, recordEvaluation, scoreMemoryEntry, setPreference, type EvaluationEntry } from "./memory-kinds.js";
 import { readConsolidationMode, readWritePolicy } from "./memory/knobs.js";
 import { isFactKey } from "./memory/facts.js";
 import { detectMemoryAnomalies } from "./provenance.js";
@@ -327,13 +327,27 @@ export class LivingLoop {
           // A subject-qualified FACT learned for the FIRST time is an autobiographical
           // milestone (any entity, not just a user): "learned interlocutor.name = Mara".
           const firstTime = isFactKey(pref.key) && getPreference(this.handle.personaPath, pref.key) === undefined;
-          setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale);
+          // E16: the owner is the TURN's provenance, not a constant. A preference read
+          // out of a tool result is tool-owned all the way down, and that is what makes
+          // the autobiographical refusal below reachable in production rather than only
+          // from a test: a milestone about who the persona is cannot be authored by
+          // something a tool said.
+          const wrote = setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale, input.source);
+          if (!wrote.ok) {
+            bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `refused: ${wrote.reason}` });
+            continue;
+          }
           if (firstTime && memTypesForPrefs.autobiographical) {
-            appendAutobiographical(this.handle.personaPath, {
+            const milestone = appendAutobiographical(this.handle.personaPath, {
               event: `learned ${pref.key} = ${pref.value}`,
               tags: ["milestone", "entity-fact"],
+              owner: input.source,
             });
-            bus.emit({ type: "memory-kind", kind: "autobiographical", detail: `milestone: ${pref.key} = ${pref.value}` });
+            bus.emit({
+              type: "memory-kind",
+              kind: "autobiographical",
+              detail: milestone.ok ? `milestone: ${pref.key} = ${pref.value}` : `refused: ${milestone.reason}`,
+            });
           }
         }
         bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `+${prefs.length} pref(s)` });
@@ -399,8 +413,11 @@ export class LivingLoop {
       // was judged, not an opaque "+N eval(s)"; a compact rollup is kept for the one-line summary.
       if (memTypes.evaluations) {
         let evals = 0;
-        const emitScore = (s: { target: string; dimension: string; score: number; rationale: string }): void => {
-          recordEvaluation(this.handle.personaPath, s as Parameters<typeof recordEvaluation>[1]);
+        // E16: typed, not cast. The `as Parameters<typeof recordEvaluation>[1]` this
+        // replaces widened `dimension: string` into the union and would now have
+        // invented the owner too, which is the whole point of making it required.
+        const emitScore = (s: Omit<EvaluationEntry, "ts">): void => {
+          recordEvaluation(this.handle.personaPath, s);
           bus.emit({ type: "evaluation", target: s.target, dimension: s.dimension, score: s.score, rationale: s.rationale });
           evals++;
         };
@@ -412,6 +429,7 @@ export class LivingLoop {
             dimension: "safety",
             score: injectionBlocked ? 0 : 1,
             rationale: injectionBlocked ? "injection blocked this turn" : "no injection signal",
+            owner: "internal",
           });
         }
         if (evals > 0) bus.emit({ type: "memory-kind", kind: "evaluations", detail: `+${evals} eval(s)` });
@@ -423,6 +441,8 @@ export class LivingLoop {
         appendAutobiographical(this.handle.personaPath, {
           event: `band crossing: ${bandCrossings.join(", ")}`,
           tags: ["milestone", "band-crossing"],
+          // Measured by the engine from its own coordinate move; nothing outside contributed.
+          owner: "internal",
         });
         bus.emit({ type: "memory-kind", kind: "autobiographical", detail: `milestone: band crossing (${bandCrossings.join(", ")})` });
       }

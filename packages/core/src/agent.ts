@@ -543,6 +543,9 @@ export class PersonaAgent {
           task: task.slice(0, 160),
           procedure: summary.replace(/\n+/g, " ").slice(0, 400),
           tags: [`steps:${step}`],
+          // The engine's own account of a run it just watched end, not a quote of any
+          // one participant: the same provenance the episodic entry above carries.
+          owner: "synthesis",
         });
       }
     } catch {
