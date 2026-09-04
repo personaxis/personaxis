@@ -13,7 +13,10 @@ packages/spec/src/generated/
 .codex/
 .agents/
 .cursor/
-.personaxis/*
+# Anchored to the root as `.personaxis/*`, which does not cover a package. A test
+# whose path resolves from the working directory writes into whichever one it ran
+# from, and one did: `packages/cli/.personaxis/mcp-approvals.json` reached a commit.
+**/.personaxis/*
 !.personaxis/personaxis.md
 .recompile-pending.json
 # F3.2, ephemeral derived compiler output (hot/cold consumer slices)

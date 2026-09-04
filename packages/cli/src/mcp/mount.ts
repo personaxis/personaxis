@@ -51,6 +51,7 @@ import { kernel, mcpToolToSpec, type McpToolDescriptor, type ToolSpec } from "@p
 const { readManifest } = kernel;
 
 import { loadConfig } from "../config.js";
+import { checkApproval } from "./approvals.js";
 import { version } from "../generated/assets.js";
 
 /** A server as the config records it. */
@@ -306,11 +307,39 @@ export async function mountAll(
 export async function mountRegistered(
 	options: MountOptions & { onFailure?: (failure: MountFailure) => void } = {},
 ): Promise<Mounted> {
-	const servers = {
+	const registered = {
 		...(loadConfig("global").mcpServers ?? {}),
 		...(loadConfig("project").mcpServers ?? {}),
 	};
+
+	// K9: a server the operator did not approve is not started.
+	//
+	// The merge above is why this exists. The PROJECT config is
+	// `<cwd>/.personaxis/config.json`, inside the workspace a persona writes to, so a
+	// persona that can write a file can register an MCP server or replace an approved
+	// one, and a server's tool descriptions are injected into the next prompt. It needs
+	// nothing to execute: being listed is the whole attack. The approvals live in the
+	// operator's home, outside every workspace, which is the asymmetry that makes the
+	// check worth making.
+	//
+	// Refused rather than started-and-watched. There is no safe way to start a server
+	// and then decide, because by the time it has answered `tools/list` its
+	// descriptions exist and the only question left is whether they reach a prompt.
+	const servers: Record<string, McpServerSpec> = {};
+	const refusals: MountFailure[] = [];
+	for (const [name, spec] of Object.entries(registered)) {
+		const refusal = checkApproval({
+			name,
+			command: spec.command,
+			...(spec.args ? { args: spec.args } : {}),
+			...(spec.env ? { envKeys: Object.keys(spec.env) } : {}),
+		});
+		if (refusal) refusals.push({ name, reason: refusal.reason });
+		else servers[name] = spec;
+	}
+
 	const mounted = await mountAll(servers, options);
-	for (const failure of mounted.failures) options.onFailure?.(failure);
-	return mounted;
+	const failures = [...refusals, ...mounted.failures];
+	for (const failure of failures) options.onFailure?.(failure);
+	return { ...mounted, failures };
 }
