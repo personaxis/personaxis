@@ -167,6 +167,18 @@ export interface AgentOptions {
    * and lets whoever declared the ceiling decide what a breach means.
    */
   latencyBudgetMs?: number;
+  /**
+   * E21: the tool subset for this SESSION, decided once by whoever opened it.
+   *
+   * When present it wins over per-task selection, and that is the point: the tool
+   * declarations live in the provider's cached prefix, so a catalogue that changes
+   * between turns pays a full cache write every time it moves. `finish` and
+   * `find_tools` are added on top of whatever is named here, because a subset that
+   * cannot end a turn or ask for what it lacks is worse than no subset.
+   *
+   * `sessionToolSubset` computes a reasonable one from the first task.
+   */
+  toolNames?: readonly string[];
   /** Persona identity document (system-prompt slot #1). */
   personaBody?: string;
   /** Structural self-awareness (role root/sub, own address, sub-tree, resource inventory). */
@@ -658,17 +670,39 @@ export class PersonaAgent {
     // J.2b: with a subset in force, the model needs a way to say "I need something I was
     // not given" instead of doing the wrong thing with a tool it has. Only offered when a
     // subset exists: with the full catalog there is nothing to find.
-    const subsetting = Boolean(this.opts.skills?.length);
+    // E21: the subset is chosen ONCE and then held, because it is part of the cached
+    // prefix and not part of the turn.
+    //
+    // The row this comes from was deferred with its condition written down: "when the
+    // catalogue is large enough that choosing costs something". E3 met it, since being
+    // an MCP client turns six tools into however many each server brings. But the
+    // obvious reading, subset per turn, collides with E5: providers cache a PREFIX, and
+    // the tool declarations sit in it, so a catalogue that changes between turns
+    // invalidates everything behind it. A subset that saves a few hundred prompt tokens
+    // per turn while costing a full cache write of the whole prefix is a loss.
+    //
+    // So the first task decides and the rest of the session lives with it, and the way
+    // out when the choice was wrong is `find_tools`, which already exists for exactly
+    // this: "I need something I was not given" beats doing the wrong thing with what
+    // you have. Callers that keep an agent per turn pass `toolNames` from the session.
+    const pinned = this.opts.toolNames;
+    const subsetting = Boolean(this.opts.skills?.length) || pinned !== undefined;
     // Computed ONCE and shared by the tool subset and the guides. Two answers to "which
     // skills are active" is how a model gets a tool from one skill and the instructions
     // from another, and the transcript looks entirely reasonable.
-    const activeSkills = subsetting ? activeSkillsFor(task, this.opts.skills!) : [];
-    let activeTools = subsetting
-      ? [
-          ...selectActiveTools(task, baseTools, this.opts.skills!, { alwaysNames: [FINISH_TOOL] }),
-          findToolsTool,
-        ]
-      : baseTools;
+    const activeSkills = this.opts.skills?.length ? activeSkillsFor(task, this.opts.skills) : [];
+    let activeTools = !subsetting
+      ? baseTools
+      : pinned !== undefined
+        ? // Pinned by the session. `finish` and `find_tools` are added rather than
+          // required in the list: a caller pinning a subset should not have to remember
+          // the two tools that make a subset survivable, and forgetting them produces a
+          // session that cannot end or cannot ask.
+          [...baseTools.filter((t) => pinned.includes(t.name) || t.name === FINISH_TOOL), findToolsTool]
+        : [
+            ...selectActiveTools(task, baseTools, this.opts.skills!, { alwaysNames: [FINISH_TOOL] }),
+            findToolsTool,
+          ];
 
     // J.2c: the active skills' guides, as their own system message AFTER the identity.
     // Separate on purpose: a reader of this transcript can see where the persona's own
