@@ -20,7 +20,12 @@ function tool(name: string, category: string, description: string): ToolSpec {
 		parameters: {},
 		isReadOnly: true,
 		isConcurrencySafe: true,
-		gate: () => ({ decision: "allow", reason: "" }),
+		gate: () => ({
+			decision: "allow" as const,
+			reason: "",
+			// The class is what the gate weighs; a verdict without one is not a verdict.
+			class: { writesFiles: false, network: false, destructive: false, escapesWorkspace: false },
+		}),
 		execute: async () => "",
 	};
 }

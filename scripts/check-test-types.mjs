@@ -40,7 +40,7 @@ const TSC = join(ROOT, "node_modules", "typescript", "bin", "tsc");
  * one getting worse. Lower one when you fix something; never raise one.
  */
 const CEILING = {
-  core: 58,
+  core: 45,
   cli: 20,
   evals: 0,
   mcp: 0,

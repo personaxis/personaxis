@@ -303,12 +303,12 @@ describe("retrieval (V2-F1.4)", () => {
     const tools = memoryTools(personaPath, { maxItems: 10, useEmbeddings: false, useReranker: false });
     const search = tools.find((t) => t.name === "memory_search")!;
     expect(search.isReadOnly).toBe(true);
-    const out = await search.execute({ query: "deploy" }, {} as never);
+    const out = await search.execute({ query: "deploy" }, {} as never, {} as never);
     expect(out).toContain("github actions");
     const id = out.match(/#[0-9a-f]{8}/)?.[0];
     expect(id).toBeTruthy();
     const get = tools.find((t) => t.name === "memory_get")!;
-    const full = await get.execute({ id }, {} as never);
+    const full = await get.execute({ id }, {} as never, {} as never);
     expect(full).toContain("github actions");
   });
 

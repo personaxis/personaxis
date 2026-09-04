@@ -178,8 +178,17 @@ describe("the silent failure this exists to end", () => {
 		{
 			name: "read_file",
 			description: "reads a file",
-			category: "file" as const,
+			// "fs", not "file": there is no "file" category, and this said so for as long as
+			// nothing type-checked the tests. Category is what tool subsetting reads, so a
+			// stub in a category the product does not have was exercising a branch nobody
+			// can reach in production.
+			category: "fs" as const,
 			parameters: { type: "object" as const, properties: {} },
+			// Declared rather than defaulted: these two decide whether the loop may run
+			// this tool alongside another, and a stub that omits them is a stub that does
+			// not resemble the thing it stands for.
+			isReadOnly: true,
+			isConcurrencySafe: true,
 			gate: () => ({ decision: "allow" as const, reason: "", class: { writesFiles: false, network: false, destructive: false, escapesWorkspace: false } }),
 			execute: async () => "",
 		},

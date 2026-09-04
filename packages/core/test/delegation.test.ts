@@ -120,8 +120,10 @@ describe("the record says who took the photograph", () => {
 			kind: "runtime",
 			mechanism: "delegation",
 		});
-		expect(delegationAuthor("clio").kind === "runtime" && delegationAuthor("clio").reason).toContain(
-			"clio",
-		);
+		// Called ONCE into a variable: narrowing on `kind` from one call does not narrow
+		// the result of a second call, so the old form was reading `reason` off a union
+		// that may not have it and only compiled because nothing checked these types.
+		const author = delegationAuthor("clio");
+		expect(author.kind === "runtime" && author.reason).toContain("clio");
 	});
 });

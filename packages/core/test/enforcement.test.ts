@@ -14,6 +14,9 @@ const basePolicy: CompiledPolicy = {
 	hash: "h",
 	compiled_at: new Date().toISOString(),
 	ttl_seconds: 3600,
+	// Stated, not omitted: an empty allowlist means this persona reaches nothing,
+	// which is the safe default and the thing these tests run against.
+	egress_allowlist: [],
 	deny: [],
 	allow: [],
 	hard_limits: [],

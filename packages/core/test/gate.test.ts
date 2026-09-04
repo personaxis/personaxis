@@ -315,7 +315,7 @@ describe("the things that were not guards and decide what a persona can do", () 
 		// Whoever raises the first limit needs to know the second is also spent, or they
 		// raise a ceiling and are surprised the run still will not move.
 		const guard = budgetGuard(
-			() => ({ steps: 100, tokens: 999_999, costUsd: 0, wallSeconds: 0 }),
+			() => ({ steps: 100, tokens: 999_999, costUsd: 0, wallSeconds: 0, deniedCount: 0, errorCount: 0, progress: 0 }),
 			{ maxSteps: 10, maxTokens: 1000, stopConditions: [] } as never,
 		);
 
@@ -328,7 +328,7 @@ describe("the things that were not guards and decide what a persona can do", () 
 
 	it("says nothing while there is budget left", () => {
 		const guard = budgetGuard(
-			() => ({ steps: 1, tokens: 10, costUsd: 0, wallSeconds: 0 }),
+			() => ({ steps: 1, tokens: 10, costUsd: 0, wallSeconds: 0, deniedCount: 0, errorCount: 0, progress: 0 }),
 			{ maxSteps: 10, maxTokens: 1000, stopConditions: [] } as never,
 		);
 

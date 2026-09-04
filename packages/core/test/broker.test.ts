@@ -145,6 +145,11 @@ describe("through the interceptor, which is the boundary", () => {
 		description: "says whether it got the real credential",
 		category: "meta" as const,
 		parameters: { type: "object" as const, properties: {} },
+			// Declared rather than defaulted: these two decide whether the loop may run
+			// this tool alongside another, and a stub that omits them is a stub that does
+			// not resemble the thing it stands for.
+			isReadOnly: true,
+			isConcurrencySafe: true,
 		gate: () => ({
 			decision: "allow" as const,
 			reason: "",
