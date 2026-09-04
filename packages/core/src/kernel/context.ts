@@ -53,6 +53,7 @@
 import { KernelError, type RecordableFailure, asKernelError, recordable } from "./errors.js";
 import { EffectScope } from "./effects.js";
 import { EventBus, event, type EventDecl } from "./bus.js";
+import { Extensions, type ExtensionPoint } from "./extension.js";
 import {
 	PERMISSIONS,
 	type PermissionKey,
@@ -90,6 +91,24 @@ export interface ComponentContext {
 	peek<T>(key: ServiceKey<T>): T | undefined;
 	/** The bus. Subscriptions made through this are already scoped to the component. */
 	readonly bus: EventBus;
+	/**
+	 * K3: plugs a value into a point somebody else declared.
+	 *
+	 * Scoped to this component without being asked, so the contribution comes down when
+	 * it suspends, reloads or unmounts. A withdrawn permission has to REMOVE a tool from
+	 * the catalogue rather than leave it there to be refused later, and that only holds
+	 * if withdrawal is the same mechanism as everything else the component registered.
+	 *
+	 * Returns the way to drop THIS one, which most callers should ignore: the scope
+	 * already holds it. It is here for a component that offers something conditionally
+	 * and stops offering it while staying up, and it is what makes "removing one
+	 * contribution does not remove its neighbours" a thing a test can see rather than a
+	 * claim about code nobody can reach.
+	 */
+	contribute<Contribution>(
+		point: ExtensionPoint<Contribution>,
+		value: Contribution,
+	): () => void;
 	/** Where this component's effects go. Unwound on suspend, reload and unmount. */
 	readonly scope: EffectScope;
 	/** This component's name, so a failure it raises can say who raised it. */
@@ -188,6 +207,16 @@ type Unresolved =
 
 export class Kernel {
 	readonly bus = new EventBus();
+
+	/**
+	 * K3: what is plugged into each point.
+	 *
+	 * Public because reading a point is what a host does, and a host is usually not a
+	 * component: `mountBuiltins` assembles a catalogue for the loop and is called by
+	 * whoever owns the kernel. Writing goes through `ComponentContext.contribute` and
+	 * nowhere else, so a contribution is always tied to something whose life ends.
+	 */
+	readonly extensions = new Extensions();
 
 	/** Provided values, and a counter per key so replacing a provider changes the epoch. */
 	private readonly services = new Map<string, { value: unknown; generation: number }>();
@@ -565,6 +594,7 @@ export class Kernel {
 		const declared = new Set((component.needs ?? []).map((key) => key.id));
 		const bus = this.bus;
 		const services = this.services;
+		const extensions = this.extensions;
 		return {
 			name: component.name,
 			scope,
@@ -583,6 +613,14 @@ export class Kernel {
 			},
 			peek<T>(key: ServiceKey<T>): T | undefined {
 				return services.get(key.id)?.value as T | undefined;
+			},
+			contribute<Contribution>(
+				point: ExtensionPoint<Contribution>,
+				value: Contribution,
+			): () => void {
+				const drop = extensions.add(point, component.name, value);
+				scope.use(drop);
+				return drop;
 			},
 		};
 	}

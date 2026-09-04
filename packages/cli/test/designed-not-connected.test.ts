@@ -157,6 +157,20 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 		until: "something that CAN move the persona is measured across; a compaction cannot",
 	},
 
+	// K3's extension point, which is the one thing a contributor outside this package has
+	// to be able to name.
+	//
+	// Exempt rather than deleted, and the difference from the usual rule is the direction
+	// of the dependency. An export with no caller is normally a mistake; this one has no
+	// caller BY DESIGN today, because the inversion means the core stops importing
+	// contributors and starts being imported by them, and the first contributor that is
+	// not a built-in has not been written. Unexporting it would delete the mechanism to
+	// satisfy a counter.
+	{
+		name: "TOOL_POINT",
+		until: "something outside `core` contributes a tool; K4 and K5 are what bring one",
+	},
+
 	// The session writer and its derived index are GONE. E11 asked for one of two
 	// answers and this is the other one: deleted, with the reasoning written on
 	// `appendTurn`, where the next person will ask why the write is synchronous.

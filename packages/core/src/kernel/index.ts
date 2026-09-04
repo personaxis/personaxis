@@ -38,6 +38,12 @@ export {
 export { EffectScope, once, type Disposer } from "./effects.js";
 
 export {
+	Extensions,
+	extensionPoint,
+	type ExtensionPoint,
+} from "./extension.js";
+
+export {
 	EventBus,
 	event,
 	type AwaitedListener,

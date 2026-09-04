@@ -45,6 +45,7 @@ import { readFileTool } from "./builtin/read-file.js";
 import { runCommandTool } from "./builtin/run-command.js";
 import { writeFileTool } from "./builtin/write-file.js";
 import { catalogue, readManifest, type PluginManifest } from "../kernel/manifest.js";
+import { extensionPoint } from "../kernel/extension.js";
 import { CORE_VERSION } from "../generated/version.js";
 import type { SandboxPosture } from "../security/consent.js";
 import type { ToolSpec } from "./registry.js";
@@ -77,23 +78,36 @@ const NEEDED: ReadonlyArray<{ tool: ToolSpec; permission?: PermissionKey }> = [
 ];
 
 /**
+ * K3: where a tool plugs in.
+ *
+ * Declared here, in the module that ASSEMBLES the catalogue, and imported by whoever
+ * contributes. That is the inversion: `mounted.ts` no longer has to know a contributor
+ * exists in order for its tool to be offered, and a capability arriving later adds no
+ * line to this file. The six built-ins below still import concretely, because they ARE
+ * this package and pretending otherwise would be ceremony; what changes is that they are
+ * no longer the only way in.
+ */
+export const TOOL_POINT = extensionPoint<ToolSpec>("tools");
+
+/**
  * One tool, as a component.
  *
- * `activate` registers the tool in the live catalogue through the component's own
- * SCOPE, which is what makes withdrawal work without any withdrawal code: the kernel
- * unwinds the scope when the permission goes, and the registration goes with it. That
- * is `EffectScope` doing the job it was written for, rather than a deactivate hook
- * somebody has to remember to write correctly.
+ * `activate` contributes the tool to the point, and the contribution is scoped to the
+ * component without being asked, which is what makes withdrawal work without any
+ * withdrawal code: the kernel unwinds the scope when the permission goes, and the
+ * registration goes with it. That is `EffectScope` doing the job it was written for,
+ * rather than a deactivate hook somebody has to remember to write correctly.
+ *
+ * It used to hold a `Set` and a closure passed down from `mountBuiltins`, which was an
+ * extension point written by hand for one caller. Now it is the kernel's, so a plugin
+ * contributes through the same door and a reader asking what is offered asks one place.
  */
-function componentFor(
-  entry: { tool: ToolSpec; permission?: PermissionKey },
-  offer: (tool: ToolSpec) => () => void,
-): Component {
+function componentFor(entry: { tool: ToolSpec; permission?: PermissionKey }): Component {
 	return {
 		name: `tool.${entry.tool.name}`,
 		...(entry.permission ? { requires: [entry.permission] } : {}),
 		activate: (context) => {
-			context.scope.use(offer(entry.tool));
+			context.contribute(TOOL_POINT, entry.tool);
 		},
 	};
 }
@@ -167,18 +181,17 @@ export function mountBuiltins(kernel: Kernel, permissions: PermissionSource): To
 		throw new Error(`two tools claim one name: ${named}`);
 	}
 
-	const offered = new Set<string>();
-	const offer = (tool: ToolSpec) => {
-		offered.add(tool.name);
-		return () => offered.delete(tool.name);
-	};
-
 	kernel.provide(PERMISSIONS, permissions);
-	const unmounts = NEEDED.map((entry) => kernel.mount(componentFor(entry, offer)));
+	const unmounts = NEEDED.map((entry) => kernel.mount(componentFor(entry)));
 
 	return {
 		get tools() {
-			return NEEDED.filter((entry) => offered.has(entry.tool.name)).map((entry) => entry.tool);
+			// K3: read from the point rather than filtered from a list this module keeps.
+			// The order is contribution order, which for components is mount order, which
+			// is the order they are declared above. That is the cache discipline E5
+			// established: a catalogue that reshuffled between turns would move the prompt
+			// prefix for no reason a person could see.
+			return kernel.extensions.of(TOOL_POINT);
 		},
 		close: () => {
 			for (const unmount of unmounts) unmount();
