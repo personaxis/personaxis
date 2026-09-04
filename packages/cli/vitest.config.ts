@@ -4,28 +4,53 @@ import { defineConfig } from "vitest/config";
 import { coverage } from "../../vitest.floor";
 
 /**
- * E29: this package's suite used to exit non-zero with every one of its 989 tests
- * green, roughly one run in four. The failure was never an assertion:
+ * E29: this package's suite can exit non-zero with every one of its 994 tests green.
+ * The failure is never an assertion:
  *
  *   [vitest-worker]: Timeout calling "onTaskUpdate"
  *
- * That is birpc's 60s ceiling on a worker waiting for the main thread to acknowledge
- * a progress update, and this suite runs for ~61s. For a single call to wait the whole
- * 60s, the main thread has to be starved for essentially the entire run.
+ * That is birpc's 60s ceiling on a worker waiting for the main thread to acknowledge a
+ * progress update. **The mechanism written here before was wrong**, and it is worth
+ * saying so rather than quietly replacing it: it claimed the main thread was starved of
+ * CPU by oversubscription and lost the race to answer. Measured with
+ * `monitorEventLoopDelay` inside vitest's own main process, during three runs that
+ * failed, the worst event loop delay was **123ms, 182ms and 199ms**. A thread that turns
+ * that often is answering. The starvation account is refuted.
  *
- * It is: vitest defaults to `cpus - 1` forks (19 here), and eight of these files are
- * e2e tests that spawn the built CLI as further node processes. Twenty cores are asked
- * to run nineteen workers plus their children plus the main thread, so the thread that
- * answers the RPC is the one that loses.
+ * What was ruled out with it, each by measurement rather than by reasoning:
  *
- * Measured, on this machine, before any change: 3 failures in 11 runs with the default
- * reporter, under both pnpm and npx. Splitting e2e from unit tests does not help, they
- * are 38s and 52s on their own and the ceiling is 60s either way. Raising the RPC
- * timeout would be the E27 mistake again: a ceiling raised is permission, not a fix.
+ * The REPORTER does nothing. Default against `dot`, four runs each, interleaved: 33.6s
+ * and 33.4s head to head, zero errors either way. An earlier reading that blamed the
+ * package manager was this same variable misread, and it is now closed.
  *
- * So: stop oversubscribing. Half the cores leaves room for the processes the e2e tests
- * spawn, which the fork count does not know about. Costs ~11% wall time (61s to ~68s)
- * and buys a suite whose exit code means what it says.
+ * FAKE TIMERS are not it either, which is a shame because they fit beautifully: one file
+ * in this suite advances a virtual clock 75 seconds, past the RPC's own 60s ceiling.
+ * Running the suite without that file still produced errors in two runs of three, and
+ * running that file alone produced none in six.
+ *
+ * A LEAKED TIMER is not it. birpc calls `clearTimeout` on reply, and on this Node
+ * `setTimeout(...).unref()` returns the Timeout, so the clear lands. A timeout means no
+ * reply arrived, not that a timer was forgotten.
+ *
+ * What survives is narrower and is not ours to fix: a small share of `onTaskUpdate`
+ * calls go unanswered, and they only become visible when the run outlives the 60s timer.
+ * Two conditions have to hold together, and either one alone is not enough. Over about
+ * sixty seconds of wall time: fourteen runs under 65s produced zero errors, and runs at
+ * 73s, 78s, 88s, 94s and 119s produced 1, 1, 3, 2 and 5. AND enough workers talking at
+ * once: the same suite at 88s with two workers produced zero.
+ *
+ * So half the cores stays, and now for the reason it actually earns. It is FASTER, which
+ * is what keeps a run under the ceiling: measured interleaved, three rounds each, 31.2s
+ * against 34.1s for vitest's default of `cores - 1`. And it holds concurrency down,
+ * which is the second condition, and it holds it down hardest on the small machines
+ * where a run is slowest.
+ *
+ * Two things deliberately NOT done. The RPC timeout is not raised, which is the E27
+ * lesson: a ceiling raised is permission, not a fix. And unhandled errors are not
+ * ignored, because the switch that would hide this one hides the real ones too.
+ *
+ * The `threads` pool would use a different transport and answer where the reply is lost.
+ * It is not an option here: 22 tests fail under it.
  */
 const HALF_THE_CORES = Math.max(2, Math.floor((cpus().length || 4) / 2));
 
