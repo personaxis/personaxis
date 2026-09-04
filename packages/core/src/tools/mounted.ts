@@ -44,6 +44,8 @@ import { listDirTool } from "./builtin/list-dir.js";
 import { readFileTool } from "./builtin/read-file.js";
 import { runCommandTool } from "./builtin/run-command.js";
 import { writeFileTool } from "./builtin/write-file.js";
+import { catalogue, readManifest, type PluginManifest } from "../kernel/manifest.js";
+import { CORE_VERSION } from "../generated/version.js";
 import type { SandboxPosture } from "../security/consent.js";
 import type { ToolSpec } from "./registry.js";
 
@@ -96,6 +98,47 @@ function componentFor(
 	};
 }
 
+/**
+ * K1: the built-ins, described as data, through the same door a plugin comes through.
+ *
+ * Two reasons it is here rather than in a fixture. The catalogue a person reads and the
+ * catalogue the kernel mounts have to be the same list, and the surest way to keep them
+ * the same is to derive one from the other rather than write it twice. And a manifest
+ * reader that has never accepted a real manifest is a reader nobody has checked: ours
+ * goes through `readManifest` exactly as a stranger's would, so a built-in with a
+ * description the reader would refuse fails at mount instead of in a prompt.
+ */
+export function builtinManifest(): PluginManifest {
+	const read = readManifest({
+		name: "personaxis.builtin",
+		version: CORE_VERSION,
+		contributes: {
+			tools: NEEDED.map((entry) => ({
+				name: entry.tool.name,
+				description: entry.tool.description,
+				category: entry.tool.category,
+				isReadOnly: entry.tool.isReadOnly,
+				isConcurrencySafe: entry.tool.isConcurrencySafe,
+				...(entry.permission ? { requires: [entry.permission.id] } : {}),
+			})),
+		},
+	});
+
+	// Ours, so a failure here is a mistake in this file rather than somebody else's
+	// input, and it should stop the process rather than degrade the catalogue.
+	//
+	// UNOBSERVABLE while the list above is correct, and said out loud rather than
+	// covered by a test that would only look like one: a negative control that removes
+	// this throw leaves every test green, because our manifest validates and the branch
+	// is never taken. What it guards is a built-in added later with, say, a category the
+	// reader refuses, and reaching it from a test would mean manufacturing that mistake
+	// inside the module. The reader itself is tested against every shape it refuses.
+	if (!read.ok) {
+		throw new Error(`the built-in manifest does not validate: ${read.faults.join("; ")}`);
+	}
+	return read.manifest;
+}
+
 /** A live catalogue: the tools whose components are currently active. */
 export interface ToolBench {
 	/** What the model should be offered right now. */
@@ -113,6 +156,17 @@ export interface ToolBench {
  * E5 established one file over.
  */
 export function mountBuiltins(kernel: Kernel, permissions: PermissionSource): ToolBench {
+	// K1: read the catalogue before mounting anything, which is the whole point of a
+	// manifest. Two tools with one name would both be offered and the model would be
+	// shown an ambiguous name whose meaning depends on load order. Checked on our own
+	// list because that is the list this function mounts; it starts mattering the day a
+	// second manifest joins it, and by then it is already here.
+	const collisions = catalogue([builtinManifest()]).collisions;
+	if (collisions.length > 0) {
+		const named = collisions.map((c) => `${c.name} (${c.claimedBy.join(", ")})`).join("; ");
+		throw new Error(`two tools claim one name: ${named}`);
+	}
+
 	const offered = new Set<string>();
 	const offer = (tool: ToolSpec) => {
 		offered.add(tool.name);
