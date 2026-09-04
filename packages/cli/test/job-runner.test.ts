@@ -131,18 +131,21 @@ function runner(options: {
 }
 
 /**
- * How long to wait for an ending that is held while the step's files are named.
+ * There is no wait constant here any more, and that is the fix (E27).
  *
- * The runner gives itself two seconds to walk the directory before ending the job
- * anyway. Vitest's default `waitFor` is one, so under load these tests gave up
- * BEFORE the thing they were waiting for was due, and the red said the machine was
- * busy rather than that the ordering was wrong. Measured on 2026-09-03: green alone,
- * red under `pnpm -r`.
+ * There was one. The runner gives itself two seconds to walk the directory before
+ * ending a job anyway, and vitest's default `waitFor` is one, so under load these
+ * tests gave up BEFORE the thing they waited for was due and the red said the machine
+ * was busy rather than that the ordering was wrong. On 2026-09-03 the answer was to
+ * raise the timeout to eight seconds. On 2026-09-04 it failed twice more, in different
+ * tests of this file, only inside the full suite.
  *
- * A wait shorter than the budget it waits on is a test reporting on the machine.
+ * Raising a ceiling above today's value is permission, not a fix. Under eight vitest
+ * workers on one laptop there is no number that is both generous enough to be quiet
+ * and tight enough to mean anything. So the tests wait on the runner's own last act,
+ * `finishJob`, which is a signal rather than a duration: it arrives when the work is
+ * done, however long the machine took to get there.
  */
-const NAMING_WAIT_MS = 8_000;
-
 const endings = (events: WireEvent[]) => events.filter((e) => e.kind === "persona.session.ended");
 
 /** Let the run's promise and its `finally` reach the microtask queue. */
@@ -654,9 +657,31 @@ describe("naming what the step left behind", () => {
 	function runnerWritingInto(dir: string, writes: () => Promise<void>) {
 		const events: WireEvent[] = [];
 		const finished: string[] = [];
+		// E27: the SIGNAL the test waits on, rather than a clock.
+		//
+		// These three waited with `vi.waitFor` on a timeout, and the timeout had already
+		// been raised once, on 2026-09-03, for exactly this. It failed again on 09-04,
+		// twice, in different tests of this file, only inside the full suite. Raising a
+		// ceiling above today's value is permission, not a fix: under eight vitest
+		// workers there is no number that is both generous enough and meaningful.
+		//
+		// `finishJob` is the runner's own last act for a job, after the artifacts and
+		// after the ending, so awaiting it is awaiting the thing under test rather than
+		// polling for it. If it never comes, vitest's own timeout says so, and "finishJob
+		// never arrived" is a better failure than "the machine was busy".
+		let release: () => void = () => {};
+		const done = new Promise<void>((resolve) => {
+			release = resolve;
+		});
 
 		const instance = new JobRunner({
-			sink: { emit: (event) => events.push(event), finishJob: (id) => finished.push(id) },
+			sink: {
+				emit: (event) => events.push(event),
+				finishJob: (id) => {
+					finished.push(id);
+					release();
+				},
+			},
 			scope: [dir],
 			host: "claude-code",
 			launcher: () => ({ command: "claude", args: ["-p"] }),
@@ -673,18 +698,19 @@ describe("naming what the step left behind", () => {
 			}),
 		});
 
-		return { instance, events, finished };
+		return { instance, events, finished, done };
 	}
 
 	it("names a file the step wrote, with a relative path and its size", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "runner-"));
 		try {
-			const { instance, events } = runnerWritingInto(dir, async () => {
+			const { instance, events, done } = runnerWritingInto(dir, async () => {
 				await writeFile(join(dir, "brief.md"), "twelve chars");
 			});
 
 			instance.handle(assign({ working_dir: dir }));
-			await vi.waitFor(() => expect(endings(events)).toHaveLength(1), { timeout: NAMING_WAIT_MS });
+			await done;
+			expect(endings(events)).toHaveLength(1);
 
 			const artifacts = events.filter((event) => event.kind === "artifact.created");
 			expect(artifacts).toHaveLength(1);
@@ -708,12 +734,13 @@ describe("naming what the step left behind", () => {
 		// into nothing.
 		const dir = await mkdtemp(join(tmpdir(), "runner-"));
 		try {
-			const { instance, events, finished } = runnerWritingInto(dir, async () => {
+			const { instance, events, finished, done } = runnerWritingInto(dir, async () => {
 				await writeFile(join(dir, "out.json"), "{}");
 			});
 
 			instance.handle(assign({ working_dir: dir }));
-			await vi.waitFor(() => expect(endings(events)).toHaveLength(1), { timeout: NAMING_WAIT_MS });
+			await done;
+			expect(endings(events)).toHaveLength(1);
 
 			const order = events.map((event) => event.kind);
 			expect(order.indexOf("artifact.created")).toBeGreaterThan(-1);
@@ -732,11 +759,17 @@ describe("naming what the step left behind", () => {
 		// run that never finished.
 		const dir = await mkdtemp(join(tmpdir(), "runner-"));
 		try {
-			const { instance, events } = runnerWritingInto(dir, async () => {});
+			const { instance, events, done } = runnerWritingInto(dir, async () => {});
 
 			instance.handle(assign({ working_dir: dir }));
-			await vi.waitFor(() => expect(endings(events)).toHaveLength(1), { timeout: NAMING_WAIT_MS });
+			await done;
 
+			// The ending, and its STATUS. Counting it alone said nothing the signal did
+			// not already say, since the job is only released after it: a control that
+			// deleted the assertion left the file green. What the signal does NOT carry is
+			// how the session ended, and a step that wrote nothing ending as anything other
+			// than completed is the failure this test is named for.
+			expect(endings(events)).toMatchObject([{ status: "completed", reason: null }]);
 			expect(events.filter((event) => event.kind === "artifact.created")).toEqual([]);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
