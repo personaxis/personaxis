@@ -52,6 +52,7 @@ import { envelopeBars, auraLines } from "@personaxis/tui/visual";
 import { sigilParams, liveIntensity } from "@personaxis/core";
 import { renderFrame } from "@personaxis/tui";
 import type { SlashItem } from "@personaxis/tui/screen";
+import { recordReplCompaction } from "./compaction-record.js";
 import { isSubagentPath, slugAddressFromPath, loadPersonaFile, compiledPathFor } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/improve.js";
 import { runCompile } from "../commands/compile.js";
@@ -422,6 +423,18 @@ export const COMMANDS: CommandDef[] = [
       const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
       if (r.compacted) {
         ctx.conversation = r.messages.filter((m) => m.role !== "system");
+        // E25: a compaction a person asked for is still a compaction, and the record is
+        // where this persona's facts live. The author is the runtime either way: asking
+        // for one is not performing one, and the asking goes in the reason.
+        if (r.plan) {
+          await recordReplCompaction(
+            ctx.handle.personaPath,
+            ctx.handle.statePath,
+            { kind: "asked" },
+            r.plan,
+            (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`)),
+          );
+        }
         // PERSIST the checkpoint so leaving and /resume returns the COMPACTED conversation, not the
         // raw bloat, the user shouldn't have to /compact again after re-entering the same session.
         if (r.summary) {

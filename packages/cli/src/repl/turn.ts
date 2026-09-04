@@ -63,6 +63,7 @@ import { runCompile } from "../commands/compile.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import type { Ctx } from "./types.js";
+import { recordReplCompaction } from "./compaction-record.js";
 import { llmConfig, ctxModelArg, buildPolicy, readGoalText, POSTURES } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
 import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError } from "./render.js";
@@ -422,6 +423,18 @@ export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85): Promise<void
     // compactions would be reporting on the agent, not on the session.
     ctx.meter.compacted(before, ctx.meter.used);
     ctx.conversation = r.messages.filter((m) => m.role !== "system");
+    // E25: and into the RECORD, because this compaction happens between turns and no
+    // turn observer is ever going to see it. Awaited rather than fired off: an entry
+    // written after the next turn opened would sit behind facts that happened later.
+    if (r.plan) {
+      await recordReplCompaction(
+        ctx.handle.personaPath,
+        ctx.handle.statePath,
+        { kind: "auto", pct: ctx.meter.pct },
+        r.plan,
+        (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`), "activity"),
+      );
+    }
     if (r.summary) {
       ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
       recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
