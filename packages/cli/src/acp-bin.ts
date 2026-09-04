@@ -77,6 +77,11 @@ async function openPersona(cwd: string): Promise<PersonaSession> {
 					currentCall = `call_${calls}`;
 				}
 				const mapped = mapLoopEvent(event, { callId: currentCall });
+				// E24's ephemeral channel is not forwarded here, and that is a choice
+				// rather than an oversight: ACP has its own streaming vocabulary for a
+				// session, and translating one live channel into another without deciding
+				// what a dropped delta means on the far side is how two protocols end up
+				// disagreeing about what the persona said.
 				if ("emit" in mapped) hooks.emit(mapped.emit);
 			});
 

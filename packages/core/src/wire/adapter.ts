@@ -31,9 +31,19 @@ export type DropReason =
 	/** Belongs to the operator's terminal, not to a shared session. */
 	| "local-only";
 
+/**
+ * E24: three destinations, not two.
+ *
+ * An engine event goes into the record, is dropped, or goes out on the EPHEMERAL
+ * channel, and making that a third case rather than a flag on `drop` is the point: a
+ * reader adding a new event kind has to answer which of the three it is, and "it is
+ * dropped, except we also send it somewhere" is exactly the sort of half-answer that
+ * ends with token fragments in an audit log.
+ */
 export type MappingResult =
 	| { emit: WireEmission }
-	| { drop: DropReason };
+	| { drop: DropReason }
+	| { live: string };
 
 /** Truncates a preview, since the wire carries summaries and not payloads. */
 const PREVIEW_LIMIT = 512;
@@ -257,10 +267,13 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 		// fragments is not a record of what happened. The finished message is already
 		// here, once, under its own event.
 		//
-		// Showing a remote screen the persona typing is a different thing: an
-		// ephemeral channel that this protocol does not have. That is worth building
-		// and is not this.
+		// Showing a remote screen the persona typing is a different thing, and E24
+		// built it: an ephemeral channel with no `seq`, nothing to acknowledge, and
+		// nothing stored. It is returned here as its own case so this function still
+		// has exactly one answer per event, and so that "goes to a screen" can never be
+		// confused with "goes into the record".
 		case "agent-delta":
+			return { live: event.text };
 
 		case "agent-budget":
 		case "verify-start":

@@ -336,7 +336,26 @@ export type DaemonMsg =
 			args_hash: string;
 	  }
 	/** Acknowledges what the daemon has applied of what the server sent it. */
-	| { type: "ack"; job_id: string; seq: number };
+	| { type: "ack"; job_id: string; seq: number }
+	/**
+	 * E24: the persona typing, for a screen that is watching right now.
+	 *
+	 * A SECOND CHANNEL, and the whole design is that it cannot be mistaken for the
+	 * first one. Everything above is durable: it carries `seq`, the server stores it,
+	 * acknowledges it, and that is what makes a resume gapless. A token-by-token delta
+	 * on that channel would write the same sentence into the record a hundred times in
+	 * pieces, and a record of fragments is not a record of what happened.
+	 *
+	 * So this has NO `seq`, deliberately and not as an omission. There is no sequence
+	 * to resume from, nothing to acknowledge, and a server is expected to fan it out to
+	 * whoever is connected and then forget it. A dropped delta is not a gap: the
+	 * finished message arrives on the durable channel, once, under its own event.
+	 *
+	 * The consequence a reader should take from the missing field: if you find yourself
+	 * wanting to store one of these, the thing you actually want is already on the
+	 * other channel.
+	 */
+	| { type: "live"; job_id: string; delta: string };
 
 /**
  * A step of a service, as the thing running it needs to know about itself.

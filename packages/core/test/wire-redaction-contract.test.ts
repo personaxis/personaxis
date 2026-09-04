@@ -49,7 +49,9 @@ describe("nothing carrying a secret reaches the wire", () => {
 		"%s",
 		(_label, event) => {
 			const result = mapLoopEvent(event, { callId: "call_1" });
-			if ("drop" in result) return;
+			// E24: a live delta never reaches the record, so it is out of this contract
+			// for the same reason a drop is: there is nothing stored to redact.
+			if ("drop" in result || "live" in result) return;
 
 			for (const text of stringsIn(result.emit)) {
 				expect(text, `secret survived in: ${text}`).not.toContain(SECRET);
@@ -64,7 +66,7 @@ describe("nothing carrying a secret reaches the wire", () => {
 			{ type: "tool-propose", tool: "Bash", args: { command: `curl -H "Authorization: Bearer ${SECRET}"` } } as LoopEvent,
 			{ callId: "call_1" },
 		);
-		if ("drop" in result) return expect.unreachable();
+		if ("drop" in result || "live" in result) return expect.unreachable();
 
 		expect(result.emit.tool).toBe("Bash");
 		expect(String(result.emit.args_preview)).toContain("curl");
@@ -80,7 +82,7 @@ describe("nothing carrying a secret reaches the wire", () => {
 			{ type: "tool-result", ok: true, output: `${padding} ${SECRET}` } as LoopEvent,
 			{ callId: "call_1" },
 		);
-		if ("drop" in result) return expect.unreachable();
+		if ("drop" in result || "live" in result) return expect.unreachable();
 
 		const preview = String(result.emit.output_preview);
 		// The secret is past the truncation point, so what matters is that no
@@ -93,7 +95,7 @@ describe("nothing carrying a secret reaches the wire", () => {
 			{ type: "tool-propose", tool: "Http", args: { password: "hunter2" } } as LoopEvent,
 			{ callId: "call_1" },
 		);
-		if ("drop" in result) return expect.unreachable();
+		if ("drop" in result || "live" in result) return expect.unreachable();
 		expect(String(result.emit.args_preview)).not.toContain("hunter2");
 	});
 });

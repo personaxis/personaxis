@@ -45,6 +45,17 @@ export interface JobReporterOptions {
 	/** Told when an engine event does not reach the wire, and why. */
 	onDrop?: (kind: string, reason: string) => void;
 	/**
+	 * E24: the ephemeral channel, for a screen watching the persona type.
+	 *
+	 * Optional, and what happens without it is the point: the delta is discarded, not
+	 * queued and not stored. Nothing here is ever counted as dropped either, because a
+	 * drop is a decision about the RECORD and this never had a place in it.
+	 *
+	 * A delta that does not arrive leaves no gap. The finished message reaches the
+	 * durable channel under its own event, once, whether or not anyone was watching.
+	 */
+	onLive?: (delta: string) => void;
+	/**
 	 * The directories the operator consented to expose.
 	 *
 	 * Paths outside them are replaced on the way out. This is defence in depth
@@ -65,8 +76,8 @@ const TERMINAL_KINDS = new Set(["persona.session.ended"]);
 export class JobReporter {
 	// `scope` stays optional rather than defaulted, because absent and empty mean
 	// different things here: no guard at all, versus nothing was consented to.
-	private readonly options: Required<Omit<JobReporterOptions, "onDrop" | "scope">> &
-		Pick<JobReporterOptions, "onDrop" | "scope">;
+	private readonly options: Required<Omit<JobReporterOptions, "onDrop" | "scope" | "onLive">> &
+		Pick<JobReporterOptions, "onDrop" | "scope" | "onLive">;
 
 	/**
 	 * The call currently in flight.
@@ -157,6 +168,14 @@ export class JobReporter {
 		if ("drop" in result) {
 			this.droppedCount++;
 			this.options.onDrop?.(event.type, result.drop);
+			return;
+		}
+
+		// E24: out on the ephemeral channel and gone. Deliberately BEFORE the call-id
+		// bookkeeping and outside the dropped count: this never belonged to the record,
+		// so it neither closes a call nor counts as something the record lost.
+		if ("live" in result) {
+			this.options.onLive?.(result.live);
 			return;
 		}
 

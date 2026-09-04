@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { LoopEvent } from "../src/events.js";
 import { decide } from "../src/record/mutate.js";
-import { mapLoopEvent, preview } from "../src/wire/adapter.js";
+import { type DropReason, mapLoopEvent, preview } from "../src/wire/adapter.js";
 
 /**
  * One sample of every LoopEvent kind.
@@ -57,7 +57,7 @@ describe("the mapping is closed", () => {
 
 	it("never drops with an unmapped marker, which is what a missed case looks like", () => {
 		const unmapped = EVERY_EVENT.map((e) => mapLoopEvent(e))
-			.filter((r): r is { drop: string } => "drop" in r)
+			.filter((r): r is { drop: DropReason } => "drop" in r)
 			.filter((r) => r.drop.startsWith("unmapped"));
 		expect(unmapped).toEqual([]);
 	});
