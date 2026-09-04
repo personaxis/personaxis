@@ -26,3 +26,8 @@ export {
 	driftAcross,
 	type DriftDelta,
 } from "./measured.js";
+
+export {
+	compactionPlan,
+	type CompactionParts,
+} from "./units.js";

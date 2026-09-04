@@ -128,12 +128,35 @@ function costOf(result: AgentResult): { tokens: number; usd: number } | undefine
 	return { tokens: budget.tokens ?? 0, usd: budget.costUsd ?? 0 };
 }
 
+/**
+ * E25: how a compaction is described to whoever writes it down.
+ *
+ * The cut point and the step, because those are the two facts a reader needs to judge
+ * it: WHERE it happened says whether this was the cheap planned one or the safety valve,
+ * and WHEN says how far into the turn the window filled. `window-full at step 9` and
+ * `turn-start at step 1` are different events and a record that called both "compaction"
+ * would have lost the distinction `E6` was written to make.
+ */
+function whyCompacted(record: AgentResult["compactions"][number]): string {
+	return `${record.cut} at step ${record.step}`;
+}
+
 /** Turns the old result into what the seam expects, without inventing anything. */
 export function productOf(result: AgentResult): TurnProduct {
 	const answer = result.summary ?? "";
 	const stoppedBy = result.budget?.stoppedBy ?? null;
 	const cost = costOf(result);
-	const common = { steps: result.steps, ...(cost === undefined ? {} : { cost }) };
+	// E25: on `common` rather than on each branch, so none of the seven exits can be
+	// the one that forgets. A turn that compacted and then failed compacted all the
+	// same, and the record is the place that has to know it.
+	const common = {
+		steps: result.steps,
+		...(cost === undefined ? {} : { cost }),
+		compactions: result.compactions.map((record) => ({
+			why: whyCompacted(record),
+			plan: record.plan,
+		})),
+	};
 
 	if (result.finished) return { answer, stopReason: "answered", ...common };
 

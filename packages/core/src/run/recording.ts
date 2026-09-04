@@ -44,6 +44,7 @@
  * separately is how the durable one comes to differ from the one every test checks.
  */
 
+import { compactionAuthor, compactionEntry } from "../compaction/measured.js";
 import { SELF } from "../record/actor.js";
 import { writingToRecord, type RecordPorts } from "../record/transaction.js";
 import type { Author, RecordBody } from "../record/entry.js";
@@ -105,7 +106,24 @@ function opening(request: TurnRequest): readonly Written[] {
 function closing(outcome: TurnOutcome): readonly Written[] {
 	const entries: Written[] = [];
 
-	// The answer first, so a reader walking the entries meets what was said before it
+	// E25: compactions before the answer, because that is when they happened. A
+	// compaction is a decision taken part way through the turn about what the model
+	// would be shown next, so a reader meeting it after the reply would be reading the
+	// turn out of order.
+	//
+	// Nothing is written when the provider reported none, and nothing is written when it
+	// reported an empty list either. The distinction between silence and "I looked" is
+	// real and it belongs to the seam; in the record they are the same absence of an
+	// event, and an entry saying a compaction did not happen is noise in a chain whose
+	// value is that everything in it happened.
+	for (const compaction of outcome.compactions ?? []) {
+		entries.push({
+			author: compactionAuthor(compaction.why),
+			body: compactionEntry(compaction.plan, compaction.why),
+		});
+	}
+
+	// The answer next, so a reader walking the entries meets what was said before it
 	// meets the note that the turn ended.
 	if (outcome.answer.length > 0) {
 		entries.push({

@@ -165,6 +165,7 @@ describe("the loop we already have goes through the same seam", () => {
 				summary: "the branch is clean",
 				steps: 3,
 				finished: true,
+				compactions: [],
 				budget: { steps: 3, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: null },
 			}),
 		).toEqual({
@@ -174,6 +175,10 @@ describe("the loop we already have goes through the same seam", () => {
 			// Reported because the budget said so, zeros included. Zero is a
 			// measurement: somebody looked and the turn was free.
 			cost: { tokens: 0, usd: 0 },
+			// E25: present and empty, which is this loop saying it manages a window and
+			// did not have to compact. A provider that manages none reports nothing at
+			// all, and the two are not the same statement.
+			compactions: [],
 		});
 	});
 
@@ -181,9 +186,9 @@ describe("the loop we already have goes through the same seam", () => {
 		// A scripted provider has no budget to read. Reporting zero would turn "nothing
 		// to say" into "checked, and it cost nothing", and a total over ten turns reads
 		// identically whether all ten were priced or none were.
-		const product = productOf({ summary: "done", steps: 1, finished: true });
+		const product = productOf({ summary: "done", steps: 1, finished: true, compactions: [] });
 
-		expect(product).toEqual({ answer: "done", steps: 1, stopReason: "answered" });
+		expect(product).toEqual({ answer: "done", steps: 1, stopReason: "answered", compactions: [] });
 		expect("cost" in product).toBe(false);
 	});
 
@@ -191,11 +196,12 @@ describe("the loop we already have goes through the same seam", () => {
 		// A turn that was refused or ran out still cost what it cost, and dropping the
 		// price on the unhappy paths is how a bill comes out lower than the work.
 		const budget = { steps: 2, tokens: 900, costUsd: 0.04, wallSeconds: 1, stoppedBy: "tool_denied" };
-		const refused = productOf({ summary: "", steps: 2, finished: false, budget } as never);
+		const refused = productOf({ summary: "", steps: 2, finished: false, budget, compactions: [] } as never);
 		const ranOut = productOf({
 			summary: "",
 			steps: 2,
 			finished: false,
+			compactions: [],
 			budget: { ...budget, stoppedBy: "max_steps" },
 		} as never);
 
@@ -214,6 +220,7 @@ describe("the loop we already have goes through the same seam", () => {
 			summary: "here is what I found so far",
 			steps: 9,
 			finished: false,
+			compactions: [],
 			budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
 		});
 
@@ -229,6 +236,7 @@ describe("the loop we already have goes through the same seam", () => {
 			summary: "",
 			steps: 9,
 			finished: false,
+			compactions: [],
 			budget: { steps: 9, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "max_steps" },
 		});
 
@@ -244,6 +252,7 @@ describe("the loop we already have goes through the same seam", () => {
 			summary: "done",
 			steps: 2,
 			finished: true,
+			compactions: [],
 			budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "goal_met" },
 		});
 
@@ -256,6 +265,7 @@ describe("the loop we already have goes through the same seam", () => {
 				summary: "",
 				steps: 1,
 				finished: false,
+				compactions: [],
 				budget: { steps: 1, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "tool_denied" },
 			}).stopReason,
 		).toBe("refused");
@@ -270,6 +280,7 @@ describe("the loop we already have goes through the same seam", () => {
 			summary: "",
 			steps: 2,
 			finished: false,
+			compactions: [],
 			budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "something_new" },
 		});
 
@@ -287,6 +298,7 @@ describe("the loop we already have goes through the same seam", () => {
 			summary: "agent error: the model hung up",
 			steps: 0,
 			finished: false,
+			compactions: [],
 			budget: { steps: 0, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "error" },
 		});
 
@@ -300,6 +312,7 @@ describe("the loop we already have goes through the same seam", () => {
 			summary: "verification failed",
 			steps: 4,
 			finished: false,
+			compactions: [],
 			budget: { steps: 4, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy: "verification_failed" },
 		});
 
@@ -316,6 +329,7 @@ describe("the loop we already have goes through the same seam", () => {
 				summary: "as far as I got",
 				steps: 2,
 				finished: false,
+				compactions: [],
 				budget: { steps: 2, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy },
 			});
 
@@ -341,6 +355,7 @@ describe("the loop we already have goes through the same seam", () => {
 				summary: "here is what I have",
 				steps: 5,
 				finished: false,
+				compactions: [],
 				budget: { steps: 5, tokens: 0, costUsd: 0, wallSeconds: 0, stoppedBy },
 			});
 

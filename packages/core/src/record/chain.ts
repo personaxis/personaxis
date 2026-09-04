@@ -31,8 +31,13 @@ import { createHash } from "node:crypto";
 
 import { ENTRY_VERSION, type Author, type DraftEntry, type RecordEntry } from "./entry.js";
 
-/** Sorts keys at every depth so the bytes depend on content and not on construction. */
-function canonical(value: unknown): unknown {
+/**
+ * Sorts keys at every depth so the bytes depend on content and not on construction.
+ *
+ * Exported because a compaction plan names messages by a digest of the message, and two
+ * canonicalisers in one repository is two answers to what an object is worth hashing as.
+ */
+export function canonical(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(canonical);
 	if (value === null || typeof value !== "object") return value;
 	const source = value as Record<string, unknown>;

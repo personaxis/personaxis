@@ -138,15 +138,24 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 
 	// Compaction that carries its own author and its measured drift.
 	//
-	// E6 landed and did NOT mount these, which is worth saying rather than leaving the
-	// old `until` pointing at a phase that is closed. E6 was about WHEN a compaction may
-	// happen and what it costs in tokens, and it delivered that. These three write the
-	// compaction into the persona's RECORD and measure whether the persona moved, and
-	// the loop does not hold the persona's record: it holds a transcript. Giving it one
-	// is what E9's neighbours do, and it is not a line of wiring.
-	{ name: "compactionAuthor", until: "the loop holds the persona's record, not just a transcript" },
-	{ name: "compactionEntry", until: "the loop holds the persona's record, not just a transcript" },
-	{ name: "driftAcross", until: "the loop holds the persona's record, not just a transcript" },
+	// Two of the three are gone from this list because E25 connected them, and the way
+	// it did is why the old `until` is worth quoting rather than deleting. It said the
+	// loop had to HOLD the persona's record. It never did and it never will: the loop
+	// does not write the record, the runner does, so what E25 gave the loop was a plan
+	// it could hand out through the seam. An exemption is a prediction about what would
+	// connect something, and this one predicted the wrong shape.
+	//
+	// `driftAcross` stays, and its condition is rewritten because the old one was not
+	// just the wrong shape, it was unreachable. Drift across a COMPACTION is zero by
+	// construction: `derive` folds a `failure` body into nothing, deliberately and with
+	// a comment saying so, and a compaction writes a `failure` body. Computing it at
+	// runtime would be measuring the code's own shape, so E25 asserts it in a test
+	// instead and leaves this uncalled. What would make it live is a state change that
+	// CAN move the persona being measured across, which is a self-edit and not this.
+	{
+		name: "driftAcross",
+		until: "something that CAN move the persona is measured across; a compaction cannot",
+	},
 
 	// The session writer and its derived index are GONE. E11 asked for one of two
 	// answers and this is the other one: deleted, with the reasoning written on

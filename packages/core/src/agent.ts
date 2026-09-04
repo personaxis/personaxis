@@ -65,6 +65,7 @@ import { recallWindow, memoryTools } from "./memory/retrieval.js";
 import { sessionBrief, isInfraErrorReply } from "./memory/consolidate.js";
 import { ensureState, loadPersona } from "./persona.js";
 import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow, type CacheReport } from "./context.js";
+import type { CompactionPlan } from "./compaction/service.js";
 import { LoopBreaker, toolSignature } from "./loop-breaker.js";
 import { ForensicLog, type ForensicRecord } from "./security/forensic-log.js";
 import { ToolInterceptor } from "./security/interceptor.js";
@@ -110,6 +111,15 @@ export interface CompactionRecord {
   /** Tokens in the window before and after, so the saving is a number. */
   readonly before: number;
   readonly after: number;
+  /**
+   * E25: which messages, named by unit, so this is auditable and not just counted.
+   *
+   * `removed` says how many and this says which. The loop does not write it anywhere:
+   * a record entry is the runner's to write, and a loop that wrote its own would be
+   * deciding both what happened and what is remembered about it. This is how the fact
+   * leaves the loop.
+   */
+  readonly plan: CompactionPlan;
 }
 
 /**
@@ -978,7 +988,13 @@ export class PersonaAgent {
           if (c.compacted) {
             messages.length = 0;
             messages.push(...c.messages);
-            compactions.push({ cut, step, removed: c.removed ?? 0, before, after: meter.used });
+            // A compaction with no plan cannot happen: `compactMessages` builds one on
+            // the branch that sets `compacted`. The fallback is an empty plan carrying
+            // the numbers rather than a cast, so a future branch that compacts without
+            // saying what it moved shows up in the record as a compaction that named
+            // nothing, instead of crashing the turn it was supposed to be describing.
+            const plan = c.plan ?? { kept: [], pruned: [], summarised: [], before, after: meter.used };
+            compactions.push({ cut, step, removed: c.removed ?? 0, before, after: meter.used, plan });
             // E18: and against the session, which outlives this run and is what /context reads.
             meter.compacted(before, meter.used);
             bus.emit({ type: "context-compacted", removed: c.removed ?? 0, usedAfter: meter.used });

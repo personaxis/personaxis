@@ -31,7 +31,7 @@
  */
 
 import { Ledger, describeRoom } from "./budget.js";
-import type { StopReason, TurnOutcome, TurnRequest } from "./vocabulary.js";
+import type { StopReason, TurnCompaction, TurnOutcome, TurnRequest } from "./vocabulary.js";
 
 /** What a provider is given. Deliberately small. */
 export interface TurnContext {
@@ -97,6 +97,14 @@ export interface TurnProduct {
 	readonly failure?: { readonly code: string; readonly message: string };
 	/** What it cost, when this provider talks to something that charges. */
 	readonly cost?: { readonly tokens: number; readonly usd: number };
+	/**
+	 * E25: what it compacted, when this provider manages a context window.
+	 *
+	 * Absent from a provider that manages none, which is a different statement from an
+	 * empty array. The runner passes it through untouched: it did not compact anything
+	 * and is in no position to describe what did.
+	 */
+	readonly compactions?: readonly TurnCompaction[];
 }
 
 /**
@@ -233,6 +241,7 @@ export class TurnRunner {
 			// gets no price in the outcome rather than a zero somebody would later read
 			// as "checked, and free".
 			...(product.cost === undefined ? {} : { cost: product.cost }),
+			...(product.compactions === undefined ? {} : { compactions: product.compactions }),
 			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {

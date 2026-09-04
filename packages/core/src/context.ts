@@ -14,6 +14,8 @@
 
 import type { TokenUsage } from "./tool-calling.js";
 import type { ChatMessage } from "./tool-calling.js";
+import { compactionPlan } from "./compaction/units.js";
+import type { CompactionPlan } from "./compaction/service.js";
 
 export interface ModelEndpoint {
   endpoint: string;
@@ -229,6 +231,19 @@ export interface CompactResult {
   compacted: boolean;
   summary?: string;
   removed?: number;
+  /**
+   * E25: what was decided, named by unit, so the record can carry it.
+   *
+   * Built here rather than diffed from the two arrays by the caller, because this is
+   * the function that knows which messages were older and which were recent. A caller
+   * reconstructing that afterwards would be a second opinion about one event, and the
+   * two would eventually disagree without anything noticing.
+   *
+   * Absent when nothing was compacted, which is the ordinary case: a plan describing a
+   * compaction that did not happen is a plan somebody has to read to find out it says
+   * nothing.
+   */
+  plan?: CompactionPlan;
 }
 
 /**
@@ -288,8 +303,18 @@ export async function compactMessages(
     ? [{ role: "system", content: opts.pinned.trim() }]
     : [];
   const next = [...prefix, ...pinnedMsg, summaryMsg, ...recent];
+  const before = meter.used;
   meter.used = estimateMessagesTokens(next);
-  return { messages: next, compacted: true, summary, removed: older.length };
+  return {
+    messages: next,
+    compacted: true,
+    summary,
+    removed: older.length,
+    // E25: this implementation summarises and never prunes, so `pruned` is empty and
+    // that is a fact about it rather than a gap. Pruning is a model-free drop, and
+    // there is no branch here that drops a message without paying for a summary.
+    plan: compactionPlan({ kept: recent, summarised: older, before, after: meter.used }),
+  };
 }
 
 async function summarize(cfg: ModelEndpoint, transcript: string): Promise<string> {

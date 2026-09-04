@@ -57,6 +57,26 @@ export type StopReason =
 	/** The provider returned without closing, so the runtime closed it. */
 	| "abandoned";
 
+import type { CompactionPlan } from "../compaction/service.js";
+
+/**
+ * One compaction, on its way from the loop to the record.
+ *
+ * E25. It travels through the seam rather than being written where it happened,
+ * because the loop does not write the record: the runner tells the record and the
+ * record holds facts about the persona, and a loop that wrote its own entries would be
+ * deciding both what happened and what is remembered about it.
+ *
+ * `why` is the reason as the author will carry it, not a description composed later.
+ * `compactionAuthor` puts it on the entry and `compactionEntry` puts it in the message,
+ * so a reader is told what triggered the compaction by the same words twice rather than
+ * by two accounts that can drift.
+ */
+export interface TurnCompaction {
+	readonly why: string;
+	readonly plan: CompactionPlan;
+}
+
 /** What a turn produced. */
 export interface TurnOutcome {
 	readonly turn: string;
@@ -80,6 +100,15 @@ export interface TurnOutcome {
 	readonly cost?: { readonly tokens: number; readonly usd: number };
 	/** Present when the turn ended badly, with a code so it can be routed. */
 	readonly failure?: { readonly code: string; readonly message: string };
+	/**
+	 * E25: every compaction this turn did, for the record to write down.
+	 *
+	 * Optional for the same reason `cost` is, and the reason is worth keeping straight.
+	 * A provider that does not manage a context window has no compactions to report,
+	 * which is not the same statement as a provider that managed one and compacted
+	 * nothing. Absent is silence; an empty array is a provider saying it looked.
+	 */
+	readonly compactions?: readonly TurnCompaction[];
 }
 
 /** What opens a turn. */
