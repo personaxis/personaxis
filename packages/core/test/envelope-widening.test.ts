@@ -7,8 +7,14 @@
  * what happens when the AGENT is the one editing the declaration, because then the
  * agent widens the range and is afterwards measured against the ruler it just moved.
  *
- * These tests do not answer that question, which is a product decision. They MEASURE
- * whether it is reachable today, so the decision is taken against facts.
+ * The answer, decided after measuring it: WIDENING IS A STEP AND STEPS HAVE A CEILING.
+ * `governance.max_step_delta` already bounds how far a VALUE moves in one step, and had
+ * no counterpart for the ruler, so the same ceiling now applies to both rather than a
+ * second number being invented for it.
+ *
+ * Narrowing stays free, and the asymmetry is the design: holding yourself to a tighter
+ * range needs no permission, granting yourself more room does, because that is the move
+ * that lets a persona approve of itself.
  */
 import { describe, it, expect } from "vitest";
 import { DEFAULT_VERIFIERS, consensusVerify, isProtectedPath, type Policy } from "../src/index.js";
@@ -43,47 +49,101 @@ describe("what stops a persona from moving its own ruler (E23)", () => {
     }
   });
 
-  it("BUT an affect envelope can be widened, and the verifiers call it sane", () => {
-    // This is the measurement the row asked for. `affect.representation` and
-    // `affect.regulation_policy` are protected; the BASELINE envelopes are not, and the
-    // envelope verifier checks that a range is well formed, never that it grew.
-    const widened = consensusVerify(
+  it("a SMALL widening is allowed: a persona may still grow, one step at a time", () => {
+    const r = consensusVerify(
       {
         targetPath: "affect.baseline.mood.tone",
-        toValue: { mean: 0, range: [-1, 1] },
-        rationale: "I want more room to express myself across the full range",
+        toValue: { mean: 0, range: [-0.3, 0.3] },
+        fromValue: { mean: 0, range: [-0.2, 0.2] },
+        rationale: "the current range is too narrow for the work I am being asked to do",
       },
       DEFAULT_VERIFIERS,
     );
-    expect(widened.passed).toBe(true);
-
-    // The verifier is not asleep: it refuses a range that makes no sense. What it has
-    // no opinion about is a range that makes sense and is bigger than yesterday's.
-    const nonsense = consensusVerify(
-      { targetPath: "affect.baseline.mood.tone", toValue: { mean: 0, range: [1, -1] }, rationale: "why not" },
-      DEFAULT_VERIFIERS,
-    );
-    expect(nonsense.passed).toBe(false);
-
-    const outOfBounds = consensusVerify(
-      { targetPath: "affect.baseline.mood.tone", toValue: { mean: 0, range: [-4, 4] }, rationale: "why not" },
-      DEFAULT_VERIFIERS,
-    );
-    expect(outOfBounds.passed).toBe(false);
+    expect(r.passed).toBe(true);
   });
 
-  it("nothing in the verifiers can even see the PREVIOUS range", () => {
-    // Which is why this cannot be fixed by tightening a verifier: they are handed a
-    // proposal, not a diff. Whatever the answer to E23 turns out to be, it needs the
-    // old value, and today that never reaches this decision.
-    // The rationale is a real one: a short one is refused by its own verifier, which
-    // is a different rule and would have made this test pass for the wrong reason.
-    const proposal = {
-      targetPath: "affect.baseline.mood.tone",
-      toValue: { mean: 0, range: [-1, 1] },
-      rationale: "the current range is too narrow for the work I am being asked to do",
-    };
-    expect(Object.keys(proposal)).not.toContain("fromValue");
-    expect(consensusVerify(proposal, DEFAULT_VERIFIERS).passed).toBe(true);
+  it("a LEAP to the full range is refused, and says by how much it overshot", () => {
+    const r = consensusVerify(
+      {
+        targetPath: "affect.baseline.mood.tone",
+        toValue: { mean: 0, range: [-1, 1] },
+        fromValue: { mean: 0, range: [-0.2, 0.2] },
+        rationale: "the current range is too narrow for the work I am being asked to do",
+      },
+      DEFAULT_VERIFIERS,
+    );
+    expect(r.passed).toBe(false);
+    expect(r.results.find((x) => x.verifier === "envelope-step")?.reason).toMatch(/against a 0.15 ceiling/);
+  });
+
+  it("NARROWING is free, however far: holding yourself tighter needs no permission", () => {
+    const r = consensusVerify(
+      {
+        targetPath: "affect.baseline.mood.tone",
+        toValue: { mean: 0, range: [-0.05, 0.05] },
+        fromValue: { mean: 0, range: [-1, 1] },
+        rationale: "I keep overshooting and would rather hold a tighter range for now",
+      },
+      DEFAULT_VERIFIERS,
+    );
+    expect(r.passed).toBe(true);
+  });
+
+  it("the ceiling is PER SIDE, so pushing both edges out is not a way around it", () => {
+    // Each edge moves 0.1, under the 0.15 ceiling, while the room doubles. Measured on
+    // the width this would pass, which is why it is measured per side.
+    const r = consensusVerify(
+      {
+        targetPath: "affect.baseline.mood.tone",
+        toValue: { mean: 0, range: [-0.3, 0.3] },
+        fromValue: { mean: 0, range: [-0.2, 0.2] },
+        rationale: "a little more room on both sides of the range, for the same reason",
+      },
+      DEFAULT_VERIFIERS,
+    );
+    // 0.1 a side is within the step, so this one stands: the point is that the check
+    // reads each edge, and the next test is the one that could only pass on width.
+    expect(r.passed).toBe(true);
+
+    const both = consensusVerify(
+      {
+        targetPath: "affect.baseline.mood.tone",
+        toValue: { mean: 0, range: [-0.4, 0.4] },
+        fromValue: { mean: 0, range: [-0.2, 0.2] },
+        rationale: "a lot more room on both sides of the range, for the same reason",
+      },
+      DEFAULT_VERIFIERS,
+    );
+    expect(both.passed).toBe(false);
+  });
+
+  it("the sanity checks still stand: a malformed range is refused before any of this", () => {
+    for (const range of [[1, -1], [-4, 4]]) {
+      const r = consensusVerify(
+        {
+          targetPath: "affect.baseline.mood.tone",
+          toValue: { mean: 0, range },
+          fromValue: { mean: 0, range: [-0.2, 0.2] },
+          rationale: "a rationale long enough to clear its own verifier",
+        },
+        DEFAULT_VERIFIERS,
+      );
+      expect(r.passed).toBe(false);
+    }
+  });
+
+  it("an envelope edit that never read its predecessor is refused, not waved through", () => {
+    // Absent key, not undefined value: nobody looked. A verifier that needs the old
+    // value and silently passes without it is a guard that reads as covered and refuses
+    // nothing, which is the failure this whole row exists to avoid.
+    const r = consensusVerify(
+      {
+        targetPath: "affect.baseline.mood.tone",
+        toValue: { mean: 0, range: [-0.25, 0.25] },
+        rationale: "a rationale long enough to clear its own verifier",
+      },
+      DEFAULT_VERIFIERS,
+    );
+    expect(r.passed).toBe(false);
   });
 });
