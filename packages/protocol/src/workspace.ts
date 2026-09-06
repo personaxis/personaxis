@@ -338,6 +338,35 @@ export type DaemonMsg =
 	/** Acknowledges what the daemon has applied of what the server sent it. */
 	| { type: "ack"; job_id: string; seq: number }
 	/**
+	 * A worker saying something in the room its run came out of.
+	 *
+	 * The third way of working in the object model: personas that write to each
+	 * other, with no fixed graph and no choreography of ours. The daemon carries
+	 * it and decides nothing about it.
+	 *
+	 * **There is no author on this message, and there must never be one.** The
+	 * server derives who is speaking from `job_id`: the job names its version, the
+	 * version names its persona, and that persona with the room's subject is the
+	 * one instance it can be. A daemon runs on somebody's own computer, so one
+	 * that could name its own author could speak in a room as any worker in it,
+	 * and a message whose author is an instance is indistinguishable, to everyone
+	 * reading that room afterwards, from that worker having said it.
+	 *
+	 * `to_instance_id` absent is a message that starts nothing: a note left in the
+	 * room, which is the cheap half. Naming a worker starts a run, and whether it
+	 * may is the server's to decide and to say back.
+	 *
+	 * Not durable and not acknowledged: unlike an event, this is a request with an
+	 * answer, and the answer comes back as `conversation.said`. A daemon that
+	 * replayed it on reconnect would say the same thing twice in a room.
+	 */
+	| {
+			type: "conversation.say";
+			job_id: string;
+			to_instance_id?: string;
+			body: string;
+	  }
+	/**
 	 * E24: the persona typing, for a screen that is watching right now.
 	 *
 	 * A SECOND CHANNEL, and the whole design is that it cannot be mistaken for the
@@ -387,6 +416,21 @@ export interface StepContext {
 
 export type ServerToDaemonMsg =
 	| { type: "registered"; machine_id: string }
+	/**
+	 * What happened to what a worker tried to say.
+	 *
+	 * `run_id` is the run its message started, or null when it named nobody or
+	 * when the room would not start another one. `refused_reason` says which, and
+	 * it exists so the agent LEARNS it was refused: one that gets no answer asks
+	 * again, and asking again is the loop the ceiling exists to stop.
+	 */
+	| {
+			type: "conversation.said";
+			job_id: string;
+			message_id: string | null;
+			run_id: string | null;
+			refused_reason: string | null;
+	  }
 	| {
 			type: "job.assign";
 			job_id: string;
@@ -411,6 +455,25 @@ export type ServerToDaemonMsg =
 			 * somebody pressing Run on a persona.
 			 */
 			step?: StepContext;
+			/**
+			 * The room this run came out of, when it came out of one.
+			 *
+			 * Absent for every other origin, which is most of them: a trigger, a step
+			 * of a service, somebody pressing Run. Present, it is what lets a worker
+			 * answer in the room and address the others in it, and without it the
+			 * daemon has a run with no idea it belongs to a conversation.
+			 *
+			 * `others` carries names because an agent has to be able to say who it is
+			 * asking, and an id is not something a model can reason about. The list is
+			 * who is IN the room, so a worker cannot address somebody who is not: the
+			 * server checks it again, and this is what stops the agent trying.
+			 */
+			room?: {
+				thread_id: string;
+				/** The asking worker's own instance, so it can tell itself apart. */
+				me: string;
+				others: Array<{ instance_id: string; name: string }>;
+			};
 			/**
 			 * Which agent runs this persona, when the workspace has an opinion.
 			 *
