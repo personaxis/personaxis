@@ -473,6 +473,27 @@ export type ServerToDaemonMsg =
 				/** The asking worker's own instance, so it can tell itself apart. */
 				me: string;
 				others: Array<{ instance_id: string; name: string }>;
+				/**
+				 * Who asked for this run, when it came out of somebody speaking.
+				 *
+				 * **ASI07, and the reason it is on the wire rather than left implicit.**
+				 * A message from another worker becomes this run's prompt, so without
+				 * this the agent reads another machine's words in the position its own
+				 * operator's instruction occupies. That is prompt injection with a
+				 * database behind it, and it does not need an attacker: a worker being
+				 * emphatic is enough.
+				 *
+				 * As data and not as a sentence glued to the front, for the reason
+				 * `step` gives: the daemon writes the sentence FROM this, so what the
+				 * agent reads and what the record shows cannot disagree.
+				 *
+				 * `kind: "person"` is somebody typing, which is the ordinary case and
+				 * still worth saying out loud: an agent that cannot tell a person from
+				 * a peer cannot weigh them differently either.
+				 */
+				asked_by?:
+					| { kind: "person"; name: string }
+					| { kind: "worker"; instance_id: string; name: string };
 			};
 			/**
 			 * Which agent runs this persona, when the workspace has an opinion.

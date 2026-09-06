@@ -42,6 +42,7 @@ import { HostSession, type SessionOutcome } from "./host-session.js";
 import { describePolicyProblem, policyFromRef } from "./policy-from-ref.js";
 import { describeFile, kindOf, producedBetween, scanDirectory } from "./produced-files.js";
 import { withinScope } from "./scope-guard.js";
+import { describeRoom, roomMetaFor, type RoomContext } from "./room-context.js";
 import { describeStep, metaFor } from "./step-context.js";
 import { JobReporter, type ReporterSink } from "./job-reporter.js";
 
@@ -308,7 +309,12 @@ export class JobRunner {
 		// cannot apply: the hook asks by working directory, not by persona.
 		this.options.onPolicy?.(policy.policy, cwd);
 
-		const prompt = withPersona(message.persona_document, instruction, message.step);
+		const prompt = withPersona(
+			message.persona_document,
+			instruction,
+			message.step,
+			message.room,
+		);
 
 		// Everything that ends a session goes through here, whichever transport ran it.
 		const emit = (body: Parameters<JobReporter["reportWire"]>[0], author: WireAuthor) => {
@@ -339,7 +345,15 @@ export class JobRunner {
 		 * not a fallback anybody chooses: it is what a host that cannot hold a session
 		 * offers, and it will disappear when the last one can.
 		 */
-		const stepMeta = metaFor(message.step);
+		// Both bags, merged rather than one or the other: a run can be a step of a
+		// service AND have come out of a room, and a caller that picked one would
+		// silently drop the other in exactly the case with the most context.
+		//
+		// Undefined when neither applies, not an empty object. `metaFor` says why
+		// in its own comment and a test holds it: `_meta: {}` is a field saying a
+		// thing was considered and found empty, rather than one that never applied.
+		const bags = { ...metaFor(message.step), ...roomMetaFor(message.room) };
+		const stepMeta = Object.keys(bags).length > 0 ? bags : undefined;
 		const acp = acpCommandFor(host);
 		const session: AgentRun = acp
 			? (this.options.createAcpSession ?? ((options) => new AcpSession(options)))({
@@ -576,17 +590,29 @@ function withPersona(
 	document: string | undefined,
 	instruction: string,
 	step: StepContext | undefined,
+	room: RoomContext | undefined,
 ): string {
 	const identity = document?.trim();
 	const where = describeStep(step);
-	if (!identity && !where) return instruction;
+	const conversation = describeRoom(room);
+	if (!identity && !where && !conversation) return instruction;
+
+	// The last line before the words changes with who said them, and that is the
+	// point rather than a nicety. "What you have been asked to do in this run" is
+	// the voice of the person who runs the workspace, and a peer's message
+	// arriving under it is another machine speaking in that voice.
+	const heading =
+		room?.asked_by?.kind === "worker"
+			? `What ${room.asked_by.name} said to you:`
+			: "What you have been asked to do in this run:";
 
 	return [
 		...(identity ? [identity, ""] : []),
 		...(where ? [where, ""] : []),
+		...(conversation ? [conversation, ""] : []),
 		"---",
 		"",
-		"What you have been asked to do in this run:",
+		heading,
 		"",
 		instruction,
 	].join("\n");
