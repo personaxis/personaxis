@@ -35,6 +35,7 @@ import {
 import { DaemonConnection, type ConnectionState } from "../workspace/connection.js";
 import { launchCommandFor } from "../workspace/host-adapter.js";
 import { GateRelay } from "../workspace/gate-relay.js";
+import { endingsFor, rememberInFlight, takeInFlight } from "../workspace/in-flight.js";
 import { JobRunner } from "../workspace/job-runner.js";
 import { consentedDirs, describeMachine, detectHostAgents } from "../workspace/machine.js";
 import { nodeSocketFactory, socketSupported, unsupportedSocketMessage } from "../workspace/socket.js";
@@ -405,6 +406,28 @@ function holdTheWire(token: string, scope: string[], enforcement: EnforcementRun
 				onRegistered: (machineId) => {
 					rememberMachineId(machineId);
 					console.log(chalk.green("connected"), chalk.dim(machineId));
+
+					// What the last process was doing when it stopped.
+					//
+					// Reported here rather than at startup because it has to go down a
+					// socket that is registered: an event sent before that is an event
+					// in a dialect the server has not agreed to yet.
+					//
+					// It reports, it does not resume. The agent went with the process,
+					// and `personaAgent` says `loadSession: false` out loud, so what a
+					// person is owed is the truth: this stopped, here is why, nothing
+					// after it happened.
+					const abandoned = takeInFlight();
+					for (const ending of endingsFor(abandoned)) {
+						connection.emit(ending);
+					}
+					if (abandoned.length > 0) {
+						console.error(
+							chalk.yellow(
+								`ended ${abandoned.length} run(s) that did not survive the last restart`,
+							),
+						);
+					}
 				},
 				onStateChange: (state, detail) => report(state, detail),
 				onRevoked: () => {
@@ -445,6 +468,9 @@ function holdTheWire(token: string, scope: string[], enforcement: EnforcementRun
 			onGateResolved: (gateId, outcome) => relay.resolve(gateId, outcome),
 			// And a run that ended answers nothing more, so its gates stop waiting.
 			onJobEnded: (jobId) => relay.abandon(jobId),
+			// Kept on disk so the next process can end what this one was doing, if
+			// this one does not get to.
+			onInFlight: (jobs) => rememberInFlight(jobs),
 			onPolicy: (policy, cwd) => {
 				// E30: `compile` refuses a policy it cannot enforce, and that refusal
 				// arrives here, on a callback from the wire. Caught rather than allowed to

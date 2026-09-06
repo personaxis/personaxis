@@ -112,6 +112,16 @@ export interface JobRunnerOptions {
 	 * answer it. Refusing beats holding a hook open on a process that is gone.
 	 */
 	onJobEnded?: (jobId: string) => void;
+	/**
+	 * What this daemon is in the middle of, whenever that changes.
+	 *
+	 * Injected rather than written from here, so the runner keeps knowing nothing
+	 * about a disk. What it is for is the restart: `running` is a `Map` and goes
+	 * with the process, and the run it held stays `running` in the workspace with
+	 * nobody left who could ever end it. The gateway's alarm cannot cover this
+	 * one, because a daemon back in ten seconds is not silent.
+	 */
+	onInFlight?: (jobs: { job_id: string; started_at: string }[]) => void;
 	timeoutMs?: number;
 	now?: () => Date;
 	/**
@@ -362,6 +372,7 @@ export class JobRunner {
 				});
 
 		this.running.set(jobId, { session, reporter, cwd, host });
+		this.reportInFlight();
 
 		// What the step leaves behind, named after it finishes.
 		//
@@ -379,6 +390,10 @@ export class JobRunner {
 
 		void session.run().finally(() => {
 			this.running.delete(jobId);
+			// Before `onJobEnded`, so a crash between the two leaves a job that has
+			// finished still listed rather than one that is running and forgotten.
+			// The first costs one ending the room refuses; the second is the bug.
+			this.reportInFlight();
 			this.options.onJobEnded?.(jobId);
 		});
 	}
@@ -433,6 +448,15 @@ export class JobRunner {
 			userId: message.user_id,
 			body: message.body,
 		});
+	}
+
+	/** Says what is running now, in the shape a restart needs to read back. */
+	private reportInFlight(): void {
+		const at = (this.options.now ?? (() => new Date()))().toISOString();
+		this.options.onInFlight?.([...this.running.keys()].map((id) => ({
+			job_id: id,
+			started_at: at,
+		})));
 	}
 
 	private directoryFor(proposed: string | undefined): string | null {

@@ -60,6 +60,7 @@ function runner(options: {
 	onPolicy?: () => void;
 	onGateResolved?: (gateId: string, outcome: string) => void;
 	onJobEnded?: (jobId: string) => void;
+	onInFlight?: (jobs: { job_id: string; started_at: string }[]) => void;
 	/** Called when a session is constructed, to observe the order of things. */
 	onStart?: () => void;
 	/**
@@ -107,6 +108,7 @@ function runner(options: {
 		...(options.onPolicy ? { onPolicy: options.onPolicy } : {}),
 		...(options.onGateResolved ? { onGateResolved: options.onGateResolved as never } : {}),
 		...(options.onJobEnded ? { onJobEnded: options.onJobEnded } : {}),
+		...(options.onInFlight ? { onInFlight: options.onInFlight } : {}),
 		// Both factories, recording the same three facts. A test that asserts on the
 		// consented directory should not have to know which transport carried the job.
 		createSession: (opts) => {
@@ -847,5 +849,59 @@ describe("a person's answer coming back", () => {
 		await settle();
 
 		expect(onJobEnded).toHaveBeenCalledWith("job_1");
+	});
+});
+
+
+describe("what this daemon would owe if it stopped now", () => {
+	it("names the job while it is running, and nothing once it is not", async () => {
+		// The `Map` this reads goes with the process. Without it on disk, a daemon
+		// that restarts comes back knowing nothing, and the run it was executing
+		// stays `running` in the workspace with nobody left who can end it. The
+		// gateway's alarm cannot cover this one: a daemon back in ten seconds is
+		// not silent.
+		const seen: Array<Array<{ job_id: string }>> = [];
+		const { instance } = runner({ onInFlight: (jobs) => seen.push(jobs) });
+
+		instance.handle(assign({ job_id: "job_1" }) as ServerToDaemonMsg);
+		await settle();
+
+		expect(seen[0]?.map((job) => job.job_id)).toEqual(["job_1"]);
+		// The last word is the one a restart reads, and a run that finished must
+		// not be reported as one that did not.
+		expect(seen[seen.length - 1]).toEqual([]);
+	});
+
+	it("says so before it says the job ended", async () => {
+		// A crash between the two leaves a finished job still listed, which costs
+		// one ending the room refuses. The other order leaves a job that is running
+		// and forgotten, which is the bug.
+		const order: string[] = [];
+		const { instance } = runner({
+			onInFlight: () => order.push("in-flight"),
+			onJobEnded: () => order.push("ended"),
+		});
+
+		instance.handle(assign({ job_id: "job_1" }) as ServerToDaemonMsg);
+		await settle();
+
+		// Exactly this: listed when it starts, cleared when it finishes, and only
+		// then reported as ended.
+		expect(order).toEqual(["in-flight", "in-flight", "ended"]);
+	});
+
+	it("says nothing about a job it refused to start", async () => {
+		// A refusal is not work in flight. Listing one would have the next start
+		// end a run that never began.
+		const seen: Array<Array<{ job_id: string }>> = [];
+		const { instance } = runner({
+			onInFlight: (jobs) => seen.push(jobs),
+			launcher: () => null,
+		});
+
+		instance.handle(assign({ job_id: "job_1" }) as ServerToDaemonMsg);
+		await settle();
+
+		expect(seen.flat()).toEqual([]);
 	});
 });
