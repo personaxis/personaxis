@@ -440,7 +440,28 @@ function holdTheWire(token: string, scope: string[], enforcement: EnforcementRun
 				onDropped: (jobId, count) => {
 					console.error(chalk.yellow(`dropped ${count} queued events for job ${jobId} (offline too long)`));
 				},
-				onServerMessage: (message) => runner.handle(message),
+				onServerMessage: (message) => {
+					// A tightening of the rules, applied before anything else looks at
+					// the message. Dropping the cached policy makes the next call for
+					// that persona deny with `no_policy`, which is the closed answer and
+					// names itself; the next assignment carries the rules that replaced
+					// these.
+					//
+					// Handled here rather than in the runner because it is the CACHE that
+					// changes, and the runner deliberately does not own it: it hands over
+					// what arrived and never evicts, so that a job cannot rewrite policy
+					// for jobs that are not its own.
+					if (message.type === "policy.stale") {
+						for (const versionId of message.persona_version_ids) cache.drop(versionId);
+						console.error(
+							chalk.yellow(
+								`dropped ${message.persona_version_ids.length} cached policy/policies: ${message.reason}`,
+							),
+						);
+						return;
+					}
+					runner.handle(message);
+				},
 			},
 		});
 

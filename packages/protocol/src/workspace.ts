@@ -417,6 +417,32 @@ export interface StepContext {
 export type ServerToDaemonMsg =
 	| { type: "registered"; machine_id: string }
 	/**
+	 * A policy this machine may be holding is no longer the one in force.
+	 *
+	 * A workspace's gate rules travel INSIDE the compiled policy and the machine
+	 * caches it by persona version for up to its lifetime, which is fifteen
+	 * minutes. So raising the bar took effect on the NEXT run and not on the
+	 * machines already holding the old bar, and nothing said so. That is a
+	 * revocation that does not take effect, which is the semantic rollback the
+	 * reference study names, arriving through a cache rather than a checkpoint.
+	 *
+	 * Sent only when the rules got STRICTER. A relaxation can wait for the next
+	 * assignment: nothing unsafe happens because an approval somebody removed is
+	 * asked for a few minutes longer, while dropping a cached policy makes the
+	 * daemon deny every call for that persona until a new one arrives.
+	 *
+	 * Dropping and not replacing, deliberately. The new policy is compiled per
+	 * run against the workspace it runs in, so sending one here would be a second
+	 * place policies are built. `no_policy` is the closed answer, it names itself
+	 * in the record, and the next assignment carries the real one.
+	 */
+	| {
+			type: "policy.stale";
+			persona_version_ids: string[];
+			/** What changed, in words a person reads in the daemon's output. */
+			reason: string;
+	  }
+	/**
 	 * What happened to what a worker tried to say.
 	 *
 	 * `run_id` is the run its message started, or null when it named nobody or
