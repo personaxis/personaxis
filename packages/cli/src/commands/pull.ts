@@ -4,6 +4,7 @@ import { resolve, dirname } from "path";
 import chalk from "chalk";
 import matter from "gray-matter";
 import { validatePersona } from "../schema.js";
+import { hashContent, recordInstall } from "../manifest.js";
 import { version } from "../generated/assets.js";
 import {
 	REGISTRY_BASE_URL,
@@ -136,6 +137,25 @@ export const pullCommand = new Command("pull")
 
 		mkdirSync(dirname(dest), { recursive: true });
 		writeFileSync(dest, content, "utf-8");
+
+		// R5: where it came from, written down beside it.
+		//
+		// Everything recorded here was already known one line above and thrown away:
+		// the registry, the reference, the version the server said it was serving. An
+		// installed persona could not answer where it came from, and without the hash
+		// of what ARRIVED it could not answer what changed since either, because a
+		// local edit and an upstream difference were the same unknown.
+		//
+		// The merge rule lives in `recordInstall`, where it can be checked without a
+		// network: pulling over a persona that has been compiled must not erase the
+		// compile baseline that `validate` and `push` read to detect a hand-edit.
+		recordInstall(dirname(dest), {
+			registry: REGISTRY_BASE_URL,
+			slug,
+			version: personaVersion,
+			at: new Date().toISOString(),
+			hash: hashContent(content),
+		});
 
 		console.log("");
 		console.log(chalk.green("✓"), chalk.bold(slug), chalk.dim(`(v${personaVersion}, ${validationStatus})`), chalk.dim("→"), dest);
