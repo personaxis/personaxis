@@ -58,6 +58,7 @@ export type StopReason =
 	| "abandoned";
 
 import type { CompactionPlan } from "../compaction/service.js";
+import type { DelegatedScope } from "./delegation.js";
 
 /**
  * One compaction, on its way from the loop to the record.
@@ -128,6 +129,18 @@ export interface TurnRequest {
 		| { readonly kind: "human"; readonly id: string }
 		| { readonly kind: "persona"; readonly id: string }
 		| { readonly kind: "component"; readonly name: string };
+	/**
+	 * The scope this turn was handed, when it is a delegated sub-task.
+	 *
+	 * It travels WITH the request rather than being set on the runner, because it is a
+	 * property of this turn and not of the session: the same runner shape serves a
+	 * person's turn and a sub-task's, and a field on the session would be a limit that
+	 * outlives the work it was taken for.
+	 *
+	 * Absent on every turn a person or a program asks for, which is what makes its
+	 * presence mean something in the record.
+	 */
+	readonly delegation?: DelegatedScope;
 }
 
 /**

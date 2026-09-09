@@ -238,6 +238,34 @@ export type RecordBody =
 			readonly subject?: string;
 	  }
 	/**
+	 * Work was handed down, and under what scope.
+	 *
+	 * The photograph `run/delegation.ts` takes, written where it can be read back.
+	 * Without it a sub-task's confinement lives only in the process that granted it,
+	 * so "what could this delegated run reach" stops having an answer the moment the
+	 * process ends, which is the same hole the `surface` body above exists to close
+	 * for the tool catalogue.
+	 *
+	 * `at` is not a field here: the entry already carries when it was written, and a
+	 * photograph taken at a time the entry disagrees with would be two answers to one
+	 * question.
+	 *
+	 * `asks` is not a field either, and its absence is the claim. A delegated child
+	 * never asks, by rule and not by configuration, so a column that could say
+	 * otherwise would invite somebody to set it.
+	 */
+	| {
+			readonly type: "delegation";
+			/** How deep this sub-task sits. Monotone: a resume may deepen it, never lower it. */
+			readonly depth: number;
+			/** Copied from what the parent had narrowed EXPLICITLY. Empty means: follow the default. */
+			readonly directories: readonly string[];
+			/** The posture the parent had declared, when it had declared one. */
+			readonly sandbox: string | null;
+			/** What the sub-task was asked to do, so the entry is legible on its own. */
+			readonly task: string;
+	  }
+	/**
 	 * What the fold said as of this point, so a reader does not have to redo it.
 	 *
 	 * ## Why a record needs one at all

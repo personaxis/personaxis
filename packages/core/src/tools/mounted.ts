@@ -64,6 +64,16 @@ export const TOOL_PERMISSIONS = {
 	readFiles: permissionKey("tools.read"),
 	writeFiles: permissionKey("tools.write"),
 	runCommands: permissionKey("tools.command"),
+	/**
+	 * C6: handing work down to a sub-task.
+	 *
+	 * Here rather than beside the built-ins because the tool that needs it is
+	 * contributed and not built in: it takes a way to start a run, which no tool in
+	 * this file has or should have. The permission lives with its neighbours anyway,
+	 * because what a persona may be offered is one question with one answer, and a
+	 * second table would be the second place somebody forgets to look.
+	 */
+	delegate: permissionKey("tools.delegate"),
 } as const;
 
 /**
@@ -348,9 +358,19 @@ export const ALL_TOOL_PERMISSIONS: readonly PermissionKey[] = Object.values(TOOL
  * the two axes decide what runs.
  */
 export function permissionsFor(sandbox: SandboxPosture): readonly PermissionKey[] {
+	// Delegation is withheld from `read-only`, and it is the one grant here that is not
+	// about authority. A sub-task cannot exceed its parent, so a read-only child could
+	// do nothing its parent could not: what it can do is SPEND, a second agent's worth
+	// of tokens on the same ledger. A persona somebody deliberately limited to looking
+	// is not one that should be able to start another run to look harder.
 	if (sandbox === "read-only") return [TOOL_PERMISSIONS.readFiles];
 	if (sandbox === "workspace-write") {
-		return [TOOL_PERMISSIONS.readFiles, TOOL_PERMISSIONS.writeFiles, TOOL_PERMISSIONS.runCommands];
+		return [
+			TOOL_PERMISSIONS.readFiles,
+			TOOL_PERMISSIONS.writeFiles,
+			TOOL_PERMISSIONS.runCommands,
+			TOOL_PERMISSIONS.delegate,
+		];
 	}
 	return ALL_TOOL_PERMISSIONS;
 }

@@ -46,6 +46,7 @@
 
 import { compactionAuthor, compactionEntry } from "../compaction/measured.js";
 import { SELF } from "../record/actor.js";
+import { delegationAuthor } from "./delegation.js";
 import { writingToRecord, type RecordPorts } from "../record/transaction.js";
 import type { Author, RecordBody } from "../record/entry.js";
 import type { Journal } from "../record/journal.js";
@@ -92,14 +93,48 @@ function answererOf(): Author {
 	return { kind: "persona", id: SELF };
 }
 
-/** What opening a turn writes. */
+/**
+ * What opening a turn writes.
+ *
+ * Two entries when the turn is a delegated sub-task, and the photograph goes FIRST
+ * because it is what the turn after it happened under. Written here rather than by
+ * whoever delegated, for the reason this whole file exists: the runner owns endings and
+ * the record owns facts, and a second writer would be a second account of one turn.
+ */
 function opening(request: TurnRequest): readonly Written[] {
-	return [
-		{
-			author: askerOf(request),
-			body: { type: "turn-open", turn: request.turn, prompt: request.prompt },
-		},
-	];
+	const entries: Written[] = [];
+
+	if (request.delegation) {
+		entries.push({
+			// The runtime's, naming who it was photographed from. Not the parent's own
+			// author: the parent did not write this sentence, the delegation did, and a
+			// record that said otherwise would put a claim in a persona's mouth.
+			author: delegationAuthor(idOf(request)),
+			body: {
+				type: "delegation",
+				depth: request.delegation.depth,
+				// Empty rather than absent, and they are different facts: a parent that
+				// narrowed nothing hands down nothing and the child follows the current
+				// default, which is what an empty list says here.
+				directories: request.delegation.inherited.directories ?? [],
+				sandbox: request.delegation.inherited.sandbox ?? null,
+				task: request.prompt,
+			},
+		});
+	}
+
+	entries.push({
+		author: askerOf(request),
+		body: { type: "turn-open", turn: request.turn, prompt: request.prompt },
+	});
+
+	return entries;
+}
+
+/** Who asked, as one string, for a sentence that has to name them. */
+function idOf(request: TurnRequest): string {
+	const asker = request.asker;
+	return asker.kind === "component" ? `component:${asker.name}` : asker.id;
 }
 
 /** What closing a turn writes, in the order a reader meets it. */

@@ -289,6 +289,17 @@ function fold(start: DerivedState, entries: readonly RecordEntry[]): DerivedStat
 			case "failure":
 				// Facts worth keeping and not part of the persona's current position.
 				break;
+			case "delegation":
+				// A fact, deliberately, and this is the one where the difference is easy
+				// to get wrong. A delegation looks like a state change: from here on the
+				// work is confined. It is not the PERSONA's state, because a delegated
+				// sub-task writes into the same record its parent does, so folding the
+				// photograph into the position would leave the parent reading as confined
+				// for the rest of its life, by a limit that ended when the sub-task did.
+				//
+				// What answers "what could that sub-task reach" is the entry itself, in
+				// its place in the chain, which is exactly what a record is for.
+				break;
 		}
 	}
 

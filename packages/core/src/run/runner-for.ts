@@ -51,14 +51,19 @@
  * whatever they were when the session opened.
  */
 
+import { randomUUID } from "node:crypto";
+
 import { PersonaAgent, type AgentOptions } from "../agent.js";
 import { compile } from "../enforcement/policy-compile.js";
-import { permissionsFor } from "../tools/mounted.js";
+import { Kernel } from "../kernel/index.js";
+import { delegateTool, MAX_DELEGATION_DEPTH } from "../tools/delegate.js";
+import { permissionsFor, TOOL_PERMISSIONS, TOOL_POINT } from "../tools/mounted.js";
 import { policyFromPersona } from "../enforcement/policy-from-persona.js";
 import { readAgentBudget } from "../governance.js";
 import { readVerification } from "../verification.js";
 import type { Ledger } from "./budget.js";
 import type { Conversation } from "./conversation.js";
+import { ledgerForChild, type DelegatedScope } from "./delegation.js";
 import { defaultLoop } from "./default-provider.js";
 import { TurnRunner, type TurnObserver } from "./service.js";
 
@@ -93,6 +98,15 @@ export type SessionOptions = Omit<AgentOptions, Derived | "priorMessages"> & {
 	readonly observer?: TurnObserver;
 	/** What has been said, lent to whatever runs the turn. */
 	readonly conversation?: Conversation;
+	/**
+	 * How deep in a delegation this session already sits. Absent means a root.
+	 *
+	 * Read here rather than counted from the record, because a session is a live thing
+	 * and the record is a chain of what happened: a resumed sub-task would have to find
+	 * its own depth by folding, and `deepen` exists precisely because the answer must
+	 * never come out smaller than it went in.
+	 */
+	readonly delegationDepth?: number;
 };
 
 /**
@@ -147,11 +161,108 @@ export function agentOptionsFor(
 	};
 }
 
+/**
+ * The session a sub-task runs under, derived from its parent's.
+ *
+ * A named function rather than an object literal inside the tool's closure, and the
+ * difference is that every rule below can be checked without a model. Each line here is
+ * one of the study's findings, and the ones that are easy to get wrong are the ones a
+ * caller would write by hand.
+ */
+export function subTaskSession(
+	parent: SessionOptions,
+	scope: DelegatedScope,
+	statement: string,
+): SessionOptions {
+	const { ledger, conversation: _parentTranscript, kernel: _parentKernel, ...carried } = parent;
+
+	return {
+		...carried,
+		delegationDepth: scope.depth,
+		// A sub-task never asks. The rule is `delegation.ts`'s and this is the seam it
+		// lands on: an `ask` verdict resolves to a denial, deterministically, so
+		// widening stays a decision on the parent's side rather than a prompt in front
+		// of whoever happens to be at the keyboard when it fires.
+		onApproval: async () => "deny",
+		// The scope, told as runtime context and never as system prompt. Measured by the
+		// reference: the same facts in a system prompt stopped the model attempting
+		// anything at all, five turns of twelve ending with no tool call.
+		envNote: statement,
+		// Its own transcript, which is what dropping the parent's `conversation` means.
+		// Lending it would put the sub-task's working-out into the conversation a person
+		// is reading, and hand the sub-task a context that is not about its task.
+		//
+		// The parent's KERNEL is dropped for the neighbouring reason: a withdrawal
+		// inside a sub-task must not reach into the catalogue its parent is still using.
+		...(ledger === undefined ? {} : { ledger: ledgerForChild(ledger) }),
+	};
+}
+
 export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): TurnRunner {
-	const { ledger, observer, ...rest } = session;
+	const { ledger, observer, delegationDepth, ...rest } = session;
+
+	// C6: the catalogue gets a way to hand work down.
+	//
+	// Mounted here and not inside the agent, because the tool needs something no tool
+	// can have: a way to START a run. The agent assembles a catalogue; this function is
+	// where a run is assembled, so this is the only place that can offer one without
+	// the built-ins learning about runs.
+	//
+	// Through the kernel rather than through `tools`, which would REPLACE the
+	// catalogue, or `extraTools`, which would skip the permission. A component that
+	// declares what it requires is how a read-only persona ends up never being shown a
+	// tool it would only be refused for using.
+	const kernel = rest.kernel ?? new Kernel();
+
+	// Assembled before the agent is built, because the agent mounts its catalogue in
+	// its constructor and the photograph below reads what this derivation decided. Two
+	// compilations of one document could disagree, which is the reason `agentOptionsFor`
+	// gives for compiling once itself.
+	const options = agentOptionsFor(persona, { ...rest, kernel });
+
+	kernel.mount({
+		name: "tool.delegate",
+		requires: [TOOL_PERMISSIONS.delegate],
+		activate: (context) => {
+			context.contribute(
+				TOOL_POINT,
+				delegateTool({
+					depth: () => delegationDepth ?? 0,
+					// What the persona narrowed for ITSELF: its declared posture, read
+					// from the policy compiled out of its own document rather than from
+					// the environment's. Directories are absent and that is measured, not
+					// forgotten: on 2026-09-08 nothing in `policyFromPersona` reads a
+					// directory, so a list here would be a photograph of something nobody
+					// ever took.
+					scope: () => ({
+						...(options.capability === undefined
+							? {}
+							: { sandbox: options.capability.policy.sandbox }),
+					}),
+					maxDepth: MAX_DELEGATION_DEPTH,
+					run: async ({ instruction, scope, statement }) => {
+						const outcome = await runnerFor(persona, subTaskSession(session, scope, statement)).run({
+							turn: randomUUID(),
+							prompt: instruction,
+							// A persona asked for this turn, which is the one kind of asker
+							// the vocabulary already had and nothing ever produced.
+							asker: { kind: "persona", id: persona.personaPath },
+							delegation: scope,
+						});
+
+						return {
+							answer: outcome.answer,
+							stopReason: outcome.stopReason,
+							steps: outcome.steps,
+						};
+					},
+				}),
+			);
+		},
+	});
 
 	return new TurnRunner({
-		provider: defaultLoop(new PersonaAgent(agentOptionsFor(persona, rest)), rest.conversation),
+		provider: defaultLoop(new PersonaAgent(options), rest.conversation),
 		...(ledger === undefined ? {} : { ledger }),
 		...(observer === undefined ? {} : { observer }),
 	});

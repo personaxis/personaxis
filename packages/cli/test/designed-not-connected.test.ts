@@ -157,19 +157,16 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 		until: "something that CAN move the persona is measured across; a compaction cannot",
 	},
 
-	// K3's extension point, which is the one thing a contributor outside this package has
-	// to be able to name.
+	// `TOOL_POINT` came off with C6, and this test went red on its own for holding an
+	// exemption that had stopped being true, the same way it did for `identityGuard`.
 	//
-	// Exempt rather than deleted, and the difference from the usual rule is the direction
-	// of the dependency. An export with no caller is normally a mistake; this one has no
-	// caller BY DESIGN today, because the inversion means the core stops importing
-	// contributors and starts being imported by them, and the first contributor that is
-	// not a built-in has not been written. Unexporting it would delete the mechanism to
-	// satisfy a counter.
-	{
-		name: "TOOL_POINT",
-		until: "something outside `core` contributes a tool; K4 and K5 are what bring one",
-	},
+	// Its `until` said "something outside `core` contributes a tool", and what landed is
+	// half of that: the first contributor is `runner-for.ts`, which is inside `core` but
+	// outside the module that assembles the catalogue. That distinction is the one the
+	// point exists for. `mounted.ts` still knows nothing about delegation, and it could
+	// not: a tool that hands work down needs a way to START a run, which no tool has and
+	// none should. So the door was used for exactly what it was built for, by the first
+	// caller that could not have been written any other way.
 
 	// The session writer and its derived index are GONE. E11 asked for one of two
 	// answers and this is the other one: deleted, with the reasoning written on
@@ -279,7 +276,12 @@ function reaches(source: string): Set<string> {
  * the thing that says so out loud.
  */
 const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
-	{ pkg: "core", departure: 170 },
+	// 170 until C6 mounted delegation on 2026-09-08. Four of the study's exports found
+	// their first caller (`delegate`, `scopeStatement`, `ledgerForChild` and
+	// `delegationAuthor`), and the fifth number is this gate catching me: the new module
+	// exported its own formatter, which nothing outside it needed, and the count only
+	// fell by three until it stopped being exported.
+	{ pkg: "core", departure: 166 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the
