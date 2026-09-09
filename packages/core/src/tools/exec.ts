@@ -130,6 +130,16 @@ export interface FileResult {
   bytes?: number;
   content?: string;
   error?: string;
+  /**
+   * C4/C5: this file is bytes, and `content` is a sentence ABOUT it rather than it.
+   *
+   * A flag and not a sentence to match on, which is the difference between two halves
+   * that agree and two halves that agree today. `find_in_files` has to skip these, and
+   * the first version of it recognised them by looking for the words "is not a text
+   * file" inside the answer: a string shared by two modules with nothing keeping them
+   * the same is the shape of bug this codebase spent a morning removing elsewhere.
+   */
+  binary?: boolean;
 }
 
 function abs(path: string, policy: Policy): string {
@@ -293,6 +303,8 @@ export function readFileSafe(path: string, policy: Policy): FileResult {
       return {
         ok: true,
         path: p,
+        binary: true,
+        bytes: raw.length,
         content:
           `${p} is not a text file (${raw.length} bytes). Nothing here reads binary content, ` +
           "so its bytes are not shown rather than shown as damaged text.",

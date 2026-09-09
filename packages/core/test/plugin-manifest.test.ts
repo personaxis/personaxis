@@ -211,7 +211,15 @@ describe("the built-ins come through the same door", () => {
 		const named = builtinManifest().contributes.tools ?? [];
 
 		expect(named.map((tool) => tool.name).sort()).toEqual(
-			["edit_file", "finish", "list_dir", "read_file", "run_command", "write_file"].sort(),
+			[
+				"edit_file",
+				"find_in_files",
+				"finish",
+				"list_dir",
+				"read_file",
+				"run_command",
+				"write_file",
+			].sort(),
 		);
 		expect(named.find((tool) => tool.name === "read_file")?.requires).toEqual(["tools.read"]);
 		// `finish` needs nothing, and absent is the honest way to say so.

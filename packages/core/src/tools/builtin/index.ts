@@ -9,6 +9,7 @@ import type { ToolSpec } from "../registry.js";
 import { runCommandTool } from "./run-command.js";
 import { readFileTool } from "./read-file.js";
 import { listDirTool } from "./list-dir.js";
+import { findInFilesTool } from "./find-in-files.js";
 import { writeFileTool } from "./write-file.js";
 import { editFileTool } from "./edit-file.js";
 import { finishTool } from "./finish.js";
@@ -17,6 +18,9 @@ export const BUILTIN_TOOLS: ToolSpec[] = [
   runCommandTool,
   readFileTool,
   listDirTool,
+  // C5: after the two reads it sits between, because the order here is the order
+  // the model is shown and a catalogue that reshuffles moves the prompt prefix.
+  findInFilesTool,
   writeFileTool,
   editFileTool,
   finishTool,

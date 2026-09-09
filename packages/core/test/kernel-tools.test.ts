@@ -76,6 +76,7 @@ describe("what a bench offers", () => {
 		expect(bench.tools.map((tool) => tool.name)).toEqual([
 			"read_file",
 			"list_dir",
+			"find_in_files",
 			"write_file",
 			"edit_file",
 			"run_command",

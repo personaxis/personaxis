@@ -20,6 +20,10 @@ const EXPECTED: Array<{ name: string; category: ToolCategory; isReadOnly: boolea
   { name: "run_command", category: "shell", isReadOnly: false },
   { name: "read_file", category: "fs", isReadOnly: true },
   { name: "list_dir", category: "fs", isReadOnly: true },
+  // C5: a read of many files at once, so it sits with the reads and carries their
+  // permission. Added here in the same commit that added the tool, because this list
+  // is what stops a catalogue changing shape without anybody deciding.
+  { name: "find_in_files", category: "fs", isReadOnly: true },
   { name: "write_file", category: "fs", isReadOnly: false },
   { name: "edit_file", category: "fs", isReadOnly: false },
   { name: "finish", category: "meta", isReadOnly: true },

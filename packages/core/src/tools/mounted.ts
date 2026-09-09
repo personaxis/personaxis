@@ -41,6 +41,7 @@ import {
 import { editFileTool } from "./builtin/edit-file.js";
 import { finishTool } from "./builtin/finish.js";
 import { listDirTool } from "./builtin/list-dir.js";
+import { findInFilesTool } from "./builtin/find-in-files.js";
 import { readFileTool } from "./builtin/read-file.js";
 import { runCommandTool } from "./builtin/run-command.js";
 import { writeFileTool } from "./builtin/write-file.js";
@@ -90,6 +91,8 @@ export const TOOL_PERMISSIONS = {
 const ENVELOPES: Readonly<Record<string, readonly ActionClass[]>> = {
 	read_file: [],
 	list_dir: [],
+	// C5: reading, in bulk. It writes nothing and reaches nothing outside the folder.
+	find_in_files: [],
 	write_file: ["external_write"],
 	edit_file: ["external_write"],
 	run_command: [
@@ -118,6 +121,10 @@ function declaredTool(tool: ToolSpec): ToolSpec {
 const NEEDED: ReadonlyArray<{ tool: ToolSpec; permission?: PermissionKey }> = [
 	{ tool: readFileTool, permission: TOOL_PERMISSIONS.readFiles },
 	{ tool: listDirTool, permission: TOOL_PERMISSIONS.readFiles },
+	// C5: the same permission the two reads need, because that is what it is: a read
+	// of many files at once. A persona allowed to open a file one at a time and not
+	// allowed to ask which ones contain a word would be a distinction nobody meant.
+	{ tool: findInFilesTool, permission: TOOL_PERMISSIONS.readFiles },
 	{ tool: writeFileTool, permission: TOOL_PERMISSIONS.writeFiles },
 	{ tool: editFileTool, permission: TOOL_PERMISSIONS.writeFiles },
 	{ tool: runCommandTool, permission: TOOL_PERMISSIONS.runCommands },

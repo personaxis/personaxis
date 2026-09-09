@@ -194,6 +194,7 @@ describe("the built-in tools now go through it", () => {
 		expect(bench.tools.map((tool) => tool.name)).toEqual([
 			"read_file",
 			"list_dir",
+			"find_in_files",
 			"write_file",
 			"edit_file",
 			"run_command",
@@ -205,7 +206,14 @@ describe("the built-in tools now go through it", () => {
 		const kernel = new Kernel();
 		const bench = mountBuiltins(kernel, grantedPermissions([TOOL_PERMISSIONS.readFiles]));
 
-		expect(bench.tools.map((tool) => tool.name)).toEqual(["read_file", "list_dir", "finish"]);
+		expect(bench.tools.map((tool) => tool.name)).toEqual([
+			"read_file",
+			"list_dir",
+			// C5: it needs `tools.read` like the two above it, so a persona that keeps
+			// reading keeps searching.
+			"find_in_files",
+			"finish",
+		]);
 	});
 
 	it("reads the catalogue from the point, not from a list the module keeps", () => {

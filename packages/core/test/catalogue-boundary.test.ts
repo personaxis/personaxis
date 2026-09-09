@@ -156,6 +156,7 @@ describe("what the catalogue looks like when nobody refreshes", () => {
 		expect(names(bench)).toEqual([
 			"read_file",
 			"list_dir",
+			"find_in_files",
 			"write_file",
 			"edit_file",
 			"run_command",
@@ -173,6 +174,7 @@ describe("what the catalogue looks like when nobody refreshes", () => {
 		expect(names(bench)).toEqual([
 			"read_file",
 			"list_dir",
+			"find_in_files",
 			"write_file",
 			"edit_file",
 			"run_command",
