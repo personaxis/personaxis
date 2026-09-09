@@ -39,3 +39,8 @@ docs/security/
 
 # Coverage reports (the floor lives in vitest.floor.ts, the output does not)
 coverage/
+
+# Session presence files. The engine writes these BESIDE a persona, so anything that
+# runs the server against a path inside the repo leaves them here. They are runtime
+# state of one process, never source.
+presence/

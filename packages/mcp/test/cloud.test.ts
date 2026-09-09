@@ -10,6 +10,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { buildServer } from "../src/index.js";
 import {
@@ -91,7 +94,15 @@ describe("without an account key", () => {
 	it("leaves every local tool working, which is the whole point of degrading", async () => {
 		// The failure the ADR names: the old client threw at STARTUP, so a missing key
 		// took the sixteen tools that need no account down with it.
-		const said = await client.callTool({ name: "persona_compiled", arguments: { persona: "nope.md" } });
+		//
+		// The persona path is inside a temp directory, and that is not cosmetic: the
+		// engine writes a `presence/` file BESIDE whatever persona it is asked about,
+		// so a relative name here made the server drop session files into the package
+		// itself, and three of them reached a commit before this was noticed.
+		const said = await client.callTool({
+			name: "persona_compiled",
+			arguments: { persona: join(mkdtempSync(join(tmpdir(), "pxs-mcp-cloud-")), "nope.md") },
+		});
 
 		// It fails because that persona does not exist, which is a different failure
 		// from the server never having started.
