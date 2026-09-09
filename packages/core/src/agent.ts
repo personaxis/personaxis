@@ -145,7 +145,26 @@ function fromToolGate(verdict: CommandVerdict): GuardOutcome {
 }
 
 export type ApprovalDecision = "approve" | "deny" | "always";
-export type OnApproval = (call: ToolCall, verdict: CommandVerdict) => Promise<ApprovalDecision>;
+
+/**
+ * What an approval handler answers, and why when it can say.
+ *
+ * C6b: the bare decision was the whole answer, and the runtime filled in the rest by
+ * assuming. A denial was written down as `user denied` and shown to the model as
+ * `denied by user` on EVERY path, including the ones where no user exists: an SDK
+ * embedding, a daemon, and now a delegated sub-task, which refuses deterministically
+ * BY RULE and never asks anybody. A record that names a person who was never consulted
+ * is the same failure as a session ending attributed to a persona that was cut off
+ * mid-sentence.
+ *
+ * A plain decision still answers, so no caller had to change. What a caller can now do
+ * is say who decided, and the two that have a real person say so.
+ */
+export type ApprovalAnswer =
+	| ApprovalDecision
+	| { readonly decision: ApprovalDecision; readonly reason: string };
+
+export type OnApproval = (call: ToolCall, verdict: CommandVerdict) => Promise<ApprovalAnswer>;
 
 export interface AgentOptions {
   /** LLM endpoint/model for tool-calling (required, no offline agent). */
@@ -1299,12 +1318,22 @@ export class PersonaAgent {
             interceptor.recordBlocked(call.name, "deny", decisionReason);
             output = `denied by policy: ${decisionReason}`;
           } else if (consented.decision === "ask") {
-            const decision = this.opts.onApproval ? await this.opts.onApproval(call, verdict) : "deny";
+            // C6b: who refused, in their own words when they gave any. Absent a
+            // handler there is nobody to ask at all, which is a different sentence
+            // from somebody saying no, and the record now tells them apart.
+            const answered: ApprovalAnswer = this.opts.onApproval
+              ? await this.opts.onApproval(call, verdict)
+              : { decision: "deny", reason: "this run has nobody to ask, so an approval is a refusal" };
+            const decision = typeof answered === "string" ? answered : answered.decision;
+            const refusal =
+              typeof answered === "string"
+                ? "the approval handler refused it"
+                : answered.reason;
             if (decision === "deny") {
               deniedCount++;
               noteFail(call);
-              interceptor.recordBlocked(call.name, "ask", "user denied");
-              output = "denied by user";
+              interceptor.recordBlocked(call.name, "ask", refusal);
+              output = `denied: ${refusal}`;
             } else {
               if (decision === "always") this.policy.allow.push(escapeRegExp(firstArg(call)));
               const r = await clock.time("tool", () => interceptor.run(tool, call));

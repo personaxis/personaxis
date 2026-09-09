@@ -124,6 +124,64 @@ describe("PersonaAgent (governed task execution)", () => {
     expect(existsSync(join(dir, "out.txt"))).toBe(false); // denied → not written
   });
 
+  it("tells the model WHO refused, not that a user did", async () => {
+    // C6b. Every refusal on this path was written down as `user denied` and shown to
+    // the model as `denied by user`, including the paths where no user exists: an SDK
+    // embedding, a daemon, and a delegated sub-task, which refuses by rule and asks
+    // nobody. A record that names a person who was never consulted is the same fault
+    // as an ending attributed to a persona that was cut off mid-sentence.
+    const sent: string[] = [];
+    const capturing = ((async (url: string, init?: { body?: string }) => {
+      if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      if (init?.body) sent.push(init.body);
+      const step = sent.length === 1
+        ? { id: "c1", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "o.txt", content: "x" }) } }
+        : { id: "c2", type: "function", function: { name: "finish", arguments: JSON.stringify({ summary: "stopped" }) } };
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "", tool_calls: [step] } }] }) };
+    }) as unknown) as typeof fetch;
+
+    const agent = new PersonaAgent({
+      llm: llm(capturing),
+      policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
+      onApproval: async () => ({ decision: "deny", reason: "a delegated sub-task cannot ask" }),
+    });
+    await agent.run("write a file");
+
+    // The refusal reaches the model on the request AFTER the one it was refused on.
+    expect(sent.at(-1)).toContain("a delegated sub-task cannot ask");
+    expect(sent.at(-1)).not.toContain("denied by user");
+
+    // And in the forensic log, which is the half that matters more: the model is
+    // told once, the log is what somebody reads afterwards to ask who decided.
+    // Found by a negative control coming back GREEN: putting `user denied` back into
+    // the log left every test passing, because nothing looked here.
+    const blocked = agent.forensic.filter((entry) => entry.decision === "ask");
+    expect(blocked.map((entry) => entry.reason)).toEqual(["a delegated sub-task cannot ask"]);
+  });
+
+  it("says there was nobody to ask when there was no handler at all", async () => {
+    // A different sentence from somebody saying no, and the two used to be one.
+    const sent: string[] = [];
+    const capturing = ((async (url: string, init?: { body?: string }) => {
+      if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      if (init?.body) sent.push(init.body);
+      const step = sent.length === 1
+        ? { id: "c1", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "o.txt", content: "x" }) } }
+        : { id: "c2", type: "function", function: { name: "finish", arguments: JSON.stringify({ summary: "stopped" }) } };
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "", tool_calls: [step] } }] }) };
+    }) as unknown) as typeof fetch;
+
+    const agent = new PersonaAgent({
+      llm: llm(capturing),
+      policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
+    });
+    await agent.run("write a file");
+
+    expect(sent.at(-1)).toContain("nobody to ask");
+  });
+
   it("executes an approved write end-to-end", async () => {
     const agent = new PersonaAgent({
       llm: llm(scriptedFetch([

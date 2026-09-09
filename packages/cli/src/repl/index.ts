@@ -416,11 +416,19 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   const perms = loadMergedConfig().permissions ?? {};
   ctx.approve = async (call) => {
     // Persistent permissions (V2-F3.B9): consult config allow/deny before asking.
+    //
+    // C6b: each refusal says who made it. A configured rule and a person typing N are
+    // different decisions, and the record used to write both down as "user denied",
+    // which is only true of one of them.
     const decision = matchPermission(call.name, callDetail(call.args), perms);
-    if (decision === "deny") return "deny";
+    if (decision === "deny") {
+      return { decision: "deny", reason: "a permission rule in this machine's config refuses it" };
+    }
     if (decision === "allow") return "always";
     const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`)).trim().toLowerCase();
-    return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
+    if (ans === "y" || ans === "yes") return "approve";
+    if (ans === "a" || ans === "always") return "always";
+    return { decision: "deny", reason: "the person at this keyboard was asked and said no" };
   };
   // FASE 7 P2, the app breathes the math: the loop's events drive the gauge,
   // the crossing moment, the drift view, and full-screen suspensions.

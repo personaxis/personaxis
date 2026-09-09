@@ -15,7 +15,7 @@ import type {
   LoopEvent,
   ToolCall,
   CommandVerdict,
-  ApprovalDecision,
+  ApprovalAnswer,
   ContextMeter,
   ChatMessage,
 } from "@personaxis/core";
@@ -40,7 +40,7 @@ export interface Ctx {
   mode: string;
   out: (text: string, role?: LineRole) => void;
   postureIndex: number;
-  approve: (call: ToolCall, v: CommandVerdict) => Promise<ApprovalDecision>;
+  approve: (call: ToolCall, v: CommandVerdict) => Promise<ApprovalAnswer>;
   /**
    * Ask the user for a line of text, from inside a view.
    *

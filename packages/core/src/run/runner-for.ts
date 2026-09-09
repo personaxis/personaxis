@@ -183,7 +183,16 @@ export function subTaskSession(
 		// lands on: an `ask` verdict resolves to a denial, deterministically, so
 		// widening stays a decision on the parent's side rather than a prompt in front
 		// of whoever happens to be at the keyboard when it fires.
-		onApproval: async () => "deny",
+		//
+		// C6b: with the reason, because the reference's measured failure was a child
+		// blocked in a way nothing could see. A bare denial here would have been
+		// written down as a person refusing, in a run where nobody was asked.
+		onApproval: async () => ({
+			decision: "deny" as const,
+			reason:
+				"a delegated sub-task cannot ask: widening its scope is its parent's decision, " +
+				"so this ends with the limitation reported rather than queued",
+		}),
 		// The scope, told as runtime context and never as system prompt. Measured by the
 		// reference: the same facts in a system prompt stopped the model attempting
 		// anything at all, five turns of twelve ending with no tool call.

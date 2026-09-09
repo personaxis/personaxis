@@ -156,10 +156,17 @@ describe("the session a sub-task runs under", () => {
 		return result.scope;
 	})();
 
-	it("refuses every approval, deterministically", async () => {
-		const child = subTaskSession({}, scope, "you are confined");
+	it("refuses every approval, deterministically, and says who refused", async () => {
+		// C6b. A bare `deny` was the whole answer once, and the runtime wrote it down
+		// as a person refusing, in a run where nobody was ever asked.
+		const answered = await subTaskSession({}, scope, "you are confined").onApproval?.(
+			{} as never,
+			{} as never,
+		);
 
-		expect(await child.onApproval?.({} as never, {} as never)).toBe("deny");
+		expect(answered).toMatchObject({ decision: "deny" });
+		expect(typeof answered === "object" && answered.reason).toContain("cannot ask");
+		expect(typeof answered === "object" && answered.reason).toContain("parent's decision");
 	});
 
 	it("carries the scope as a runtime note, not as a system prompt", () => {

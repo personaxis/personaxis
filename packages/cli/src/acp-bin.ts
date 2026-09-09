@@ -103,7 +103,13 @@ async function openPersona(cwd: string): Promise<PersonaSession> {
 							String(verdict?.reason ?? ""),
 						))
 							? "approve"
-							: "deny",
+							: {
+									decision: "deny" as const,
+									// C6b: named, because this refusal has a person behind it and
+									// the record used to credit "the user" on every path, including
+									// the ones where nobody was asked at all.
+									reason: "the person driving this editor was asked and said no",
+								},
 					// The record is written here, on this machine, whoever is driving.
 					observer: run.recordingTurns({
 						personaPath: assembled.personaPath,
