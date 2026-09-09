@@ -17,13 +17,14 @@
  * the main driver of correct tool/argument selection by host models.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import { z } from "zod";
 import type { ProvenanceSource } from "@personaxis/core";
 import * as svc from "./service.js";
+import * as cloud from "./cloud.js";
 
 function ok(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
@@ -326,7 +327,128 @@ export function buildServer(opts: ServerOptions = {}): McpServer {
     },
   );
 
+  mountCloudTools(server);
+
   return server;
+}
+
+/**
+ * R9: the four that talk to the hosted registry.
+ *
+ * Mounted unconditionally and answering with where to get a key when there is none.
+ * The alternative, offering them only when a key is present, was rejected for the
+ * reason the two-axis gate gives everywhere else: a tool that is absent for an unknown
+ * reason and a tool that does not exist look identical to a model, and a person
+ * debugging "why can't it search the registry" would have nothing to read.
+ */
+function mountCloudTools(server: McpServer): void {
+  const withCloud = async <T>(run: (cfg: cloud.CloudConfig) => Promise<T>) => {
+    const cfg = cloud.cloudConfig();
+    if (!cfg) return { content: [{ type: "text" as const, text: cloud.NO_KEY_MESSAGE }] };
+    try {
+      return ok(await run(cfg));
+    } catch (e) {
+      // An API error carries a status and a code worth passing on: "404 NOT_FOUND"
+      // sends somebody to check the slug, and a bare "Error" sends them nowhere.
+      return fail(
+        e instanceof cloud.CloudApiError
+          ? new Error(`Personaxis API ${e.status} ${e.code}: ${e.message}`)
+          : e,
+      );
+    }
+  };
+
+  server.tool(
+    "personas_search",
+    "Search the hosted Personaxis registry for personas somebody published. Returns slug, name, description and latest version. Needs an account key.",
+    cloud.cloudArgs.search,
+    async ({ query, category, limit }) =>
+      withCloud((cfg) =>
+        cloud.listPersonas(cfg, {
+          ...(query === undefined ? {} : { search: query }),
+          ...(category === undefined ? {} : { category }),
+          ...(limit === undefined ? {} : { limit }),
+        }),
+      ),
+  );
+
+  server.tool(
+    "personas_fetch",
+    "Fetch one published persona from the hosted registry by slug: its spec, its version and its changelog. Needs an account key.",
+    cloud.cloudArgs.fetch,
+    async ({ slug }) => withCloud((cfg) => cloud.fetchPersona(cfg, slug)),
+  );
+
+  server.tool(
+    "personas_apply",
+    "Fetch a published persona and return it wrapped around a task, ready to use as a system prompt. Operational blocks are stripped: what comes back is identity, never governance. Needs an account key.",
+    cloud.cloudArgs.apply,
+    async ({ slug, task }) => {
+      const cfg = cloud.cloudConfig();
+      if (!cfg) return { content: [{ type: "text" as const, text: cloud.NO_KEY_MESSAGE }] };
+      try {
+        const persona = await cloud.fetchPersona(cfg, slug);
+        const spec = cloud.stripOperationalBlocks(persona.spec?.content ?? "(no spec content)");
+        // Text and not JSON, because this one is meant to be READ by a model as a
+        // prompt rather than parsed. `ok()` would wrap a prompt in quotes and escapes.
+        return {
+          content: [
+            { type: "text" as const, text: cloud.renderApplyBlock(persona.displayName, spec, task) },
+          ],
+        };
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "runtime_evaluate",
+    "Judge a response against a published persona's assertions and return what passed and what did not. Needs an account key.",
+    cloud.cloudArgs.evaluate,
+    async ({ slug, response, role }) =>
+      withCloud((cfg) =>
+        cloud.evaluateAgainstPersona(cfg, {
+          personaSlug: slug,
+          response,
+          ...(role === undefined ? {} : { role }),
+        }),
+      ),
+  );
+
+  // The resource, which came across with the four rather than being left behind.
+  //
+  // It is a second way to reach `personas_fetch`, and that is the point: a host like
+  // Claude Desktop shows resources in a panel a person browses, which is a different
+  // act from a model deciding to call a tool. Dropping it in the move would have been
+  // a capability disappearing quietly during what was announced as a relocation, and
+  // the documentation would have gone on describing it.
+  server.registerResource(
+    "persona",
+    new ResourceTemplate("personaxis://personas/{slug}", { list: undefined }),
+    {
+      title: "A published persona's spec",
+      description: "The identity document of a persona in the hosted registry, by slug.",
+      mimeType: "text/markdown",
+    },
+    async (uri, { slug }) => {
+      const cfg = cloud.cloudConfig();
+      if (!cfg) return { contents: [{ uri: uri.href, text: cloud.NO_KEY_MESSAGE }] };
+
+      const persona = await cloud.fetchPersona(cfg, String(slug));
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "text/markdown",
+            // Stripped, for the same reason `personas_apply` strips: what a host
+            // shows a person as "the persona" is identity, never governance.
+            text: cloud.stripOperationalBlocks(persona.spec?.content ?? ""),
+          },
+        ],
+      };
+    },
+  );
 }
 
 async function main(): Promise<void> {
