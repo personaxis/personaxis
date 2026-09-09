@@ -327,6 +327,65 @@ describe("exec primitives", () => {
     expect(e.error).toMatch(/not present/);
   });
 
+  it("C4: refuses an ambiguous edit rather than picking one", () => {
+    // This replaced the FIRST occurrence and reported `edited`, so a find text that
+    // appeared twice was a coin flip nobody was told about: the model asked to change
+    // one thing, changed another, and believed the file was fixed.
+    writeFileSync(join(dir, "twice.ts"), 'const a = "x";\nconst b = "x";\n');
+    const e = executeFileEdit("twice.ts", '"x"', '"y"', policy());
+
+    expect(e.ok).toBe(false);
+    expect(e.error).toContain("appears 2 times");
+    expect(e.error).toContain("no change made");
+    // Refused means untouched, which is the half worth asserting: an "ambiguous"
+    // error over a file that was edited anyway would be worse than no check.
+    expect(readFileSync(join(dir, "twice.ts"), "utf-8")).toBe('const a = "x";\nconst b = "x";\n');
+  });
+
+  it("C4: says what it changed, and where", () => {
+    writeFileSync(join(dir, "diff.ts"), "one\ntwo\nthree\n");
+    const e = executeFileEdit("diff.ts", "two", "TWO", policy());
+
+    expect(e.ok).toBe(true);
+    expect(e.content).toContain("at line 2");
+    expect(e.content).toContain("- two");
+    expect(e.content).toContain("+ TWO");
+  });
+
+  it("C4: refuses to edit a file that is not text", () => {
+    // MEASURED on 2026-09-08: reading these bytes as UTF-8 and writing the string back
+    // turned 24 bytes into 40 different ones, and the tool reported `edited`.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x0d, 0xff, 0xfe]);
+    writeFileSync(join(dir, "image.png"), png);
+    const e = executeFileEdit("image.png", "PNG", "x", policy());
+
+    expect(e.ok).toBe(false);
+    expect(e.error).toContain("not a text file");
+    expect(readFileSync(join(dir, "image.png")).equals(png)).toBe(true);
+  });
+
+  it("C4: answers about a binary instead of handing back damaged text", () => {
+    // Eight of its twenty-four characters came back as replacement characters, and
+    // nothing in that string says "this is an image": the model pays tokens for
+    // mojibake it cannot recognise as mojibake.
+    writeFileSync(join(dir, "blob.bin"), Buffer.from([0x01, 0x00, 0x02, 0xff]));
+    const r = readFileSafe("blob.bin", policy());
+
+    expect(r.ok).toBe(true);
+    expect(r.content).toContain("not a text file");
+    expect(r.content).toContain("4 bytes");
+    expect(r.content).not.toContain("�");
+  });
+
+  it("C4: still reads a text file with accents, which is not a binary", () => {
+    // The control on the detector itself. A rule that called every non-ASCII file
+    // binary would be worse than none: most of what this product writes has accents
+    // in it.
+    writeFileSync(join(dir, "prosa.md"), "camión, ñandú, façade\n", "utf-8");
+
+    expect(readFileSafe("prosa.md", policy()).content).toBe("camión, ñandú, façade\n");
+  });
+
   it("executeCommand captures stdout and exit code (mocked spawn)", async () => {
     const fakeSpawn = (() => {
       const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };

@@ -8,7 +8,10 @@ export const editFileTool = defineTool({
   category: "fs",
   isReadOnly: false,
   isConcurrencySafe: false,
-  description: "Replace the first occurrence of `find` with `replace` in an existing file.",
+  description:
+    "Replace `find` with `replace` in an existing file. The find text must appear exactly " +
+    "once: include enough surrounding lines to name one place, or this refuses rather than " +
+    "guessing which one you meant. Returns the change it made.",
   parameters: {
     type: "object",
     additionalProperties: false,
@@ -18,6 +21,9 @@ export const editFileTool = defineTool({
   gate: (args, policy) => evaluateFileWrite(args.path, policy),
   execute: async (args, policy) => {
     const r = executeFileEdit(args.path, args.find, args.replace, policy);
-    return r.ok ? `edited ${r.path}` : `error: ${r.error}`;
+    // What changed, not just that something did. An edit that reported only its path
+    // could not be told apart from one that landed somewhere else that happened to
+    // match, which is the failure the ambiguity check upstream now refuses outright.
+    return r.ok ? `edited ${r.path}\n${r.content ?? ""}`.trimEnd() : `error: ${r.error}`;
   },
 });

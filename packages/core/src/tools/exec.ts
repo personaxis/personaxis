@@ -153,6 +153,33 @@ function absRead(path: string, policy: Policy): string {
   return first;
 }
 
+/**
+ * C4: how much of a file is inspected before deciding it is not text.
+ *
+ * Eight thousand bytes, which is git's own rule and is worth borrowing rather than
+ * inventing: it is long enough that a text file with a long licence header is not
+ * mistaken for binary, and short enough to be free on a large file.
+ */
+const BINARY_SNIFF_BYTES = 8_000;
+
+/**
+ * Is this file bytes rather than text?
+ *
+ * A NUL in the head, which is git's test and the only cheap one that does not have
+ * false positives on real text: UTF-8 never encodes a zero byte inside a character,
+ * so a NUL means the file is not UTF-8 text at all.
+ *
+ * MEASURED on 2026-09-08, which is why this exists. A 24-byte PNG read as UTF-8 came
+ * back as 24 characters of which **eight were replacement characters**: the model was
+ * handed mojibake with nothing to say it was mojibake, and paid tokens for it. Worse
+ * on the write side: reading those bytes and writing the string back turned 24 bytes
+ * into 40, different ones, so `edit_file` on an image silently corrupted it and
+ * reported `edited`.
+ */
+function looksBinary(bytes: Buffer): boolean {
+	return bytes.subarray(0, BINARY_SNIFF_BYTES).includes(0);
+}
+
 /** Overwrite/create a file with content (parent dirs created). */
 export function executeFileWrite(path: string, content: string, policy: Policy): FileResult {
   try {
@@ -165,26 +192,114 @@ export function executeFileWrite(path: string, content: string, policy: Policy):
   }
 }
 
-/** Replace the first occurrence of `find` with `replace` in an existing file. */
+/**
+ * Replace ONE occurrence of `find` with `replace` in an existing file.
+ *
+ * C4, and three of its rules are corrections rather than features.
+ *
+ * **An ambiguous edit is refused, not resolved.** This replaced the FIRST occurrence
+ * and said `edited`, so a `find` that appeared twice was a coin flip the model was
+ * never told about: it asked to change one thing and changed a different one, in a
+ * file it then believed it had fixed. Refusing costs a round trip and asks for more
+ * context, which is the thing that makes the next attempt unambiguous.
+ *
+ * **A binary is refused before it is read as text.** See `looksBinary`: a read and a
+ * write through a UTF-8 string does not round-trip, so this used to corrupt an image
+ * and report success.
+ *
+ * **What changed comes back.** `edited <path>` was the whole answer, so neither the
+ * model nor a person watching could tell an edit that landed where it was meant from
+ * one that landed somewhere else that happened to match.
+ */
 export function executeFileEdit(path: string, find: string, replace: string, policy: Policy): FileResult {
   try {
     const p = absRead(path, policy);
     if (!existsSync(p)) return { ok: false, path: p, error: "file not found" };
-    const orig = readFileSync(p, "utf-8");
-    if (!orig.includes(find)) return { ok: false, path: p, error: "find text not present (no change made)" };
+
+    const raw = readFileSync(p);
+    if (looksBinary(raw)) {
+      return {
+        ok: false,
+        path: p,
+        error: `this is not a text file (${raw.length} bytes), and editing it as text would corrupt it`,
+      };
+    }
+
+    const orig = raw.toString("utf-8");
+    const occurrences = find === "" ? 0 : orig.split(find).length - 1;
+    if (occurrences === 0) return { ok: false, path: p, error: "find text not present (no change made)" };
+    if (occurrences > 1) {
+      return {
+        ok: false,
+        path: p,
+        error:
+          `the find text appears ${occurrences} times, so which one to change is ambiguous ` +
+          "(no change made). Include enough surrounding lines to name exactly one.",
+      };
+    }
+
     writeFileSync(p, orig.replace(find, replace), "utf-8");
-    return { ok: true, path: p };
+    return { ok: true, path: p, content: describeEdit(orig, find, replace) };
   } catch (e) {
     return { ok: false, path, error: (e as Error).message };
   }
 }
 
-/** Read a file's contents (truncated to MAX_OUTPUT). */
+/**
+ * The change, as the few lines it touched.
+ *
+ * A diff and not the file: handing back the whole file after every edit would spend
+ * the context the edit was made to save, and a model that has just written a line does
+ * not need to be shown the other four hundred.
+ *
+ * Line numbers are the file's own, so what comes back can be checked against what the
+ * model read. Bounded, because a `replace` can be a page: past the ceiling it says how
+ * much it cut rather than cutting silently.
+ */
+function describeEdit(before: string, find: string, replace: string): string {
+  const at = before.indexOf(find);
+  const line = before.slice(0, at).split("\n").length;
+
+  const shown = (text: string): string => {
+    const lines = text.split("\n");
+    if (lines.length <= DIFF_LINES) return text;
+    return `${lines.slice(0, DIFF_LINES).join("\n")}\n…[${lines.length - DIFF_LINES} more line(s)]`;
+  };
+
+  return [`at line ${line}:`, `- ${shown(find).split("\n").join("\n- ")}`, `+ ${shown(replace).split("\n").join("\n+ ")}`].join(
+    "\n",
+  );
+}
+
+/** How many lines of each side of a change come back. Enough to recognise it, not enough to be the file. */
+const DIFF_LINES = 12;
+
+/**
+ * Read a file's contents (truncated to MAX_OUTPUT).
+ *
+ * C4: a file that is not text comes back as an ANSWER rather than as its own bytes
+ * mangled into characters. It is the same call `nearby.ts` makes about a missing file:
+ * "there is nothing here I can read" is a fact the model can act on, and mojibake is a
+ * fact it cannot even recognise. The size is given because it is what somebody decides
+ * with: a 40 MB archive and a 300-byte icon need different next moves.
+ */
 export function readFileSafe(path: string, policy: Policy): FileResult {
   try {
     const p = absRead(path, policy);
     if (!existsSync(p)) return { ok: false, path: p, error: "file not found" };
-    let content = readFileSync(p, "utf-8");
+
+    const raw = readFileSync(p);
+    if (looksBinary(raw)) {
+      return {
+        ok: true,
+        path: p,
+        content:
+          `${p} is not a text file (${raw.length} bytes). Nothing here reads binary content, ` +
+          "so its bytes are not shown rather than shown as damaged text.",
+      };
+    }
+
+    let content = raw.toString("utf-8");
     if (content.length > MAX_OUTPUT) content = content.slice(0, MAX_OUTPUT) + "\n…[truncated]";
     return { ok: true, path: p, content };
   } catch (e) {
