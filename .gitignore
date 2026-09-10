@@ -13,6 +13,10 @@ packages/spec/src/generated/
 .codex/
 .agents/
 .cursor/
+# El manifiesto que escribe `npx skills add`. Vive en la raiz, junto a las carpetas de
+# arriba, y es del mismo tipo: herramientas de quien desarrolla, no del motor que se
+# publica. Esta repo es publica, asi que lo que entra aqui lo lee cualquiera.
+skills-lock.json
 # Anchored to the root as `.personaxis/*`, which does not cover a package. A test
 # whose path resolves from the working directory writes into whichever one it ran
 # from, and one did: `packages/cli/.personaxis/mcp-approvals.json` reached a commit.
