@@ -55,6 +55,58 @@ describe("ToolOutputStore", () => {
     expect(store.grep("out-9", "x")).toContain("no stored output");
   });
 
+  it("never stores a window of a stored output again, which used to loop until the step ran out", () => {
+    // Found 2026-09-11 in the E52 bench: read_output(out-1, limit 200) returned the whole
+    // file, which crossed the threshold and was stored as out-2, which was read the same way,
+    // 19 times in one step, and the step failed without writing anything.
+    const store = new ToolOutputStore();
+    const review = Array.from({ length: 90 }, (_, i) => `line ${i}: ${"the refund amount is not validated ".repeat(2)}`).join("\n");
+    expect(review.length).toBeGreaterThan(OFFLOAD_THRESHOLD);
+    expect(store.offload("read_file", review).handle).toBe("out-1");
+    const window = store.slice("out-1", 0, 200);
+    // The window fits, so it would not be stored...
+    expect(window.length).toBeLessThan(OFFLOAD_THRESHOLD);
+    // ...and it says where to go on from.
+    expect(window).toMatch(/remain; call again with offset \d+/);
+    // Even a window that did not fit is never stored under a new handle.
+    expect(store.offload("read_output", review).offloaded).toBe(false);
+    expect(store.offload("grep_output", review).offloaded).toBe(false);
+    expect(store.size).toBe(1);
+  });
+
+  it("pages through a stored output to its end, each window fitting", () => {
+    const store = new ToolOutputStore();
+    const text = Array.from({ length: 300 }, (_, i) => `row ${i} ${"x".repeat(60)}`).join("\n");
+    store.offload("run_command", text);
+    let offset = 0;
+    let seen = 0;
+    for (let guard = 0; guard < 50; guard++) {
+      const w = store.slice("out-1", offset, 1000);
+      expect(w.length).toBeLessThan(OFFLOAD_THRESHOLD);
+      const next = /call again with offset (\d+)/.exec(w);
+      seen += w.split("\n").filter((l) => l.startsWith("row ")).length;
+      if (!next) break;
+      offset = Number(next[1]);
+    }
+    expect(seen).toBe(300);
+  });
+
+  it("cuts a single line longer than the budget instead of sending it whole", () => {
+    const store = new ToolOutputStore();
+    store.offload("run_command", "y".repeat(OFFLOAD_THRESHOLD * 3));
+    const w = store.slice("out-1", 0, 1);
+    expect(w.length).toBeLessThan(OFFLOAD_THRESHOLD);
+    expect(w).toContain("line cut at");
+  });
+
+  it("keeps a search under the threshold too", () => {
+    const store = new ToolOutputStore();
+    store.offload("run_command", Array.from({ length: 400 }, (_, i) => `ERROR ${i} ${"z".repeat(80)}`).join("\n"));
+    const hits = store.grep("out-1", "ERROR");
+    expect(hits.length).toBeLessThan(OFFLOAD_THRESHOLD);
+    expect(hits).toContain("narrow the pattern");
+  });
+
   it("gives deterministic sequential handles per store", () => {
     const store = new ToolOutputStore();
     const big = "x".repeat(OFFLOAD_THRESHOLD + 1);

@@ -267,10 +267,13 @@ describe("a run that repeats without getting anywhere", () => {
 								{
 									message: {
 										content: "",
+										// Varied, and that is the point: since E52 the same call succeeding
+										// again right after itself is a stall, so eight identical listings
+										// no longer count as getting somewhere. Eight different ones do.
 										tool_calls: Array.from({ length: 8 }, (_, index) => ({
 											id: `ok${index}`,
 											type: "function",
-											function: { name: "list_dir", arguments: '{"path":"."}' },
+											function: { name: "list_dir", arguments: JSON.stringify({ path: `.${"/.".repeat(index)}` }) },
 										})),
 									},
 								},
@@ -354,5 +357,40 @@ describe("a run that is getting somewhere", () => {
 
 		expect(result.budget.stoppedBy).not.toBe("loop_breaker");
 		expect(agent.lastMessages?.some((message) => message.content.includes("Loop check"))).toBeFalsy();
+	});
+});
+
+describe("a run that repeats a call that already worked", () => {
+	it("is stopped for making no progress, instead of spending its whole budget (E52)", async () => {
+		// Found 2026-09-11 in the E52 bench: a model rewrote the same file with the same content
+		// every 45 seconds for fifteen minutes, and every write counted as work, so nothing
+		// stopped it. The same call succeeding again right after itself changes nothing.
+		const same = JSON.stringify({ path: "review.md", content: "The change can ship with the following fixes." });
+		const agent = new PersonaAgent({
+			llm: {
+				endpoint: "http://x/v1",
+				model: "m",
+				fetchImpl: (async (url: string) => {
+					if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+					return {
+						ok: true,
+						status: 200,
+						headers: new Headers({ "content-type": "application/json" }),
+						json: async () => ({
+							choices: [{ message: { content: "", tool_calls: [{ id: `w${Math.random()}`, type: "function", function: { name: "write_file", arguments: same } }] } }],
+						}),
+					};
+				}) as unknown as typeof fetch,
+			},
+			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "danger-full-access", approval: "never" },
+			capability: persona(),
+			maxSteps: 40,
+		});
+
+		const result = await agent.run("write the review");
+
+		expect(result.budget.stoppedBy).toBe("loop_breaker");
+		// Well before the budget: one write that worked, a stall of six, and the stop.
+		expect(result.steps).toBeLessThan(12);
 	});
 });

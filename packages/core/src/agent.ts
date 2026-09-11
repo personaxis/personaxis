@@ -727,6 +727,8 @@ export class PersonaAgent {
     // J.4: stops a runaway repetition/stall (threat T11). Additive: only acts on abnormal
     // loops, so healthy runs never trip it.
     const breaker = new LoopBreaker();
+    // The last call that succeeded, across steps, so a success that only repeats it is a stall.
+    let lastSucceeded: string | null = null;
     // K.03/K.10: one interceptor per run is the single path from an approved decision to the
     // OS (execution + untrusted-output scan + PostToolUse), and it seals every call, approved
     // or blocked, into an append-only hash-chained forensic audit.
@@ -1420,9 +1422,17 @@ export class PersonaAgent {
           // several calls now reaches the threshold sooner than the same work spread
           // over several steps. That is measured in `loop-breaker-guard.test.ts` rather
           // than asserted here.
+          // The same call succeeding again right after itself changed nothing, so it is not
+          // progress. Found 2026-09-11 in the E52 bench: a model rewrote the same file with the
+          // same content every 45 seconds for fifteen minutes, and every write counted as work,
+          // so the breaker never saw a stall. Counted as a stall and not as a failure, because it
+          // did not fail: the breaker's own words, "no progress", are what happened.
+          const signature = toolSignature(call.name, call.args);
+          const sameAsLast = callProduced && signature === lastSucceeded;
+          if (callProduced) lastSucceeded = signature;
           breaker.record({
-            producedWork: callProduced,
-            failingSignature: callProduced ? null : toolSignature(call.name, call.args),
+            producedWork: callProduced && !sameAsLast,
+            failingSignature: callProduced ? null : signature,
           });
         }
 
