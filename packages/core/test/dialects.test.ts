@@ -91,10 +91,19 @@ describe("the families, one sample each", () => {
 		});
 	});
 
+	it("improvised: what a model writes when nothing applied its chat template", () => {
+		// Verbatim from Llama-3.1-8B on 2026-09-10, one tool described in prose and no
+		// `tools` field. Its own `<|python_tag|>` dialect does not match this, because
+		// nothing inserted the tag. Recorded fully in `dialects-improvised.test.ts`.
+		const reading = readDialect('get_charge({"id": "ch_42"})', ["get_charge"]);
+		expect(reading?.dialect).toBe("improvised");
+		expect(reading?.calls[0]).toMatchObject({ name: "get_charge", args: { id: "ch_42" } });
+	});
+
 	it("has a sample for every dialect it ships, so none goes untested", () => {
 		// The gate on this file. A dialect added without a sample is a parser nobody
 		// has run against real output, which is the thing this test exists to prevent.
-		const tested = new Set(["hermes", "mistral", "llama", "deepseek", "xml"]);
+		const tested = new Set(["hermes", "mistral", "llama", "deepseek", "xml", "improvised"]);
 		expect(DIALECTS.map((dialect) => dialect.name).filter((name) => !tested.has(name))).toEqual([]);
 	});
 });

@@ -172,6 +172,58 @@ export const DIALECTS: readonly Dialect[] = [
 			return found;
 		},
 	},
+	{
+		// IMPROVISED, and read LAST because it has no marker at all.
+		//
+		// The five above are what a model emits when the server applied its chat template
+		// with a tools section: the template inserts the special token, and the token is
+		// what makes those patterns safe to match. This one covers the case where nothing
+		// applied a template and the tool was described in plain prose in the system
+		// message, which is what a simple integration does and what a server missing that
+		// model's template does.
+		//
+		// Measured 2026-09-10 against the HuggingFace router, one tool described in prose,
+		// no `tools` field. **Four of four open models tried to call it, and zero of the
+		// five dialects above matched any of them:**
+		//
+		//   gemma-3-4b-it        call_get_charge({"id": "ch_42"})
+		//   Llama-3.1-8B         get_charge({"id": "ch_42"})
+		//   Apertus-v1.5-8B      call get_charge with {"id": "ch_42"}
+		//   granite-4.2-8b       {"id": "ch_42"}
+		//
+		// The last one names no tool at all and is deliberately NOT read: a call whose name
+		// had to be guessed is a call nobody asked for. The other three are read.
+		//
+		// A pattern this loose is only safe because `readDialect` requires `offered` and
+		// drops every name that is not on it. Without that this would run whatever a model
+		// happened to write in parentheses.
+		name: "improvised",
+		looksLike: /(?:^|\W)(?:call\s+)?[a-z_][a-z0-9_]*\s*(?:\(|\s+with\s+)\s*\{/i,
+		read: (text) => {
+			const found: ReadCall[] = [];
+			const seen = new Set<string>();
+			// `name({...})`, optionally prefixed by `call_` or `call `, and `call name with {...}`.
+			const patterns = [
+				/(?:^|\W)(?:call[_\s]+)?([a-z_][a-z0-9_]*)\s*\(\s*(\{[\s\S]*?\})\s*\)/gi,
+				/(?:^|\W)call\s+([a-z_][a-z0-9_]*)\s+with\s+(\{[\s\S]*?\})/gi,
+			];
+			for (const re of patterns) {
+				for (const call of text.matchAll(re)) {
+					const span = call[0];
+					if (seen.has(span)) continue;
+					seen.add(span);
+					try {
+						found.push({ name: call[1]!, args: JSON.parse(call[2]!) as Record<string, unknown>, span });
+					} catch {
+						// Unparseable arguments are not a call. Reading the name and inventing
+						// empty arguments would run the tool with nothing in it, which is worse
+						// than not reading it.
+					}
+				}
+			}
+			return found;
+		},
+	},
 ];
 
 /** What a dialect read out of one reply. */
