@@ -52,11 +52,11 @@
  * happens when an agent edits the persona's own declaration, which is a product
  * question and not this file's to answer.
  *
- * **A shell redirect.** `actionClassesFor` gives a shell command a writing class for
- * reaching the network, publishing, or removing files, and not for `>`. So a write
- * performed by redirect earns no writing class and is not seen here. That is a gap
- * in the shared translation table rather than in this axis, and it is shared by
- * every policy rule written against a class.
+ * **A shell redirect.** This axis reads named arguments, and a command's text is not
+ * one, so `echo {...} > .personaxis/state.json` is not weighed here. It used to earn
+ * no writing class at all; since E26 it earns `external_write`, and since E63 the
+ * compiled policy refuses any write whose command names `.personaxis`, under every
+ * posture, precisely because nothing reads what such a write would put there.
  *
  * **Values a write removes.** The effects are the coordinates the new document
  * names. A document that drops one changes the persona too, and `examine` has

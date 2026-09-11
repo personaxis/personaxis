@@ -103,13 +103,19 @@ With those, posture by posture:
 | a file write or delete inside the workspace | deny | approval axis | allow |
 | an ordinary shell delete (`rm notes.md`) | deny | approval axis | allow |
 | a destructive shell delete (`rm -rf`, `Remove-Item -Recurse`), or one that names a place outside | deny | deny | allow |
-| a write outside, or into `.git` / `.personaxis` | deny | deny | allow |
+| a write outside the workspace | deny | deny | allow |
+| a write or delete into `.git` or `.personaxis`, by a file tool or named in a shell command | deny | deny | deny |
+| a persona's `state.json`, written by a file tool | deny | deny | allow, and the identity axis judges the values |
 | a fetch to an allowlisted host, or a tool that only reads a remote | approval axis | approval axis | allow |
 
 Before any posture, the compiled gate applies the deny list, the hard limits, the egress allowlist
-and the prohibited behaviours, and a declared gate for an action class turns a verdict into a
-question for a person. So a host that is not on the allowlist is refused even under
-`danger-full-access`.
+and the prohibited behaviours, then refuses a write into the protected folders, and a declared gate
+for an action class turns a verdict into a question for a person. So a host that is not on the
+allowlist is refused even under `danger-full-access`, and so is a write into `.git` or
+`.personaxis`, as the tool gate has always refused it. The one write into `.personaxis` that full
+access lets through is a persona's `state.json` written by a file tool, because the identity axis
+reads the values it would put there and refuses one outside the persona's envelopes. Written by
+shell, nothing reads it, so it is refused.
 
 **Where the compiled gate is stricter than the tool gate, on purpose.** A shell command is never
 inside, so under `workspace-write` a write by redirection and a shell command that reaches the
@@ -124,12 +130,13 @@ can change directory in one call and delete in the next, and the second call alo
 **Where it is looser, and why that holds.** Under `read-only` it refuses what writes, deletes or
 spends, and not a call that only reaches out: `network_egress` is also what every MCP tool declares,
 and a read-only persona has to be able to read a remote through a tool that says it only reads.
-Where that data may go is the egress allowlist's question, and it comes first. Under
-`danger-full-access` the compiled gate does not
-refuse a write into `.personaxis`, because a write to the persona's state is judged by the identity
-axis against the persona's declared envelopes. The persona document itself is not judged by that
-axis, so through the daemon a host running with full access can rewrite it. The tool gate still
-refuses it in our own loop.
+Where that data may go is the egress allowlist's question, and it comes first.
+
+**What the protected folders do not stop.** They are matched on the paths a file tool names and
+on the text of a shell command. A command that reaches `.git` without naming it (a `git config`
+that sets a hook path, a script that writes the file itself) is not seen by this table; under a
+posture that lets arbitrary commands run, that is the operating system's sandbox to stop, where
+there is one.
 
 The posture table is pinned in `packages/core/test/gate-postures.test.ts`, and the daemon's side,
 including the protected folders once writes inside were allowed, in

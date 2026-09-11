@@ -230,6 +230,22 @@ export interface CallFacts {
 	 * (`rm -r`, `rm -f`, `Remove-Item -Recurse`, `rd /s`), a disk format, `shred`. Needs no root.
 	 */
 	readonly destructive: boolean;
+	/**
+	 * E63: the call names a place under `.git` or `.personaxis`, which no posture opens for a
+	 * write. One exception, a persona's `state.json` named by a file tool, because the identity
+	 * axis reads the values that write would put there and judges them against the envelopes. A
+	 * shell command is matched on its text, with no exception, because nothing reads what it writes.
+	 */
+	readonly touchesProtected: boolean;
+}
+
+/** A path segment `.git` or `.personaxis` in a command's text, however it is quoted or joined. */
+const PROTECTED_IN_COMMAND = /(?:^|[\s'"=/\\:])\.(?:personaxis|git)(?:[\\/]|$|[\s'";|&)])/i;
+
+/** A persona's state file, the one write into `.personaxis` another guard reads and judges. */
+function isStateFile(target: string): boolean {
+	const segments = target.split(/[\\/]+/).map((s) => s.toLowerCase());
+	return segments.at(-1) === "state.json" && segments.includes(".personaxis") && !segments.includes(".git");
 }
 
 /**
@@ -296,14 +312,17 @@ export function callFacts(tool: string, argsText: string, workspaceRoot?: string
 		// calls can `cd ..` in one call and delete in the next, and this sees the second alone.
 		const command = commandOf(record, argsText);
 		const destructive = isDestructiveCommand(command);
-		if (!workspaceRoot) return { knownRead, withinWorkspace: false, namesOutside: false, destructive };
+		// Text, so it needs no root. It only sees a folder the command names: a shell can reach
+		// one without naming it, which the OS sandbox and not this table is there to stop.
+		const touchesProtected = PROTECTED_IN_COMMAND.test(command);
+		if (!workspaceRoot) return { knownRead, withinWorkspace: false, namesOutside: false, destructive, touchesProtected };
 		const namesOutside = commandPathTokens(command).some((tok) => climbs(tok) || pathEscapesWorkspace(tok, workspaceRoot));
 		// Never inside: what a command touches is not in its arguments.
-		return { knownRead, withinWorkspace: false, namesOutside, destructive };
+		return { knownRead, withinWorkspace: false, namesOutside, destructive, touchesProtected };
 	}
 
-	if (!workspaceRoot) return { knownRead, withinWorkspace: false, namesOutside: false, destructive: false };
-	if (!record) return { knownRead, withinWorkspace: false, namesOutside: true, destructive: false };
+	if (!workspaceRoot) return { knownRead, withinWorkspace: false, namesOutside: false, destructive: false, touchesProtected: false };
+	if (!record) return { knownRead, withinWorkspace: false, namesOutside: true, destructive: false, touchesProtected: false };
 
 	const named = [...PATH_KEYS, ...(extraKeys ?? [])].filter((key) => Object.hasOwn(record, key));
 	const from = cwd ?? workspaceRoot;
@@ -319,10 +338,16 @@ export function callFacts(tool: string, argsText: string, workspaceRoot?: string
 		return pathEscapesWorkspace(target, workspaceRoot);
 	};
 	const namesOutside = named.some(outside);
+	const touchesProtected = named.some((key) => {
+		const value = record[key];
+		if (typeof value !== "string" || value.startsWith("~")) return false;
+		const target = resolve(from, value);
+		return isProtectedUnder(target, workspaceRoot) && !isStateFile(target);
+	});
 
 	// A read with no path reads where it stands, which is inside. A write with no path
 	// could be going anywhere, and "we could not see where" is not "inside".
-	if (!knownRead && named.length === 0) return { knownRead, withinWorkspace: false, namesOutside, destructive: false };
+	if (!knownRead && named.length === 0) return { knownRead, withinWorkspace: false, namesOutside, destructive: false, touchesProtected };
 
 	const withinWorkspace =
 		!namesOutside &&
@@ -332,7 +357,7 @@ export function callFacts(tool: string, argsText: string, workspaceRoot?: string
 			const target = resolve(from, record[key] as string);
 			return knownRead || !isProtectedUnder(target, workspaceRoot);
 		});
-	return { knownRead, withinWorkspace, namesOutside, destructive: false };
+	return { knownRead, withinWorkspace, namesOutside, destructive: false, touchesProtected };
 }
 
 /** A path with a `..` segment, anywhere in it. */

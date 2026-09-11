@@ -146,6 +146,8 @@ export interface PolicyCall {
 	names_outside?: boolean;
 	/** E62: a shell command the documented classifier calls destructive, from `callFacts`. Absent is false. */
 	destructive?: boolean;
+	/** E63: the call names a place under `.git` or `.personaxis`, from `callFacts`. Absent is false. */
+	touches_protected?: boolean;
 }
 
 /** Classes that write, for the sandbox check. */
@@ -338,6 +340,21 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 				reason: policy.prohibited_behaviors[i],
 			};
 		}
+	}
+
+	// 4b. The persona's governed folders. E63: a write or a delete into `.git` or `.personaxis` is
+	//     refused under every posture, `danger-full-access` included, and neither the allow list nor
+	//     a gate opens it, which is how the tool gate has always treated them (`evaluateFileWrite`).
+	//     Through the daemon only this gate judges a host's call, and under full access it let a
+	//     host rewrite the persona governing it, or a git hook. The persona's `state.json`, named by
+	//     a file tool, is the exception `callFacts` makes: the identity axis reads that write.
+	if (call.touches_protected === true && call.action_classes.some((cls) => cls === "external_write" || cls === "file_delete")) {
+		return {
+			verdict: "deny",
+			rule: "protected_path",
+			reason:
+				"the call writes into .git or .personaxis, which no posture opens: .git runs code on the next git command, and .personaxis is the persona's governed identity, changed through its own edits",
+		};
 	}
 
 	// 5. Sandbox posture.

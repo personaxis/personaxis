@@ -132,6 +132,8 @@ export function cachedPolicyGuard(
 				// did not refuse, so `rm -rf` ran under `never`.
 				names_outside: call.namesOutside,
 				destructive: call.destructive,
+				// E63: without this, a host under full access could rewrite the persona governing it.
+				touches_protected: call.touchesProtected,
 			});
 			saw?.(decision);
 			switch (decision.verdict) {

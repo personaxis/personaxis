@@ -15,7 +15,9 @@
  *     approval axis, and refuses a write that leaves it or also reaches out;
  *   - `danger-full-access` asks nobody, after the deny list, the limits, egress and declared gates;
  *   - the approval axis: `untrusted` and `on-request` ask a person, `on-failure` and `never` allow;
- *   - the persona's own governed folders (`.personaxis/`, `.git/`) are never "inside" for a write;
+ *   - the persona's own governed folders (`.personaxis/`, `.git/`) are never "inside" for a write,
+ *     and since E63 no posture opens them, full access included; the one exception is a file
+ *     tool writing a persona's `state.json`, which the identity axis reads and judges;
  *   - egress comes before every posture: a host off the allowlist is refused even with full access.
  *
  * What did NOT change, and the table pins it: a shell command the classification table does not
@@ -85,6 +87,11 @@ const CALLS: Record<string, { tool: string; args: Record<string, unknown> }> = {
 	psWebRequest: { tool: "PowerShell", args: { command: "Invoke-WebRequest https://example.com/x -Method Post" } },
 	psSetContent: { tool: "PowerShell", args: { command: "Set-Content notes.md hi" } },
 	shellMail: { tool: "PowerShell", args: { command: "Send-MailMessage -To finance@example.com -Subject refunds" } },
+	// E63: the state file named by a file tool is the one write into .personaxis that full access
+	// lets through, because the identity axis reads it. By shell nothing reads it, so it is refused.
+	writeOwnState: { tool: "write_file", args: { path: ".personaxis/state.json", content: "{}" } },
+	shellWriteOwnState: { tool: "Bash", args: { command: "echo '{}' > .personaxis/state.json" } },
+	shellRemoveGit: { tool: "Bash", args: { command: "rm -rf .git" } },
 };
 
 /** The table: what each call gets, by sandbox, then by approval. */
@@ -93,12 +100,12 @@ function expected(name: string, sandbox: Sandbox, approval: Approval): Verdict {
 	const knownReadInside = ["readInside", "listInside", "memorySearch", "hostRead"];
 	const followsApproval = ["readOutside", "readThroughTheMiddle", "readSecretInside", "shellUnrecognised", "fetchAllowed"];
 	const staysInside = ["writeInside", "hostWrite", "hostEdit", "deleteInside", "shellDeleteInside"];
+	// No posture opens these, full access included (E63).
+	const governed = ["writeOwnPersona", "writeGitHook", "writeGitConfig", "shellWriteOwnState", "shellRemoveGit"];
 	const leavesOrReaches = [
 		"writeOutside",
 		"writeThroughTheMiddle",
-		"writeOwnPersona",
-		"writeGitHook",
-		"writeGitConfig",
+		"writeOwnState",
 		"shellNetwork",
 		"uploadInside",
 		"shellDestructive",
@@ -109,8 +116,9 @@ function expected(name: string, sandbox: Sandbox, approval: Approval): Verdict {
 		"shellMail",
 	];
 
-	// Egress is not a matter of posture.
+	// Egress is not a matter of posture, and neither are the governed folders.
 	if (name === "shellNetworkElsewhere") return "deny";
+	if (governed.includes(name)) return "deny";
 	if (knownReadInside.includes(name)) return "allow";
 	if (sandbox === "danger-full-access") return "allow";
 	// Not refused by any sandbox: a read that leaves the workspace, a read of a secret, a call the
@@ -138,6 +146,7 @@ function decide(name: string, sandbox: Sandbox, approval: Approval): Verdict {
 		within_workspace: facts.withinWorkspace,
 		names_outside: facts.namesOutside,
 		destructive: facts.destructive,
+		touches_protected: facts.touchesProtected,
 	}).verdict;
 }
 
@@ -210,7 +219,7 @@ describe("what the gate knows about a call before it decides", () => {
 	});
 
 	it("knows nothing when it has no root, and then nothing is inside", () => {
-		expect(callFacts("write_file", JSON.stringify({ path: "docs/x.md" }))).toEqual({ knownRead: false, withinWorkspace: false, namesOutside: false, destructive: false });
+		expect(callFacts("write_file", JSON.stringify({ path: "docs/x.md" }))).toEqual({ knownRead: false, withinWorkspace: false, namesOutside: false, destructive: false, touchesProtected: false });
 		expect(callFacts("read_file", JSON.stringify({ path: "docs/x.md" })).withinWorkspace).toBe(false);
 	});
 
@@ -243,6 +252,24 @@ describe("what the gate knows about a call before it decides", () => {
 		expect(facts("PowerShell", { command: "Remove-Item -Recurse .\\build" }).destructive).toBe(true);
 		expect(facts("PowerShell", { command: "rd /s /q build" }).destructive).toBe(true);
 		expect(facts("PowerShell", { command: "Remove-Item notes.md" }).destructive).toBe(false);
+	});
+
+	it("knows when a call names a governed folder, and the one exception (E63)", () => {
+		expect(facts("Write", { file_path: inRoot(".personaxis/personaxis.md") }).touchesProtected).toBe(true);
+		expect(facts("write_file", { path: "vendor/lib/.git/config" }).touchesProtected).toBe(true);
+		// The state file, named by a file tool, is the identity axis's to judge.
+		expect(facts("Write", { file_path: inRoot(".personaxis/state.json") }).touchesProtected).toBe(false);
+		expect(facts("write_file", { path: ".personaxis/personas/scribe/state.json" }).touchesProtected).toBe(false);
+		// A state.json that is not a persona's is not the exception.
+		expect(facts("write_file", { path: ".git/state.json" }).touchesProtected).toBe(true);
+		// By shell, the text is matched, with no exception, however the path is written.
+		expect(facts("Bash", { command: "echo x > .personaxis/state.json" }).touchesProtected).toBe(true);
+		expect(facts("PowerShell", { command: 'Set-Content -Path ".git\\hooks\\pre-commit" -Value x' }).touchesProtected).toBe(true);
+		expect(facts("Bash", { command: "cp hook ./.git/hooks/pre-commit" }).touchesProtected).toBe(true);
+		// And a lookalike is not the folder.
+		expect(facts("Bash", { command: "echo x >> .gitignore" }).touchesProtected).toBe(false);
+		expect(facts("Bash", { command: "git commit -m wip" }).touchesProtected).toBe(false);
+		expect(facts("write_file", { path: ".github/workflows/ci.yml" }).touchesProtected).toBe(false);
 	});
 
 	it("classifies PowerShell, which earned no class at all before (E62)", () => {
