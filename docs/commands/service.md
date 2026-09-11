@@ -18,7 +18,7 @@ personaxis service run contract-review --check    # check the composition only; 
 | Arg / flag | Meaning |
 |---|---|
 | `<address>` | The service, read from `.personaxis/services/<address>.json`. The file name is the address. |
-| `--check` | Report every problem in the composition (cycles, missing references, gaps in the numbering, nesting depth) and exit. Runs no model. |
+| `--check` | Report every problem in the composition (cycles, missing references, gaps in the numbering, nesting depth, declared files outside the folder) and exit. Runs no model. |
 
 Exit code is `0` when the service completed, `1` when it failed or is waiting for an approval, and
 `2` when the service file does not exist.
@@ -34,7 +34,7 @@ Same shape as a service template in the workspace, plus `serviceRef`:
   "steps": [
     { "position": 1, "personaRef": "reader", "instruction": "List every clause that moves risk to the client." },
     { "position": 2, "serviceRef": "due-diligence", "instruction": "Check the counterparty." },
-    { "position": 3, "personaRef": "counsel", "instruction": "Write the memo for the client.", "requiresApproval": true },
+    { "position": 3, "personaRef": "counsel", "instruction": "Write the memo for the client.", "requiresApproval": true, "produces": ["memo/client.md"] },
     { "position": 4, "personaRef": "sender", "instruction": "Send the memo." }
   ]
 }
@@ -44,6 +44,8 @@ Same shape as a service template in the workspace, plus `serviceRef`:
 - Each step has **exactly one** of `personaRef` (a persona at `.personaxis/personas/<ref>/personaxis.md`)
   or `serviceRef` (another file in `.personaxis/services/`).
 - `requiresApproval` stops the line after that step until a person answers.
+- `produces` lists the files the step leaves, relative to the folder the service runs in. A step
+  that declares them is checked on them when it ends; see below.
 - `leadPersonaRef` names who answers for the whole service. It is recorded; the local runner does
   not yet let the lead amend the line, which the workspace does.
 
@@ -72,7 +74,13 @@ Same shape as a service template in the workspace, plus `serviceRef`:
    checking. Nested deeper, the brief carries the outer job too; past 12 000 characters the
    outermost context is trimmed first, with a line saying so, because the step right above is
    what the sub-service is doing.
-4. What decides the next step is the same pure function the workspace uses, moved into the engine
+4. **A step that declares `produces` is checked on its files.** When it ends completed, every
+   declared file has to be in the folder and written at or after the moment the step began. One
+   that is missing, or was already there and not written again, fails the step, and the step's
+   reason names it, whatever the agent said. The agent is told this in its instruction. A step done
+   by a service is checked when that service has finished, and its sub-service's steps are told
+   what the parent expects. What was found is recorded with its size.
+5. What decides the next step is the same pure function the workspace uses, moved into the engine
    unchanged: in order, one at a time, stopping for approvals.
 
 ## How a sub-service ends, inside its parent
@@ -95,6 +103,8 @@ end a parent that still had work.
 - **Depth.** Services nest at most 8 levels deep.
 - **A step with both references, or neither**, and **a reference to a service that is not
   installed.** Every one of these is reported, not just the first.
+- **A declared file that is absolute or climbs out of the folder** (`/etc/x`, `~/x`, `../x`).
+  A check that passed there would prove something about the wrong folder.
 
 ## Approvals
 
@@ -108,7 +118,8 @@ the step asked for, opened by the thing it was there to watch.
 ## The journal
 
 Every run writes `.personaxis/services/runs/<address>-<timestamp>.json`: the result, every step with
-its path from the root service, who did it, how it ended and what it left, and what each persona
+its path from the root service, who did it, how it ended, what it left, the declared files it wrote
+with their sizes (`produced`, the same `{ path, bytes }` the workspace uses), and what each persona
 step cost and what its tools did. The cost is split into the **work** (the whole working turn,
 every model call in it) and the **governed tick**, each with its time, its model calls and their
 prompt and completion tokens, so the price of governing is a number of its own; the run prints
@@ -133,19 +144,19 @@ note, because the next step would read it as the work.
 
 Said so it is not assumed:
 
-- **A step cannot write a file inside the project under the default posture.** Measured in a real
-  run on 2026-09-11: the compiled policy classes every file write as reaching outside the
-  workspace, so under `workspace-write` it refuses a write to `docs/refunds.md`; and under
-  `approval: on-request`, the default, it asks a person for every call, reads included, which an
-  unattended run refuses. Both contradict [the sandbox postures](../architecture/sandbox.md) as
-  documented, and the fix is open. Until then a persona that must work unattended can read with
-  `approval: never`, and cannot write without `danger-full-access`.
-- **A step does not declare what it delivers.** A persona that answers "I could not write the
-  file" completes its step, and the next step builds on nothing. Declaring the files a step must
-  leave, and failing the step when they are missing, is the next piece.
+- **An unattended step writes only under `danger-full-access`.** The compiled policy now lets a
+  write inside the project through under `workspace-write` and runs a known read under every
+  posture, as [the sandbox postures](../architecture/sandbox.md) say. But the
+  [consent matrix](../security/04-consent-hitl-matrix.md) still asks a person before any plain file
+  write unless the posture is `danger-full-access`, whatever the approval posture says, and with no
+  terminal that ask is a refusal. Measured in a real run on 2026-09-11: the reviewer read four files
+  without asking anyone, and the writer's two writes were refused. Whether `approval: never` and
+  `on-failure` should silence that ask is an open decision. A step that declares `produces` at
+  least fails honestly when this happens, instead of completing on the agent's word.
 - **A failed or waiting run is not resumed.** Run it again; the journal of the earlier run stays.
-- **The workspace cannot hold a sub-service yet.** Its steps are one persona each; `serviceRef`
-  exists here first.
+- **The workspace cannot hold a sub-service or a declared file yet.** Its steps are one persona
+  each and declare nothing; `serviceRef` and `produces` exist here first. The workspace already
+  names the files a step wrote, from its record, in the same `{ path, bytes }` shape.
 
 ## Not to be confused with
 

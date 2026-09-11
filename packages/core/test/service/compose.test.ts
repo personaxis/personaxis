@@ -345,3 +345,163 @@ describe("the control of the control", () => {
 		// mapping in runSubService turns it into "completed" instead.
 	});
 });
+
+describe("a step that declares the files it leaves (E60)", () => {
+	/**
+	 * A folder in memory: a persona "writes" by putting a file in it, stamped with the time it did.
+	 * The check reads the same folder, so what it finds is what the step did and not what it said.
+	 */
+	function folder(existing: Record<string, number> = {}) {
+		const files = new Map<string, { bytes: number; at: number }>(
+			Object.entries(existing).map(([path, bytes]) => [path, { bytes, at: 0 }]),
+		);
+		const checked: Array<{ paths: readonly string[]; since: number }> = [];
+		const check: NonNullable<ServicePorts["checkProduced"]> = async ({ paths, since }) => {
+			checked.push({ paths, since });
+			const produced = paths.flatMap((path) => {
+				const file = files.get(path);
+				return file && file.at >= since ? [{ path, bytes: file.bytes }] : [];
+			});
+			return { produced, missing: paths.filter((path) => !produced.some((f) => f.path === path)) };
+		};
+		const write = (path: string, bytes: number) => files.set(path, { bytes, at: Date.now() });
+		return { check, write, checked };
+	}
+
+	const declaring = (address: string, persona: string, produces: string[], then?: string): ServiceDef => ({
+		address,
+		name: address,
+		steps: [
+			{ position: 1, personaRef: persona, instruction: "write the reference", produces },
+			...(then ? [{ position: 2, personaRef: then, instruction: "build on it" }] : []),
+		],
+	});
+
+	it("fails a step that said it wrote the file and did not, and stops the line there", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"], "reviewer");
+		const fs = folder();
+		const { p, calls } = ports([svc], { scribe: { outcome: "completed", summary: "saved to docs/refunds.md" } });
+		const r = await runService(svc, { ...p, checkProduced: fs.check });
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("step 1 was to write docs/refunds.md, and did not");
+		expect(calls).not.toContain("reviewer");
+		// What the agent claimed stays in the record, next to the reason that says it was not so.
+		expect(r.steps[0]).toMatchObject({ outcome: "failed", summary: "saved to docs/refunds.md" });
+	});
+
+	it("completes a step that wrote it, and records what it left in the SaaS's shape", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"], "reviewer");
+		const fs = folder();
+		const base = ports([svc], {});
+		const r = await runService(svc, {
+			...base.p,
+			checkProduced: fs.check,
+			async runPersonaStep(input) {
+				if (input.personaRef === "scribe") fs.write("docs/refunds.md", 1200);
+				return base.p.runPersonaStep(input);
+			},
+		});
+		expect(r.status).toBe("completed");
+		expect(r.steps[0]!.produced).toEqual([{ path: "docs/refunds.md", bytes: 1200 }]);
+		expect(r.steps[1]!.produced).toBeUndefined();
+	});
+
+	it("does not count a file that was already there before the step began", async () => {
+		const svc = declaring("docs", "scribe", ["docs/CHANGELOG.md"]);
+		const fs = folder({ "docs/CHANGELOG.md": 800 });
+		const { p } = ports([svc], {});
+		const r = await runService(svc, { ...p, checkProduced: fs.check });
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("docs/CHANGELOG.md");
+	});
+
+	it("names only the files that are missing", async () => {
+		const svc = declaring("docs", "scribe", ["docs/a.md", "docs/b.md"]);
+		const fs = folder();
+		const base = ports([svc], {});
+		const r = await runService(svc, {
+			...base.p,
+			checkProduced: fs.check,
+			async runPersonaStep(input) {
+				fs.write("docs/a.md", 10);
+				return base.p.runPersonaStep(input);
+			},
+		});
+		expect(r.steps[0]!.reason).toContain("was to write docs/b.md,");
+		expect(r.steps[0]!.reason).not.toContain("docs/a.md");
+		expect(r.steps[0]!.produced).toEqual([{ path: "docs/a.md", bytes: 10 }]);
+	});
+
+	it("does not check a step that already failed, which has its own reason", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const fs = folder();
+		const { p } = ports([svc], { scribe: { outcome: "failed", summary: null, reason: "the model timed out" } });
+		const r = await runService(svc, { ...p, checkProduced: fs.check });
+		expect(r.steps[0]!.reason).toBe("the model timed out");
+		expect(fs.checked).toHaveLength(0);
+	});
+
+	it("fails the step when the runner cannot check files, instead of taking the agent's word", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const { p } = ports([svc], {});
+		const r = await runService(svc, p);
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("this runner cannot check them");
+	});
+
+	it("fails the step when the check itself throws, and says so", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const { p } = ports([svc], {});
+		const r = await runService(svc, {
+			...p,
+			async checkProduced() {
+				throw new Error("EACCES");
+			},
+		});
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("the check itself failed: EACCES");
+	});
+
+	it("tells the agent what it will be checked on", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const fs = folder();
+		const { p, prompts } = ports([svc], {});
+		await runService(svc, { ...p, checkProduced: fs.check });
+		expect(prompts.scribe).toContain("the run checks that it wrote docs/refunds.md");
+	});
+
+	it("checks a step done by a whole service once that service has finished", async () => {
+		const sub = line("docs-update", { persona: "scribe" });
+		const main: ServiceDef = {
+			address: "release",
+			name: "release",
+			steps: [{ position: 1, serviceRef: "docs-update", instruction: "update the docs", produces: ["docs/refunds.md"] }],
+		};
+		const fs = folder();
+		const base = ports([main, sub], {});
+		const r = await runService(main, {
+			...base.p,
+			checkProduced: fs.check,
+			async runPersonaStep(input) {
+				fs.write("docs/refunds.md", 42);
+				return base.p.runPersonaStep(input);
+			},
+		});
+		expect(r.status).toBe("completed");
+		expect(r.steps.at(-1)).toMatchObject({ who: { service: "docs-update" }, produced: [{ path: "docs/refunds.md", bytes: 42 }] });
+		// And the sub-service's own steps were told what the parent expects of them.
+		expect(base.prompts.scribe).toContain("the run checks that it wrote docs/refunds.md");
+	});
+
+	it("refuses, before running, a declared file outside the service's folder", () => {
+		const svc: ServiceDef = {
+			address: "bad",
+			name: "bad",
+			steps: [{ position: 1, personaRef: "scribe", instruction: "x", produces: ["/etc/passwd", "../other/x.md", "~/.ssh/config", "C:\\x.md", ""] }],
+		};
+		const problems = checkComposition(svc, () => undefined);
+		expect(problems.filter((p) => p.includes("not relative"))).toHaveLength(3);
+		expect(problems.some((p) => p.includes("climbs out"))).toBe(true);
+		expect(problems.some((p) => p.includes("not a file path"))).toBe(true);
+	});
+});
