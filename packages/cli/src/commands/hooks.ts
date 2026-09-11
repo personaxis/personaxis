@@ -24,7 +24,10 @@ import yaml from "js-yaml";
 import chalk from "chalk";
 import { describeAilment, hookHealth } from "../workspace/host-adapter.js";
 
-const OBSERVE_CMD = "personaxis observe --stdin --source user";
+// E57: no `--source user`. The payload says who spoke, and a label on the command line was what
+// made the model's reply count as the owner's words. Hooks installed before still pass it, and
+// `observe` treats that label as one that can only lower the trust, never raise it.
+const OBSERVE_CMD = "personaxis observe --stdin";
 const MARKER = "personaxis observe"; // identifies OUR hook among a host's other hooks
 export const HOSTS = ["claude-code", "codex", "openclaw", "hermes"] as const;
 export type Host = (typeof HOSTS)[number];
@@ -105,7 +108,7 @@ import json
 async def handle(event_type, context):
     try:
         proc = await asyncio.create_subprocess_exec(
-            "personaxis", "observe", "--stdin", "--source", "user",
+            "personaxis", "observe", "--stdin",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
@@ -174,7 +177,7 @@ const OPENCLAW_HANDLER_TS = `import { execFile } from "node:child_process";
 export default async function handler(event: { type?: string; action?: string; context?: unknown }): Promise<void> {
   if (event?.type !== "command" || event?.action !== "stop") return;
   await new Promise<void>((resolve) => {
-    const child = execFile("personaxis", ["observe", "--stdin", "--source", "user"], () => resolve());
+    const child = execFile("personaxis", ["observe", "--stdin"], () => resolve());
     try {
       child.stdin?.end(JSON.stringify({ context: event.context ?? "" }));
     } catch {

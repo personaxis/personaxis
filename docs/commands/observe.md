@@ -18,7 +18,7 @@ personaxis observe --stdin                          # read a host-hook payload f
 | `-o, --observation <text>` | What just happened (the turn, user message, tool result, …). |
 | `--stdin` | Read the observation from a host-hook payload on stdin. |
 | `-p, --persona <path>` | Path to `personaxis.md` (default: `<cwd>/.personaxis/personaxis.md`). |
-| `-s, --source <source>` | Provenance: `user` \| `tool` \| `internal` \| `synthesis` (default `user`). |
+| `-s, --source <source>` | Provenance: `user` \| `tool` \| `internal` \| `synthesis`. With `--observation` it decides, default `user`. With `--stdin` the payload decides, and this can only lower it. |
 | `--json` | Emit the tick report + result as JSON (for programmatic hosts). |
 | `--strict` | Exit non-zero if the tick fails (default: never break the host). |
 
@@ -34,9 +34,18 @@ personaxis observe --stdin                          # read a host-hook payload f
 ## `--stdin` and the Claude Code Stop hook
 
 With `--stdin` the observation comes from a host-hook JSON payload. For Claude Code's `Stop` hook the
-payload carries a `transcript_path`; `observe` reads that JSONL and extracts the **last user +
-assistant exchange** (capped at ~1200 chars). It also accepts a `prompt`/`message` field, or raw text,
-so any host that pipes the turn on stdin works.
+payload carries a `transcript_path`; `observe` reads that JSONL and takes **the person's last
+message**, recorded with provenance `user` (capped at ~1200 chars). Codex's `last_user_message` and a
+`prompt` field are the person's too. The model's reply is not observed when the person's message is
+there, the same way the REPL observes the person's line and not the reply: a persona that appraised
+its own output would be reacting to itself. When a payload carries only the reply, a `message`, an
+event `context`, or raw text, that text is observed with provenance `internal`: it can move the
+persona's state, and it cannot justify a self-edit, which needs `user` trust.
+
+Until 2026-09-11 the last user and assistant messages were observed together as `user`, so the
+model's reply, and anything it had repeated from a tool or a pasted document, carried the owner's
+trust. Hooks installed before then pass `--source user`; with `--stdin` that label can only lower
+what the payload says, so they are covered without reinstalling.
 
 ## Never breaks the host
 
