@@ -97,7 +97,12 @@ export class LlmAppraiser implements Appraiser {
         { role: "user", content: userMsg },
       ],
       temperature: 0.4,
-      max_tokens: this.cfg.maxTokens ?? 512,
+      // 2048 and not 512, and the number is measured rather than chosen. On the HuggingFace
+      // router (2026-09-10) Qwen3.5-9B answers a one-paragraph prompt in 758 completion
+      // tokens of which most are thinking, and at 512 it returns an empty string. The old
+      // 512 predates models that think before they answer, and it is now a budget that a
+      // whole family of open models cannot finish inside.
+      max_tokens: this.cfg.maxTokens ?? 2048,
     };
 
     // Constrained decoding, most-constrained first. Endpoints accept different
@@ -142,9 +147,36 @@ export class LlmAppraiser implements Appraiser {
 
       if (res.ok) {
         const json = (await res.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
+          choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning?: string; reasoning_content?: string } }>;
         };
-        const content = json.choices?.[0]?.message?.content ?? "{}";
+        const choice = json.choices?.[0];
+        const content = choice?.message?.content ?? "";
+
+        // A BLANK answer is not an empty appraisal, and the difference is the whole bug.
+        //
+        // Measured 2026-09-10 on the HuggingFace router with Qwen3.5-9B: at max_tokens 512
+        // the model spends the entire budget thinking and returns HTTP 200 with content "".
+        // An empty string is not nullish, so `?? "{}"` never fired; JSON.parse("") threw; the
+        // prose-extraction catch found no {...}; and `parseAppraisalSignal({})` handed back a
+        // NEUTRAL signal as though the model had answered and had nothing to report.
+        //
+        // The persona then never evolves, on every tick, with no error anywhere. That is the
+        // silent local failure this file must not have: a model that could not answer has to
+        // look different from a model that answered "no change".
+        if (content.trim() === "") {
+          const reasoning = choice?.message?.reasoning ?? choice?.message?.reasoning_content;
+          lastErr =
+            choice?.finish_reason === "length"
+              ? "the model hit its token limit before writing an answer" +
+                (reasoning ? ", having spent the budget thinking" : "") +
+                "; raise maxTokens for a reasoning model"
+              : reasoning
+                ? "the model returned only its reasoning and no answer; raise maxTokens"
+                : "the model returned an empty answer";
+          // Relaxing response_format cannot conjure an answer out of an exhausted budget.
+          break;
+        }
+
         let parsed: unknown;
         try {
           parsed = JSON.parse(content);
