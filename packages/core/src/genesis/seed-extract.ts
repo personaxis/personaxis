@@ -77,6 +77,13 @@ export const SEED_JSON_SCHEMA = {
   },
 } as const;
 
+/** Words from the extractor's own instructions, which a model should never hand back as a name. */
+// Narrow on purpose. "Genesis" or "Seed" alone can be a real persona's name (a gardening
+// persona called Seed Keeper is plausible), and dropping a legitimate name is a cost too. What
+// is never legitimate is our product name, the two words together as the extractor phrased
+// them, or the word for the extractor itself.
+export const LEAKED_FRAMING = /personaxis|genesis[\s_-]*seed|\bextractor\b/i;
+
 export function buildExtractionPrompt(material: string, sourceLabel: string): string {
   return [
     "You are the Personaxis Genesis extractor. From the SOURCE MATERIAL below, extract a",
@@ -94,6 +101,9 @@ export function buildExtractionPrompt(material: string, sourceLabel: string): st
     "  (e.g. 'quick to anger, slow to forgive' implies a large moodHalfLife).",
     "- hardLimits are ABSOLUTE refusals stated or clearly implied by the material.",
     "- Do NOT include a `safety` value (the platform injects it above everything).",
+    "- `displayName` is the persona's own name as the material gives it, or a plain role name",
+    "  if it gives none. Never use a word from these instructions: not Personaxis, not Genesis,",
+    "  not seed, not extractor.",
     "",
     `SOURCE MATERIAL (${sourceLabel}):`,
     "```",
@@ -134,6 +144,13 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
 
   for (const key of ["displayName", "role", "purpose", "description", "relationshipToUser", "origin", "selfConcept", "tone", "verbosity"] as const) {
     const v = x[key];
+    // A name that repeats the extractor's own framing is the prompt leaking, not a name.
+    // Measured 2026-09-11: Qwen3-4B-Instruct named a code reviewer "Personaxis Genesis Seed:
+    // Payments Service PR Reviewer", which the compiled document would have turned into
+    // "You are Personaxis Genesis Seed...". A rule in the prompt was not enough, because a
+    // small model follows the framing it was handed over the rule it was given; so the name is
+    // checked here and dropped, and the builder falls back to the role, which is honest.
+    if (key === "displayName" && typeof v === "string" && LEAKED_FRAMING.test(v)) continue;
     if (typeof v === "string" && v.trim()) {
       (seed as Record<string, unknown>)[key] = v.trim();
       if (key === "displayName") seed.slug = v.trim();
