@@ -15,7 +15,7 @@
 import { runHooks, readHooksConfig, type HooksConfig } from "./hooks.js";
 import { EventBus } from "./events.js";
 import { DEFAULT_POLICY, effectiveApproval, type CommandVerdict, type Policy } from "./sandbox.js";
-import { FINISH_TOOL, toolByName, TOOLS, type ToolSpec } from "./tools/registry.js";
+import { FINISH_TOOL, toolByName, TOOLS, validateToolArgs, type ToolSpec } from "./tools/registry.js";
 import { activeSkillsFor, selectActiveTools, type ActiveSkill } from "./skill-activation.js";
 import { guidesFor, renderGuides, type SkillGuide } from "./skill-guide.js";
 import { describeMatches, expandActive, findTools, findToolsTool, FIND_TOOLS_TOOL } from "./tools/find-tools.js";
@@ -1214,6 +1214,27 @@ export class PersonaAgent {
             errorCount++;
             noteFail(call);
             messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: `error: unknown tool '${call.name}'` });
+            continue;
+          }
+
+          // A call that does not match its tool's schema goes back to the model as an error it
+          // can fix, before anything judges it. `validateToolArgs` said it ran before the gate
+          // and nothing called it: found 2026-09-11 in a real service run, where an `edit_file`
+          // with no `path` reached the write gate as `undefined`, the gate threw, and the whole
+          // step died as "agent error" instead of the model hearing what it got wrong.
+          // An argument too many is left alone, as it always was: the tool ignores it, and turning
+          // it into an error would cost a retry for a call that works.
+          const argProblems = validateToolArgs(tool, call.args ?? {}).filter((p) => !p.startsWith("unknown arg"));
+          if (argProblems.length > 0) {
+            errorCount++;
+            noteFail(call);
+            bus.emit({ type: "tool-result", tool: call.name, ok: false, output: argProblems.join("; ") });
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              name: call.name,
+              content: `error: this call does not match ${call.name}'s arguments: ${argProblems.join("; ")}. Call it again with them.`,
+            });
             continue;
           }
 
