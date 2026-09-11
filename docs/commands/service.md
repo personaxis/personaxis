@@ -144,15 +144,13 @@ note, because the next step would read it as the work.
 
 Said so it is not assumed:
 
-- **An unattended step writes only under `danger-full-access`.** The compiled policy now lets a
-  write inside the project through under `workspace-write` and runs a known read under every
-  posture, as [the sandbox postures](../architecture/sandbox.md) say. But the
-  [consent matrix](../security/04-consent-hitl-matrix.md) still asks a person before any plain file
-  write unless the posture is `danger-full-access`, whatever the approval posture says, and with no
-  terminal that ask is a refusal. Measured in a real run on 2026-09-11: the reviewer read four files
-  without asking anyone, and the writer's two writes were refused. Whether `approval: never` and
-  `on-failure` should silence that ask is an open decision. A step that declares `produces` at
-  least fails honestly when this happens, instead of completing on the agent's word.
+- **An unattended step asks nobody, so its persona's posture has to let it act.** A persona that
+  writes in a service needs `sandbox: workspace-write` with `approval: never` or `on-failure`: then
+  a write inside the project runs, while a write outside it, a destructive command, a call made
+  from a tainted context and anything under `.git` or `.personaxis` are still refused or asked
+  about, and with nobody at the terminal an ask is a refusal. With `on-request`, the default, every
+  write is asked about and the step cannot write. A persona that only reads works under any
+  posture, because a known read inside the project is never asked about.
 - **A failed or waiting run is not resumed.** Run it again; the journal of the earlier run stays.
 - **The workspace cannot hold a sub-service or a declared file yet.** Its steps are one persona
   each and declare nothing; `serviceRef` and `produces` exist here first. The workspace already

@@ -52,6 +52,34 @@ describe("scoreRisk", () => {
     expect(scoreRisk({ klass: K({ writesFiles: true }), sandbox: "danger-full-access" }).decision).toBe("allow");
   });
 
+  it("E61: approval never and on-failure silence the ordinary asks, and only those", () => {
+    // Measured on 2026-09-11 in a real service run: a writer with workspace-write and on-failure
+    // had both its writes asked about by this matrix, and with nobody at the terminal, refused.
+    const ordinary = [K({ writesFiles: true }), K({ network: true }), K({ writesFiles: true, network: true })];
+    for (const klass of ordinary) {
+      for (const approval of ["never", "on-failure"] as const) {
+        expect(scoreRisk({ klass, sandbox: "workspace-write", approval }).decision).toBe("allow");
+      }
+      for (const approval of ["on-request", "untrusted"] as const) {
+        expect(scoreRisk({ klass, sandbox: "workspace-write", approval }).decision).toBe("ask");
+      }
+      // No approval posture given: nothing is silenced, the answer before E61.
+      expect(scoreRisk({ klass, sandbox: "workspace-write" }).decision).toBe("ask");
+    }
+  });
+
+  it("E61: the hard asks and the hard floor do not move with the approval posture", () => {
+    for (const approval of ["never", "on-failure", "on-request", "untrusted"] as const) {
+      for (const sandbox of ["read-only", "workspace-write", "danger-full-access"] as const) {
+        expect(scoreRisk({ klass: K({ destructive: true }), sandbox, approval }).decision).toBe("ask");
+        expect(scoreRisk({ klass: K({ escapesWorkspace: true, writesFiles: true }), sandbox, approval }).decision).toBe("ask");
+        expect(scoreRisk({ klass: K({ writesFiles: true }), sandbox, approval, sensitiveData: true }).decision).toBe("ask");
+        expect(scoreRisk({ klass: K({ writesFiles: true }), sandbox, approval, taint: "suspicious" }).decision).toBe("ask");
+        expect(scoreRisk({ klass: K({ network: true }), sandbox, approval, taint: "malicious" }).decision).toBe("deny");
+      }
+    }
+  });
+
   it("sensitive-data access asks regardless of posture", () => {
     const r = scoreRisk({ klass: K(), sandbox: "danger-full-access", sensitiveData: true });
     expect(r.decision).toBe("ask");

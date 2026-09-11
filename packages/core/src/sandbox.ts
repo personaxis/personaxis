@@ -304,8 +304,11 @@ export function evaluateCommand(cmd: string, policy: Policy = DEFAULT_POLICY): C
 /** Strictness order for approval modes (stricter = later). */
 const APPROVAL_STRICTNESS: ApprovalMode[] = ["never", "on-failure", "on-request", "untrusted"];
 
-/** FR.8: resolve the approval mode for a classified command (strictest category wins). */
-function effectiveApproval(policy: Policy, klass: CommandClass): ApprovalMode {
+/**
+ * FR.8: resolve the approval mode for a classified command (strictest category wins).
+ * Exported for the consent matrix (E61), which has to read the same answer this gate reads.
+ */
+export function effectiveApproval(policy: Policy, klass: CommandClass): ApprovalMode {
   const candidates: ApprovalMode[] = [policy.approval];
   const a = policy.approvals;
   if (a) {

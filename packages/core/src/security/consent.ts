@@ -16,7 +16,7 @@
  * consume it.
  */
 
-import type { CommandClass } from "../sandbox.js";
+import type { ApprovalMode, CommandClass } from "../sandbox.js";
 
 export type ConsentDecision = "allow" | "ask" | "deny";
 export type SandboxPosture = "read-only" | "workspace-write" | "danger-full-access";
@@ -31,6 +31,16 @@ export interface RiskFactors {
   taint?: ContextTaint;
   /** True when the action reads or moves secrets/credentials (fed by K.09). */
   sensitiveData?: boolean;
+  /**
+   * The approval posture that applies to this call: the persona's, after any per-category override
+   * (`Policy.approvals`). Absent, nothing is silenced, which is the answer before this existed.
+   *
+   * E61, 2026-09-11: `never` and `on-failure` are the person saying "do not ask me about the
+   * ordinary", the same opt-in `danger-full-access` is on the sandbox axis, so they silence the soft
+   * asks too. Before this only the sandbox could, and a writer with `workspace-write` and `never`
+   * was asked about every file it wrote: in a service with nobody at the terminal, refused.
+   */
+  approval?: ApprovalMode;
 }
 
 export interface RiskAssessment {
@@ -62,9 +72,10 @@ export function maxTaint(a: ContextTaint, b: ContextTaint): ContextTaint {
  * Hard floor: a destructive or workspace-escaping action while the context is MALICIOUS-tainted is
  * the textbook indirect-injection attack (untrusted content telling the agent to delete or exfil);
  * it is DENIED outright, regardless of sandbox posture. Otherwise:
- *   - "hard ask" reasons always ask, even under danger-full-access (the user opted into low
- *     friction, not into skipping confirmation for an irreversible or tainted action);
- *   - "soft ask" reasons ask unless the posture is danger-full-access (the user accepted the risk).
+ *   - "hard ask" reasons always ask, even under danger-full-access or `approval: never` (the user
+ *     opted into low friction, not into skipping confirmation for an irreversible or tainted action);
+ *   - "soft ask" reasons ask unless the user opted out of being asked about the ordinary: the
+ *     sandbox posture is danger-full-access, or the approval posture is `never` or `on-failure`.
  */
 export function scoreRisk(f: RiskFactors): RiskAssessment {
   const reasons: string[] = [];
@@ -93,9 +104,10 @@ export function scoreRisk(f: RiskFactors): RiskAssessment {
   if (f.klass.network) { softAsk = true; score += 0.3; reasons.push("network access"); }
   if (f.klass.writesFiles) { softAsk = true; score += 0.2; reasons.push("writes files"); }
 
+  const optedOutOfOrdinaryAsks = f.sandbox === "danger-full-access" || f.approval === "never" || f.approval === "on-failure";
   let decision: ConsentDecision;
   if (hardAsk) decision = "ask";
-  else if (softAsk && f.sandbox !== "danger-full-access") decision = "ask";
+  else if (softAsk && !optedOutOfOrdinaryAsks) decision = "ask";
   else decision = "allow";
 
   if (decision === "allow" && reasons.length === 0) reasons.push("read-only / no risk factors");
