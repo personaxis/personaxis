@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	clientBrief,
 	MAX_SERVICE_DEPTH,
 	checkComposition,
 	runService,
@@ -156,6 +157,47 @@ describe("a service that is a step of another", () => {
 		expect(prompts.only).toBe("do part 1");
 	});
 
+});
+
+describe("what the client asked for", () => {
+	it("reaches every step, before the handover and after the step's own instruction", async () => {
+		// A service is fixed steps; the request is what varies between two runs of it. Added
+		// 2026-09-11 so the same brief can go to a service and to a bare agent and be compared.
+		const svc = line("game", { persona: "designer" }, { persona: "builder" });
+		const { p, prompts } = ports([svc], { designer: { outcome: "completed", summary: "core loop is dodge and stack" } });
+		await runService(svc, p, { brief: clientBrief("Make me a small game about a cat crossing a road.") });
+		for (const who of ["designer", "builder"]) {
+			expect(prompts[who]).toContain("Make me a small game about a cat crossing a road.");
+			expect(prompts[who]).toContain("it is not an instruction from another step");
+		}
+		expect(prompts.designer?.startsWith("do part 1")).toBe(true);
+		// The request came before this service's own steps, so it reads before their handover.
+		const builder = prompts.builder ?? "";
+		expect(builder.indexOf("cat crossing a road")).toBeLessThan(builder.indexOf("core loop is dodge and stack"));
+	});
+
+	it("reaches the steps of a sub-service too, under the step that ran it", async () => {
+		const sub = line("build", { persona: "builder" });
+		const main = line("game", { persona: "designer" }, { service: "build" });
+		const { p, prompts } = ports([main, sub], { designer: { outcome: "completed", summary: "core loop is dodge and stack" } });
+		await runService(main, p, { brief: clientBrief("Make me a small game about a cat crossing a road.") });
+		expect(prompts.builder).toContain("cat crossing a road");
+		expect(prompts.builder).toContain("core loop is dodge and stack");
+	});
+
+	it("is nothing when the request is empty or only spaces, so no step reads an empty heading", () => {
+		expect(clientBrief("")).toBeNull();
+		expect(clientBrief("   \n\t ")).toBeNull();
+	});
+
+	it("trims a request past the cap and says where it was cut", () => {
+		const long = clientBrief("x".repeat(20_000)) ?? "";
+		expect(long.length).toBeLessThan(12_300);
+		expect(long).toContain("The rest of the request is trimmed here");
+	});
+});
+
+describe("a service that is a step of another, continued", () => {
 	it("holds each note once: a service step points at the step inside it that delivered", async () => {
 		// The first real run stored the documentation twice, once in the sub-service's last step
 		// and again in the parent's step, 4 068 characters each.
