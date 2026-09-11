@@ -322,13 +322,26 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 	//    posture: a read-only sandbox does not stop a persona from POSTing what
 	//    it read, and a persona doing exactly what it was asked can still be
 	//    sending it somewhere a prompt injection chose.
-	const egress = checkEgressIn(subject, policy.egress_allowlist ?? []);
-	if (!egress.allowed) {
-		return {
-			verdict: "deny",
-			rule: "egress_allowlist",
-			reason: egress.reason,
-		};
+	//
+	//    Only for a call that actually reaches out. The check reads every URL in the
+	//    call's text, which is right for a fetch or a shell command, where the host is
+	//    inside the string, and wrong for everything else: a `write_file` whose CONTENT
+	//    mentions a URL sends nothing anywhere, and denying it stopped a persona writing
+	//    any document or web page that names a link. Measured on 2026-09-11: a game asked
+	//    for as one HTML file was refused with "this persona has no egress allowlist" on
+	//    every attempt, and the run burned its whole step budget retrying. Every call that
+	//    does leave the machine (fetch, browse, search, a shell that curls, a connector,
+	//    mail, chat, money) earns `network_egress` in the class table, so nothing this
+	//    protected stops being protected.
+	if (call.action_classes.includes("network_egress")) {
+		const egress = checkEgressIn(subject, policy.egress_allowlist ?? []);
+		if (!egress.allowed) {
+			return {
+				verdict: "deny",
+				rule: "egress_allowlist",
+				reason: egress.reason,
+			};
+		}
 	}
 
 	// 4. Prohibited behaviours.
