@@ -48,6 +48,25 @@ describe("skill → tool selection (J.2)", () => {
     expect(tools.length).toBe(BUILTIN_TOOLS.length);
   });
 
+  it("keeps the FULL catalog for a skill that says nothing about tools", () => {
+    // `allowed-tools` is optional in a SKILL.md, so most skills omit it. Reading the omission as a
+    // deny left a persona with one matching skill holding only `finish`, found 2026-09-11 wiring a
+    // persona's declared skills into the loop.
+    const quiet = [{ name: "game-feel", capabilities: ["game", "feel", "juice"], allowedTools: [] }];
+    const tools = selectActiveTools("make the game feel better", BUILTIN_TOOLS, quiet);
+    expect(tools.length).toBe(BUILTIN_TOOLS.length);
+  });
+
+  it("still narrows when one matching skill names tools and another does not", () => {
+    const mixed = [
+      { name: "quiet", capabilities: ["read"], allowedTools: [] },
+      { name: "fs", capabilities: ["read", "file"], allowedTools: ["read_file", "edit_file"] },
+    ];
+    const names = selectActiveTools("read a file", BUILTIN_TOOLS, mixed).map((t) => t.name);
+    expect(names).toContain("read_file");
+    expect(names).not.toContain("run_command");
+  });
+
   it("respects explicit base overrides", () => {
     const tools = selectActiveTools("read a file", BUILTIN_TOOLS, skills, { alwaysNames: ["finish", "list_dir"] });
     // list_dir forced in even though the fs skill already includes it; base is honored.
