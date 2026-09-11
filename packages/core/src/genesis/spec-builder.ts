@@ -334,7 +334,15 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
         persona: 0.2,
       },
     },
-    improvement_policy: { mode: seed.improvementMode ?? "locked" },
+    // `suggesting`, decided 2026-09-11 after measuring what `locked` did. In `locked`
+    // governance rejects every proposal the model makes, so a freshly created persona observed,
+    // appraised and proposed and never applied anything: the living loop the product sells was
+    // off by default, and nothing said so. `suggesting` turns the numeric state on, because for
+    // envelope mutations it behaves exactly like `autonomous` (applied, bounded by max_step_delta,
+    // clamped to the envelope, audited, reversible), while durable edits to the spec's prose are
+    // queued for a person instead of applied. That split is already how governance.ts separates
+    // `judge` from `governQualitative`; this only stops the default from switching both off.
+    improvement_policy: { mode: seed.improvementMode ?? "suggesting" },
     security: { prompt_injection_defense: true, memory_poisoning_defense: true },
     runtime: { memory: { use_embeddings: true, max_items: 12, retention_days_default: 365 } },
   };
