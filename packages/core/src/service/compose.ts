@@ -424,6 +424,12 @@ async function runSubService(address: string, ports: ServicePorts, ctx: RunConte
 
 	const result = await runService(sub, ports, ctx);
 	if (result.status === "waiting") return { outcome: "failed", summary: null, reason: result.reason, waitingOnPerson: true, childSteps: result.steps };
-	if (result.status === "failed") return { outcome: "failed", summary: null, reason: result.reason, childSteps: result.steps };
+	if (result.status === "failed") {
+		// The sub-service's own reason is its line's ("step 1 failed"), which on the parent's record
+		// reads as the parent's step 1. The first step that failed inside is the one that knows why.
+		const cause = result.steps.find((s) => s.outcome === "failed" && s.reason);
+		const reason = cause ? `step ${cause.position} of ${cause.serviceName} failed: ${cause.reason}` : result.reason;
+		return { outcome: "failed", summary: null, reason, childSteps: result.steps };
+	}
 	return { outcome: "completed", summary: result.summary, summaryFrom: result.summaryFrom, reason: result.reason, childSteps: result.steps };
 }
