@@ -34,6 +34,15 @@ export async function postJson(
   const fetchImpl = opts.fetchImpl ?? fetch;
   const sleep = opts.sleep ?? defaultSleep;
 
+  // A timeout gets ONE retry, not the full budget. A 429 or a 502 is a blip and retrying
+  // is right; a request that ran out of time against a model producing ~25 tokens/second is
+  // going to run out of time again, and three attempts turn one slow call into three times
+  // the wait for the same answer. Measured 2026-09-10: gemma-3-4b-it on the HuggingFace
+  // router sustains 24 to 28 tokens per second, so a full 8192-token completion needs about
+  // five minutes and no amount of retrying makes it shorter.
+  const timeoutRetries = Math.min(retries, 1);
+  let timeoutsSeen = 0;
+
   let lastError: Error | undefined;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
@@ -63,10 +72,23 @@ export async function postJson(
       const err = e as Error;
       // AbortError (timeout) and network failures are retryable; HTTP errors
       // already decided above (a thrown non-retryable Error must not loop).
-      const isTimeoutOrNetwork = err.name === "TimeoutError" || err.name === "AbortError" || err.message.includes("fetch failed");
-      if (isTimeoutOrNetwork && attempt < retries) {
+      const isTimeout = err.name === "TimeoutError" || err.name === "AbortError";
+      const isTimeoutOrNetwork = isTimeout || err.message.includes("fetch failed");
+      if (isTimeout) timeoutsSeen += 1;
+      const budget = isTimeout ? timeoutRetries : retries;
+      if (isTimeoutOrNetwork && (isTimeout ? timeoutsSeen <= budget : attempt < retries)) {
         lastError = err;
         continue;
+      }
+      if (isTimeout) {
+        // Say what ran out, and what to change. "The operation was aborted due to timeout"
+        // names the mechanism and hides the cause, which for a small open model is almost
+        // always that the answer was longer than the clock allowed.
+        throw new Error(
+          `${url} → timed out after ${timeoutMs} ms. A small open model generates at roughly ` +
+            `25 tokens/second, so a long answer needs minutes, not seconds. Raise the timeout, ` +
+            `or lower maxTokens so the answer fits the clock.`,
+        );
       }
       throw attempt > 0 && lastError && !isTimeoutOrNetwork ? err : err;
     }
