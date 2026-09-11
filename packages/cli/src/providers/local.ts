@@ -39,7 +39,10 @@ export function createLocalProvider(config: PersonaxisConfig, personaPath?: stri
   const headers: Record<string, string> = apiKey ? { authorization: `Bearer ${apiKey}` } : {};
 
   const call = async (body: Record<string, unknown>): Promise<{ text: string; model: string }> => {
-    let json: { model?: string; choices?: { message?: { content?: string } }[] };
+    let json: {
+      model?: string;
+      choices?: { finish_reason?: string; message?: { content?: string; reasoning?: string; reasoning_content?: string } }[];
+    };
     try {
       json = (await postJson(url, headers, { model, temperature: 0.2, ...body })) as typeof json;
     } catch (e) {
@@ -49,8 +52,28 @@ export function createLocalProvider(config: PersonaxisConfig, personaPath?: stri
           `"personaxis config set local.endpoint <url>".`,
       );
     }
-    const text = json.choices?.[0]?.message?.content;
-    if (!text) throw new Error(`Local provider at ${endpoint} returned no content.`);
+    const choice = json.choices?.[0];
+    const text = choice?.message?.content;
+    if (!text) {
+      // The 2026 generation of open models thinks before it answers, and the thinking is
+      // billed against the same completion budget. When the budget runs out mid-thought the
+      // server returns HTTP 200 with an EMPTY content and `finish_reason: length`, so the
+      // honest failure is "the answer never started", not "the endpoint is broken".
+      //
+      // Measured 2026-09-10 on the HuggingFace router with Qwen3.5-9B: a two-token answer
+      // ("ok") cost 254 completion tokens of reasoning, and `usage.reasoning_tokens` reported
+      // 0, so the usage block does not tell you where the budget went either. Saying this in
+      // the error is the difference between a one-line config change and an afternoon.
+      const reasoning = choice?.message?.reasoning ?? choice?.message?.reasoning_content;
+      const why =
+        choice?.finish_reason === "length"
+          ? ` The model hit its token limit before writing an answer${reasoning ? ", having spent the budget thinking" : ""}.` +
+            ` Raise max_tokens for this model: a reasoning model needs room for the thinking AND the answer.`
+          : reasoning
+            ? ` The model returned only its reasoning and no answer. Raise max_tokens, or use a model that separates the two.`
+            : "";
+      throw new Error(`Local provider at ${endpoint} returned no content.${why}`);
+    }
     return { text, model: json.model ?? model };
   };
 
