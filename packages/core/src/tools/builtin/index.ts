@@ -12,6 +12,7 @@ import { listDirTool } from "./list-dir.js";
 import { findInFilesTool } from "./find-in-files.js";
 import { writeFileTool } from "./write-file.js";
 import { editFileTool } from "./edit-file.js";
+import { checkPageTool } from "./check-page.js";
 import { finishTool } from "./finish.js";
 
 export const BUILTIN_TOOLS: ToolSpec[] = [
