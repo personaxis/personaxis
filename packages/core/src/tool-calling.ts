@@ -35,6 +35,20 @@ export interface ToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /**
+   * The arguments arrived CUT OFF and were closed to make them parse.
+   *
+   * Not the same as any other repair. A code fence, a single quote or a trailing comma are a
+   * complete call written badly, and closing them recovers what the model meant. A truncation is
+   * a call the model never finished, usually because the completion hit its token ceiling, and
+   * closing it invents an ending: for a write, the tail of the file is simply gone.
+   *
+   * Measured on 2026-09-11: a model asked for a game as one HTML file emitted 2 525 bytes ending
+   * mid-stylesheet, the repair closed the JSON, the write reported "ok, wrote 2525 bytes", and the
+   * model, told it had succeeded, sent the same truncated file seven more times until the loop
+   * breaker stopped the turn. Absent is false, so a caller that does not look behaves as before.
+   */
+  truncated?: boolean;
 }
 
 export interface TokenUsage {
@@ -254,15 +268,16 @@ async function safeText(res: Response): Promise<string> {
   }
 }
 
-function parseArgs(raw: string): Record<string, unknown> {
+function parseArgs(raw: string): { args: Record<string, unknown>; truncated: boolean } {
   try {
     const v = JSON.parse(raw || "{}");
-    return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+    return { args: v && typeof v === "object" ? (v as Record<string, unknown>) : {}, truncated: false };
   } catch {
     // FR.10 (OpenClaw port): salvage almost-JSON before giving up, a repaired
     // call saves a full model round-trip on weaker tool-callers.
     const r = repairToolArgs(raw);
-    return r.ok && r.value ? r.value : {};
+    // Whether the salvage had to INVENT an ending. See `ToolCall.truncated`.
+    return { args: r.ok && r.value ? r.value : {}, truncated: r.applied.includes("close-truncated") };
   }
 }
 
@@ -357,11 +372,15 @@ export async function requestToolCall(
     const res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
     if (res.ok) {
       const reply = await readReply(res, cfg.onDelta);
-      const toolCalls = reply.toolCalls.map((tc) => ({
-        id: tc.id,
-        name: tc.function.name,
-        args: parseArgs(tc.function.arguments),
-      }));
+      const toolCalls = reply.toolCalls.map((tc) => {
+        const parsed = parseArgs(tc.function.arguments);
+        return {
+          id: tc.id,
+          name: tc.function.name,
+          args: parsed.args,
+          ...(parsed.truncated ? { truncated: true } : {}),
+        };
+      });
       // E7: a call the endpoint did not parse, still written in the model's own
       // syntax. Only when the native path found none, so a well-formed reply is never
       // re-read, and only for tools offered this turn.

@@ -1226,6 +1226,20 @@ export class PersonaAgent {
           // step died as "agent error" instead of the model hearing what it got wrong.
           // An argument too many is left alone, as it always was: the tool ignores it, and turning
           // it into an error would cost a retry for a call that works.
+          // A call the model never finished. Running it writes a file whose tail is missing and
+          // then answers "ok", which is the worst of both: the work is wrong AND the model is told
+          // it succeeded, so it repeats the same cut call. Measured 2026-09-11: seven identical
+          // truncated writes of the same half-file before the loop breaker ended the turn. Saying
+          // it plainly is what lets a model do the one thing that works, send it in pieces.
+          if (call.truncated) {
+            errorCount++;
+            noteFail(call);
+            const cut = `error: this call arrived cut off, so it was not run: the arguments for ${call.name} ended in the middle. Your reply hit its length limit. Send it again in smaller pieces: write a first part, then append the rest with another call.`;
+            bus.emit({ type: "tool-result", tool: call.name, ok: false, output: cut });
+            messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: cut });
+            continue;
+          }
+
           const argProblems = validateToolArgs(tool, call.args ?? {}).filter((p) => !p.startsWith("unknown arg"));
           if (argProblems.length > 0) {
             errorCount++;
