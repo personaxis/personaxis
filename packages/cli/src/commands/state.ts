@@ -55,11 +55,21 @@ export function describeMode(mode: string): string {
       "Set improvement_policy.mode to suggesting or autonomous to let it respond."
     );
   }
+  // The two modes differ only in what happens to PROSE. For numeric envelope mutations
+  // governance.ts treats them identically (`judge`): applied, bounded, clamped, audited. The
+  // first version of this line said suggesting queues everything, which would have told the
+  // owner of a persona that its state does not move when it does.
   if (mode === "suggesting") {
-    return "improvement_policy = suggesting: the model's proposals are queued for a person to approve, not applied.";
+    return (
+      "improvement_policy = suggesting: numeric changes the model proposes apply, inside the envelopes " +
+      "and the drift thresholds; durable edits to the persona's prose are queued for a person."
+    );
   }
   if (mode === "autonomous") {
-    return "improvement_policy = autonomous: the model's proposals apply, still inside the envelopes and the drift thresholds.";
+    return (
+      "improvement_policy = autonomous: numeric changes apply inside the envelopes and the drift " +
+      "thresholds, and durable edits to the persona's prose also apply, gated by consensus and protected paths."
+    );
   }
   return `improvement_policy = ${mode}`;
 }

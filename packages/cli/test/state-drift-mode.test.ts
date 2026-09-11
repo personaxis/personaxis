@@ -21,9 +21,17 @@ describe("the drift report names the improvement mode", () => {
 		expect(line).toMatch(/suggesting or autonomous/);
 	});
 
-	it("says a suggesting persona queues rather than applies", () => {
-		expect(describeMode("suggesting")).toMatch(/queued/);
-		expect(describeMode("suggesting")).not.toMatch(/does NOT evolve/);
+	it("says a suggesting persona's numbers move and only its prose waits for a person", () => {
+		const line = describeMode("suggesting");
+		// For envelope mutations suggesting and autonomous are identical in governance.ts. The
+		// first version of this line said suggesting queued everything, which was false.
+		expect(line).toMatch(/numeric changes .* apply/);
+		expect(line).toMatch(/prose are queued/);
+		expect(line).not.toMatch(/does NOT evolve/);
+	});
+
+	it("says autonomous differs from suggesting only in the prose", () => {
+		expect(describeMode("autonomous")).toMatch(/prose also apply/);
 	});
 
 	it("says an autonomous persona applies, and still inside its bounds", () => {
@@ -31,6 +39,7 @@ describe("the drift report names the improvement mode", () => {
 		expect(line).toMatch(/apply/);
 		// Autonomous is not unbounded, and the line must not let anyone read it that way.
 		expect(line).toMatch(/envelopes/);
+		expect(line).toMatch(/consensus/);
 	});
 
 	it("does not invent a meaning for a mode it does not know", () => {
