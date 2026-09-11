@@ -43,6 +43,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`overseer`](./overseer.md) | Optional local registry of personas/projects (powers `orchestrate`). |
 | [`orchestrate <task>`](./orchestrate.md) | Route a task to the best-matched registered persona (capability-ranked). |
 | [`team`](./team.md) | Operational multi-agent teams (roles + shared goal), distinct from overseer collections. |
+| [`web search <query>`](./web.md) | Search the web with the configured provider (Tavily first), the same search a persona's `web_search` tool runs. |
 | [`service run <address>`](./service.md) | Run a service locally: numbered steps done by personas **or by other services**, with approvals asked in the terminal (never granted by themselves) and a journal next to the work (`--check` validates the composition only). |
 | [`sync`](./sync.md) | Reconcile a persona's state across machines (merge, no clobber). |
 | [`lease`](./lease.md) | Optional exclusive write lease, for when you would rather serialise than merge. Off by default. |

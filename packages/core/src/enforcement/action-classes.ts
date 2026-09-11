@@ -138,7 +138,9 @@ const RULES: readonly Rule[] = [
 		because: "sends a message to a person",
 	},
 	{
-		tool: /^web[_-]?fetch|^http|^fetch$|^request$|^browser/i,
+		// `web_search` since 2026-09-11: a query sent to the configured provider still leaves
+		// the machine, and a persona's declared gate on the network has to see it.
+		tool: /^web[_-]?fetch|^web[_-]?search|^http|^fetch$|^request$|^browser/i,
 		classes: ["network_egress"],
 		because: "makes a request out",
 	},

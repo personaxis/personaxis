@@ -61,6 +61,7 @@ import { permissionsFor, TOOL_PERMISSIONS, TOOL_POINT } from "../tools/mounted.j
 import { policyFromPersona } from "../enforcement/policy-from-persona.js";
 import { readAgentBudget } from "../governance.js";
 import { readVerification } from "../verification.js";
+import { resolveWebSearch, webSearchTool } from "../web/search.js";
 import type { Ledger } from "./budget.js";
 import type { Conversation } from "./conversation.js";
 import { ledgerForChild, type DelegatedScope } from "./delegation.js";
@@ -158,7 +159,19 @@ export function agentOptionsFor(
 		// the same intent a second time as a list of permissions. A read-only persona
 		// stops being handed a file writer it would only be refused for using.
 		permissions: permissionsFor(compiled.policy.sandbox),
+		// Web search, when this machine has a provider for it (2026-09-11). Added to whatever
+		// the caller contributes rather than in place of it, and only with a key, so a persona
+		// is never offered a search that fails on its first call. Not offered to a read-only
+		// persona, whose posture refuses the network: the same rule as the file writer above.
+		...webTools(rest.extraTools, compiled.policy.sandbox),
 	};
+}
+
+/** The caller's contributed tools, plus `web_search` when a provider resolves and the posture allows the network. */
+function webTools(contributed: AgentOptions["extraTools"], sandbox: string): { extraTools?: AgentOptions["extraTools"] } {
+	const provider = sandbox === "read-only" ? undefined : resolveWebSearch();
+	if (!provider) return contributed ? { extraTools: contributed } : {};
+	return { extraTools: [...(contributed ?? []), webSearchTool(provider)] };
 }
 
 /**
