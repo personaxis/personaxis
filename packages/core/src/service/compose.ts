@@ -89,13 +89,25 @@ export interface ServicePorts {
 	onStep?(record: StepRecord): void;
 }
 
+/** Where a step's note lives in a run: the service path down to it, and its position there. */
+export interface StepRef {
+	path: readonly string[];
+	position: number;
+}
+
 export interface StepRecord {
 	path: readonly string[];
 	serviceName: string;
 	position: number;
 	who: { persona: string } | { service: string };
 	outcome: StepOutcome;
+	/** Null for a step done by a service whose delivery is a step inside it: see `deliveredBy`. */
 	summary: string | null;
+	/**
+	 * For a step done by a service: the step inside it whose note is this step's delivery. The
+	 * text is in that record and not repeated here, so a run's record holds each note once.
+	 */
+	deliveredBy?: StepRef;
 	reason: string | null;
 }
 
@@ -106,6 +118,8 @@ export interface ServiceRunResult {
 	reason: string | null;
 	/** What the service leaves behind, for a parent that ran it as one of its steps. */
 	summary: string | null;
+	/** The step that left `summary`, or null when no step left a note and it is the reason. */
+	summaryFrom: StepRef | null;
 	steps: StepRecord[];
 }
 
@@ -113,6 +127,42 @@ interface RunContext {
 	stack: readonly string[];
 	depth: number;
 	workingDir: string | null;
+	/**
+	 * For a sub-service: what the parent's step asked of it and what the parent handed that step.
+	 * Every step of the sub-service reads it. Without it a sub-service started blind: its first
+	 * step saw its own instruction and nothing of the job it was part of.
+	 */
+	brief: string | null;
+}
+
+/**
+ * What the OUTER context of a brief may fill. The part from the step right above is kept whole,
+ * and it is already bounded, because the handover inside it is capped at 12 000 characters; outer
+ * context only gets what that leaves of this. So a brief stays near 12 000 however deep it goes.
+ */
+const MAX_BRIEF_CHARS = 12_000;
+
+/**
+ * The brief a sub-service gets from the step of its parent that runs it.
+ *
+ * Carries the outer brief too, so a service nested two deep still knows what the outermost job
+ * was. When it would pass the cap, the OUTERMOST part is trimmed first: what the step right above
+ * asked for is what the sub-service is doing, and the job three levels up is background.
+ */
+function briefFor(outer: string | null, serviceName: string, position: number, instruction: string, handover: string | null): string {
+	const here = [
+		"---",
+		"",
+		`This service is doing step ${position} of "${serviceName}". That step's instruction:`,
+		"",
+		instruction,
+		...(handover ? ["", `What "${serviceName}" handed to that step:`, "", handover] : []),
+	].join("\n");
+	if (!outer) return here;
+	const room = MAX_BRIEF_CHARS - here.length;
+	if (room <= 0) return here;
+	const kept = outer.length <= room ? outer : `[The start of the larger job is trimmed here. It is in the run's record.]\n${outer.slice(outer.length - room)}`;
+	return `${kept}\n\n${here}`;
 }
 
 /**
@@ -168,15 +218,15 @@ export function checkComposition(root: ServiceDef, resolve: (address: string) =>
 
 /** Run a service to the end, or to the first thing that needs a person who is not there. */
 export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Partial<RunContext> = {}): Promise<ServiceRunResult> {
-	const context: RunContext = { stack: ctx.stack ?? [], depth: ctx.depth ?? 0, workingDir: ctx.workingDir ?? null };
+	const context: RunContext = { stack: ctx.stack ?? [], depth: ctx.depth ?? 0, workingDir: ctx.workingDir ?? null, brief: ctx.brief ?? null };
 	const records: StepRecord[] = [];
 
 	// Checked again at run time, whatever `checkComposition` said when it loaded.
 	if (context.stack.includes(def.address)) {
-		return { status: "failed", reason: `cycle: ${[...context.stack, def.address].join(" -> ")}`, summary: null, steps: records };
+		return { status: "failed", reason: `cycle: ${[...context.stack, def.address].join(" -> ")}`, summary: null, summaryFrom: null, steps: records };
 	}
 	if (context.depth > MAX_SERVICE_DEPTH) {
-		return { status: "failed", reason: `nested deeper than ${MAX_SERVICE_DEPTH}`, summary: null, steps: records };
+		return { status: "failed", reason: `nested deeper than ${MAX_SERVICE_DEPTH}`, summary: null, summaryFrom: null, steps: records };
 	}
 
 	const path = [...context.stack, def.address];
@@ -184,6 +234,7 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 	const run: RunState = { status: "running", currentPosition: 0 };
 	const previous: PreviousStep[] = [];
 	let lastSummary: string | null = null;
+	let lastSummaryFrom: StepRef | null = null;
 	let decision: Advance = begin(shapes);
 
 	for (;;) {
@@ -194,11 +245,20 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 			run.status = "running";
 			run.currentPosition = position;
 			const step = def.steps.find((s) => s.position === position);
-			if (!step) return { status: "failed", reason: `step ${position} vanished`, summary: null, steps: records };
+			if (!step) return { status: "failed", reason: `step ${position} vanished`, summary: null, summaryFrom: null, steps: records };
 
-			const prompt = stepPrompt(step.instruction, handoverText(previous, context.workingDir));
+			const handover = handoverText(previous, context.workingDir);
+			// The brief goes before this service's own handover: the larger job came first, and the
+			// steps of this service ran inside it. Instruction first still, as `stepPrompt` decides.
+			const background = [context.brief, handover].filter((part): part is string => part !== null).join("\n\n");
+			const prompt = stepPrompt(step.instruction, background.length > 0 ? background : null);
 			const result: StepExecution = step.serviceRef
-				? await runSubService(step.serviceRef, ports, { stack: path, depth: context.depth + 1, workingDir: context.workingDir })
+				? await runSubService(step.serviceRef, ports, {
+						stack: path,
+						depth: context.depth + 1,
+						workingDir: context.workingDir,
+						brief: briefFor(context.brief, def.name, step.position, step.instruction, handover),
+					})
 				: await ports
 						.runPersonaStep({
 							personaRef: step.personaRef as string,
@@ -216,7 +276,7 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 				// A sub-service is waiting for somebody. The parent cannot go on without it, and
 				// pretending it finished would hand the next step work that does not exist yet.
 				records.push(...(result.childSteps ?? []));
-				return { status: "waiting", reason: result.reason ?? "a sub-service is waiting for approval", summary: null, steps: records };
+				return { status: "waiting", reason: result.reason ?? "a sub-service is waiting for approval", summary: null, summaryFrom: null, steps: records };
 			}
 
 			const record: StepRecord = {
@@ -225,7 +285,9 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 				position: step.position,
 				who: step.serviceRef ? { service: step.serviceRef } : { persona: step.personaRef as string },
 				outcome: result.outcome,
-				summary: result.summary,
+				// A service step points at the note inside it rather than copying it.
+				summary: result.summaryFrom ? null : result.summary,
+				...(result.summaryFrom ? { deliveredBy: result.summaryFrom } : {}),
 				reason: result.reason ?? null,
 			};
 			if (result.childSteps) records.push(...result.childSteps);
@@ -238,7 +300,10 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 				personaName: step.personaRef ?? step.serviceRef ?? "",
 				entries: result.summary ? [{ kind: "agent.turn.ended", payload: { summary: result.summary } }] : [],
 			});
-			if (result.summary) lastSummary = result.summary;
+			if (result.summary) {
+				lastSummary = result.summary;
+				lastSummaryFrom = step.serviceRef ? (result.summaryFrom ?? null) : { path, position: step.position };
+			}
 
 			decision = advance(run, shapes, result.outcome);
 			continue;
@@ -248,23 +313,24 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 			run.status = "waiting";
 			const answer = await ports.approve({ serviceName: def.name, position: decision.afterPosition, path });
 			if (answer === "unavailable") {
-				return { status: "waiting", reason: `step ${decision.afterPosition} of ${def.name} is waiting for approval`, summary: null, steps: records };
+				return { status: "waiting", reason: `step ${decision.afterPosition} of ${def.name} is waiting for approval`, summary: null, summaryFrom: null, steps: records };
 			}
 			decision = answer === "approved" ? approved(run, shapes) : rejected(run, null);
 			continue;
 		}
 
 		if (decision.kind === "complete") {
-			return { status: "completed", reason: decision.reason, summary: lastSummary ?? decision.reason, steps: records };
+			return { status: "completed", reason: decision.reason, summary: lastSummary ?? decision.reason, summaryFrom: lastSummary ? lastSummaryFrom : null, steps: records };
 		}
 		if (decision.kind === "fail") {
-			return { status: "failed", reason: decision.reason, summary: null, steps: records };
+			return { status: "failed", reason: decision.reason, summary: null, summaryFrom: null, steps: records };
 		}
-		return { status: "failed", reason: decision.why, summary: null, steps: records };
+		return { status: "failed", reason: decision.why, summary: null, summaryFrom: null, steps: records };
 	}
 }
 
 interface StepExecution extends PersonaStepResult {
+	summaryFrom?: StepRef | null;
 	waitingOnPerson?: boolean;
 	childSteps?: StepRecord[];
 }
@@ -280,5 +346,5 @@ async function runSubService(address: string, ports: ServicePorts, ctx: RunConte
 	const result = await runService(sub, ports, ctx);
 	if (result.status === "waiting") return { outcome: "failed", summary: null, reason: result.reason, waitingOnPerson: true, childSteps: result.steps };
 	if (result.status === "failed") return { outcome: "failed", summary: null, reason: result.reason, childSteps: result.steps };
-	return { outcome: "completed", summary: result.summary, reason: result.reason, childSteps: result.steps };
+	return { outcome: "completed", summary: result.summary, summaryFrom: result.summaryFrom, reason: result.reason, childSteps: result.steps };
 }
