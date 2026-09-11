@@ -296,7 +296,10 @@ const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
 	//
 	// 173 -> 172 the same day, when a service step moved from the reply `-p` gives onto
 	// `run.runnerFor`, the working turn with tools, and reached one more export from outside.
-	{ pkg: "core", departure: 172 },
+	//
+	// 172 -> 171 the same day again (E57), when `observe` started weighing a hook's source
+	// against a command-line label with `TRUST`, which nothing outside core had read.
+	{ pkg: "core", departure: 171 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the

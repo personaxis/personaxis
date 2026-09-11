@@ -40,19 +40,26 @@ synthesis`, `packages/core/src/appraisal.ts`). It is the only thing the engine i
 that text in the string.
 
 **What the host hook actually captures** (`observationFromHookPayload`,
-`packages/cli/src/commands/observe.ts:103`) is deliberately bounded:
+`packages/cli/src/commands/observe.ts`) is deliberately bounded, and it says who spoke:
 
-- Claude Code Stop hook: reads `transcript_path`, takes the **last 8 JSONL lines**, keeps the
-  **last 2 `user`/`assistant` messages**, and **truncates to 1200 characters**.
-- Codex Stop hook: `last_user_message` + `last_assistant_message`, capped at 1200.
-- Other hosts / raw pipes: `prompt`, `message`, `context`, or raw text, capped at 1200.
-- `readStdin` has a 1500 ms timeout (`observe.ts:84`) so a hook never blocks the host.
+- Claude Code Stop hook: reads `transcript_path`, looks at the **last 8 JSONL lines**, takes the
+  **person's last message** as provenance `user`, and **truncates to 1200 characters**. The reply
+  is taken, as `internal`, only when there is no message from the person.
+- Codex Stop hook: `last_user_message` as `user`, or else `last_assistant_message` as `internal`,
+  capped at 1200.
+- Other hosts / raw pipes: `prompt` as `user`; `message`, `context`, or raw text as `internal`;
+  capped at 1200.
+- `readStdin` has a 1500 ms timeout (`observe.ts`) so a hook never blocks the host.
+
+Until 2026-09-11 the last user and assistant messages went in together labelled `user`, which gave
+the model's reply the owner's trust, the one a self-edit needs.
 
 Consequences, stated plainly:
 
-- A **huge response** contributes only its tail (~1200 chars of the last exchange).
-- A **multi-step agent turn** (many tool calls in one response) is not expanded; only the last
-  visible message is seen through the hook.
+- A **huge response** contributes nothing when the person's message is there, and only its first
+  ~1200 characters, as `internal`, when it is all the hook has.
+- A **multi-step agent turn** (many tool calls in one response) is not expanded; the hook sees the
+  person's message and none of the steps.
 - **Reasoning / thinking** is never captured by the hook (it filters to `user`/`assistant` text).
 
 This is a design choice: the per-turn signal is cheap, bounded, and spends no host tokens. To
@@ -152,8 +159,8 @@ through hooks happens without any session, as ticks against `state.json` and mem
 | Case | What the engine does |
 |---|---|
 | Short user turn | one tick; appraise -> maybe clamp a value + write a note |
-| Huge response | only the last ~1200 chars of the last exchange are appraised (§2) |
-| Multi-step agent turn (via hook) | only the last visible message is seen; intermediate steps are not captured |
+| Huge response | not appraised when the person's message is there; otherwise its first ~1200 chars, as `internal` (§2) |
+| Multi-step agent turn (via hook) | only the person's message is seen; the steps are not captured |
 | Multi-step you want fully learned | drive `agentRun` for the tool loop, and/or send explicit observations via SDK/MCP (§7) |
 | Reasoning / thinking | not captured by the hook; pass it explicitly if you want it appraised |
 | Malicious / injection | `injectionBlocked`: no mutations, no self-edits; content may be remembered, tagged |
@@ -167,8 +174,8 @@ through hooks happens without any session, as ticks against `state.json` and mem
 
 ## 7. Bounds and how to feed richer input
 
-The bound that matters: **the hook captures a 1200-char tail of the last exchange and no
-reasoning.** It is a lightweight signal, not a full-fidelity record. To have a persona learn from
+The bound that matters: **the hook captures up to 1200 characters of the person's last message,
+and neither the reply nor any reasoning.** It is a lightweight signal, not a full-fidelity record. To have a persona learn from
 more, the caller supplies the observation explicitly:
 
 - **MCP**: the host calls `persona_observe` with whatever text it decides is worth learning from

@@ -56,8 +56,10 @@ personaxis hooks install --host claude-code --global  # or all projects (~/.clau
 This adds a `Stop` hook to `.claude/settings.json` that, at the end of every turn, runs:
 
 ```
-personaxis observe --stdin --source user
+personaxis observe --stdin
 ```
+
+It observes your last message, not Claude's reply (see [observe](../commands/observe.md)).
 
 `observe` runs **one governed Living-Loop tick on your configured model**: appraise the turn,
 apply any clamped/governed state nudge, write memory, and mark `PERSONA.md` stale on drift. Because

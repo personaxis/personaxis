@@ -14,9 +14,12 @@ personaxis hooks uninstall --host <host>
 
 ## `install`, all four focus hosts
 
-Each host fires an end-of-turn (or end-of-session) hook that runs `personaxis observe --stdin --source
-user`. `observe --stdin` understands each host's payload (Claude Code's `transcript_path`, Codex's
-`last_assistant_message`, openclaw's event `context`).
+Each host fires an end-of-turn (or end-of-session) hook that runs `personaxis observe --stdin`.
+`observe --stdin` understands each host's payload (Claude Code's `transcript_path`, Codex's
+`last_user_message` and `last_assistant_message`, openclaw's event `context`), and decides from it
+who spoke: the person's message is recorded as `user`, anything else as `internal`
+([observe](./observe.md)). Hooks installed before 2026-09-11 also pass `--source user`, which no
+longer raises what the payload says.
 
 | Host | What it writes | Event |
 |---|---|---|
