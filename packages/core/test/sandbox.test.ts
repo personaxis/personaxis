@@ -34,6 +34,26 @@ describe("command classification", () => {
     expect(pathEscapesWorkspace("src/index.ts", root)).toBe(false);
   });
 
+  it("sees a relative path that climbs out through the middle", () => {
+    // Found 2026-09-11: a relative path that did not START with `..` was taken as inside
+    // without being resolved, so `docs/../../x` read and wrote outside the workspace through
+    // the read gate, the file-write gate and the command scan alike.
+    expect(pathEscapesWorkspace("docs/../../x", root)).toBe(true);
+    expect(pathEscapesWorkspace("./docs/../../../etc/passwd", root)).toBe(true);
+    // Climbing and coming back is still inside, and a folder whose name starts with two dots
+    // is a folder, not a way out.
+    expect(pathEscapesWorkspace("src/../src/index.ts", root)).toBe(false);
+    expect(pathEscapesWorkspace("..cache/entry", root)).toBe(false);
+    expect(pathEscapesWorkspace(".", root)).toBe(false);
+  });
+
+  it("scans a command for paths that climb out through the middle", () => {
+    expect(classifyCommand("cat docs/../../secret.txt", root).escapesWorkspace).toBe(true);
+    expect(classifyCommand("cp notes.md docs/../../../elsewhere/", root).escapesWorkspace).toBe(true);
+    // And still leaves a harmless relative path alone.
+    expect(classifyCommand("cat docs/readme.md", root).escapesWorkspace).toBe(false);
+  });
+
   it("does not misflag CLI switches (date /t, dir /s) as workspace escapes", () => {
     expect(classifyCommand("date /t", root).escapesWorkspace).toBe(false);
     expect(classifyCommand("dir /s", root).escapesWorkspace).toBe(false);
