@@ -19,6 +19,7 @@ import type { EnforceReply, EnforceRequest } from "./enforcement-endpoint.js";
 import { callFor, cachedPolicyGuard, noPersonaGuard, scopeGuard } from "./enforcement-guards.js";
 import type { IdentityAxis } from "./identity-axis.js";
 import type { PolicyCache } from "./policy-cache.js";
+import { consentedRootFor } from "./scope-guard.js";
 
 /** How long a person has, before the gate answers for them. */
 export const DEFAULT_GATE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -117,6 +118,7 @@ export function enforcementHandler(deps: EnforcementDeps) {
 		const call = callFor(request, request.tool_use_id ?? "hook", {
 			actionClasses: classes,
 			effects: axis?.effects,
+			workspaceRoot: consentedRootFor(request.cwd, deps.scope),
 		});
 
 		// Every guard runs, so a call refused twice reports both reasons. The old chain
@@ -207,10 +209,10 @@ export function enforcementHandler(deps: EnforcementDeps) {
 			required_approvals: decision.gate.required_approvals,
 			timeout_seconds: decision.gate.timeout_seconds,
 			route: decision.gate.route,
-			// What the person reads before deciding. A gate verdict carries a rule and
-			// an action class and no prose, so it is composed from those rather than
-			// left blank: "approve this" with no subject is not a question.
-			reason: `this persona's policy asks a person before anything in ${decision.gate.action_class}`,
+			// What the person reads before deciding, from the rule that raised the gate.
+			// It used to be composed here from the action class, which a posture gate on a
+			// call with no class fills with `external_write` (E59).
+			reason: decision.reason,
 			cwd: request.cwd,
 		});
 
@@ -249,6 +251,7 @@ function reportable(
 	return {
 		verdict: "gate",
 		rule: strongest.rule,
+		reason: strongest.reason,
 		gate: {
 			action_class: "external_write",
 			required_approvals: 1,

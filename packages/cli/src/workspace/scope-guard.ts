@@ -102,6 +102,21 @@ export function withinScope(candidate: string, scope: readonly string[]): boolea
 }
 
 /**
+ * The consented directory a call made from `cwd` is working in, when there is one.
+ *
+ * E59: this is the workspace the compiled policy measures "inside" against. Not `cwd`
+ * itself, because a host can work from a folder below the one the operator named and
+ * a write to a sibling folder is still inside what they consented to. The deepest one
+ * when several contain it, because nested consents name a narrower workspace and the
+ * narrower one is the stricter answer.
+ */
+export function consentedRootFor(cwd: string, scope: readonly string[]): string | undefined {
+	return scope
+		.filter((dir) => withinScope(cwd, [dir]))
+		.sort((a, b) => normalise(resolve(b)).length - normalise(resolve(a)).length)[0];
+}
+
+/**
  * Case folding matters here.
  *
  * Windows and macOS compare paths case-insensitively, so a scope of `C:\Work`

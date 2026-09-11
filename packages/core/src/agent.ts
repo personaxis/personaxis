@@ -1290,6 +1290,10 @@ export class PersonaAgent {
                 ]),
               ].sort(),
               turn: call.id,
+              // E59: where "inside" is, so the compiled policy can let a write to the
+              // project through to the approval axis instead of refusing it as if it
+              // left. Our tools resolve a relative path against this same root.
+              workspaceRoot: this.policy.workspaceRoot,
             }),
           ));
 

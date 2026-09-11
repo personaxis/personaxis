@@ -122,6 +122,11 @@ export function skillLoadCall(skill: string, path: string, turn: string) {
  * The verdict is not combined with the outer one. A caller that had permission to
  * invoke the bridge has not thereby got permission for whatever the bridge resolved,
  * and combining the two would let the wrapper's allow soften the inner refusal.
+ *
+ * It carries no workspace root, so the resolved call is judged as if nothing were
+ * inside the workspace (E59): a write through a bridge is refused under
+ * `workspace-write` where the same write made directly would reach the approval axis.
+ * The strict side on purpose, until a bridge that needs more exists.
  */
 export function resolvedCall(
 	outer: FrozenCall,

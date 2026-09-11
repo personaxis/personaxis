@@ -142,9 +142,24 @@ describe("the order of the rules", () => {
 	});
 
 	it("falls through to the declared default when nothing else matched", () => {
-		expect(decide({ approval: "never" }, "ReadFile").verdict).toBe("allow");
-		expect(decide({ approval: "on-request" }, "ReadFile").verdict).toBe("gate");
-		expect(decide({ approval: "untrusted" }, "ReadFile").verdict).toBe("gate");
+		// Under a sandbox that has an approval axis. This used to run under the base policy's
+		// `danger-full-access` and pin that it asked, which is what E59 found the posture is
+		// documented NOT to do.
+		const asking = { sandbox: "workspace-write" } as const;
+		expect(decide({ ...asking, approval: "never" }, "ReadFile").verdict).toBe("allow");
+		expect(decide({ ...asking, approval: "on-request" }, "ReadFile").verdict).toBe("gate");
+		expect(decide({ ...asking, approval: "untrusted" }, "ReadFile").verdict).toBe("gate");
+	});
+
+	it("does not ask anybody under danger-full-access, whatever the approval says", () => {
+		expect(decide({ approval: "on-request" }, "ReadFile")).toEqual({ verdict: "allow", rule: "sandbox:danger-full-access" });
+		expect(decide({ approval: "untrusted" }, "Bash", "npm install left-pad").verdict).toBe("allow");
+	});
+
+	it("does not wave a read through without the facts that say it is one, inside", () => {
+		// `ReadFile` is not on the list of known reads and this call carries no facts, so the
+		// approval axis decides. The posture table in `gate-postures.test.ts` covers the rest.
+		expect(decide({ sandbox: "read-only", approval: "on-request" }, "ReadFile").verdict).toBe("gate");
 	});
 });
 

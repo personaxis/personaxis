@@ -108,7 +108,18 @@ export interface ExecutablePolicy {
 export type PolicyDecision =
 	| { verdict: "allow"; rule: string }
 	| { verdict: "deny"; rule: string; reason: string }
-	| { verdict: "gate"; rule: string; gate: GateRule };
+	| {
+			verdict: "gate";
+			rule: string;
+			gate: GateRule;
+			/**
+			 * What the person reads before deciding. E59: it used to be composed downstream
+			 * from `gate.action_class`, and a posture gate on a call with no class fills that
+			 * field with `external_write`, so `npm install` reached a person as "approval
+			 * required for external_write". Only the rule that raised the gate knows why.
+			 */
+			reason: string;
+	  };
 
 /**
  * The subject of a decision.
@@ -121,10 +132,33 @@ export interface PolicyCall {
 	tool: string;
 	args_text: string;
 	action_classes: ActionClass[];
+	/**
+	 * E59: the tool is one the gate knows only reads, from `callFacts`. Absent is false,
+	 * so a caller that does not say gets the answer the gate gave before this existed.
+	 */
+	known_read?: boolean;
+	/**
+	 * E59: every path the call names is inside the workspace, and for a write none is a
+	 * protected folder, from `callFacts`. Absent is false, for the same reason.
+	 */
+	within_workspace?: boolean;
 }
 
 /** Classes that write, for the sandbox check. */
 const WRITING_CLASSES: ActionClass[] = ["external_write", "file_delete", "spend"];
+
+/**
+ * Classes that reach past this machine. E59: a write that also reaches out does not
+ * stay inside the workspace, whatever path it names.
+ *
+ * NOT refused on their own under `read-only`, and that was tried and taken back the
+ * same day. The documented "read-only denies network" is about shell commands, which
+ * the tool gate still refuses; here `network_egress` is also what every MCP tool
+ * declares (`mcp-adapter.ts`), and `capability-envelope.test.ts` pins that a read-only
+ * capability runs for a read-only persona. Where data may go is the egress allowlist's
+ * question, asked before any posture.
+ */
+const REACHING_CLASSES: ActionClass[] = ["network_egress", "email_send", "spend"];
 
 /**
  * Words too common to carry meaning in a limit.
@@ -303,6 +337,10 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 	}
 
 	// 5. Sandbox posture.
+	//
+	// E59, decided by David on 2026-09-11: the postures mean what
+	// `docs/architecture/sandbox.md` documents, which is what Codex means by the same
+	// words. Pinned posture by posture in `test/gate-postures.test.ts`.
 	if (policy.sandbox === "read-only") {
 		const writing = call.action_classes.find((cls) => WRITING_CLASSES.includes(cls));
 		if (writing) {
@@ -313,10 +351,17 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 			};
 		}
 	}
+	const reaching = call.action_classes.find((cls) => REACHING_CLASSES.includes(cls));
 	if (policy.sandbox === "workspace-write" && call.action_classes.includes("external_write")) {
-		// Unless a gate covers it, which the next step decides. Reaching outside
-		// the workspace is exactly what this posture exists to hold back.
-		if (!executable.gatesByClass.has("external_write")) {
+		// A write that stays inside is what this posture exists to let through, and the
+		// approval axis governs it. Before E59 this refused every write, because the
+		// classes cannot say where a write lands and `write_file` is `external_write`
+		// wherever it points; the facts can. A write that also reaches out does not stay
+		// inside, whatever path it names.
+		const staysInside = call.within_workspace === true && reaching === undefined;
+		// Otherwise refused, unless a gate covers it, which the next step decides.
+		// Reaching outside the workspace is exactly what this posture exists to hold back.
+		if (!staysInside && !executable.gatesByClass.has("external_write")) {
 			return {
 				verdict: "deny",
 				rule: "sandbox:workspace-write",
@@ -328,7 +373,14 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 	// 5. Declared gates, which produce a pause rather than a refusal.
 	for (const cls of call.action_classes) {
 		const gate = executable.gatesByClass.get(cls);
-		if (gate) return { verdict: "gate", rule: `gate:${cls}`, gate };
+		if (gate) {
+			return {
+				verdict: "gate",
+				rule: `gate:${cls}`,
+				gate,
+				reason: `this persona's policy asks a person before anything in ${cls}`,
+			};
+		}
 	}
 
 	// 6. Allow regex.
@@ -338,7 +390,22 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 		}
 	}
 
-	// 7. The default the persona declared.
+	// 7. What is left.
+	//
+	// A known read inside the workspace runs under every posture, as documented. Only a
+	// call that earned no class at all: a read that names a credential is not an
+	// ordinary read, and a plugin that calls itself `read_file` and declares a write is
+	// not one either.
+	if (call.known_read === true && call.within_workspace === true && call.action_classes.length === 0) {
+		return { verdict: "allow", rule: "read:inside-workspace" };
+	}
+	// `danger-full-access` asks nobody. It used to fall through to the approval axis, so
+	// with `on-request` it asked about every call, which is not what the posture says.
+	// Everything above still applies: the deny list, the limits, egress, the declared gates.
+	if (policy.sandbox === "danger-full-access") {
+		return { verdict: "allow", rule: "sandbox:danger-full-access" };
+	}
+	// The approval axis.
 	switch (policy.approval) {
 		case "never":
 		case "on-failure":
@@ -348,6 +415,7 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 			return {
 				verdict: "gate",
 				rule: `approval:${policy.approval}`,
+				reason: `this persona's approval posture is ${policy.approval}, so a person approves any call that is not a known read inside the workspace`,
 				// Invented, because the persona asked for a person and no rule said who.
 				// So it invents as little as possible.
 				//
@@ -357,6 +425,10 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 				// no members, it made the gate unanswerable by anybody. A posture that says
 				// "ask a person" means a person, not a rank.
 				gate: {
+					// Not true for a call with no class, and kept because the wire to the
+					// workspace carries it as a required field; the reason above is what a
+					// person reads. Giving the wire an honest value is a change to the room's
+					// contract, written down in E59 rather than made here.
 					action_class: call.action_classes[0] ?? "external_write",
 					required_approvals: 1,
 					route: {},
