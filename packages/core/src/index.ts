@@ -6,6 +6,7 @@
  */
 
 export * from "./persona.js";
+export * as service from "./service/index.js";
 export * from "./lock.js";
 export * from "./envelopes.js";
 export * from "./math/uspace.js";
