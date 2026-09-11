@@ -1,4 +1,4 @@
-import { resolveModel, portableJsonSchema } from "@personaxis/core";
+import { resolveModel, portableJsonSchema, isLocalEndpoint } from "@personaxis/core";
 import type { Provider, ProviderRunResult, ProviderStructuredResult } from "./types.js";
 import type { PersonaxisConfig } from "../config.js";
 import { postJson } from "./http.js";
@@ -18,6 +18,27 @@ const FLOOR_TOKENS_PER_SECOND = 15;
 export function timeoutFor(maxTokens: number): number {
   const needed = (maxTokens / FLOOR_TOKENS_PER_SECOND) * 1000;
   return Math.min(600_000, Math.max(120_000, Math.round(needed)));
+}
+
+/**
+ * How big a completion this endpoint can actually finish, which is not the same question as
+ * how big a completion we would like.
+ *
+ * A server on this machine answers to us and nobody else, so the budget is ours to set. A
+ * HOSTED router sits behind a gateway with its own patience, and that patience is the real
+ * ceiling: measured 2026-09-10 on the HuggingFace router with gemma-3-4b-it, a 4096-token
+ * request finished in 87 seconds, and an 8192-token one came back **504 Gateway Time-out**
+ * with the model still working. Asking a hosted endpoint for more than its gateway will wait
+ * for does not get a longer answer, it gets no answer.
+ *
+ * Streaming is the real fix for long hosted generations and is not done here: one
+ * observation on 2026-09-10 suggested a streamed 8192 request avoids the gateway, but it
+ * returned suspiciously fast and may have been served from cache, so it is written down as
+ * something to verify rather than something to rely on.
+ */
+export function budgetFor(endpoint: string, configured?: number): number {
+  if (configured !== undefined) return configured;
+  return isLocalEndpoint(endpoint) ? 8192 : 4096;
 }
 
 /**
@@ -69,7 +90,7 @@ export function createLocalProvider(config: PersonaxisConfig, personaPath?: stri
       // so a persona built from a rich brief came out with one default trait. 8192 matches
       // what the BYOK provider already asks for, so the two do not disagree about how much
       // room a model gets.
-      const maxTokens = resolved?.maxTokens ?? config.local?.maxTokens ?? 8192;
+      const maxTokens = budgetFor(endpoint, resolved?.maxTokens ?? config.local?.maxTokens);
       json = (await postJson(
         url,
         headers,

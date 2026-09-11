@@ -15,7 +15,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { timeoutFor } from "../src/providers/local.js";
+import { budgetFor, timeoutFor } from "../src/providers/local.js";
 import { postJson } from "../src/providers/http.js";
 
 describe("the timeout is derived from the budget", () => {
@@ -35,6 +35,29 @@ describe("the timeout is derived from the budget", () => {
 
 	it("grows with the budget rather than being a constant in disguise", () => {
 		expect(timeoutFor(8192)).toBeGreaterThan(timeoutFor(2048));
+	});
+});
+
+describe("the budget fits what the endpoint can finish", () => {
+	it("gives a local server the full budget, because nothing sits in front of it", () => {
+		expect(budgetFor("http://localhost:11434/v1")).toBe(8192);
+		expect(budgetFor("http://127.0.0.1:8080/v1")).toBe(8192);
+	});
+
+	it("keeps a hosted router inside its gateway's patience", () => {
+		// Measured: 4096 finished in 87 s, 8192 came back 504 with the model still working.
+		expect(budgetFor("https://router.huggingface.co/v1")).toBe(4096);
+	});
+
+	it("does not overrule an explicit choice, which is the operator's to make", () => {
+		expect(budgetFor("https://router.huggingface.co/v1", 16384)).toBe(16384);
+		expect(budgetFor("http://localhost:11434/v1", 512)).toBe(512);
+	});
+
+	it("pairs a smaller hosted budget with a shorter clock, so the two agree", () => {
+		expect(timeoutFor(budgetFor("https://router.huggingface.co/v1"))).toBeLessThan(
+			timeoutFor(budgetFor("http://localhost:11434/v1")),
+		);
 	});
 });
 
