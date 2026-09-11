@@ -80,22 +80,8 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
     return 1;
   }
 
-  const ctx = makeCtx(personaPath, makeMeter());
-  const name = shortName(ctx);
-
-  const knobs = readMemoryKnobs(ctx.handle.frontmatter as Record<string, unknown>);
-  const known = factsView(personaPath);
-  const memory = [
-    ...Object.entries(known.facts).map(([k, v]) => `${k}: ${v.value}`),
-    ...recallWindow(personaPath, { maxItems: knobs.maxItems, sessionId: ctx.sessionId }).map((m) => m.content),
-  ];
-  const state = ensureState(ctx.handle).values;
-
   // Streaming (V2-F3.E23): stream tokens live for text/stream-json; json buffers.
   const wantStream = format === "text" || format === "stream-json";
-  if (format === "stream-json") {
-    process.stdout.write(JSON.stringify({ type: "init", persona: name, session_id: ctx.sessionId }) + "\n");
-  }
   let streamedAny = false;
   const onToken = wantStream
     ? (t: string) => {
@@ -105,22 +91,16 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
       }
     : undefined;
 
-  // D6: a headless turn is a session like any other, just without a screen. The vocabulary
-  // already had a name for this surface and nothing was emitting it, so an agent driving
-  // the CLI in a loop held the persona while every fleet view reported nobody there.
-  const presence = holdPresence(personaPath, { host: "headless", sessionId: ctx.sessionId, activity: "answering" });
-  const reply = await ctx.responder
-    .respond({
-      message: expandFileMentions(prompt),
-      personaBody: `You are ${name}. Stay in character.\n\n${ctx.personaDoc}`,
-      awareness: buildAwarenessBlock(personaPath, { frontmatter: ctx.handle.frontmatter as Record<string, unknown>, cwd: process.cwd() }),
-      memory,
-      state,
-      name,
-      ...(onToken ? { onToken } : {}),
-    })
-    .catch((e) => `(responder error: ${friendlyProviderError((e as Error).message)})`);
-  presence.release();
+  const { reply, name, ctx } = await governedReply({
+    personaPath,
+    prompt,
+    activity: "answering",
+    onResponderError: "as-reply",
+    ...(onToken ? { onToken } : {}),
+    onReady: (n, sessionId) => {
+      if (format === "stream-json") process.stdout.write(JSON.stringify({ type: "init", persona: n, session_id: sessionId }) + "\n");
+    },
+  });
 
   if (format === "json") {
     process.stdout.write(
@@ -147,4 +127,70 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
   // Opt-in telemetry (V2-F3.D21), no-op unless enabled in config.
   recordSpan(personaPath, { name: "headless.turn", ms: Date.now() - t0, attrs: { format, chars: reply.length } }, loadMergedConfig().telemetry);
   return 0;
+}
+
+export interface GovernedReplyOptions {
+  personaPath: string;
+  prompt: string;
+  /** What the persona is doing, for anyone looking at the fleet while it runs. */
+  activity: string;
+  onToken?: (t: string) => void;
+  /** Called once the persona is loaded, before the model is asked. */
+  onReady?: (name: string, sessionId: string) => void;
+  /**
+   * `-p` prints a provider failure as its reply and exits 0, which a script reads as text.
+   * A service step must not: an error written as the step's note would be handed to the next
+   * step as if it were the work, so a step asks for the failure to be thrown.
+   */
+  onResponderError: "as-reply" | "throw";
+}
+
+/**
+ * One reply from a persona, as `personaxis -p` gives it: its facts and recall window as memory,
+ * its awareness block, its current state, and its presence held while the model answers.
+ *
+ * `-p` and a step of `personaxis service run` both call this, so a persona answers a step of a
+ * service exactly as it answers when called directly. They used to be two copies, and the copy
+ * in the service runner had quietly dropped the memory and the awareness block.
+ *
+ * Recording the turn stays with the caller, because naming a new session can call the model and
+ * `-p` prints the reply before that happens.
+ */
+export async function governedReply(o: GovernedReplyOptions): Promise<{ reply: string; name: string; ctx: ReturnType<typeof makeCtx> }> {
+  const ctx = makeCtx(o.personaPath, makeMeter());
+  const name = shortName(ctx);
+  o.onReady?.(name, ctx.sessionId);
+
+  const knobs = readMemoryKnobs(ctx.handle.frontmatter as Record<string, unknown>);
+  const known = factsView(o.personaPath);
+  const memory = [
+    ...Object.entries(known.facts).map(([k, v]) => `${k}: ${v.value}`),
+    ...recallWindow(o.personaPath, { maxItems: knobs.maxItems, sessionId: ctx.sessionId }).map((m) => m.content),
+  ];
+  const state = ensureState(ctx.handle).values;
+
+  // D6: a headless turn is a session like any other, just without a screen. The vocabulary
+  // already had a name for this surface and nothing was emitting it, so an agent driving
+  // the CLI in a loop held the persona while every fleet view reported nobody there.
+  const presence = holdPresence(o.personaPath, { host: "headless", sessionId: ctx.sessionId, activity: o.activity });
+  try {
+    const reply = await ctx.responder
+      .respond({
+        message: expandFileMentions(o.prompt),
+        personaBody: `You are ${name}. Stay in character.\n\n${ctx.personaDoc}`,
+        awareness: buildAwarenessBlock(o.personaPath, { frontmatter: ctx.handle.frontmatter as Record<string, unknown>, cwd: process.cwd() }),
+        memory,
+        state,
+        name,
+        ...(o.onToken ? { onToken: o.onToken } : {}),
+      })
+      .catch((e: Error) => {
+        const said = friendlyProviderError(e.message);
+        if (o.onResponderError === "throw") throw new Error(said);
+        return `(responder error: ${said})`;
+      });
+    return { reply, name, ctx };
+  } finally {
+    presence.release();
+  }
 }

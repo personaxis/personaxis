@@ -281,7 +281,19 @@ const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
 	// `delegationAuthor`), and the fifth number is this gate catching me: the new module
 	// exported its own formatter, which nothing outside it needed, and the count only
 	// fell by three until it stopped being exported.
-	{ pkg: "core", departure: 166 },
+	//
+	// 166 -> 173 on 2026-09-11, said out loud the way `protocol` was below. `advance.ts` and
+	// `handover.ts` were copied from the SaaS VERBATIM, with their tests, so the local service
+	// runner decides what runs next with the same code the workspace uses. Seven of their
+	// exports have no caller in this repo yet: `retry` and `retakeText`, which a local retry of
+	// a failed run will use, and `producedFrom`, `describeProduced`, `NOTE_AND_FILES`,
+	// `chronological` and `noteFrom`, which the SaaS's continue-run uses and which reach here
+	// when steps can call tools and leave files. This gate first counted fourteen: `lead`,
+	// `busy` and `address` were moved too and went back, because nothing here needed them,
+	// and `MAX_SERVICE_DEPTH` found a real caller in `service run --check`. Lower this as each
+	// of the seven is wired, and do not trim the copy to hit the number: a copy that is not
+	// verbatim is a copy whose original tests no longer prove it is the same code.
+	{ pkg: "core", departure: 173 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the
