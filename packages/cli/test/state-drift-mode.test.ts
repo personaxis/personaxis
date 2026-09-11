@@ -1,16 +1,19 @@
 /**
  * A persona whose living loop is switched off has to say so.
  *
- * Measured 2026-09-11: every persona `personaxis create` makes is `improvement_policy: locked`,
- * and in `locked` `governance.ts` rejects every proposal the model makes. The living loop
- * therefore observes, appraises and proposes, and never applies anything. `state drift` said
- * nothing about it, which is how a day of experiments measured a persona whose defining feature
- * was off while believing it was on.
+ * Measured 2026-09-11: every persona `personaxis create` made was `improvement_policy: locked`
+ * (Genesis defaults to `suggesting` since af8a1f1), and in `locked` `governance.ts` rejects every
+ * proposal the model makes. The living loop therefore observed, appraised and proposed, and never
+ * applied anything. `state drift` said nothing about it, which is how a day of experiments
+ * measured a persona whose defining feature was off while believing it was on.
+ *
+ * The sentence lives in the engine next to the rule it describes, and the creation report reads
+ * the same one.
  */
 
 import { describe, expect, it } from "vitest";
 
-import { describeMode } from "../src/commands/state.js";
+import { describeImprovementMode as describeMode } from "@personaxis/core";
 
 describe("the drift report names the improvement mode", () => {
 	it("says plainly that a locked persona does not evolve", () => {

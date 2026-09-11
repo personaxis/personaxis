@@ -10,6 +10,7 @@
 
 import type { EvidenceLedger, GenesisResult } from "./types.js";
 import { ITEM_BANK_VERSION } from "./item-bank.js";
+import { describeImprovementMode } from "../governance.js";
 
 export interface ProvenanceSummary {
   /** Quantitative spec fields present in the built spec. */
@@ -137,6 +138,20 @@ export function renderCreationReport(result: GenesisResult, gates: Array<{ name:
   lines.push("", "## Defaults to review", "");
   if (summary.defaultsOnly.length === 0) lines.push("(none, every number is evidence-backed)");
   else for (const f of summary.defaultsOnly) lines.push(`- \`${f}\``);
+
+  // Whether this persona can change at all is the first thing its owner needs to know about it,
+  // and for a day it was off in every persona Genesis made while nothing here said so.
+  const mode = String((spec.improvement_policy as { mode?: unknown } | undefined)?.mode ?? "locked");
+  lines.push(
+    "",
+    "## How it evolves",
+    "",
+    describeImprovementMode(mode),
+    "",
+    result.seed.improvementMode === undefined
+      ? "This is the Genesis default, not something the answers chose. Change it with `personaxis improve <mode>`."
+      : "Chosen when the persona was created. Change it with `personaxis improve <mode>`.",
+  );
   lines.push("");
   return lines.join("\n");
 }

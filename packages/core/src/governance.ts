@@ -167,6 +167,38 @@ export function governQualitative(mode: ImprovementMode): "block" | "queue" | "a
   return "queue"; // suggesting
 }
 
+/**
+ * What a mode does, in one line somebody can act on. Written next to `judge` and
+ * `governQualitative` because it describes them, and read by `state drift` and by the creation
+ * report, so the two never describe the same mode two ways.
+ */
+export function describeImprovementMode(mode: string): string {
+  if (mode === "locked") {
+    return (
+      "improvement_policy = locked: the living loop observes and does NOT evolve. Every change the " +
+      "model proposes is rejected; only a person's mutations and homeostasis move this state. " +
+      "Set improvement_policy.mode to suggesting or autonomous to let it respond."
+    );
+  }
+  // The two modes differ only in what happens to PROSE. For numeric envelope mutations `judge`
+  // treats them identically: applied, bounded, clamped, audited. The first version of this line
+  // said suggesting queues everything, which would have told the owner of a persona that its
+  // state does not move when it does.
+  if (mode === "suggesting") {
+    return (
+      "improvement_policy = suggesting: numeric changes the model proposes apply, inside the envelopes " +
+      "and the drift thresholds; durable edits to the persona's prose are queued for a person."
+    );
+  }
+  if (mode === "autonomous") {
+    return (
+      "improvement_policy = autonomous: numeric changes apply inside the envelopes and the drift " +
+      "thresholds, and durable edits to the persona's prose also apply, gated by consensus and protected paths."
+    );
+  }
+  return `improvement_policy = ${mode}`;
+}
+
 const MODE_RANK: Record<ImprovementMode, number> = { locked: 0, suggesting: 1, autonomous: 2 };
 
 function normalizeMode(m: unknown): ImprovementMode | undefined {
