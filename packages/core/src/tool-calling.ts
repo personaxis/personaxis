@@ -132,7 +132,7 @@ function extractUsage(json: { usage?: Partial<TokenUsage> }): TokenUsage | undef
  * smallest this engine runs against. A model or a caller that wants a different number sets
  * `maxTokens`, and that has always won.
  */
-export const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_TOKENS = 4096;
 
 export interface ToolCallConfig {
   endpoint: string;
