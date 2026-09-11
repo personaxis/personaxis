@@ -11,6 +11,10 @@
  * that opens once too often is a person clicking approve.
  */
 
+import { resolve } from "node:path";
+
+import { isProtectedUnder, pathEscapesWorkspace } from "../sandbox.js";
+
 export type ActionClass =
 	/** Reaches something outside the workspace: an API, a repository, a doc. */
 	| "external_write"
@@ -176,4 +180,122 @@ export function explainActionClasses(tool: string, argsText: string): string[] {
 		if (rule.args && !rule.args.test(argsText)) return false;
 		return Boolean(rule.tool || rule.args);
 	}).map((rule) => rule.because);
+}
+
+/**
+ * What the gate knows about a call besides its classes: whether it only reads, and
+ * whether it stays inside the workspace.
+ *
+ * E59, 2026-09-11. The classes say what a call does, not where. `write_file` is
+ * `external_write` whether it writes `docs/refunds.md` or `../other-client/x`, and it
+ * has to stay that way: the identity axis reads `external_write` to find a write to
+ * the persona's own state, which is inside the project. So the compiled policy could
+ * not tell a write inside from one outside, refused both under `workspace-write`, and
+ * sent every read to a person under `on-request`, against what the postures are
+ * documented to mean. These two facts are what it was missing.
+ */
+export interface CallFacts {
+	/** The tool is on the list of tools that only read. A name nobody listed is not a read. */
+	readonly knownRead: boolean;
+	/**
+	 * Every path the call names lands inside the workspace. For a call that is not a
+	 * known read it also names at least one, and none under a protected folder. False
+	 * whenever that cannot be established: no root, arguments that are not a JSON
+	 * object, a path that is not a string, a shell command.
+	 */
+	readonly withinWorkspace: boolean;
+}
+
+/**
+ * The tools that only read, by exact name, folded to lower case, with any argument
+ * that names where they read besides the common ones below.
+ *
+ * A list and not a pattern, because a pattern is a guess about names and this is the
+ * one place where a wrong guess loosens the gate. Our own loop's reads first, then the
+ * ones Claude Code sends through its hooks. A tool somebody adds is not a read until
+ * somebody adds it here.
+ */
+const KNOWN_READS: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>([
+	["read_file", []],
+	["list_dir", []],
+	["find_in_files", []],
+	["memory_search", []],
+	["memory_get", []],
+	["read_output", []],
+	["grep_output", []],
+	["read", []],
+	// A Glob pattern IS a path, and `../**` lists outside.
+	["glob", ["pattern"]],
+	["grep", []],
+	["ls", []],
+	["notebookread", []],
+]);
+
+/**
+ * The arguments that name a place, in the spellings the hosts use.
+ *
+ * `cwd` is here because it moves where every other path lands: a write to `x` from a
+ * `cwd` of `/etc` is a write to `/etc/x`. What this cannot see is a path under a key
+ * that is not listed, which is written down in `E59` for review.
+ */
+const PATH_KEYS = [
+	"path",
+	"file_path",
+	"filePath",
+	"notebook_path",
+	"target_file",
+	"targetPath",
+	"dir",
+	"directory",
+	"cwd",
+];
+
+/** The shells, which are never "inside": what a command touches is not in its arguments. */
+const SHELL = /^bash|^shell|^run_command|^execute|^powershell|^pwsh/i;
+
+/**
+ * Derives the facts for one call. Pure, like the classes.
+ *
+ * @param workspaceRoot where "inside" is measured from. Without it nothing is inside,
+ *   which is the answer the gate gave before these facts existed.
+ * @param cwd where a relative path in the arguments starts, when that is not the root:
+ *   a hook's call is made from the host's working directory, which can be below it.
+ */
+export function callFacts(tool: string, argsText: string, workspaceRoot?: string, cwd?: string): CallFacts {
+	const extraKeys = KNOWN_READS.get(tool.toLowerCase());
+	const knownRead = extraKeys !== undefined;
+	if (!workspaceRoot || SHELL.test(tool)) return { knownRead, withinWorkspace: false };
+
+	let args: unknown;
+	try {
+		args = JSON.parse(argsText);
+	} catch {
+		return { knownRead, withinWorkspace: false };
+	}
+	if (args === null || typeof args !== "object" || Array.isArray(args)) {
+		return { knownRead, withinWorkspace: false };
+	}
+
+	const record = args as Record<string, unknown>;
+	const named = [...PATH_KEYS, ...(extraKeys ?? [])].filter((key) => Object.hasOwn(record, key));
+	// A read with no path reads where it stands, which is inside. A write with no path
+	// could be going anywhere, and "we could not see where" is not "inside".
+	if (!knownRead && named.length === 0) return { knownRead, withinWorkspace: false };
+
+	const from = cwd ?? workspaceRoot;
+	const withinWorkspace = named.every((key) => {
+		const value = record[key];
+		if (typeof value !== "string") return false;
+		// A path that climbs is never inside, even when it comes back. Resolved from a
+		// directory below the root, `../../a/b/y` can name the root's own parents on the
+		// way down and land somewhere the resolution against the root calls inside.
+		// Braces name several places at once, and only one of them has to be outside.
+		if (value.split(/[\\/]+/).includes("..") || value.includes("{")) return false;
+		const target = value.startsWith("~") ? value : resolve(from, value);
+		if (pathEscapesWorkspace(target, workspaceRoot)) return false;
+		// Reading its own files is ordinary, the persona reads its document every turn.
+		// Writing them is governed elsewhere, so for a write they are never "inside".
+		return knownRead || !isProtectedUnder(target, workspaceRoot);
+	});
+	return { knownRead, withinWorkspace };
 }

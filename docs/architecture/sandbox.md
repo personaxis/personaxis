@@ -43,6 +43,13 @@ means a path that resolves outside it.
   `workspace-write` (which still asks for risky ops), matching `wrapCommand`'s "full access, no
   wrapping".
 
+**Protected folders.** A file write into `.git` or `.personaxis`, at any depth below a writable root
+and in any letter case, is refused under every posture, `danger-full-access` included, and the
+allow-list does not override it (`PROTECTED_SUBPATHS`, `isProtectedUnder`). `.git` is protected whole
+because `.git/config` runs code as surely as `.git/hooks` does (`core.hooksPath`, `core.fsmonitor`),
+which is also why Codex keeps the whole folder read-only inside a writable root. `.personaxis` holds
+the persona's identity, and self-edits are the sanctioned way to change it.
+
 ## Approval axis
 
 `ApprovalMode` governs the residual risk once the sandbox limits pass:
@@ -58,6 +65,61 @@ Read-only ops (neither write nor network) are `allow` under every approval mode.
 own posture via the `permissions` block (`policyFromFrontmatter`), so it brings its sandbox stance to
 any host. The REPL applies it fresh each turn (`buildPolicy`) and cycles the posture with
 **shift+tab** or `/mode`.
+
+## The compiled gate means the same thing
+
+The same posture is enforced a second time, by the policy compiled from the persona
+(`packages/core/src/enforcement/policy-compile.ts`). The daemon applies it to every call a host
+makes through its hooks or through ACP, and our own loop applies it alongside the tool gate above.
+Where both run, the stricter verdict wins.
+
+Until 2026-09-11 the two disagreed. The compiled gate refused every file write under
+`workspace-write`, because the action classes cannot say where a write lands and a file write is
+`external_write` wherever it points, and it sent every call to a person under `on-request`, reads
+included. It now reads two facts about each call, from `callFacts` in
+`packages/core/src/enforcement/action-classes.ts`:
+
+- **a known read**: the tool is on an explicit list of tools that only read (ours, and Claude Code's
+  `Read`, `Glob`, `Grep`). A name nobody listed is not a read.
+- **inside the workspace**: every path the call names resolves inside the workspace root. A path
+  that climbs (`..`) is never inside, even when it comes back; a shell command is never inside,
+  because what it touches is not in its arguments; and a call that is not a known read has to name
+  at least one path, and none under a protected folder. Without a root nothing is inside, which is
+  the answer the gate gave before the facts existed.
+
+With those, posture by posture:
+
+| Call | `read-only` | `workspace-write` | `danger-full-access` |
+|---|---|---|---|
+| a known read inside the workspace | allow | allow | allow |
+| a read outside, a read that names a credential, an unrecognised call | approval axis | approval axis | allow |
+| a file write or delete inside the workspace | deny | approval axis | allow |
+| a write outside, or into `.git` / `.personaxis` | deny | deny | allow |
+| a fetch to an allowlisted host, or a tool that only reads a remote | approval axis | approval axis | allow |
+
+Before any posture, the compiled gate applies the deny list, the hard limits, the egress allowlist
+and the prohibited behaviours, and a declared gate for an action class turns a verdict into a
+question for a person. So a host that is not on the allowlist is refused even under
+`danger-full-access`.
+
+**Where the compiled gate is stricter than the tool gate, on purpose.** A shell command is never
+inside, so under `workspace-write` a write by redirection and a shell command that reaches the
+network are refused: the file tools are the way to write. A read that names a credential is not
+waved through. A call reached through a bridge carries no root, so nothing it names is inside.
+
+**Where it is looser, and why that holds.** Under `read-only` it refuses what writes, deletes or
+spends, and not a call that only reaches out: `network_egress` is also what every MCP tool declares,
+and a read-only persona has to be able to read a remote through a tool that says it only reads.
+Where that data may go is the egress allowlist's question, and it comes first. Under
+`danger-full-access` the compiled gate does not
+refuse a write into `.personaxis`, because a write to the persona's state is judged by the identity
+axis against the persona's declared envelopes. The persona document itself is not judged by that
+axis, so through the daemon a host running with full access can rewrite it. The tool gate still
+refuses it in our own loop.
+
+The posture table is pinned in `packages/core/test/gate-postures.test.ts`, and the daemon's side,
+including the protected folders once writes inside were allowed, in
+`packages/cli/test/daemon-postures.test.ts`.
 
 ## OS enforcement, honest limits
 
@@ -89,4 +151,5 @@ command. The difference shows on a **write**: a workspace write is `deny` under 
 under `workspace-write` (approval axis), and `allow` under `danger-full-access`.
 
 Tests: `packages/core/test/sandbox.test.ts` (classification, the three postures, file-write escapes,
-per-persona permissions).
+protected folders, per-persona permissions) and `packages/core/test/gate-postures.test.ts` (the
+compiled gate under all twelve combinations of posture).

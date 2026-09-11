@@ -27,6 +27,10 @@ export function capabilityGuard(policy: ExecutablePolicy): Guard {
 				tool: call.tool,
 				args_text: call.argsText,
 				action_classes: [...call.actionClasses],
+				// E59: without these the policy cannot tell a write inside the workspace from
+				// one outside, and refuses both.
+				known_read: call.knownRead,
+				within_workspace: call.withinWorkspace,
 			});
 			switch (decision.verdict) {
 				case "allow":
@@ -36,8 +40,7 @@ export function capabilityGuard(policy: ExecutablePolicy): Guard {
 				case "gate":
 					return ask(
 						decision.rule,
-						`this needs ${decision.gate.required_approvals} approval(s) for ` +
-							`${decision.gate.action_class}`,
+						`${decision.reason}; it needs ${decision.gate.required_approvals} approval(s)`,
 					);
 			}
 		},

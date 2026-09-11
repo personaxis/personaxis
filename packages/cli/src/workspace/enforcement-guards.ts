@@ -124,6 +124,10 @@ export function cachedPolicyGuard(
 				tool: call.tool,
 				args_text: call.argsText,
 				action_classes: [...call.actionClasses] as never,
+				// E59: without these the policy refuses every write under `workspace-write`
+				// and asks a person about every read under `on-request`.
+				known_read: call.knownRead,
+				within_workspace: call.withinWorkspace,
 			});
 			saw?.(decision);
 			switch (decision.verdict) {
@@ -132,7 +136,9 @@ export function cachedPolicyGuard(
 				case "deny":
 					return gate.deny(decision.rule, decision.reason);
 				case "gate":
-					return gate.ask(decision.rule, `approval required for ${decision.gate.action_class}`);
+					// The policy's own reason. It used to be "approval required for" the gate's
+					// class, and a posture gate on a call with no class names `external_write`.
+					return gate.ask(decision.rule, decision.reason);
 			}
 		},
 	};
@@ -150,6 +156,11 @@ export interface CallExtras {
 	readonly actionClasses?: readonly ActionClass[];
 	/** What the call declares it would do to declared coordinates, when it does. */
 	readonly effects?: readonly gate.CoordinateEffect[];
+	/**
+	 * E59: the consented directory the call is working in, where "inside" is measured
+	 * from. Absent, nothing is inside, which is the strict answer.
+	 */
+	readonly workspaceRoot?: string;
 }
 
 /** Turns a hook request into the frozen call the cascade judges. */
@@ -165,6 +176,9 @@ export function callFor(
 			actionClassesFor(request.tool_name, request.args_text)) as never,
 		effects: extras.effects ?? [],
 		turn,
+		// A relative path in a host's arguments starts where the host is working, which
+		// can be below the root.
+		...(extras.workspaceRoot ? { workspaceRoot: extras.workspaceRoot, cwd: request.cwd } : {}),
 		// The hook's own id, when the host gave one, so the proposal, the verdict and
 		// the result share an identity across three processes rather than two.
 		...(request.tool_use_id ? { callId: request.tool_use_id } : {}),

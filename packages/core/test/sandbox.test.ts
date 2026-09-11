@@ -3,6 +3,7 @@ import {
   evaluateCommand,
   evaluateFileWrite,
   classifyCommand,
+  isProtectedPath,
   pathEscapesWorkspace,
   wrapCommand,
   policyFromFrontmatter,
@@ -45,6 +46,25 @@ describe("command classification", () => {
     expect(pathEscapesWorkspace("src/../src/index.ts", root)).toBe(false);
     expect(pathEscapesWorkspace("..cache/entry", root)).toBe(false);
     expect(pathEscapesWorkspace(".", root)).toBe(false);
+  });
+
+  it("protects the governed folders the way it now measures a way out (E59)", () => {
+    const p = policy();
+    // A name that starts with two dots inside a protected folder is inside it. The bare prefix
+    // test read `..notes` as a way out of `.personaxis` and left it unprotected.
+    expect(isProtectedPath(".personaxis/..notes", p)).toBe(true);
+    // The whole of .git, because .git/config runs code through core.hooksPath and core.fsmonitor.
+    expect(isProtectedPath(".git/config", p)).toBe(true);
+    expect(isProtectedPath(".git/hooks/pre-commit", p)).toBe(true);
+    // At any depth, and in any case.
+    expect(isProtectedPath("packages/app/.personaxis/personaxis.md", p)).toBe(true);
+    expect(isProtectedPath(".Personaxis/state.json", p)).toBe(true);
+    // Leaving the folder is not being in it, and a lookalike name is not the folder.
+    expect(isProtectedPath(".personaxis/../src/index.ts", p)).toBe(false);
+    expect(isProtectedPath(".github/workflows/ci.yml", p)).toBe(false);
+    expect(isProtectedPath("docs/personaxis-notes.md", p)).toBe(false);
+    // The file-write gate refuses them under every posture, full access included.
+    expect(evaluateFileWrite(".git/config", policy({ sandbox: "danger-full-access" })).decision).toBe("deny");
   });
 
   it("scans a command for paths that climb out through the middle", () => {

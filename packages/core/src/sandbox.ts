@@ -63,14 +63,17 @@ export const DEFAULT_POLICY: Policy = {
 };
 
 /**
- * FR.8 (Codex protocol.rs anti-escalation): subpaths that stay PROTECTED even
- * inside a writable root. `.git/hooks` = arbitrary-code-execution escalation
- * (a write there runs on the user's next git command); `.personaxis` = the
- * persona's identity artifacts, raw file writes would bypass the governance
- * ledger (self-edits are the sanctioned path). A deny here is NOT overridable
- * by the allow-list (deny precedence).
+ * FR.8 (Codex protocol.rs anti-escalation): folders that stay PROTECTED even
+ * inside a writable root, at any depth below it. `.git` = arbitrary-code-execution
+ * escalation: a write to `.git/hooks` runs on the user's next git command, and so
+ * does one to `.git/config` that sets `core.hooksPath` or `core.fsmonitor`, which
+ * is why Codex keeps the whole folder read-only rather than only its hooks
+ * (`WritableRoot.read_only_subpaths`); this list named only `.git/hooks` until
+ * 2026-09-11. `.personaxis` = the persona's identity artifacts, raw file writes
+ * would bypass the governance ledger (self-edits are the sanctioned path). A deny
+ * here is NOT overridable by the allow-list (deny precedence).
  */
-export const PROTECTED_SUBPATHS = [".git/hooks", ".personaxis"] as const;
+export const PROTECTED_SUBPATHS = [".git", ".personaxis"] as const;
 
 /** Named permission profiles (FR.8), one word instead of four knobs. */
 export const PERMISSION_PROFILES = {
@@ -92,16 +95,35 @@ export function policyFromProfile(
 
 /** True when `p` lands inside a protected subpath of any writable root. */
 export function isProtectedPath(p: string, policy: Policy): boolean {
-  const roots = [policy.workspaceRoot, ...(policy.writableRoots ?? [])];
-  const abs = isAbsolute(p) ? normalize(p) : normalize(`${policy.workspaceRoot}/${p}`);
-  for (const root of roots) {
-    for (const sub of PROTECTED_SUBPATHS) {
-      const guard = normalize(`${root}/${sub}`);
-      const rel = relative(guard, abs);
-      if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return true;
-    }
-  }
-  return false;
+  const abs = isAbsolute(p) ? normalize(p) : resolve(policy.workspaceRoot, p);
+  return [policy.workspaceRoot, ...(policy.writableRoots ?? [])].some((root) => isProtectedUnder(abs, root));
+}
+
+/**
+ * True when `p`, resolved from `root`, lands inside `root` and under one of the
+ * `PROTECTED_SUBPATHS`, at any depth: a nested project's `.personaxis` is another
+ * persona's identity, and a submodule's `.git` runs code like the top one does.
+ *
+ * Folded to lower case, because Windows and macOS do not tell `.Personaxis` from
+ * `.personaxis`, and protecting a folder nobody names that way on Linux costs nothing.
+ *
+ * Two defects fixed here on 2026-09-11 (E59): a name that merely starts with two
+ * dots inside a protected folder (`.personaxis/..notes`) was read as a way out of
+ * it and left unprotected, by the same bare-prefix test `pathEscapesWorkspace` had;
+ * and only the top level of a root was looked at.
+ */
+export function isProtectedUnder(p: string, root: string): boolean {
+  const base = resolve(root);
+  const target = isAbsolute(p) ? normalize(p) : resolve(base, p);
+  const rel = relative(base, target);
+  if (rel === "" || climbsOut(rel)) return false;
+  const protectedNames: readonly string[] = PROTECTED_SUBPATHS;
+  return rel.split(/[\\/]+/).some((segment) => protectedNames.includes(segment.toLowerCase()));
+}
+
+/** `..` alone, or `..` followed by a separator, or another drive: a relative path that leaves its base. */
+function climbsOut(rel: string): boolean {
+  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || isAbsolute(rel);
 }
 
 /**
@@ -198,10 +220,9 @@ export function pathEscapesWorkspace(p: string, root: string): boolean {
   if (p.startsWith("~")) return true;
   const base = resolve(root);
   const target = isAbsolute(p) ? normalize(p) : resolve(base, p);
-  const rel = relative(base, target);
   // `..` alone or `..` followed by a separator is a way up. A name that merely starts with two
   // dots (`..cache`) is a folder inside, and a bare prefix test used to call it a way out.
-  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || isAbsolute(rel);
+  return climbsOut(relative(base, target));
 }
 
 export type Decision = "allow" | "ask" | "deny";
