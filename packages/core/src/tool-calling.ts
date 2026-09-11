@@ -119,10 +119,26 @@ function extractUsage(json: { usage?: Partial<TokenUsage> }): TokenUsage | undef
   };
 }
 
+/**
+ * How long one reply may be when nothing says otherwise.
+ *
+ * It was 1 024, which is under four kilobytes of text, and this loop's whole job is writing files.
+ * Measured on 2026-09-11: a model asked for a game as one HTML file was cut at 2 525 bytes, every
+ * time, because the ceiling arrived before the closing tag. No file longer than about three
+ * kilobytes could ever be written in one call, and nothing said so: the cut call was repaired,
+ * executed, and reported as a success.
+ *
+ * 4 096 is enough for a real file and still a small share of a 32 000-token context, which is the
+ * smallest this engine runs against. A model or a caller that wants a different number sets
+ * `maxTokens`, and that has always won.
+ */
+export const DEFAULT_MAX_TOKENS = 4096;
+
 export interface ToolCallConfig {
   endpoint: string;
   model: string;
   apiKey?: string;
+  /** Ceiling on ONE reply. Defaults to `DEFAULT_MAX_TOKENS`. */
   maxTokens?: number;
   fetchImpl?: typeof fetch;
   /**
@@ -356,7 +372,7 @@ export async function requestToolCall(
       })),
       tool_choice: "auto",
       temperature: 0.3,
-      max_tokens: cfg.maxTokens ?? 1024,
+      max_tokens: cfg.maxTokens ?? DEFAULT_MAX_TOKENS,
       // Asked for only when somebody is listening. `stream_options` comes with it
       // because a streamed reply reports no usage without it, and this loop enforces
       // a token budget: streaming that quietly cost the budget its numbers would turn
@@ -486,7 +502,7 @@ async function reactFallback(
       ],
       ...(responseFormat ? { response_format: responseFormat } : {}),
       temperature: 0.3,
-      max_tokens: cfg.maxTokens ?? 1024,
+      max_tokens: cfg.maxTokens ?? DEFAULT_MAX_TOKENS,
     };
     const res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
     if (res.ok) {
