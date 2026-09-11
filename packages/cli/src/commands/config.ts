@@ -151,13 +151,34 @@ const getCommand = new Command("get")
     console.log(value === undefined ? chalk.dim("(unset)") : value);
   });
 
-/** Redact inline apiKey values so `config show` never prints a full secret. */
-function redact(cfg: PersonaxisConfig): PersonaxisConfig {
-  const mask = (k?: string): string | undefined => (k ? k.slice(0, 3) + "…" + k.slice(-2) : k);
-  const out = JSON.parse(JSON.stringify(cfg)) as PersonaxisConfig;
-  if (out.local?.apiKey) out.local.apiKey = mask(out.local.apiKey);
-  for (const p of Object.values(out.personas ?? {})) if (p.apiKey) p.apiKey = mask(p.apiKey);
-  return out;
+/**
+ * Redact inline apiKey values so `config show` never prints a full secret.
+ *
+ * WALKS THE WHOLE TREE, deliberately, rather than naming the places a key can sit.
+ * The earlier version masked `local.apiKey` and `personas.*.apiKey` and missed
+ * `profiles.*.apiKey`, which is where `config set --profile` actually writes one, so a
+ * real Cohere key printed in full on 2026-09-10. A list of locations is a list to keep in
+ * sync with a config shape that grows, and the entry it forgets is the one that leaks.
+ *
+ * Anything whose key name looks like a secret is masked wherever it appears, so a future
+ * field costs nothing to cover and cannot reopen this hole.
+ */
+const SECRET_FIELD = /^(api[_-]?key|secret|token|password|authorization)$/i;
+
+export function redact<T>(cfg: T): T {
+  const mask = (k: string): string => (k.length <= 6 ? "…" : k.slice(0, 3) + "…" + k.slice(-2));
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (node && typeof node === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        out[k] = SECRET_FIELD.test(k) && typeof v === "string" && v.length > 0 ? mask(v) : walk(v);
+      }
+      return out;
+    }
+    return node;
+  };
+  return walk(JSON.parse(JSON.stringify(cfg))) as T;
 }
 
 const showCommand = new Command("show")
