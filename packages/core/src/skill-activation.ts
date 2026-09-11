@@ -53,6 +53,12 @@ export interface SubsetOptions {
 /**
  * The tools to expose for a task: the base set plus the tools the active skills need. When no
  * skill matches the task, the FULL catalog is returned unchanged.
+ *
+ * A skill that says NOTHING about tools does not narrow anything, and when no active skill names a
+ * tool the full catalog comes back. Saying nothing is not the same as saying "no tool is allowed":
+ * `allowed-tools` is an optional field of a SKILL.md, so most skills in the world omit it, and
+ * reading the omission as a deny left a persona with one matching skill holding only `finish`.
+ * Found on 2026-09-11 wiring a persona's declared skills into the loop for the first time.
  */
 export function selectActiveTools(
   task: string,
@@ -60,7 +66,7 @@ export function selectActiveTools(
   skills: ActiveSkill[],
   opts: SubsetOptions = {},
 ): ToolSpec[] {
-  const active = activeSkillsFor(task, skills);
+  const active = activeSkillsFor(task, skills).filter((s) => s.allowedTools.length > 0);
   if (active.length === 0) return allTools;
 
   const allowed = new Set<string>(opts.alwaysNames ?? [FINISH_TOOL]);
