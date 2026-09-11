@@ -38,41 +38,9 @@ import {
   machineId,
   driftReport,
   readDriftThresholds,
+  describeImprovementMode,
   type MutationLogEntry,
 } from "@personaxis/core";
-
-/**
- * What the improvement mode means for this persona's state, in one line a person can act on.
- *
- * Exported so the sentence is tested rather than trusted: the whole point of printing it is that
- * a `locked` persona stops looking like one that can evolve.
- */
-export function describeMode(mode: string): string {
-  if (mode === "locked") {
-    return (
-      "improvement_policy = locked: the living loop observes and does NOT evolve. Every change the " +
-      "model proposes is rejected; only a person's mutations and homeostasis move this state. " +
-      "Set improvement_policy.mode to suggesting or autonomous to let it respond."
-    );
-  }
-  // The two modes differ only in what happens to PROSE. For numeric envelope mutations
-  // governance.ts treats them identically (`judge`): applied, bounded, clamped, audited. The
-  // first version of this line said suggesting queues everything, which would have told the
-  // owner of a persona that its state does not move when it does.
-  if (mode === "suggesting") {
-    return (
-      "improvement_policy = suggesting: numeric changes the model proposes apply, inside the envelopes " +
-      "and the drift thresholds; durable edits to the persona's prose are queued for a person."
-    );
-  }
-  if (mode === "autonomous") {
-    return (
-      "improvement_policy = autonomous: numeric changes apply inside the envelopes and the drift " +
-      "thresholds, and durable edits to the persona's prose also apply, gated by consensus and protected paths."
-    );
-  }
-  return `improvement_policy = ${mode}`;
-}
 
 // ─── Path resolution ───────────────────────────────────────────────────────
 
@@ -380,7 +348,7 @@ const driftSubcommand = new Command("drift")
       // and in `locked` governance rejects every proposal the model makes, so the living loop
       // observes and never evolves. This report used to say nothing about it, which is how a
       // day of experiments measured a persona whose defining feature was switched off.
-      const modeLine = describeMode(mode);
+      const modeLine = describeImprovementMode(mode);
       console.log(mode === "locked" ? chalk.yellow(modeLine) : chalk.dim(modeLine));
       console.log("");
       console.log(chalk.bold("Coordinates (sorted by drift):"));
