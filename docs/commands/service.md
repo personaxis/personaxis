@@ -13,15 +13,32 @@ a person decides, and each persona brings its own limits and record to its step.
 ```bash
 personaxis service run contract-review            # run .personaxis/services/contract-review.json
 personaxis service run contract-review --check    # check the composition only; runs nothing
+personaxis service run game-build --brief "A small game about a cat crossing a road."
+personaxis service run game-build --brief-file brief.txt
 ```
 
 | Arg / flag | Meaning |
 |---|---|
 | `<address>` | The service, read from `.personaxis/services/<address>.json`. The file name is the address. |
 | `--check` | Report every problem in the composition (cycles, missing references, gaps in the numbering, nesting depth, declared files outside the folder) and exit. Runs no model. |
+| `--brief <text>` | What the client asked for, in their own words. |
+| `--brief-file <path>` | The same, read from a file, for a request too long for one shell argument. |
 
 Exit code is `0` when the service completed, `1` when it failed or is waiting for an approval, and
-`2` when the service file does not exist.
+`2` when the service file does not exist, the two brief flags are given together, or the brief file
+cannot be read.
+
+## The request
+
+A service is a fixed set of steps. What changes between two runs of it is the request, and
+`--brief` is where that goes. **Every step reads it**, and so does every step of every sub-service,
+after its own instruction and before the note the previous step left: the job came first, the steps
+ran inside it. It is labelled as the client's words and said not to be an instruction from another
+step, so a step can tell the two apart, and it is stored in the run's journal, because a record that
+does not carry its input cannot say what was asked.
+
+A request longer than 12 000 characters is trimmed and says where it was cut. An empty one is no
+request at all: the steps read exactly what they would have read without the flag.
 
 ## The definition
 

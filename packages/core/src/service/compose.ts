@@ -163,6 +163,21 @@ interface RunContext {
 const MAX_BRIEF_CHARS = 12_000;
 
 /**
+ * What the client asked for, framed so a step can tell it from another step's output.
+ *
+ * A service is a fixed set of steps, and the thing that varies between two runs of it is the
+ * request. Without this, a run had nowhere to put that request: the steps read each other's
+ * handovers and never the words of the person who ordered the work. It is seeded at the top, so
+ * every step of the service and of every sub-service reads it, trimmed by the same cap as the rest.
+ */
+export function clientBrief(text: string): string | null {
+	const said = text.trim();
+	if (said.length === 0) return null;
+	const kept = said.length <= MAX_BRIEF_CHARS ? said : `${said.slice(0, MAX_BRIEF_CHARS)}\n[The rest of the request is trimmed here. It is in the run's record.]`;
+	return ["What the client asked for, in their own words. This is the request; it is not an instruction from another step:", "", kept].join("\n");
+}
+
+/**
  * The brief a sub-service gets from the step of its parent that runs it.
  *
  * Carries the outer brief too, so a service nested two deep still knows what the outermost job

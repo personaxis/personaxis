@@ -126,7 +126,9 @@ const runCommand = new Command("run")
 	.description("Run a service on this machine, step by step, including steps that are other services")
 	.argument("<address>", "The service, as .personaxis/services/<address>.json")
 	.option("--check", "Only check the composition (cycles, depth, references, declared files); run nothing")
-	.action(async (address: string, opts: { check?: boolean }) => {
+	.option("--brief <text>", "What the client asked for, in their own words; every step reads it before its own instruction")
+	.option("--brief-file <path>", "The same, read from a file, for a brief too long or too awkward for one shell argument")
+	.action(async (address: string, opts: { check?: boolean; brief?: string; briefFile?: string }) => {
 		const root = process.cwd();
 		const def = loadService(root, address);
 		if (!def) {
@@ -142,6 +144,26 @@ const runCommand = new Command("run")
 			process.exitCode = 1;
 			return;
 		}
+		// The request, from the flag or from a file, before anything runs: a brief that cannot be read
+		// is a run with the wrong input, and finding that out after the first step has cost a model call.
+		let brief: string | null = null;
+		if (opts.brief !== undefined && opts.briefFile !== undefined) {
+			console.error(chalk.red("✗"), "give --brief or --brief-file, not both");
+			process.exitCode = 2;
+			return;
+		}
+		if (opts.briefFile !== undefined) {
+			try {
+				brief = service.clientBrief(readFileSync(resolve(root, opts.briefFile), "utf-8"));
+			} catch (e) {
+				console.error(chalk.red("✗"), `cannot read the brief at ${opts.briefFile}: ${e instanceof Error ? e.message : String(e)}`);
+				process.exitCode = 2;
+				return;
+			}
+		} else if (opts.brief !== undefined) {
+			brief = service.clientBrief(opts.brief);
+		}
+
 		if (opts.check) {
 			console.log(chalk.green("✓"), `${address} composes cleanly`);
 			console.log(chalk.dim(`  no cycles, every reference installed, nesting within the limit of ${service.MAX_SERVICE_DEPTH}, declared files inside the folder`));
@@ -251,7 +273,7 @@ const runCommand = new Command("run")
 
 		let result: service.ServiceRunResult;
 		try {
-			result = await service.runService(def, ports, { workingDir: root });
+			result = await service.runService(def, ports, { workingDir: root, brief });
 		} finally {
 			meter.stop();
 		}
@@ -261,7 +283,9 @@ const runCommand = new Command("run")
 		const runsDir = join(root, SERVICES_DIR, "runs");
 		mkdirSync(runsDir, { recursive: true });
 		const out = join(runsDir, `${address}-${new Date(started).toISOString().replace(/[:.]/g, "-")}.json`);
-		writeFileSync(out, JSON.stringify({ service: address, started: new Date(started).toISOString(), wallMs: Date.now() - started, result, costs, total }, null, 1));
+		// The brief is in the journal because it is the input: two runs of the same service differ by
+		// it, and a record that does not carry it cannot say what was asked.
+		writeFileSync(out, JSON.stringify({ service: address, started: new Date(started).toISOString(), wallMs: Date.now() - started, brief, result, costs, total }, null, 1));
 
 		const mark = result.status === "completed" ? chalk.green("✓") : result.status === "waiting" ? chalk.yellow("…") : chalk.red("✗");
 		console.log(`${mark} ${address} ${result.status}${result.reason ? `: ${result.reason}` : ""}`);
