@@ -58,7 +58,11 @@ Same shape as a service template in the workspace, plus `serviceRef`:
    compiled document is recompiled when a band is crossed. Each persona keeps its turns in its own
    record.
 3. **A service step** runs the other service from its first step to its end, and its result becomes
-   this step's result.
+   this step's result. Every step of that sub-service is briefed with the parent step's
+   instruction and what the parent handed to it, so due diligence knows which deal it is
+   checking. Nested deeper, the brief carries the outer job too; past 12 000 characters the
+   outermost context is trimmed first, with a line saying so, because the step right above is
+   what the sub-service is doing.
 4. What decides the next step is the same pure function the workspace uses, moved into the engine
    unchanged: in order, one at a time, stopping for approvals.
 
@@ -96,7 +100,14 @@ the step asked for, opened by the thing it was there to watch.
 
 Every run writes `.personaxis/services/runs/<address>-<timestamp>.json`: the result, every step with
 its path from the root service, who did it, how it ended and what it left, plus the time each
-persona step took and the wall time of the run. The timings do not repeat what a step said.
+persona step took and the wall time of the run. Each note is stored once: a step done by a service
+has `summary: null` and a `deliveredBy` pointing at the step inside it whose note is the delivery,
+and the timings do not repeat what a step said.
+
+Each persona step's governed tick is recorded with provenance `internal`, not `user`: what the tick
+reads can carry third-party text (a contributor's diff, a counterparty's contract) and other
+personas' notes, and the weakest source is the one that counts. Numeric state still moves inside
+its envelopes; a durable edit to the persona's prose cannot be justified by it.
 
 A provider error fails the step with the error as its reason. It is never written as the step's
 note, because the next step would read it as the work.
@@ -118,4 +129,4 @@ Said so it is not assumed:
 | `service` | A fixed line of steps, done by personas and services, repeatable, with approvals and a journal. |
 | [`team`](./team.md) | A group of personas with roles and a shared goal. No order of work. |
 | [`orchestrate`](./orchestrate.md) | Picks the best persona for one task. One task, one persona. |
-| Delegation | A persona hands part of its own turn to another, with the scope it had at that moment and never more. Decided by the persona during a turn, not written in advance. |
+| Delegation | During a turn, a persona hands a piece of its own work to a sub-run of **itself**, with the scope it had declared at that moment and never more, on the same budget. Decided by the model inside the turn, not written in advance, and never another persona. |

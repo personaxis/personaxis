@@ -115,7 +115,13 @@ const runCommand = new Command("run")
 
 				// The governed tick. Without it a step is the document plus a prompt, and the
 				// persona would not change across the service no matter what it met.
-				const tick = await runObserve(pp, `${prompt}\n\n${reply}`, "user");
+				//
+				// Labelled `internal`, not `user`. The observation is the step's prompt, which can
+				// carry third-party text (a contributor's diff, a counterparty's contract), plus
+				// other personas' notes and this persona's own reply. `provenance.ts` says the
+				// weakest link wins, and under `user` an instruction injected into a diff would have
+				// justified a self-edit with the trust of the persona's owner.
+				const tick = await runObserve(pp, `${prompt}\n\n${reply}`, "internal");
 				if (!tick.ok) console.log(chalk.yellow(`    tick failed: ${tick.error}`));
 
 				timings.push({ path, position, persona: personaRef, ms: Date.now() - t0 });

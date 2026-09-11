@@ -80,6 +80,124 @@ describe("a service that is a step of another", () => {
 		expect(prompts.partner).toContain("no blockers found");
 	});
 
+	it("briefs every step of the sub-service with the parent's step and what came before it", async () => {
+		// Found on 2026-09-11 preparing the first real run: the sub-service started with an empty
+		// handover, so due diligence did not know which deal it was checking.
+		const sub = line("due-diligence", { persona: "researcher" }, { persona: "summariser" });
+		const main: ServiceDef = {
+			address: "deal",
+			name: "deal",
+			steps: [
+				{ position: 1, personaRef: "intake", instruction: "take the deal in" },
+				{ position: 2, serviceRef: "due-diligence", instruction: "check the counterparty of this deal" },
+			],
+		};
+		const { p, prompts } = ports([main, sub], { intake: { outcome: "completed", summary: "counterparty is Acme Ltd" } });
+		await runService(main, p);
+		for (const who of ["researcher", "summariser"]) {
+			expect(prompts[who]).toContain("check the counterparty of this deal");
+			expect(prompts[who]).toContain("counterparty is Acme Ltd");
+		}
+		// Its own instruction still comes first, as stepPrompt decides.
+		expect(prompts.researcher?.startsWith("do part 1")).toBe(true);
+	});
+
+	it("carries the brief down more than one level", async () => {
+		const leaf = line("background-check", { persona: "checker" });
+		const mid = line("due-diligence", { service: "background-check" });
+		const main = line("deal", { persona: "intake" }, { service: "due-diligence" });
+		const { p, prompts } = ports([main, mid, leaf], { intake: { outcome: "completed", summary: "counterparty is Acme Ltd" } });
+		await runService(main, p);
+		expect(prompts.checker).toContain("counterparty is Acme Ltd");
+	});
+
+	// Each note is cut to 3 000 characters by handover.ts, so several notes are needed to pass the
+	// cap; one long note never does. The first version of these two tests used one, and passed
+	// nothing through the trimming at all.
+	const noted = (address: string, prefix: string, count: number, then: { service: string }): { def: ServiceDef; script: Script } => ({
+		def: line(address, ...Array.from({ length: count }, (_, i) => ({ persona: `${prefix}${i + 1}` })), then),
+		script: Object.fromEntries(
+			Array.from({ length: count }, (_, i) => [`${prefix}${i + 1}`, { outcome: "completed" as const, summary: `${prefix.toUpperCase()}${i + 1} ${"x".repeat(3_500)}` }]),
+		),
+	});
+
+	it("trims the outermost context first, and says so, when the brief would pass its cap", async () => {
+		const leaf = line("leaf", { persona: "checker" });
+		const mid = noted("mid", "near", 2, { service: "leaf" });
+		const root = noted("root", "far", 3, { service: "mid" });
+		const { p, prompts } = ports([root.def, mid.def, leaf], { ...root.script, ...mid.script });
+		await runService(root.def, p);
+		const prompt = prompts.checker ?? "";
+		expect(prompt).toContain("NEAR1");
+		expect(prompt).toContain("NEAR2");
+		// The oldest note of the outermost service is what goes, and the cut is announced.
+		expect(prompt).not.toContain("FAR1");
+		expect(prompt).toContain("FAR3");
+		expect(prompt).toContain("The start of the larger job is trimmed here");
+	});
+
+	it("drops the outer context entirely when the step right above fills the cap on its own", async () => {
+		const leaf = line("leaf", { persona: "checker" });
+		const mid = noted("mid", "near", 4, { service: "leaf" });
+		const root = noted("root", "far", 1, { service: "mid" });
+		const { p, prompts } = ports([root.def, mid.def, leaf], { ...root.script, ...mid.script });
+		await runService(root.def, p);
+		const prompt = prompts.checker ?? "";
+		expect(prompt).toContain("NEAR4");
+		expect(prompt).not.toContain("FAR1");
+		// Instruction, the brief from the step above (its handover capped at 12 000) and nothing else.
+		expect(prompt.length).toBeLessThan(13_000);
+	});
+
+	it("gives a service that is nobody's step no brief at all", async () => {
+		const svc = line("alone", { persona: "only" });
+		const { p, prompts } = ports([svc], {});
+		await runService(svc, p);
+		expect(prompts.only).toBe("do part 1");
+	});
+
+	it("holds each note once: a service step points at the step inside it that delivered", async () => {
+		// The first real run stored the documentation twice, once in the sub-service's last step
+		// and again in the parent's step, 4 068 characters each.
+		const sub = line("docs", { persona: "drafter" }, { persona: "editor" });
+		const main = line("release", { service: "docs" }, { persona: "notifier" });
+		const { p, prompts } = ports([main, sub], { editor: { outcome: "completed", summary: "THE REFERENCE" } });
+		const r = await runService(main, p);
+		const serviceStep = r.steps.find((s) => "service" in s.who);
+		expect(serviceStep?.summary).toBeNull();
+		expect(serviceStep?.deliveredBy).toEqual({ path: ["release", "docs"], position: 2 });
+		const delivered = r.steps.find((s) => s.path.join(">") === "release>docs" && s.position === 2);
+		expect(delivered?.summary).toBe("THE REFERENCE");
+		expect(r.steps.filter((s) => s.summary === "THE REFERENCE")).toHaveLength(1);
+		// And the next step of the parent still receives it: the pointer is for the record only.
+		expect(prompts.notifier).toContain("THE REFERENCE");
+		expect(r.summaryFrom).toEqual({ path: ["release"], position: 2 });
+	});
+
+	it("keeps the text on a service step when no step inside it left a note to point at", async () => {
+		// A sub-service that stopped without a note delivers its reason, and there is no step to
+		// point at, so the text stays on the parent's step.
+		const sub = line("quiet", { persona: "silent" }, { persona: "unused" });
+		const main = line("outer", { service: "quiet" });
+		const { p } = ports([main, sub], { silent: { outcome: "stopped", summary: null } });
+		const r = await runService(main, p);
+		const serviceStep = r.steps.find((s) => "service" in s.who);
+		expect(serviceStep?.deliveredBy).toBeUndefined();
+		expect(serviceStep?.summary).toBe("stopped at step 1");
+	});
+
+	it("leaves a service step without a note when nothing inside it left one", async () => {
+		const sub = line("quiet", { persona: "silent" });
+		const main = line("outer", { service: "quiet" }, { persona: "next" });
+		const { p, prompts } = ports([main, sub], { silent: { outcome: "completed", summary: null } });
+		const r = await runService(main, p);
+		const serviceStep = r.steps.find((s) => "service" in s.who);
+		expect(serviceStep?.summary).toBeNull();
+		expect(serviceStep?.deliveredBy).toBeUndefined();
+		// The next step is told plainly, in handover.ts's own words, that nothing was left.
+		expect(prompts.next).toContain("Left no note");
+	});
+
 	it("records the sub-service's steps under its own path", async () => {
 		const sub = line("child", { persona: "a" });
 		const main = line("parent", { service: "child" });
