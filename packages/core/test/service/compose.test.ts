@@ -222,10 +222,15 @@ describe("a service that is a step of another", () => {
 	it("fails the parent step when the sub-service fails, and the parent stops there", async () => {
 		const sub = line("check", { persona: "checker" });
 		const main = line("ship", { service: "check" }, { persona: "shipper" });
-		const { p, calls } = ports([main, sub], { checker: { outcome: "failed", summary: null } });
+		const { p, calls } = ports([main, sub], { checker: { outcome: "failed", summary: null, reason: "the diff does not apply" } });
 		const r = await runService(main, p);
 		expect(r.status).toBe("failed");
 		expect(calls).not.toContain("shipper");
+		// The parent's step says which step of which service failed, and why, instead of "step 1
+		// failed", which on the parent's record reads as its own step 1.
+		expect(r.steps.find((s) => s.path.length === 1 && s.position === 1)?.reason).toBe(
+			"step 1 of check failed: the diff does not apply",
+		);
 	});
 
 	it("turns a persona port that throws into a failed step, and keeps the steps before it", async () => {

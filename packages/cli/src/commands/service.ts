@@ -265,8 +265,9 @@ const runCommand = new Command("run")
 
 		const mark = result.status === "completed" ? chalk.green("✓") : result.status === "waiting" ? chalk.yellow("…") : chalk.red("✗");
 		console.log(`${mark} ${address} ${result.status}${result.reason ? `: ${result.reason}` : ""}`);
-		// The run's reason is the line's ("step 1 failed"); the step that failed says why.
-		const failedStep = [...result.steps].reverse().find((s) => s.outcome === "failed" && s.reason);
+		// The run's reason is the line's ("step 1 failed"); the step that failed says why. The first
+		// one in the record, because a sub-service's steps are recorded before the step that ran it.
+		const failedStep = result.steps.find((s) => s.outcome === "failed" && s.reason);
 		if (result.status === "failed" && failedStep) {
 			console.log(chalk.red(`  ${failedStep.path.join(" > ")} · step ${failedStep.position}: ${failedStep.reason}`));
 		}
