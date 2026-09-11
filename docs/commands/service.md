@@ -99,8 +99,15 @@ the step asked for, opened by the thing it was there to watch.
 ## The journal
 
 Every run writes `.personaxis/services/runs/<address>-<timestamp>.json`: the result, every step with
-its path from the root service, who did it, how it ended and what it left, plus the time each
-persona step took and the wall time of the run. Each note is stored once: a step done by a service
+its path from the root service, who did it, how it ended and what it left, and what each persona
+step cost. The cost is split into three phases, each with its time, its model calls and their
+prompt and completion tokens: the **answer**, the **bookkeeping** (naming a new session can call
+the model) and the **governed tick**. Kept apart so the price of governing is a number of its own.
+The run prints the three totals when it ends. Tokens are read from every `/chat/completions`
+response the process receives, so the appraiser's calls count too; a call whose response carried
+no usage block is counted as unreported, and the token total then says it is a floor.
+
+Each note is stored once: a step done by a service
 has `summary: null` and a `deliveredBy` pointing at the step inside it whose note is the delivery,
 and the timings do not repeat what a step said.
 
