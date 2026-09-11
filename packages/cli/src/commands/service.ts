@@ -26,6 +26,7 @@ import { service } from "@personaxis/core";
 
 import { governedReply } from "../repl/headless.js";
 import { recordTurn } from "../repl/session.js";
+import { meterModelCalls, usageBetween, type ModelUsage } from "../usage-meter.js";
 import { runObserve } from "./observe.js";
 
 const SERVICES_DIR = join(".personaxis", "services");
@@ -84,22 +85,28 @@ const runCommand = new Command("run")
 		}
 
 		const started = Date.now();
-		// Only the time per step. What each step said is already in `result.steps`; repeating it
-		// here would store every deliverable twice in the same file.
-		const timings: Array<{ path: readonly string[]; position: number; persona: string; ms: number }> = [];
+		// What each step cost, in time and in model calls, split into the answer, the bookkeeping
+		// and the governed tick, so the price of governing is its own number. What each step said
+		// is already in `result.steps`; repeating it here would store every deliverable twice.
+		const costs: StepCost[] = [];
+		const meter = meterModelCalls();
+		const since = (t: number, u: ModelUsage): PhaseCost => ({ ms: Date.now() - t, ...usageBetween(u, meter.snapshot()) });
 
 		const ports: service.ServicePorts = {
 			resolveService: (a) => loadService(root, a),
 			async runPersonaStep({ personaRef, prompt, path, position }) {
 				const pp = personaPath(root, personaRef);
 				if (!existsSync(pp)) return { outcome: "failed", summary: null, reason: `persona ${personaRef} is not installed` };
-				const t0 = Date.now();
 				console.log(chalk.dim(`  ${path.join(" > ")} · step ${position} · ${personaRef}`));
+				const cost: StepCost = { path, position, persona: personaRef, reply: null, record: null, tick: null };
+				costs.push(cost);
 
 				// The same reply `personaxis -p` gives, from the same function, so a persona answers a
 				// step exactly as it answers when called directly.
 				let reply: string;
 				let ctx: Awaited<ReturnType<typeof governedReply>>["ctx"];
+				let t = Date.now();
+				let u = meter.snapshot();
 				try {
 					({ reply, ctx } = await governedReply({
 						personaPath: pp,
@@ -108,10 +115,16 @@ const runCommand = new Command("run")
 						onResponderError: "throw",
 					}));
 				} catch (e) {
-					timings.push({ path, position, persona: personaRef, ms: Date.now() - t0 });
+					cost.reply = since(t, u);
 					return { outcome: "failed", summary: null, reason: (e as Error).message };
 				}
+				cost.reply = since(t, u);
+
+				// Naming a new session can call the model, which is why it is counted apart.
+				t = Date.now();
+				u = meter.snapshot();
 				await recordTurn(ctx, prompt, reply, "background");
+				cost.record = since(t, u);
 
 				// The governed tick. Without it a step is the document plus a prompt, and the
 				// persona would not change across the service no matter what it met.
@@ -121,27 +134,77 @@ const runCommand = new Command("run")
 				// other personas' notes and this persona's own reply. `provenance.ts` says the
 				// weakest link wins, and under `user` an instruction injected into a diff would have
 				// justified a self-edit with the trust of the persona's owner.
+				t = Date.now();
+				u = meter.snapshot();
 				const tick = await runObserve(pp, `${prompt}\n\n${reply}`, "internal");
+				cost.tick = since(t, u);
 				if (!tick.ok) console.log(chalk.yellow(`    tick failed: ${tick.error}`));
 
-				timings.push({ path, position, persona: personaRef, ms: Date.now() - t0 });
 				return { outcome: "completed", summary: reply };
 			},
 			approve: approveOnTerminal,
 		};
 
-		const result = await service.runService(def, ports, { workingDir: root });
+		let result: service.ServiceRunResult;
+		try {
+			result = await service.runService(def, ports, { workingDir: root });
+		} finally {
+			meter.stop();
+		}
 
+		const total = totalOf(costs);
 		const runsDir = join(root, SERVICES_DIR, "runs");
 		mkdirSync(runsDir, { recursive: true });
 		const out = join(runsDir, `${address}-${new Date(started).toISOString().replace(/[:.]/g, "-")}.json`);
-		writeFileSync(out, JSON.stringify({ service: address, started: new Date(started).toISOString(), wallMs: Date.now() - started, result, timings }, null, 1));
+		writeFileSync(out, JSON.stringify({ service: address, started: new Date(started).toISOString(), wallMs: Date.now() - started, result, costs, total }, null, 1));
 
 		const mark = result.status === "completed" ? chalk.green("✓") : result.status === "waiting" ? chalk.yellow("…") : chalk.red("✗");
 		console.log(`${mark} ${address} ${result.status}${result.reason ? `: ${result.reason}` : ""}`);
 		console.log(chalk.dim(`  ${result.steps.length} step(s), ${Math.round((Date.now() - started) / 1000)} s · journal ${resolve(out)}`));
+		console.log(chalk.dim(`  ${describeCost("answers", total.reply)} · ${describeCost("governed ticks", total.tick)} · ${describeCost("bookkeeping", total.record)}`));
 		if (result.status !== "completed") process.exitCode = 1;
 	});
+
+interface PhaseCost extends ModelUsage {
+	ms: number;
+}
+
+/** One persona step's cost. A phase that never ran is null, not zero. */
+interface StepCost {
+	path: readonly string[];
+	position: number;
+	persona: string;
+	reply: PhaseCost | null;
+	record: PhaseCost | null;
+	tick: PhaseCost | null;
+}
+
+const NO_COST: PhaseCost = { ms: 0, calls: 0, promptTokens: 0, completionTokens: 0, unreported: 0 };
+
+/** Every step's phases added up. Exported for its test. */
+export function totalOf(costs: readonly StepCost[]): { reply: PhaseCost; record: PhaseCost; tick: PhaseCost } {
+	const add = (a: PhaseCost, b: PhaseCost | null): PhaseCost =>
+		b === null
+			? a
+			: {
+					ms: a.ms + b.ms,
+					calls: a.calls + b.calls,
+					promptTokens: a.promptTokens + b.promptTokens,
+					completionTokens: a.completionTokens + b.completionTokens,
+					unreported: a.unreported + b.unreported,
+				};
+	return costs.reduce(
+		(sum, c) => ({ reply: add(sum.reply, c.reply), record: add(sum.record, c.record), tick: add(sum.tick, c.tick) }),
+		{ reply: NO_COST, record: NO_COST, tick: NO_COST },
+	);
+}
+
+function describeCost(label: string, c: PhaseCost): string {
+	const tokens = `${c.promptTokens + c.completionTokens} tokens`;
+	// A call that reported nothing makes the token count a floor, and it says so.
+	const floor = c.unreported > 0 ? ` (at least; ${c.unreported} call(s) did not report)` : "";
+	return `${label}: ${c.calls} call(s), ${tokens}${floor}, ${Math.round(c.ms / 1000)} s`;
+}
 
 export const serviceCommand = new Command("service")
 	.description("Services: a repeatable job with steps, done by personas and by other services")
