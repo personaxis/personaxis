@@ -31,6 +31,8 @@ export function capabilityGuard(policy: ExecutablePolicy): Guard {
 				// one outside, and refuses both.
 				known_read: call.knownRead,
 				within_workspace: call.withinWorkspace,
+				names_outside: call.namesOutside,
+				destructive: call.destructive,
 			});
 			switch (decision.verdict) {
 				case "allow":

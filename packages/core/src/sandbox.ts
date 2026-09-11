@@ -177,9 +177,20 @@ export interface CommandClass {
   escapesWorkspace: boolean;
 }
 
-const NETWORK = /\b(curl|wget|nc|ncat|ssh|scp|telnet|ftp|rsync)\b|\bnpm\s+(install|i|publish)\b|\bpip\s+install\b/i;
-const WRITE = />>?|\b(rm|mv|cp|mkdir|touch|tee|dd|truncate|chmod|chown|ln)\b/i;
-const DESTRUCTIVE = /\brm\s+-[a-z]*f|\b(mkfs|fdisk|shred|:\(\)\s*\{)/i;
+// E62, 2026-09-11: PowerShell and cmd are shells too. Claude Code on Windows runs commands through a
+// tool called `PowerShell`, and none of its verbs were in these lists, so `Remove-Item -Recurse
+// -Force C:\Users` classified as nothing at all. And `rm -r` deletes a tree as surely as `rm -f`.
+const NETWORK =
+  /\b(curl|wget|nc|ncat|ssh|scp|telnet|ftp|rsync)\b|\bnpm\s+(install|i|publish)\b|\bpip\s+install\b|\b(Invoke-WebRequest|Invoke-RestMethod|iwr|irm|Start-BitsTransfer|Send-MailMessage)\b|Net\.WebClient/i;
+const WRITE =
+  />>?|\b(rm|mv|cp|mkdir|touch|tee|dd|truncate|chmod|chown|ln|del|erase|rmdir)\b|\b(Remove-Item|Set-Content|Add-Content|Out-File|New-Item|Copy-Item|Move-Item|Rename-Item|Clear-Content)\b/i;
+const DESTRUCTIVE =
+  /\brm\s+-[a-z]*[rf]|\b(mkfs|fdisk|shred|:\(\)\s*\{)|\bRemove-Item\b[^|;&\n]*\s-(r|fo)|\b(rd|rmdir|del|erase)\b[^|;&\n]*\s\/s\b|\b(Format-Volume|Clear-Disk)\b/i;
+
+/** True when a command is destructive by the documented classification: a tree delete, a forced delete, a disk format. */
+export function isDestructiveCommand(cmd: string): boolean {
+  return DESTRUCTIVE.test(cmd);
+}
 
 /**
  * A leading-slash token that is really a Windows/CLI SWITCH, not a filesystem path
@@ -196,14 +207,21 @@ export function classifyCommand(cmd: string, workspaceRoot: string): CommandClas
   const writesFiles = WRITE.test(cmd);
   const network = NETWORK.test(cmd);
   const destructive = DESTRUCTIVE.test(cmd);
-  // Tokens that could be a way out: absolute (`/x`, `C:\x`), home (`~/x`), or any token with a
-  // `..` segment anywhere in it. The last used to be only a token STARTING with `../`, so
-  // `cat docs/../../secret` was never looked at.
-  const escapesWorkspace = (cmd.match(/(?:^|\s)(\/[^\s'"]+|[A-Za-z]:[\\/][^\s'"]*|[~][^\s'"]*|[^\s'"]*\.\.[\\/][^\s'"]*)/g) ?? [])
-    .map((tok) => tok.trim())
-    .filter((tok) => !isCliSwitch(tok))
-    .some((tok) => pathEscapesWorkspace(tok, workspaceRoot));
+  const escapesWorkspace = commandPathTokens(cmd).some((tok) => pathEscapesWorkspace(tok, workspaceRoot));
   return { writesFiles, network, destructive, escapesWorkspace };
+}
+
+/**
+ * The tokens of a command that could be a way out: absolute (`/x`, `C:\x`), home (`~/x`), or any
+ * token with a `..` segment anywhere in it. The last used to be only a token STARTING with `../`, so
+ * `cat docs/../../secret` was never looked at. A relative token with no `..` is not returned: it
+ * lands inside whatever folder the command runs in. A token may open with a quote (E62): `rm -rf
+ * "C:\Users"` hid its path from a scan that wanted whitespace right before it.
+ */
+export function commandPathTokens(cmd: string): string[] {
+  return (cmd.match(/(?:^|\s)['"]?(\/[^\s'"]+|[A-Za-z]:[\\/][^\s'"]*|[~][^\s'"]*|[^\s'"]*\.\.[\\/][^\s'"]*)/g) ?? [])
+    .map((tok) => tok.trim().replace(/^['"]/, ""))
+    .filter((tok) => !isCliSwitch(tok));
 }
 
 /**

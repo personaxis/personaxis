@@ -25,10 +25,13 @@ means a path that resolves outside it.
 
 | Class | Matches |
 |---|---|
-| **write** | redirects (`>`, `>>`) and `rm` `mv` `cp` `mkdir` `touch` `tee` `dd` `truncate` `chmod` `chown` `ln` |
-| **network** | `curl` `wget` `nc`/`ncat` `ssh` `scp` `telnet` `ftp` `rsync`, plus `npm install`/`i`/`publish` and `pip install` |
-| **destructive** | `rm -rf` (and `rm -…f`), `mkfs`, `fdisk`, `shred`, and the `:(){` fork-bomb |
-| **escapesWorkspace** | a path token resolving outside `workspaceRoot` (`/etc/passwd`, `~/x`, `../x`); leading-slash CLI switches like `/t`, `/s` are excluded so `date /t` isn't misflagged |
+| **write** | redirects (`>`, `>>`) and `rm` `mv` `cp` `mkdir` `touch` `tee` `dd` `truncate` `chmod` `chown` `ln` `del` `erase` `rmdir`, and PowerShell's `Remove-Item` `Set-Content` `Add-Content` `Out-File` `New-Item` `Copy-Item` `Move-Item` `Rename-Item` `Clear-Content` |
+| **network** | `curl` `wget` `nc`/`ncat` `ssh` `scp` `telnet` `ftp` `rsync`, plus `npm install`/`i`/`publish` and `pip install`, and PowerShell's `Invoke-WebRequest` `Invoke-RestMethod` `iwr` `irm` `Start-BitsTransfer` `Send-MailMessage` and `Net.WebClient` |
+| **destructive** | `rm -r` and `rm -f` in any combination, `Remove-Item -Recurse` or `-Force`, `rd /s` and `del /s`, `mkfs`, `fdisk`, `shred`, `Format-Volume`, `Clear-Disk`, and the `:(){` fork-bomb |
+| **escapesWorkspace** | a path token resolving outside `workspaceRoot` (`/etc/passwd`, `~/x`, `../x`, `"C:\x"`, quoted or not); leading-slash CLI switches like `/t`, `/s` are excluded so `date /t` isn't misflagged |
+
+PowerShell and cmd are shells like any other: Claude Code on Windows runs its commands through a
+tool called `PowerShell`, and until 2026-09-11 none of their verbs were in this table.
 
 ## Sandbox postures (exact behavior now)
 
@@ -86,6 +89,10 @@ included. It now reads two facts about each call, from `callFacts` in
   because what it touches is not in its arguments; and a call that is not a known read has to name
   at least one path, and none under a protected folder. Without a root nothing is inside, which is
   the answer the gate gave before the facts existed.
+- **names a place outside**, and **destructive**, for a shell command: its path tokens are scanned
+  the way `classifyCommand` scans them, and a token that climbs counts as outside, because a shell
+  standing below the root can climb out of it; the command is destructive by the table above.
+  Codex's shell, which takes the command as an array, is read too.
 
 With those, posture by posture:
 
@@ -94,6 +101,8 @@ With those, posture by posture:
 | a known read inside the workspace | allow | allow | allow |
 | a read outside, a read that names a credential, an unrecognised call | approval axis | approval axis | allow |
 | a file write or delete inside the workspace | deny | approval axis | allow |
+| an ordinary shell delete (`rm notes.md`) | deny | approval axis | allow |
+| a destructive shell delete (`rm -rf`, `Remove-Item -Recurse`), or one that names a place outside | deny | deny | allow |
 | a write outside, or into `.git` / `.personaxis` | deny | deny | allow |
 | a fetch to an allowlisted host, or a tool that only reads a remote | approval axis | approval axis | allow |
 
@@ -104,8 +113,13 @@ question for a person. So a host that is not on the allowlist is refused even un
 
 **Where the compiled gate is stricter than the tool gate, on purpose.** A shell command is never
 inside, so under `workspace-write` a write by redirection and a shell command that reaches the
-network are refused: the file tools are the way to write. A read that names a credential is not
-waved through. A call reached through a bridge carries no root, so nothing it names is inside.
+network are refused: the file tools are the way to write. A shell path that climbs and comes back
+counts as outside. A read that names a credential is not waved through. A call reached through a
+bridge carries no root, so nothing it names is inside.
+
+**What a host's shell can still do that this cannot see.** The facts come from the arguments and
+from the working directory the host reports. A host whose shell keeps its directory between calls
+can change directory in one call and delete in the next, and the second call alone looks ordinary.
 
 **Where it is looser, and why that holds.** Under `read-only` it refuses what writes, deletes or
 spends, and not a call that only reaches out: `network_egress` is also what every MCP tool declares,

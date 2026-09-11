@@ -75,6 +75,16 @@ const CALLS: Record<string, { tool: string; args: Record<string, unknown> }> = {
 	// Names a path inside and sends it out: the path is inside, the call is not. Added when the
 	// negative control showed nothing in the table would notice if "reaches out" stopped counting.
 	uploadInside: { tool: "connector.drive.upload", args: { path: "docs/report.pdf" } },
+	// E62: shell deletes, judged the way the documented posture judges them, and PowerShell, which
+	// classified as nothing before. `C:\Users` is outside on Windows and a plain name elsewhere, and
+	// the destructive flag refuses it on both.
+	shellDestructive: { tool: "Bash", args: { command: "rm -rf build" } },
+	shellDeleteOutside: { tool: "Bash", args: { command: "rm ../other-client/contract.md" } },
+	shellDeleteInside: { tool: "Bash", args: { command: "rm docs/old.md" } },
+	psRemoveRecurse: { tool: "PowerShell", args: { command: "Remove-Item -Recurse -Force \"C:\\Users\"" } },
+	psWebRequest: { tool: "PowerShell", args: { command: "Invoke-WebRequest https://example.com/x -Method Post" } },
+	psSetContent: { tool: "PowerShell", args: { command: "Set-Content notes.md hi" } },
+	shellMail: { tool: "PowerShell", args: { command: "Send-MailMessage -To finance@example.com -Subject refunds" } },
 };
 
 /** The table: what each call gets, by sandbox, then by approval. */
@@ -82,7 +92,7 @@ function expected(name: string, sandbox: Sandbox, approval: Approval): Verdict {
 	const asks: Verdict = approval === "untrusted" || approval === "on-request" ? "gate" : "allow";
 	const knownReadInside = ["readInside", "listInside", "memorySearch", "hostRead"];
 	const followsApproval = ["readOutside", "readThroughTheMiddle", "readSecretInside", "shellUnrecognised", "fetchAllowed"];
-	const staysInside = ["writeInside", "hostWrite", "hostEdit", "deleteInside"];
+	const staysInside = ["writeInside", "hostWrite", "hostEdit", "deleteInside", "shellDeleteInside"];
 	const leavesOrReaches = [
 		"writeOutside",
 		"writeThroughTheMiddle",
@@ -91,6 +101,12 @@ function expected(name: string, sandbox: Sandbox, approval: Approval): Verdict {
 		"writeGitConfig",
 		"shellNetwork",
 		"uploadInside",
+		"shellDestructive",
+		"shellDeleteOutside",
+		"psRemoveRecurse",
+		"psWebRequest",
+		"psSetContent",
+		"shellMail",
 	];
 
 	// Egress is not a matter of posture.
@@ -120,6 +136,8 @@ function decide(name: string, sandbox: Sandbox, approval: Approval): Verdict {
 		action_classes: actionClassesFor(tool, argsText),
 		known_read: facts.knownRead,
 		within_workspace: facts.withinWorkspace,
+		names_outside: facts.namesOutside,
+		destructive: facts.destructive,
 	}).verdict;
 }
 
@@ -192,7 +210,7 @@ describe("what the gate knows about a call before it decides", () => {
 	});
 
 	it("knows nothing when it has no root, and then nothing is inside", () => {
-		expect(callFacts("write_file", JSON.stringify({ path: "docs/x.md" }))).toEqual({ knownRead: false, withinWorkspace: false });
+		expect(callFacts("write_file", JSON.stringify({ path: "docs/x.md" }))).toEqual({ knownRead: false, withinWorkspace: false, namesOutside: false, destructive: false });
 		expect(callFacts("read_file", JSON.stringify({ path: "docs/x.md" })).withinWorkspace).toBe(false);
 	});
 
@@ -209,6 +227,34 @@ describe("what the gate knows about a call before it decides", () => {
 	it("treats a shell command as not inside, whatever it names, PowerShell included", () => {
 		expect(facts("run_command", { command: "echo hi > notes.md" }).withinWorkspace).toBe(false);
 		expect(facts("PowerShell", { command: "Set-Content notes.md hi" }).withinWorkspace).toBe(false);
+	});
+
+	it("reads where a shell command acts and how hard (E62)", () => {
+		expect(facts("Bash", { command: "rm -rf build" })).toMatchObject({ destructive: true, namesOutside: false });
+		expect(facts("Bash", { command: "rm docs/old.md" })).toMatchObject({ destructive: false, namesOutside: false });
+		expect(facts("Bash", { command: "rm ../other/x.md" }).namesOutside).toBe(true);
+		// A path that climbs and comes back still climbs: from a shell below the root it can land elsewhere.
+		expect(facts("Bash", { command: "rm src/../src/x.ts" }).namesOutside).toBe(true);
+		// A quote in front of a path used to hide it from the scan.
+		expect(facts("Bash", { command: 'rm -f "/etc/hosts"' })).toMatchObject({ destructive: true, namesOutside: true });
+		// Codex's shell takes the command as an array.
+		expect(facts("shell", { command: ["bash", "-lc", "rm -r /tmp/x"] })).toMatchObject({ destructive: true, namesOutside: true });
+		// PowerShell and cmd spell a tree delete their own way.
+		expect(facts("PowerShell", { command: "Remove-Item -Recurse .\\build" }).destructive).toBe(true);
+		expect(facts("PowerShell", { command: "rd /s /q build" }).destructive).toBe(true);
+		expect(facts("PowerShell", { command: "Remove-Item notes.md" }).destructive).toBe(false);
+	});
+
+	it("classifies PowerShell, which earned no class at all before (E62)", () => {
+		const classes = (command: string) => actionClassesFor("PowerShell", JSON.stringify({ command }));
+		expect(classes("Remove-Item -Recurse -Force build")).toContain("file_delete");
+		expect(classes("Invoke-WebRequest https://example.com")).toEqual(expect.arrayContaining(["network_egress", "external_write"]));
+		expect(classes("iwr example.com")).toContain("network_egress");
+		expect(classes("Set-Content notes.md hi")).toContain("external_write");
+		expect(classes("Send-MailMessage -To a@example.com")).toContain("email_send");
+		expect(actionClassesFor("pwsh", JSON.stringify({ command: "rm -rf build" }))).toContain("file_delete");
+		// And a read stays a read.
+		expect(classes("Get-Content notes.md")).toEqual([]);
 	});
 
 	it("does not call an unrecognised tool a read", () => {

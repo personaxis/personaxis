@@ -91,6 +91,15 @@ describe("the trusted posture through the daemon, workspace-write and on-failure
 		expect((await daemon(trusted)(write(at("docs/refunds.md"), at("src")))).verdict).toBe("allow");
 	});
 
+	it("refuses a destructive or outside shell delete, PowerShell included, and lets an ordinary one run (E62)", async () => {
+		// Measured on 2026-09-11: before this all three refusals below ran under on-failure.
+		const shell = (tool: string, command: string) => ({ tool_name: tool, args_text: JSON.stringify({ command }), cwd: root });
+		expect((await daemon(trusted)(shell("Bash", "rm -rf build"))).verdict).toBe("deny");
+		expect((await daemon(trusted)(shell("Bash", "rm ../other-client/contract.md"))).verdict).toBe("deny");
+		expect((await daemon(trusted)(shell("PowerShell", 'Remove-Item -Recurse -Force "C:\\Users"'))).verdict).toBe("deny");
+		expect((await daemon(trusted)(shell("Bash", "rm docs/old.md"))).verdict).toBe("allow");
+	});
+
 	it("takes the narrower workspace when the consents are nested", async () => {
 		const nested = { scope: [parent, root] };
 		// Consented to /work too, but the host works in /work/proj, so /work/other is outside.

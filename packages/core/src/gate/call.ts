@@ -67,6 +67,10 @@ export interface FrozenCall {
 	 * answer the gate gave before this existed.
 	 */
 	readonly withinWorkspace: boolean;
+	/** E62: the call names a place outside the workspace. From `callFacts`. */
+	readonly namesOutside: boolean;
+	/** E62: a destructive shell command. From `callFacts`. */
+	readonly destructive: boolean;
 }
 
 export interface CallDraft {
@@ -120,6 +124,8 @@ export function freezeCall(draft: CallDraft): FrozenCall {
 		turn: draft.turn,
 		knownRead: facts.knownRead,
 		withinWorkspace: facts.withinWorkspace,
+		namesOutside: facts.namesOutside,
+		destructive: facts.destructive,
 	};
 	return Object.freeze(call);
 }
