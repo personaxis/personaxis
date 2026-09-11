@@ -81,7 +81,9 @@ export class LlmResponder implements Responder {
           { role: "user", content: input.message },
         ],
         temperature: 0.7,
-        max_tokens: this.cfg.maxTokens ?? 512,
+        // 2048 and not 512: measured 2026-09-10 on the HuggingFace router, Qwen3.5-9B spends
+        // most of a 758-token completion thinking and returns nothing at all inside 512.
+        max_tokens: this.cfg.maxTokens ?? 2048,
         ...(input.onToken ? { stream: true } : {}),
       }),
     });
@@ -89,14 +91,25 @@ export class LlmResponder implements Responder {
     if (input.onToken && res.body) {
       return this.readStream(res.body as ReadableStream<Uint8Array>, input.onToken);
     }
-    let json: { choices?: Array<{ message?: { content?: string } }> };
+    let json: {
+      choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning?: string; reasoning_content?: string } }>;
+    };
     try {
-      json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      json = (await res.json()) as typeof json;
     } catch {
       throw new Error("responder returned a non-JSON body");
     }
-    const content = (json.choices?.[0]?.message?.content ?? "").trim();
-    return content || "(the model returned an empty reply, try rephrasing, or check the model/endpoint)";
+    const choice = json.choices?.[0];
+    const content = (choice?.message?.content ?? "").trim();
+    if (content) return content;
+    // "Try rephrasing" is the wrong advice for the commonest 2026 cause, which is a model
+    // that thinks before it answers and never got to the answer. Naming the real cause is
+    // the difference between a config change and an afternoon.
+    const reasoning = choice?.message?.reasoning ?? choice?.message?.reasoning_content;
+    if (choice?.finish_reason === "length" || reasoning) {
+      return "(the model ran out of tokens before writing an answer; it thinks before it answers, so raise maxTokens)";
+    }
+    return "(the model returned an empty reply, try rephrasing, or check the model/endpoint)";
   }
 
   /** Parse an OpenAI-compatible SSE stream, emitting each delta via `onToken`. */
