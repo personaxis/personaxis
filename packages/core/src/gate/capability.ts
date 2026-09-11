@@ -33,6 +33,7 @@ export function capabilityGuard(policy: ExecutablePolicy): Guard {
 				within_workspace: call.withinWorkspace,
 				names_outside: call.namesOutside,
 				destructive: call.destructive,
+				touches_protected: call.touchesProtected,
 			});
 			switch (decision.verdict) {
 				case "allow":

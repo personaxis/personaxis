@@ -74,7 +74,8 @@ describe("the trusted posture through the daemon, workspace-write and on-failure
 
 	it("refuses a write to the persona that governs the host", async () => {
 		const reply = await daemon(trusted)(write(at(".personaxis/personaxis.md")));
-		expect(reply).toMatchObject({ verdict: "deny", rule: "sandbox:workspace-write" });
+		// Refused by its own rule since E63, before the posture is even asked.
+		expect(reply).toMatchObject({ verdict: "deny", rule: "protected_path" });
 	});
 
 	it("refuses a write that would run code on the next git command", async () => {
@@ -105,6 +106,32 @@ describe("the trusted posture through the daemon, workspace-write and on-failure
 		// Consented to /work too, but the host works in /work/proj, so /work/other is outside.
 		expect((await daemon(trusted, nested)(write(resolve(parent, "other/notes.md")))).verdict).toBe("deny");
 		expect(consentedRootFor(at("src"), [parent, root])).toBe(root);
+	});
+});
+
+describe("full access through the daemon (E63)", () => {
+	const yolo = { sandbox: "danger-full-access", approval: "never" };
+
+	it("still refuses a write into the persona governing the host, its memory, or .git", async () => {
+		// Before E63 all three ran: under full access only the identity axis looked at .personaxis,
+		// and it only reads the state file.
+		for (const file of [".personaxis/personaxis.md", ".personaxis/memory.md", ".git/config"]) {
+			const reply = await daemon(yolo)(write(at(file)));
+			expect(reply, file).toMatchObject({ verdict: "deny", rule: "protected_path" });
+		}
+	});
+
+	it("lets a file tool write the state, which is the identity axis's to judge", async () => {
+		expect((await daemon(yolo)(write(at(".personaxis/state.json")))).verdict).toBe("allow");
+	});
+
+	it("refuses the same state write by shell, which nothing reads", async () => {
+		const shell = { tool_name: "Bash", args_text: JSON.stringify({ command: "echo '{}' > .personaxis/state.json" }), cwd: root };
+		expect((await daemon(yolo)(shell)).verdict).toBe("deny");
+	});
+
+	it("still writes an ordinary file of the project", async () => {
+		expect((await daemon(yolo)(write(at("docs/refunds.md")))).verdict).toBe("allow");
 	});
 });
 

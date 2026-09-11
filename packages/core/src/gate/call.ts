@@ -71,6 +71,8 @@ export interface FrozenCall {
 	readonly namesOutside: boolean;
 	/** E62: a destructive shell command. From `callFacts`. */
 	readonly destructive: boolean;
+	/** E63: the call names a place under `.git` or `.personaxis`. From `callFacts`. */
+	readonly touchesProtected: boolean;
 }
 
 export interface CallDraft {
@@ -126,6 +128,7 @@ export function freezeCall(draft: CallDraft): FrozenCall {
 		withinWorkspace: facts.withinWorkspace,
 		namesOutside: facts.namesOutside,
 		destructive: facts.destructive,
+		touchesProtected: facts.touchesProtected,
 	};
 	return Object.freeze(call);
 }
