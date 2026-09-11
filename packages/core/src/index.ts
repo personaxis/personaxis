@@ -70,6 +70,18 @@ export * from "./tools/mounted.js";
 export * from "./security/taint.js";
 export * from "./security/broker.js";
 export * from "./tools/mcp-adapter.js";
+// Only what reaches outside core: the CLI resolves and renders, the loop mounts the tool. The
+// provider constructors and the gate stay in their module, where the tests read them.
+export {
+	WEB_PROVIDERS,
+	renderWebResults,
+	resolveWebSearch,
+	webSearchTool,
+	type WebResult,
+	type WebSearchOptions,
+	type WebSearchProvider,
+	type WebSettings,
+} from "./web/search.js";
 export * from "./loop-breaker.js";
 export * from "./planner.js";
 // J.4c: reading a model plan and deciding what the run does with the verdict. Separate from
