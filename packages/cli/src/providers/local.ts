@@ -7,6 +7,20 @@ const DEFAULT_ENDPOINT = "http://localhost:11434/v1";
 const DEFAULT_MODEL = "llama3.1";
 
 /**
+ * How long a completion of this size can honestly take, with a floor and a ceiling.
+ *
+ * Derived rather than picked: a small open model on a shared router generates at roughly
+ * 25 tokens per second (measured 2026-09-10, gemma-3-4b-it at 24 to 28 t/s), and the floor
+ * of 15 leaves room for a slower model or a busy hour without turning every long answer
+ * into a timeout. The ceiling keeps a hung endpoint from holding the CLI for ten minutes.
+ */
+const FLOOR_TOKENS_PER_SECOND = 15;
+export function timeoutFor(maxTokens: number): number {
+  const needed = (maxTokens / FLOOR_TOKENS_PER_SECOND) * 1000;
+  return Math.min(600_000, Math.max(120_000, Math.round(needed)));
+}
+
+/**
  * Whether an error means "the endpoint is not reachable" rather than "the endpoint does not
  * support this request shape". Only the second kind is worth retrying with a simpler body.
  */
@@ -55,12 +69,18 @@ export function createLocalProvider(config: PersonaxisConfig, personaPath?: stri
       // so a persona built from a rich brief came out with one default trait. 8192 matches
       // what the BYOK provider already asks for, so the two do not disagree about how much
       // room a model gets.
-      json = (await postJson(url, headers, {
-        model,
-        temperature: 0.2,
-        max_tokens: resolved?.maxTokens ?? config.local?.maxTokens ?? 8192,
-        ...body,
-      })) as typeof json;
+      const maxTokens = resolved?.maxTokens ?? config.local?.maxTokens ?? 8192;
+      json = (await postJson(
+        url,
+        headers,
+        { model, temperature: 0.2, max_tokens: maxTokens, ...body },
+        // The clock has to fit the budget, or the two disagree and the budget always loses.
+        // Measured 2026-09-10: gemma-3-4b-it sustains 24 to 28 tokens/second on the
+        // HuggingFace router, so 8192 tokens is about five and a half minutes. A 120-second
+        // default covered roughly 3000 of the 8192 the provider now asks for, which is how a
+        // persona polish died on the clock while the budget was never the problem.
+        { timeoutMs: timeoutFor(maxTokens) },
+      )) as typeof json;
     } catch (e) {
       throw new Error(
         `Local provider request failed: ${(e as Error).message}\n` +
