@@ -19,7 +19,7 @@ import { readDialect } from "../src/tools/dialects.js";
 
 const OFFERED = ["get_charge"];
 
-/** Verbatim, from `research/experiments/results/dialects-live.json`. */
+/** Verbatim, from the live dialect probe recorded in the research bundle. */
 const OBSERVED = {
 	"gemma-3-4b-it": 'call_get_charge({"id": "ch_42"})',
 	"Llama-3.1-8B": 'get_charge({"id": "ch_42"})',

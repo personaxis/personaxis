@@ -1,11 +1,17 @@
 # personaxis
 
-> **Compliance infrastructure for AI agents, built on an open persona spec.** Your agent
-> already reads a default file, CLAUDE.md, AGENTS.md, SOUL.md, GEMINI.md; personaxis compiles a
-> governed persona INTO those files and makes it provably stay who it declares: define the
-> persona once (any format imports), enforce it at runtime with mathematical bounds, watch its
-> drift live, and mint an attestation anyone can re-check, in the stack's own formats (W3C VC,
-> A2A Agent Card).
+> **The limits you declare for an AI agent live outside the model.** An agent's persona stops
+> being a prompt you hope it remembers and becomes a declared, versioned state: every changeable
+> number sits inside a range it cannot leave, a tool call that no permission covers does not
+> execute, and everything that happened replays from a hash chain. Define the persona once (any
+> format imports), run it on a hosted model or a small open one on your own machine, and compile
+> it into the file your agent already reads.
+
+**What this is not.** It is not a prompt improver: measured against the same content flattened
+into a well-written system prompt, the compiled document ties on short answers under pressure,
+and that measurement is ours and is published in [`docs/GUARANTEES.md`](docs/GUARANTEES.md)
+rather than left out. What a prompt cannot do is have state that moves inside a declared box, or
+stop a call from running. That is what is here.
 
 [![npm](https://img.shields.io/npm/v/personaxis)](https://www.npmjs.com/package/personaxis)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
