@@ -42,6 +42,12 @@ export class ToolOutputStore {
    * A deterministic per-store handle (`out-1`, `out-2`, …) keeps runs reproducible.
    */
   offload(tool: string, content: string, threshold = OFFLOAD_THRESHOLD): OffloadResult {
+    // A window of a stored output is never stored again. Found 2026-09-11 in the E52 bench:
+    // `read_output(out-1, limit: 200)` returned the whole file, which crossed the threshold,
+    // was stored as `out-2`, the model read `out-2` the same way, and so on until the step
+    // ran out: 19 reads, no write, the step failed. `slice` and `grep` now fit their answer
+    // under the threshold, and this is the second lock on the same door.
+    if (tool === "read_output" || tool === "grep_output") return { text: content, offloaded: false };
     if (content.length < threshold) return { text: content, offloaded: false };
     const handle = `out-${++this.seq}`;
     const lines = content.split("\n").length;
@@ -57,15 +63,31 @@ export class ToolOutputStore {
     return this.items.get(handle);
   }
 
-  /** A window of LINES from a stored output ([offset, offset+limit)). */
+  /**
+   * A window of LINES from a stored output ([offset, offset+limit)), cut short so it fits under
+   * the offload threshold: a window that did not fit would be the same problem it was asked to
+   * solve. When it is cut, it says which line to ask for next.
+   */
   slice(handle: string, offset = 0, limit = 100): string {
     const item = this.items.get(handle);
     if (!item) return `no stored output '${handle}'`;
     const all = item.content.split("\n");
     const start = Math.max(0, Math.floor(offset));
-    const end = Math.min(all.length, start + Math.max(1, Math.floor(limit)));
-    const body = all.slice(start, end).join("\n");
-    const more = end < all.length ? `\n…[lines ${end}-${all.length - 1} remain; raise offset]` : "";
+    const wanted = Math.min(all.length, start + Math.max(1, Math.floor(limit)));
+    const budget = OFFLOAD_THRESHOLD - 300;
+    const lines: string[] = [];
+    let used = 0;
+    let end = start;
+    while (end < wanted) {
+      const line = all[end]!;
+      if (lines.length > 0 && used + line.length + 1 > budget) break;
+      // A single line longer than the whole budget is cut, and says so, rather than sent whole.
+      lines.push(line.length > budget ? `${line.slice(0, budget)} …[line cut at ${budget} chars]` : line);
+      used += Math.min(line.length, budget) + 1;
+      end += 1;
+    }
+    const body = lines.join("\n");
+    const more = end < all.length ? `\n…[lines ${end}-${all.length - 1} remain; call again with offset ${end}]` : "";
     return `'${handle}' lines ${start}-${end - 1} of ${all.length}:\n${body}${more}`;
   }
 
@@ -82,11 +104,22 @@ export class ToolOutputStore {
     }
     const hits: string[] = [];
     const all = item.content.split("\n");
+    // Fits under the offload threshold, like `slice`, so a search is never stored again.
+    const budget = OFFLOAD_THRESHOLD - 300;
+    let used = 0;
+    let cut = false;
     for (let i = 0; i < all.length && hits.length < max; i++) {
-      if (re.test(all[i])) hits.push(`${i}: ${all[i]}`);
+      if (!re.test(all[i])) continue;
+      const hit = `${i}: ${all[i]!.length > 400 ? `${all[i]!.slice(0, 400)} …` : all[i]}`;
+      if (used + hit.length + 1 > budget) {
+        cut = true;
+        break;
+      }
+      hits.push(hit);
+      used += hit.length + 1;
     }
     if (!hits.length) return `no line in '${handle}' matched ${pattern}`;
-    return `${hits.length} match(es) in '${handle}':\n${hits.join("\n")}`;
+    return `${hits.length} match(es) in '${handle}'${cut ? " (more matches; narrow the pattern)" : ""}:\n${hits.join("\n")}`;
   }
 
   get size(): number {
