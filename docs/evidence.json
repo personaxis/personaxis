@@ -1,0 +1,85 @@
+{
+  "$comment": [
+    "The machine-readable side of the evidence scoreboard.",
+    "",
+    "This file exists because on 2026-09-10 docs/GUARANTEES.md, whose entire job is not to",
+    "outrun its evidence, carried two false figures at once. It said the direction favoured",
+    "the engine on a comparison the engine was never in, and it carried a p99 range from an",
+    "uncommitted bench run that the 2026-07-16 amendment had already retired in the paper and",
+    "never here. Two months, on the public page, with nothing watching.",
+    "",
+    "The root cause was not either figure. Claims cite evidence files, and nothing checked",
+    "that the number written in the prose was still the number in the file. The docs:refs gate",
+    "in the SaaS checks that citations RESOLVE, meaning the path exists, and a path that exists",
+    "with a number that changed passes green.",
+    "",
+    "So each claim below carries `figures`, strings that MUST appear verbatim in the scoreboard,",
+    "and `retired`, strings that must NOT. The first half catches a page that lost a current",
+    "number; the second catches a page still carrying one that was withdrawn. Both failures",
+    "happened, so both are checked.",
+    "",
+    "This file is PUBLIC on purpose. research/ is private and check-private forbids anything",
+    "public pointing there, so the private side feeds this registry through a script and the",
+    "public page only ever reads the registry."
+  ],
+  "updated": "2026-09-10",
+  "scoreboard": "docs/GUARANTEES.md",
+  "claims": [
+    {
+      "id": "T1-T6",
+      "statement": "The deterministic guarantees hold under adversarial generation.",
+      "status": "proven",
+      "figures": ["2,306,140", "28 properties", "0 counterexamples"],
+      "retired": [],
+      "source": "E3, research/experiments/results/e3-scale.json"
+    },
+    {
+      "id": "conformance",
+      "statement": "The conformance suite passes in full.",
+      "status": "proven",
+      "figures": ["15/15"],
+      "retired": [],
+      "source": "packages/evals"
+    },
+    {
+      "id": "hot-path",
+      "statement": "The governed tick is negligible against any model call.",
+      "status": "proven",
+      "figures": ["0.074 / 0.094 / 0.245 ms"],
+      "retired": ["0.06–0.12 ms per tick (n=8–64)", "0.059/0.073/0.119"],
+      "source": "E4, research/experiments/results/e4-bench.json, corrected by the 2026-07-16 amendment"
+    },
+    {
+      "id": "RQ2",
+      "statement": "Whether the governed engine reduces behavioural drift versus the same content as a static prompt.",
+      "status": "withdrawn",
+      "figures": ["not measured", "r = -0.302", "27 emojis"],
+      "retired": ["direction favors the engine"],
+      "source": "the runner's condition never imported the engine; withdrawn 2026-09-10"
+    },
+    {
+      "id": "RQ5",
+      "statement": "Genesis personas against a hand-written prompt.",
+      "status": "split",
+      "figures": ["500 hostile seeds", "zero decorative"],
+      "retired": [],
+      "source": "provenance proven by construction; the consistency half inherits RQ2's withdrawal"
+    },
+    {
+      "id": "RQ3",
+      "statement": "Whether compile sensitivity predicts behavioural sensitivity.",
+      "status": "uncomputable",
+      "figures": ["0.012 on all eleven coordinates", "0.600"],
+      "retired": [],
+      "source": "J_compile is line-count based, so sigma is 1/N for every coordinate; see the 2026-09-10 amendment"
+    },
+    {
+      "id": "RQ6",
+      "statement": "Whether the same persona is measurably the same persona across models.",
+      "status": "no-resolution",
+      "figures": ["-0.473 to 0.509", "0.067 to 0.316"],
+      "retired": ["runner ready; needs ≥3 models"],
+      "source": "four profiles measured 2026-09-10; all six intervals contain zero"
+    }
+  ]
+}
