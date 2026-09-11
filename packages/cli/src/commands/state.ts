@@ -41,6 +41,29 @@ import {
   type MutationLogEntry,
 } from "@personaxis/core";
 
+/**
+ * What the improvement mode means for this persona's state, in one line a person can act on.
+ *
+ * Exported so the sentence is tested rather than trusted: the whole point of printing it is that
+ * a `locked` persona stops looking like one that can evolve.
+ */
+export function describeMode(mode: string): string {
+  if (mode === "locked") {
+    return (
+      "improvement_policy = locked: the living loop observes and does NOT evolve. Every change the " +
+      "model proposes is rejected; only a person's mutations and homeostasis move this state. " +
+      "Set improvement_policy.mode to suggesting or autonomous to let it respond."
+    );
+  }
+  if (mode === "suggesting") {
+    return "improvement_policy = suggesting: the model's proposals are queued for a person to approve, not applied.";
+  }
+  if (mode === "autonomous") {
+    return "improvement_policy = autonomous: the model's proposals apply, still inside the envelopes and the drift thresholds.";
+  }
+  return `improvement_policy = ${mode}`;
+}
+
 // ─── Path resolution ───────────────────────────────────────────────────────
 
 function resolvePersonaAndState(personaPathArg?: string): {
@@ -328,8 +351,10 @@ const driftSubcommand = new Command("drift")
         protectedFields: env.protectedFields,
       });
 
+      const mode = readMode(fm, personaPath);
+
       if (options.json) {
-        console.log(JSON.stringify(report, null, 2));
+        console.log(JSON.stringify({ ...report, improvementMode: mode }, null, 2));
         return;
       }
 
@@ -340,6 +365,13 @@ const driftSubcommand = new Command("drift")
             `u = fraction of allowed deviation consumed`,
         ),
       );
+      // The mode decides whether anything below can move on its own, so it goes at the top
+      // and not in a footnote. Measured 2026-09-11: every persona Genesis creates is `locked`,
+      // and in `locked` governance rejects every proposal the model makes, so the living loop
+      // observes and never evolves. This report used to say nothing about it, which is how a
+      // day of experiments measured a persona whose defining feature was switched off.
+      const modeLine = describeMode(mode);
+      console.log(mode === "locked" ? chalk.yellow(modeLine) : chalk.dim(modeLine));
       console.log("");
       console.log(chalk.bold("Coordinates (sorted by drift):"));
       for (const c of report.coordinates) {
