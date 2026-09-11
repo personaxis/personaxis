@@ -3,31 +3,38 @@
  *
  * This file wires things that already exist and invents none of them. The decision about what runs
  * next is `service.runService` in the engine, which sits on `advance` and `handoverText` moved from
- * the SaaS unchanged. A persona step is the same governed reply `personaxis -p` gives, followed by
- * the same governed tick the daemon runs through `runObserve`, so the persona's state moves across
- * the service and recompiles when a band is crossed. That second half is what makes a step a
- * persona at work rather than a document pasted into a prompt.
+ * the SaaS unchanged.
+ *
+ * A persona step is a working turn, the one the REPL and the ACP binary run through
+ * `run.runnerFor`: the persona's compiled policy decides every tool call before it happens, a call
+ * that wants a person asks the person at this terminal or is refused, and the turn is written to
+ * the persona's record. It is NOT the reply `personaxis -p` gives, which answers without tools, and
+ * the first version of this file used that one: a service whose steps could not act was a chain of
+ * prompts, and the gate this product is about was never in the room.
+ *
+ * Then one governed tick of the persona's living loop, through `runObserve`, on what the step put
+ * in front of the persona. That is what makes the state move across a service.
  *
  * A service is a JSON file in `.personaxis/services/<address>.json`, in the shape of the SaaS's
  * `ServiceTemplate`, plus `serviceRef` for a step done by another service. The run's journal is
  * written next to the work, which is where the durable-execution ADR puts it.
- *
- * What this does NOT do yet, said so it is not assumed: a step answers in text, and does not call
- * tools. Tool calls through the gate are the next piece, and until then the gate is not exercised
- * here even though the persona's state and record are.
  */
 
 import { Command } from "commander";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
-import { service } from "@personaxis/core";
+import { EventBus, personaResourceRoots, policyFromFrontmatter, resolveModel, run, service, type ApprovalAnswer, type LoopEvent } from "@personaxis/core";
 
-import { governedReply } from "../repl/headless.js";
-import { recordTurn } from "../repl/session.js";
+import { buildAwarenessBlock } from "../repl/awareness.js";
+import { friendlyProviderError } from "../repl/render.js";
+import { holdPresence } from "../presence-session.js";
 import { meterModelCalls, usageBetween, type ModelUsage } from "../usage-meter.js";
 import { runObserve } from "./observe.js";
+
+type StopReason = run.StopReason;
 
 const SERVICES_DIR = join(".personaxis", "services");
 const PERSONAS_DIR = join(".personaxis", "personas");
@@ -49,13 +56,43 @@ function loadService(root: string, address: string): service.ServiceDef | undefi
 	return { ...raw, address };
 }
 
+async function ask(question: string): Promise<boolean> {
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	const answer = (await rl.question(chalk.yellow(question))).trim().toLowerCase();
+	rl.close();
+	return answer === "y" || answer === "yes";
+}
+
 /** Ask a person on the terminal, or say nobody can answer. Never answers for them. */
 async function approveOnTerminal(input: { serviceName: string; position: number }): Promise<"approved" | "rejected" | "unavailable"> {
 	if (!process.stdin.isTTY) return "unavailable";
-	const rl = createInterface({ input: process.stdin, output: process.stdout });
-	const answer = (await rl.question(chalk.yellow(`  approve step ${input.position} of ${input.serviceName}? [y/N] `))).trim().toLowerCase();
-	rl.close();
-	return answer === "y" || answer === "yes" ? "approved" : "rejected";
+	return (await ask(`  approve step ${input.position} of ${input.serviceName}? [y/N] `)) ? "approved" : "rejected";
+}
+
+/**
+ * A tool call the persona's policy wants a person for. Asked on the terminal, or refused with the
+ * reason written down, the way a delegated sub-task refuses: nobody was there, so nobody said yes.
+ */
+async function approveToolOnTerminal(tool: string, reason: string): Promise<ApprovalAnswer> {
+	if (!process.stdin.isTTY) {
+		return { decision: "deny", reason: "no person at this terminal to approve it, and a service never approves on their behalf" };
+	}
+	return (await ask(`  allow ${tool}? ${reason} [y/N] `)) ? "approve" : { decision: "deny", reason: "the person at this terminal was asked and said no" };
+}
+
+/**
+ * How a turn's end maps onto a step's. Exported for its test.
+ *
+ * A turn that closed early on a ceiling or a declared rule still delivered what it had, and says
+ * so. Every other early end fails the step: work the gate cut short, handed on as if it were done,
+ * is the one thing a service must not do, because the next step builds on it.
+ */
+export function stepOutcomeOf(stopReason: StopReason, answer: string): { outcome: "completed" | "failed"; reason: string | null } {
+	if (stopReason === "answered") return { outcome: "completed", reason: null };
+	if ((stopReason === "budget" || stopReason === "stopped") && answer.trim().length > 0) {
+		return { outcome: "completed", reason: `closed early (${stopReason}) with what it had` };
+	}
+	return { outcome: "failed", reason: `the turn ended ${stopReason}` };
 }
 
 const runCommand = new Command("run")
@@ -85,12 +122,16 @@ const runCommand = new Command("run")
 		}
 
 		const started = Date.now();
-		// What each step cost, in time and in model calls, split into the answer, the bookkeeping
-		// and the governed tick, so the price of governing is its own number. What each step said
-		// is already in `result.steps`; repeating it here would store every deliverable twice.
+		// What each step cost and what its tools did. The work and the governed tick are timed and
+		// counted apart, so the price of governing is its own number. What each step said is
+		// already in `result.steps`; repeating it here would store every deliverable twice.
 		const costs: StepCost[] = [];
 		const meter = meterModelCalls();
-		const since = (t: number, u: ModelUsage): PhaseCost => ({ ms: Date.now() - t, ...usageBetween(u, meter.snapshot()) });
+		// Settled, not snapshotted: the working turn streams, and its usage arrives in the last chunk.
+		const since = async (t: number, u: ModelUsage): Promise<PhaseCost> => {
+			const ms = Date.now() - t;
+			return { ms, ...usageBetween(u, await meter.settled()) };
+		};
 
 		const ports: service.ServicePorts = {
 			resolveService: (a) => loadService(root, a),
@@ -98,49 +139,84 @@ const runCommand = new Command("run")
 				const pp = personaPath(root, personaRef);
 				if (!existsSync(pp)) return { outcome: "failed", summary: null, reason: `persona ${personaRef} is not installed` };
 				console.log(chalk.dim(`  ${path.join(" > ")} · step ${position} · ${personaRef}`));
-				const cost: StepCost = { path, position, persona: personaRef, reply: null, record: null, tick: null };
+				const cost: StepCost = { path, position, persona: personaRef, turn: null, tick: null, tools: { proposed: 0, allowed: 0, asked: 0, denied: [], calls: [] } };
 				costs.push(cost);
 
-				// The same reply `personaxis -p` gives, from the same function, so a persona answers a
-				// step exactly as it answers when called directly.
-				let reply: string;
-				let ctx: Awaited<ReturnType<typeof governedReply>>["ctx"];
+				const assembled = run.assemble(pp);
+				const frontmatter = assembled.handle.frontmatter as Record<string, unknown>;
+				const llm = resolveModel({ personaPath: assembled.personaPath, frontmatter });
+				if (!llm) return { outcome: "failed", summary: null, reason: `persona ${personaRef} has no model configured` };
+
+				const bus = new EventBus();
+				let lastArgs = "";
+				bus.on((e: LoopEvent) => {
+					if (e.type === "tool-propose") {
+						cost.tools.proposed += 1;
+						lastArgs = JSON.stringify(e.args).slice(0, 200);
+					} else if (e.type === "tool-verdict") {
+						// Every verdict with the gate's own reason and what was asked, because "refused"
+						// without the why is a number nobody can act on. Found the day every read of a
+						// first real run came back refused and the journal could not say why.
+						cost.tools.calls.push({ tool: e.tool, args: lastArgs, verdict: e.decision, reason: e.reason });
+						if (e.decision === "allow") cost.tools.allowed += 1;
+						else if (e.decision === "ask") cost.tools.asked += 1;
+						else cost.tools.denied.push(`${e.tool}: ${e.reason}`);
+					}
+				});
+
+				const presence = holdPresence(pp, { host: "headless", activity: `step ${position} of ${path.join(" > ")}` });
 				let t = Date.now();
-				let u = meter.snapshot();
+				let u = await meter.settled();
+				let outcome: Awaited<ReturnType<ReturnType<typeof run.runnerFor>["run"]>>;
 				try {
-					({ reply, ctx } = await governedReply({
-						personaPath: pp,
-						prompt,
-						activity: `step ${position} of ${path.join(" > ")}`,
-						onResponderError: "throw",
-					}));
+					outcome = await run
+						.runnerFor(
+							{ personaPath: assembled.personaPath, frontmatter, llm },
+							{
+								policy: { ...policyFromFrontmatter(frontmatter, root), resourceRoots: personaResourceRoots(assembled.personaPath) },
+								personaBody: run.identityOf(assembled),
+								awareness: buildAwarenessBlock(assembled.personaPath, { frontmatter, cwd: root }),
+								onApproval: async (call, verdict) => {
+									const answer = await approveToolOnTerminal(call.name, String(verdict?.reason ?? ""));
+									if (answer !== "approve" && typeof answer === "object") cost.tools.denied.push(`${call.name}: ${answer.reason}`);
+									return answer;
+								},
+								observer: run.recordingTurns({ personaPath: assembled.personaPath, statePath: assembled.handle.statePath }),
+								bus,
+							},
+						)
+						// A program drives this turn, on a definition somebody wrote. `human` would put a
+						// person's hand on a turn nobody typed.
+						.run({ turn: randomUUID(), prompt, asker: { kind: "component", name: "personaxis-service" } });
 				} catch (e) {
-					cost.reply = since(t, u);
-					return { outcome: "failed", summary: null, reason: (e as Error).message };
+					cost.turn = await since(t, u);
+					presence.release();
+					return { outcome: "failed", summary: null, reason: friendlyProviderError((e as Error).message) };
 				}
-				cost.reply = since(t, u);
+				cost.turn = await since(t, u);
+				presence.release();
 
-				// Naming a new session can call the model, which is why it is counted apart.
-				t = Date.now();
-				u = meter.snapshot();
-				await recordTurn(ctx, prompt, reply, "background");
-				cost.record = since(t, u);
+				if (outcome.failure) {
+					return { outcome: "failed", summary: null, reason: friendlyProviderError(outcome.failure.message) };
+				}
+				const ended = stepOutcomeOf(outcome.stopReason, outcome.answer);
+				if (ended.outcome === "failed") return { outcome: "failed", summary: null, reason: ended.reason };
 
-				// The governed tick. Without it a step is the document plus a prompt, and the
-				// persona would not change across the service no matter what it met.
+				// The governed tick, on what the step put in front of the persona. Not on its own
+				// answer: the REPL observes the person's line and not the reply, for the same reason.
+				// A persona that appraised its own output would be reacting to itself.
 				//
-				// Labelled `internal`, not `user`. The observation is the step's prompt, which can
-				// carry third-party text (a contributor's diff, a counterparty's contract), plus
-				// other personas' notes and this persona's own reply. `provenance.ts` says the
-				// weakest link wins, and under `user` an instruction injected into a diff would have
-				// justified a self-edit with the trust of the persona's owner.
+				// Labelled `internal`, not `user`. The prompt can carry third-party text (a
+				// contributor's diff, a counterparty's contract) and other personas' notes, and
+				// `provenance.ts` says the weakest link wins. Under `user`, an instruction injected
+				// into a diff would have justified a self-edit with the trust of the persona's owner.
 				t = Date.now();
-				u = meter.snapshot();
-				const tick = await runObserve(pp, `${prompt}\n\n${reply}`, "internal");
-				cost.tick = since(t, u);
+				u = await meter.settled();
+				const tick = await runObserve(pp, prompt, "internal");
+				cost.tick = await since(t, u);
 				if (!tick.ok) console.log(chalk.yellow(`    tick failed: ${tick.error}`));
 
-				return { outcome: "completed", summary: reply };
+				return { outcome: "completed", summary: outcome.answer, reason: ended.reason };
 			},
 			approve: approveOnTerminal,
 		};
@@ -153,6 +229,7 @@ const runCommand = new Command("run")
 		}
 
 		const total = totalOf(costs);
+		const tools = costs.reduce((n, c) => ({ proposed: n.proposed + c.tools.proposed, denied: n.denied + c.tools.denied.length }), { proposed: 0, denied: 0 });
 		const runsDir = join(root, SERVICES_DIR, "runs");
 		mkdirSync(runsDir, { recursive: true });
 		const out = join(runsDir, `${address}-${new Date(started).toISOString().replace(/[:.]/g, "-")}.json`);
@@ -161,7 +238,8 @@ const runCommand = new Command("run")
 		const mark = result.status === "completed" ? chalk.green("✓") : result.status === "waiting" ? chalk.yellow("…") : chalk.red("✗");
 		console.log(`${mark} ${address} ${result.status}${result.reason ? `: ${result.reason}` : ""}`);
 		console.log(chalk.dim(`  ${result.steps.length} step(s), ${Math.round((Date.now() - started) / 1000)} s · journal ${resolve(out)}`));
-		console.log(chalk.dim(`  ${describeCost("answers", total.reply)} · ${describeCost("governed ticks", total.tick)} · ${describeCost("bookkeeping", total.record)}`));
+		console.log(chalk.dim(`  ${describeCost("work", total.turn)} · ${describeCost("governed ticks", total.tick)}`));
+		console.log(chalk.dim(`  tools: ${tools.proposed} proposed, ${tools.denied} refused`));
 		if (result.status !== "completed") process.exitCode = 1;
 	});
 
@@ -169,20 +247,26 @@ interface PhaseCost extends ModelUsage {
 	ms: number;
 }
 
-/** One persona step's cost. A phase that never ran is null, not zero. */
+/** One persona step's cost and what its tools did. A phase that never ran is null, not zero. */
 interface StepCost {
 	path: readonly string[];
 	position: number;
 	persona: string;
-	reply: PhaseCost | null;
-	record: PhaseCost | null;
+	turn: PhaseCost | null;
 	tick: PhaseCost | null;
+	tools: {
+		proposed: number;
+		allowed: number;
+		asked: number;
+		denied: string[];
+		calls: Array<{ tool: string; args: string; verdict: "allow" | "ask" | "deny"; reason: string }>;
+	};
 }
 
 const NO_COST: PhaseCost = { ms: 0, calls: 0, promptTokens: 0, completionTokens: 0, unreported: 0 };
 
 /** Every step's phases added up. Exported for its test. */
-export function totalOf(costs: readonly StepCost[]): { reply: PhaseCost; record: PhaseCost; tick: PhaseCost } {
+export function totalOf(costs: readonly Pick<StepCost, "turn" | "tick">[]): { turn: PhaseCost; tick: PhaseCost } {
 	const add = (a: PhaseCost, b: PhaseCost | null): PhaseCost =>
 		b === null
 			? a
@@ -193,10 +277,7 @@ export function totalOf(costs: readonly StepCost[]): { reply: PhaseCost; record:
 					completionTokens: a.completionTokens + b.completionTokens,
 					unreported: a.unreported + b.unreported,
 				};
-	return costs.reduce(
-		(sum, c) => ({ reply: add(sum.reply, c.reply), record: add(sum.record, c.record), tick: add(sum.tick, c.tick) }),
-		{ reply: NO_COST, record: NO_COST, tick: NO_COST },
-	);
+	return costs.reduce<{ turn: PhaseCost; tick: PhaseCost }>((sum, c) => ({ turn: add(sum.turn, c.turn), tick: add(sum.tick, c.tick) }), { turn: NO_COST, tick: NO_COST });
 }
 
 function describeCost(label: string, c: PhaseCost): string {

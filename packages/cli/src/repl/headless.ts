@@ -149,14 +149,14 @@ export interface GovernedReplyOptions {
  * One reply from a persona, as `personaxis -p` gives it: its facts and recall window as memory,
  * its awareness block, its current state, and its presence held while the model answers.
  *
- * `-p` and a step of `personaxis service run` both call this, so a persona answers a step of a
- * service exactly as it answers when called directly. They used to be two copies, and the copy
- * in the service runner had quietly dropped the memory and the awareness block.
+ * It answers WITHOUT tools. A REPL turn with a model goes through `run.runnerFor`, where the gate
+ * decides every tool call; this does not, so `-p` is a governed conversation and not a governed
+ * working turn. A service step needs the working turn and uses `runnerFor` (see `service.ts`).
  *
  * Recording the turn stays with the caller, because naming a new session can call the model and
  * `-p` prints the reply before that happens.
  */
-export async function governedReply(o: GovernedReplyOptions): Promise<{ reply: string; name: string; ctx: ReturnType<typeof makeCtx> }> {
+async function governedReply(o: GovernedReplyOptions): Promise<{ reply: string; name: string; ctx: ReturnType<typeof makeCtx> }> {
   const ctx = makeCtx(o.personaPath, makeMeter());
   const name = shortName(ctx);
   o.onReady?.(name, ctx.sessionId);

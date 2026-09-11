@@ -293,7 +293,10 @@ const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
 	// and `MAX_SERVICE_DEPTH` found a real caller in `service run --check`. Lower this as each
 	// of the seven is wired, and do not trim the copy to hit the number: a copy that is not
 	// verbatim is a copy whose original tests no longer prove it is the same code.
-	{ pkg: "core", departure: 173 },
+	//
+	// 173 -> 172 the same day, when a service step moved from the reply `-p` gives onto
+	// `run.runnerFor`, the working turn with tools, and reached one more export from outside.
+	{ pkg: "core", departure: 172 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the
