@@ -13,7 +13,7 @@
 
 import { resolve } from "node:path";
 
-import { isProtectedUnder, pathEscapesWorkspace } from "../sandbox.js";
+import { commandPathTokens, isDestructiveCommand, isProtectedUnder, pathEscapesWorkspace } from "../sandbox.js";
 
 export type ActionClass =
 	/** Reaches something outside the workspace: an API, a repository, a doc. */
@@ -55,16 +55,23 @@ interface Rule {
  * Rules are additive: a call collects every class whose rule matches, because a
  * shell command can delete a file and reach the network in the same line.
  */
+/**
+ * The shells. E62, 2026-09-11: `PowerShell` and `pwsh` were not here, so on Windows every command
+ * Claude Code ran through its `PowerShell` tool classified as nothing, `Remove-Item -Recurse -Force`
+ * included. The verbs below learned the PowerShell spellings at the same time.
+ */
+const SHELL_TOOL = /^bash|^shell|^run_command|^execute|^powershell|^pwsh/i;
+
 const RULES: readonly Rule[] = [
 	{
-		tool: /^bash|^shell|^run_command|^execute/i,
-		args: /\brm\b|\brmdir\b|\bdel\b|\bunlink\b|\btruncate\b|\bshred\b|\bmkfs\b/i,
+		tool: SHELL_TOOL,
+		args: /\brm\b|\brmdir\b|\bdel\b|\berase\b|\bunlink\b|\btruncate\b|\bshred\b|\bmkfs\b|\bRemove-Item\b|\bClear-Content\b|\bFormat-Volume\b|\bClear-Disk\b/i,
 		classes: ["file_delete"],
 		because: "a shell command that removes files",
 	},
 	{
-		tool: /^bash|^shell|^run_command|^execute/i,
-		args: /\bcurl\b|\bwget\b|\bnc\b|\bssh\b|\bscp\b|\brsync\b|https?:\/\//i,
+		tool: SHELL_TOOL,
+		args: /\bcurl\b|\bwget\b|\bnc\b|\bssh\b|\bscp\b|\brsync\b|https?:\/\/|\bInvoke-WebRequest\b|\bInvoke-RestMethod\b|\biwr\b|\birm\b|\bStart-BitsTransfer\b|Net\.WebClient/i,
 		classes: ["network_egress", "external_write"],
 		because: "a shell command that reaches the network",
 	},
@@ -83,16 +90,22 @@ const RULES: readonly Rule[] = [
 		// arrow is the whole discriminator, and `2> log.txt` DOES match, because that
 		// one writes. `>=` and `->` are excluded for the same reason: they are
 		// comparison and arrow syntax, not redirection.
-		tool: /^bash|^shell|^run_command|^execute/i,
+		tool: SHELL_TOOL,
 		args: /(?:[^-=<>&]|^)>>?\s*(?![&=])[A-Za-z0-9._~/\\$"'(]|\btee\b|\bdd\b[^|]*\bof=|\bOut-File\b|\bSet-Content\b|\bAdd-Content\b/i,
 		classes: ["external_write"],
 		because: "a shell command that writes through redirection",
 	},
 	{
-		tool: /^bash|^shell|^run_command|^execute/i,
+		tool: SHELL_TOOL,
 		args: /\bgit\s+push\b|\bnpm\s+publish\b|\bdocker\s+push\b|\bterraform\s+apply\b/i,
 		classes: ["external_write", "network_egress"],
 		because: "a shell command that publishes somewhere outside",
+	},
+	{
+		tool: SHELL_TOOL,
+		args: /\bSend-MailMessage\b|\bsendmail\b/i,
+		classes: ["email_send", "external_write", "network_egress"],
+		because: "a shell command that sends mail",
 	},
 	{
 		// The `_file` suffix is OPTIONAL, and that is the whole of this edit.
@@ -192,7 +205,8 @@ export function explainActionClasses(tool: string, argsText: string): string[] {
  * the persona's own state, which is inside the project. So the compiled policy could
  * not tell a write inside from one outside, refused both under `workspace-write`, and
  * sent every read to a person under `on-request`, against what the postures are
- * documented to mean. These two facts are what it was missing.
+ * documented to mean. The first two facts are what it was missing. The last two (E62)
+ * are what a shell command says about where it acts and how hard.
  */
 export interface CallFacts {
 	/** The tool is on the list of tools that only read. A name nobody listed is not a read. */
@@ -204,6 +218,18 @@ export interface CallFacts {
 	 * object, a path that is not a string, a shell command.
 	 */
 	readonly withinWorkspace: boolean;
+	/**
+	 * E62: the call names a place outside the workspace, or a path that climbs with `..`: a named
+	 * argument, or a path token in a shell command. When a root was given and the call cannot be
+	 * read, this is TRUE, the strict answer for the question it answers. False without a root,
+	 * which is the answer before it existed.
+	 */
+	readonly namesOutside: boolean;
+	/**
+	 * E62: a shell command the documented classifier calls destructive: a tree or forced delete
+	 * (`rm -r`, `rm -f`, `Remove-Item -Recurse`, `rd /s`), a disk format, `shred`. Needs no root.
+	 */
+	readonly destructive: boolean;
 }
 
 /**
@@ -236,7 +262,7 @@ const KNOWN_READS: ReadonlyMap<string, readonly string[]> = new Map<string, read
  *
  * `cwd` is here because it moves where every other path lands: a write to `x` from a
  * `cwd` of `/etc` is a write to `/etc/x`. What this cannot see is a path under a key
- * that is not listed, which is written down in `E59` for review.
+ * that is not listed, a limit written down in `E59` and in `docs/architecture/sandbox.md`.
  */
 const PATH_KEYS = [
 	"path",
@@ -250,8 +276,6 @@ const PATH_KEYS = [
 	"cwd",
 ];
 
-/** The shells, which are never "inside": what a command touches is not in its arguments. */
-const SHELL = /^bash|^shell|^run_command|^execute|^powershell|^pwsh/i;
 
 /**
  * Derives the facts for one call. Pure, like the classes.
@@ -264,38 +288,78 @@ const SHELL = /^bash|^shell|^run_command|^execute|^powershell|^pwsh/i;
 export function callFacts(tool: string, argsText: string, workspaceRoot?: string, cwd?: string): CallFacts {
 	const extraKeys = KNOWN_READS.get(tool.toLowerCase());
 	const knownRead = extraKeys !== undefined;
-	if (!workspaceRoot || SHELL.test(tool)) return { knownRead, withinWorkspace: false };
+	const record = objectArgs(argsText);
 
-	let args: unknown;
-	try {
-		args = JSON.parse(argsText);
-	} catch {
-		return { knownRead, withinWorkspace: false };
-	}
-	if (args === null || typeof args !== "object" || Array.isArray(args)) {
-		return { knownRead, withinWorkspace: false };
+	if (SHELL_TOOL.test(tool)) {
+		// A command's places are in its text. Where the shell will actually be standing is only
+		// as good as the cwd the host reports: a host whose shell keeps its directory between
+		// calls can `cd ..` in one call and delete in the next, and this sees the second alone.
+		const command = commandOf(record, argsText);
+		const destructive = isDestructiveCommand(command);
+		if (!workspaceRoot) return { knownRead, withinWorkspace: false, namesOutside: false, destructive };
+		const namesOutside = commandPathTokens(command).some((tok) => climbs(tok) || pathEscapesWorkspace(tok, workspaceRoot));
+		// Never inside: what a command touches is not in its arguments.
+		return { knownRead, withinWorkspace: false, namesOutside, destructive };
 	}
 
-	const record = args as Record<string, unknown>;
+	if (!workspaceRoot) return { knownRead, withinWorkspace: false, namesOutside: false, destructive: false };
+	if (!record) return { knownRead, withinWorkspace: false, namesOutside: true, destructive: false };
+
 	const named = [...PATH_KEYS, ...(extraKeys ?? [])].filter((key) => Object.hasOwn(record, key));
-	// A read with no path reads where it stands, which is inside. A write with no path
-	// could be going anywhere, and "we could not see where" is not "inside".
-	if (!knownRead && named.length === 0) return { knownRead, withinWorkspace: false };
-
 	const from = cwd ?? workspaceRoot;
-	const withinWorkspace = named.every((key) => {
+	const outside = (key: string): boolean => {
 		const value = record[key];
-		if (typeof value !== "string") return false;
+		if (typeof value !== "string") return true;
 		// A path that climbs is never inside, even when it comes back. Resolved from a
 		// directory below the root, `../../a/b/y` can name the root's own parents on the
 		// way down and land somewhere the resolution against the root calls inside.
 		// Braces name several places at once, and only one of them has to be outside.
-		if (value.split(/[\\/]+/).includes("..") || value.includes("{")) return false;
+		if (climbs(value) || value.includes("{")) return true;
 		const target = value.startsWith("~") ? value : resolve(from, value);
-		if (pathEscapesWorkspace(target, workspaceRoot)) return false;
-		// Reading its own files is ordinary, the persona reads its document every turn.
-		// Writing them is governed elsewhere, so for a write they are never "inside".
-		return knownRead || !isProtectedUnder(target, workspaceRoot);
-	});
-	return { knownRead, withinWorkspace };
+		return pathEscapesWorkspace(target, workspaceRoot);
+	};
+	const namesOutside = named.some(outside);
+
+	// A read with no path reads where it stands, which is inside. A write with no path
+	// could be going anywhere, and "we could not see where" is not "inside".
+	if (!knownRead && named.length === 0) return { knownRead, withinWorkspace: false, namesOutside, destructive: false };
+
+	const withinWorkspace =
+		!namesOutside &&
+		named.every((key) => {
+			// Reading its own files is ordinary, the persona reads its document every turn.
+			// Writing them is governed elsewhere, so for a write they are never "inside".
+			const target = resolve(from, record[key] as string);
+			return knownRead || !isProtectedUnder(target, workspaceRoot);
+		});
+	return { knownRead, withinWorkspace, namesOutside, destructive: false };
+}
+
+/** A path with a `..` segment, anywhere in it. */
+function climbs(path: string): boolean {
+	return path.split(/[\\/]+/).includes("..");
+}
+
+/** The arguments as an object, or null when they are not one. */
+function objectArgs(argsText: string): Record<string, unknown> | null {
+	try {
+		const parsed: unknown = JSON.parse(argsText);
+		return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The command a shell call runs. Under `command` for Claude Code and our own loop, as an array
+ * for Codex's shell, which takes `["bash", "-lc", "..."]`. Arguments that name no command are
+ * scanned whole, which can only find more than there is.
+ */
+function commandOf(record: Record<string, unknown> | null, argsText: string): string {
+	for (const key of ["command", "cmd", "script"]) {
+		const value = record?.[key];
+		if (typeof value === "string") return value;
+		if (Array.isArray(value) && value.every((part) => typeof part === "string")) return value.join(" ");
+	}
+	return argsText;
 }

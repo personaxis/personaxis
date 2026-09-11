@@ -128,6 +128,10 @@ export function cachedPolicyGuard(
 				// and asks a person about every read under `on-request`.
 				known_read: call.knownRead,
 				within_workspace: call.withinWorkspace,
+				// E62: without these a shell delete earns only `file_delete`, which this posture
+				// did not refuse, so `rm -rf` ran under `never`.
+				names_outside: call.namesOutside,
+				destructive: call.destructive,
 			});
 			saw?.(decision);
 			switch (decision.verdict) {

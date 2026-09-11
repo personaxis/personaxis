@@ -67,6 +67,22 @@ describe("command classification", () => {
     expect(evaluateFileWrite(".git/config", policy({ sandbox: "danger-full-access" })).decision).toBe("deny");
   });
 
+  it("classifies PowerShell and cmd, and a recursive rm, the way it classifies bash (E62)", () => {
+    const ps = classifyCommand('Remove-Item -Recurse -Force "C:\\Users"', root);
+    expect(ps.destructive).toBe(true);
+    expect(ps.writesFiles).toBe(true);
+    expect(classifyCommand("Invoke-WebRequest https://example.com", root).network).toBe(true);
+    expect(classifyCommand("Set-Content notes.md hi", root).writesFiles).toBe(true);
+    expect(classifyCommand("rd /s /q build", root).destructive).toBe(true);
+    // `rm -r` deletes a tree as surely as `rm -f`; a plain `rm` is a write and nothing more.
+    expect(classifyCommand("rm -r build", root).destructive).toBe(true);
+    expect(classifyCommand("rm notes.md", root).destructive).toBe(false);
+    // A quote in front of a path used to hide it from the scan.
+    expect(classifyCommand('cat "/etc/passwd"', root).escapesWorkspace).toBe(true);
+    // And reads stay reads.
+    expect(classifyCommand("Get-Content notes.md", root)).toEqual({ writesFiles: false, network: false, destructive: false, escapesWorkspace: false });
+  });
+
   it("scans a command for paths that climb out through the middle", () => {
     expect(classifyCommand("cat docs/../../secret.txt", root).escapesWorkspace).toBe(true);
     expect(classifyCommand("cp notes.md docs/../../../elsewhere/", root).escapesWorkspace).toBe(true);

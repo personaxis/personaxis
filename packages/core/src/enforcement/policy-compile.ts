@@ -142,6 +142,10 @@ export interface PolicyCall {
 	 * protected folder, from `callFacts`. Absent is false, for the same reason.
 	 */
 	within_workspace?: boolean;
+	/** E62: the call names a place outside the workspace, from `callFacts`. Absent is false. */
+	names_outside?: boolean;
+	/** E62: a shell command the documented classifier calls destructive, from `callFacts`. Absent is false. */
+	destructive?: boolean;
 }
 
 /** Classes that write, for the sandbox check. */
@@ -352,6 +356,27 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 		}
 	}
 	const reaching = call.action_classes.find((cls) => REACHING_CLASSES.includes(cls));
+	// E62: a delete is judged the way the documented posture judges it. A destructive one (a tree,
+	// a forced delete, a format) and one that names a place outside the workspace are refused; an
+	// ordinary delete inside goes to the approval axis. Before this a shell delete earned only
+	// `file_delete`, this posture only refused `external_write`, and through the daemon, where
+	// nothing else judges a host's call, `rm -rf` and `rm ../other` ran under `never`.
+	// Unless a gate covers it, which the next step decides, as for a write.
+	if (
+		policy.sandbox === "workspace-write" &&
+		call.action_classes.includes("file_delete") &&
+		(call.destructive === true || call.names_outside === true) &&
+		!executable.gatesByClass.has("file_delete")
+	) {
+		return {
+			verdict: "deny",
+			rule: "sandbox:workspace-write",
+			reason:
+				call.destructive === true
+					? "this persona may write inside the workspace, and the call is a destructive delete"
+					: "this persona may write inside the workspace, and the call deletes outside it",
+		};
+	}
 	if (policy.sandbox === "workspace-write" && call.action_classes.includes("external_write")) {
 		// A write that stays inside is what this posture exists to let through, and the
 		// approval axis governs it. Before E59 this refused every write, because the
