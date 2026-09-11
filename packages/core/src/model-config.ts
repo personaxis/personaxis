@@ -36,6 +36,16 @@ export interface ModelSettings {
   apiKey?: string;
   /** Name of the env var that holds the key (preferred, the key never touches a file). */
   apiKeyEnv?: string;
+  /**
+   * Completion budget per call. Optional, and the default matters more than it looks.
+   *
+   * A 2026 open model thinks before it answers and the thinking is billed here. Measured
+   * on the HuggingFace router with Qwen3.5-9B: with a `response_format` set and no explicit
+   * budget the server caps the completion at 2048, the model spends all of it thinking, and
+   * returns HTTP 200 with an EMPTY answer. Raise this for a model that reasons; lower it
+   * only if a server bills by the reservation rather than by what was used.
+   */
+  maxTokens?: number;
 }
 
 /** Per-persona settings: an optional reference to a named `profile` plus inline overrides. */
@@ -63,6 +73,8 @@ export interface ResolvedModel {
   profile?: string;
   /** V5.FIX.2: true when the configured default was NOT usable and a fallback was taken. */
   fallback?: boolean;
+  /** Completion budget per call, carried through from the resolved settings. */
+  maxTokens?: number;
 }
 
 /** A local inference server (Ollama, LM Studio, llama.cpp, vLLM on this machine) needs no key. */
@@ -162,12 +174,17 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
 
   const direct =
     merged.endpoint && merged.model
-      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged) }
+      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens }
       : undefined;
 
   // Usable = it can actually answer: a key resolves, or the endpoint is local (no key needed).
   if (direct && (direct.apiKey || isLocalEndpoint(direct.endpoint))) {
-    return { endpoint: direct.endpoint, model: direct.model, ...(direct.apiKey ? { apiKey: direct.apiKey } : {}) };
+    return {
+      endpoint: direct.endpoint,
+      model: direct.model,
+      ...(direct.apiKey ? { apiKey: direct.apiKey } : {}),
+      ...(direct.maxTokens !== undefined ? { maxTokens: direct.maxTokens } : {}),
+    };
   }
 
   // V5.FIX.2 fallback: when the configured default is broken (points at a keyless
@@ -204,6 +221,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
           endpoint: s.endpoint,
           model: s.model,
           ...(k ? { apiKey: k } : {}),
+          ...(s.maxTokens !== undefined ? { maxTokens: s.maxTokens } : {}),
           profile: name,
           ...(direct ? { fallback: true } : {}),
         };

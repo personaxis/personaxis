@@ -44,7 +44,23 @@ export function createLocalProvider(config: PersonaxisConfig, personaPath?: stri
       choices?: { finish_reason?: string; message?: { content?: string; reasoning?: string; reasoning_content?: string } }[];
     };
     try {
-      json = (await postJson(url, headers, { model, temperature: 0.2, ...body })) as typeof json;
+      // An EXPLICIT budget, because the server's implicit one is not survivable by a model
+      // that thinks before it answers. Measured 2026-09-10 on the HuggingFace router with
+      // Qwen3.5-9B: with a `response_format` set and no max_tokens the server caps the
+      // completion at 2048, the model spends all 2048 thinking, and returns HTTP 200 with an
+      // EMPTY content. The same call with max_tokens 8192 answers in 2303 tokens.
+      //
+      // That one missing parameter is why Genesis fell back to its heuristic baseline on
+      // every brief: the extractor's three response_format fallbacks each died the same way,
+      // so a persona built from a rich brief came out with one default trait. 8192 matches
+      // what the BYOK provider already asks for, so the two do not disagree about how much
+      // room a model gets.
+      json = (await postJson(url, headers, {
+        model,
+        temperature: 0.2,
+        max_tokens: resolved?.maxTokens ?? config.local?.maxTokens ?? 8192,
+        ...body,
+      })) as typeof json;
     } catch (e) {
       throw new Error(
         `Local provider request failed: ${(e as Error).message}\n` +
