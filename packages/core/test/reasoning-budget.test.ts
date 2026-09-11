@@ -69,9 +69,9 @@ describe("an exhausted reasoning budget is an error, not a neutral appraisal", (
 	});
 
 	it("the appraiser asks for a budget a reasoning model can finish inside", async () => {
-		const fetchImpl = vi.fn(async () => ok({ choices: [{ message: { content: "{}" } }] }));
+		const fetchImpl = vi.fn(async (_url: string, _init: { body: string }) => ok({ choices: [{ message: { content: "{}" } }] }));
 		await new LlmAppraiser({ ...cfg, fetchImpl: fetchImpl as never }).appraise(APPRAISE_INPUT);
-		const sent = JSON.parse((fetchImpl.mock.calls[0]?.[1] as { body: string }).body);
+		const sent = JSON.parse(fetchImpl.mock.calls[0]![1].body);
 		// 512 is the measured failing value. The default must clear it by a real margin.
 		expect(sent.max_tokens).toBeGreaterThan(512);
 	});
