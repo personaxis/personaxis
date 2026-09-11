@@ -87,12 +87,12 @@ describe("a timeout is not retried like a rate limit", () => {
 		const fetchImpl = vi.fn(async () => {
 			throw timeoutError();
 		});
-		const err = await postJson("https://x/v1/chat/completions", {}, {}, {
+		const err = (await postJson("https://x/v1/chat/completions", {}, {}, {
 			fetchImpl: fetchImpl as never,
 			sleep: async () => {},
 			retries: 0,
 			timeoutMs: 120_000,
-		}).catch((e: Error) => e);
+		}).catch((e: unknown) => e)) as Error;
 		expect(err.message).toMatch(/tokens\/second/);
 		expect(err.message).toMatch(/maxTokens|Raise the timeout/);
 	});
