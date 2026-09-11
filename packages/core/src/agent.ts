@@ -14,7 +14,7 @@
 
 import { runHooks, readHooksConfig, type HooksConfig } from "./hooks.js";
 import { EventBus } from "./events.js";
-import { DEFAULT_POLICY, type CommandVerdict, type Policy } from "./sandbox.js";
+import { DEFAULT_POLICY, effectiveApproval, type CommandVerdict, type Policy } from "./sandbox.js";
 import { FINISH_TOOL, toolByName, TOOLS, type ToolSpec } from "./tools/registry.js";
 import { activeSkillsFor, selectActiveTools, type ActiveSkill } from "./skill-activation.js";
 import { guidesFor, renderGuides, type SkillGuide } from "./skill-guide.js";
@@ -1304,6 +1304,10 @@ export class PersonaAgent {
             klass: verdict.class,
             sandbox: this.policy.sandbox as SandboxPosture,
             taint: contextTaint,
+            // E61: the approval posture for THIS call's class, so `never` silences an ordinary
+            // write the way full access does, and a per-category override that keeps network
+            // asking still keeps it asking.
+            approval: effectiveApproval(this.policy, verdict.class),
           });
           // Every reason, not the first. A call refused twice used to report once, and
           // somebody who widened one limit and found the call still refused, with no hint
