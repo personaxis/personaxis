@@ -174,19 +174,34 @@ export function classifyCommand(cmd: string, workspaceRoot: string): CommandClas
   const writesFiles = WRITE.test(cmd);
   const network = NETWORK.test(cmd);
   const destructive = DESTRUCTIVE.test(cmd);
-  const escapesWorkspace = (cmd.match(/(?:^|\s)(\/[^\s'"]+|[~][^\s'"]*|\.\.\/[^\s'"]*)/g) ?? [])
+  // Tokens that could be a way out: absolute (`/x`, `C:\x`), home (`~/x`), or any token with a
+  // `..` segment anywhere in it. The last used to be only a token STARTING with `../`, so
+  // `cat docs/../../secret` was never looked at.
+  const escapesWorkspace = (cmd.match(/(?:^|\s)(\/[^\s'"]+|[A-Za-z]:[\\/][^\s'"]*|[~][^\s'"]*|[^\s'"]*\.\.[\\/][^\s'"]*)/g) ?? [])
     .map((tok) => tok.trim())
     .filter((tok) => !isCliSwitch(tok))
     .some((tok) => pathEscapesWorkspace(tok, workspaceRoot));
   return { writesFiles, network, destructive, escapesWorkspace };
 }
 
-/** True if `p` resolves outside `root`. */
+/**
+ * True if `p` resolves outside `root`.
+ *
+ * Always resolved. The first version returned "inside" for any relative path that did not
+ * START with `..`, without resolving it, so `docs/../../x` passed the read gate, the file-write
+ * gate and the command scan as a path inside the workspace. Found 2026-09-11.
+ *
+ * Symlinks are not followed: a link inside the workspace that points out of it is reported as
+ * inside. That needs the filesystem, and this is a pure check on a string.
+ */
 export function pathEscapesWorkspace(p: string, root: string): boolean {
   if (p.startsWith("~")) return true;
-  if (!isAbsolute(p) && !p.startsWith("..")) return false;
-  const rel = relative(normalize(root), normalize(isAbsolute(p) ? p : `${root}/${p}`));
-  return rel.startsWith("..") || isAbsolute(rel);
+  const base = resolve(root);
+  const target = isAbsolute(p) ? normalize(p) : resolve(base, p);
+  const rel = relative(base, target);
+  // `..` alone or `..` followed by a separator is a way up. A name that merely starts with two
+  // dots (`..cache`) is a folder inside, and a bare prefix test used to call it a way out.
+  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || isAbsolute(rel);
 }
 
 export type Decision = "allow" | "ask" | "deny";
