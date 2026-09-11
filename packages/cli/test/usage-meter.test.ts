@@ -56,12 +56,31 @@ describe("the usage meter", () => {
 	it("counts a call without a usage block as unreported, never as zero tokens", async () => {
 		const meter = meterModelCalls();
 		answers.push(respond({ choices: [] }));
-		answers.push(respond("data: {}\n\n", "text/event-stream"));
+		answers.push(respond("data: {}\n\ndata: [DONE]\n\n", "text/event-stream"));
 		answers.push(respond({ error: "overloaded" }, "application/json", 429));
 		await fetch("https://router.example/v1/chat/completions");
 		await fetch("https://router.example/v1/chat/completions");
 		await fetch("https://router.example/v1/chat/completions");
-		expect(meter.snapshot()).toEqual({ calls: 3, promptTokens: 0, completionTokens: 0, unreported: 3 });
+		expect(await meter.settled()).toEqual({ calls: 3, promptTokens: 0, completionTokens: 0, unreported: 3 });
+		meter.stop();
+	});
+
+	it("reads a stream's usage from its last chunk, and leaves the stream to its reader", async () => {
+		// The engine's tool-calling loop streams whenever something listens, with include_usage,
+		// and the first real service run reported all sixteen of its working calls as unreported.
+		const meter = meterModelCalls();
+		const sse = [
+			'data: {"choices":[{"delta":{"content":"Hel"}}],"usage":null}',
+			'data: {"choices":[{"delta":{"content":"lo"}}],"usage":null}',
+			'data: {"choices":[],"usage":{"prompt_tokens":321,"completion_tokens":12}}',
+			"data: [DONE]",
+			"",
+		].join("\n\n");
+		answers.push(respond(sse, "text/event-stream"));
+		const res = await fetch("https://router.example/v1/chat/completions");
+		// The caller's copy is the whole stream, untouched.
+		expect(await res.text()).toBe(sse);
+		expect(await meter.settled()).toEqual({ calls: 1, promptTokens: 321, completionTokens: 12, unreported: 0 });
 		meter.stop();
 	});
 

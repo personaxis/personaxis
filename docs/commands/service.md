@@ -51,12 +51,21 @@ Same shape as a service template in the workspace, plus `serviceRef`:
 
 1. The step's prompt is its `instruction` plus the handover: what every earlier step left, written
    by the same function the workspace uses, so a step reads the same note locally and in the cloud.
-2. **A persona step** is a governed reply from that persona on your configured model, the same one
-   `personaxis -p` gives, followed by one governed tick of its living loop (the same tick
-   [`observe`](./observe.md) runs). The tick is what makes it a persona at work and not a document
-   pasted into a prompt: its state moves across the service, clamped to its envelopes, and its
-   compiled document is recompiled when a band is crossed. Each persona keeps its turns in its own
-   record.
+2. **A persona step** is a working turn, the same one the REPL and `personaxis-acp` run: the
+   persona can read, write and run commands, and **its compiled policy decides every tool call
+   before it happens**. A call the policy wants a person for is asked at the terminal; with no
+   terminal it is refused, with the reason written down, and nothing approves itself. The turn is
+   written to the persona's record. (This is NOT what `personaxis -p` gives: `-p` answers without
+   tools.) Then one governed tick of the persona's living loop (the same tick
+   [`observe`](./observe.md) runs) on what the step put in front of the persona, not on its own
+   answer. The tick is what makes it a persona at work and not a document pasted into a prompt: its
+   state moves across the service, clamped to its envelopes, and its compiled document is
+   recompiled when a band is crossed.
+
+   How a turn ends decides how the step ends: an answer completes it; a turn that closed early on a
+   budget or a declared rule completes it with what it had, and says so; a turn that was refused,
+   interrupted, empty, failed or abandoned fails the step, so the next step never builds on work
+   the gate cut short.
 3. **A service step** runs the other service from its first step to its end, and its result becomes
    this step's result. Every step of that sub-service is briefed with the parent step's
    instruction and what the parent handed to it, so due diligence knows which deal it is
@@ -100,12 +109,13 @@ the step asked for, opened by the thing it was there to watch.
 
 Every run writes `.personaxis/services/runs/<address>-<timestamp>.json`: the result, every step with
 its path from the root service, who did it, how it ended and what it left, and what each persona
-step cost. The cost is split into three phases, each with its time, its model calls and their
-prompt and completion tokens: the **answer**, the **bookkeeping** (naming a new session can call
-the model) and the **governed tick**. Kept apart so the price of governing is a number of its own.
-The run prints the three totals when it ends. Tokens are read from every `/chat/completions`
-response the process receives, so the appraiser's calls count too; a call whose response carried
-no usage block is counted as unreported, and the token total then says it is a floor.
+step cost and what its tools did. The cost is split into the **work** (the whole working turn,
+every model call in it) and the **governed tick**, each with its time, its model calls and their
+prompt and completion tokens, so the price of governing is a number of its own; the run prints
+both totals when it ends. Tokens are read from every `/chat/completions` response the process
+receives, streamed or not, so the appraiser's calls count too; a call whose response carried no
+usage is counted as unreported, and the total then says it is a floor. Every tool call is listed
+with its arguments (cut to 200 characters), the gate's verdict and the gate's own reason.
 
 Each note is stored once: a step done by a service
 has `summary: null` and a `deliveredBy` pointing at the step inside it whose note is the delivery,
@@ -123,8 +133,16 @@ note, because the next step would read it as the work.
 
 Said so it is not assumed:
 
-- **Steps answer in text and do not call tools.** The tool gate is not exercised by this command
-  yet, although each persona's state and record are. Tool calls through the gate are the next piece.
+- **A step cannot write a file inside the project under the default posture.** Measured in a real
+  run on 2026-09-11: the compiled policy classes every file write as reaching outside the
+  workspace, so under `workspace-write` it refuses a write to `docs/refunds.md`; and under
+  `approval: on-request`, the default, it asks a person for every call, reads included, which an
+  unattended run refuses. Both contradict [the sandbox postures](../architecture/sandbox.md) as
+  documented, and the fix is open. Until then a persona that must work unattended can read with
+  `approval: never`, and cannot write without `danger-full-access`.
+- **A step does not declare what it delivers.** A persona that answers "I could not write the
+  file" completes its step, and the next step builds on nothing. Declaring the files a step must
+  leave, and failing the step when they are missing, is the next piece.
 - **A failed or waiting run is not resumed.** Run it again; the journal of the earlier run stays.
 - **The workspace cannot hold a sub-service yet.** Its steps are one persona each; `serviceRef`
   exists here first.
