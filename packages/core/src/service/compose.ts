@@ -33,7 +33,9 @@
  */
 
 import { advance, approved, begin, rejected, type Advance, type RunState, type StepOutcome, type StepShape } from "./advance.js";
-import { handoverText, stepPrompt, type PreviousStep } from "./handover.js";
+// `ProducedFile` is the SaaS's own shape, copied with `handover`, so a declared file and a file the
+// SaaS reads off the record are one type and travel between the two unchanged.
+import { handoverText, stepPrompt, type PreviousStep, type ProducedFile } from "./handover.js";
 
 /** How deep services may nest. A parent is depth 0; its sub-service is 1. */
 export const MAX_SERVICE_DEPTH = 8;
@@ -52,6 +54,16 @@ export interface ServiceStepDef {
 	instruction: string;
 	requiresApproval?: boolean;
 	connectorKinds?: readonly string[];
+	/**
+	 * The files this step leaves, relative to the folder the service runs in. A step that ends
+	 * without every one of them written during it has failed, whatever its agent said.
+	 *
+	 * E60: before this a step was `completed` whenever its turn ended with an answer, and a model
+	 * that could not write the file answered that it had. The next step built on nothing, and the
+	 * run said every step completed. What a service sells is that the same thing happens every
+	 * time, and this is the part of it that can be checked without a model.
+	 */
+	produces?: readonly string[];
 }
 
 export interface ServiceDef {
@@ -85,6 +97,12 @@ export interface ServicePorts {
 	}): Promise<PersonaStepResult>;
 	/** Ask a person. `unavailable` when nobody can answer, which leaves the run waiting. */
 	approve(input: { serviceName: string; position: number; path: readonly string[] }): Promise<"approved" | "rejected" | "unavailable">;
+	/**
+	 * Which of a step's declared files exist and were written at or after `since` (milliseconds,
+	 * the clock of this process). A runner without it cannot run a step that declares files: the
+	 * step fails and says so, because completing it would be taking the agent's word for them.
+	 */
+	checkProduced?(input: { paths: readonly string[]; since: number }): Promise<{ produced: ProducedFile[]; missing: string[] }>;
 	/** Optional: every step as it ends, for a journal next to the work. */
 	onStep?(record: StepRecord): void;
 }
@@ -109,6 +127,8 @@ export interface StepRecord {
 	 */
 	deliveredBy?: StepRef;
 	reason: string | null;
+	/** The declared files the step left, with their sizes, when it declared any. */
+	produced?: ProducedFile[];
 }
 
 export type ServiceRunStatus = "completed" | "failed" | "waiting";
@@ -196,6 +216,9 @@ export function checkComposition(root: ServiceDef, resolve: (address: string) =>
 		});
 
 		for (const step of def.steps) {
+			for (const problem of producesProblems(step.produces)) {
+				problems.push(`${def.address} step ${step.position}: ${problem}`);
+			}
 			const refs = [step.personaRef, step.serviceRef].filter((r) => typeof r === "string" && r.length > 0);
 			if (refs.length !== 1) {
 				problems.push(`${def.address} step ${step.position}: needs exactly one of personaRef or serviceRef, and has ${refs.length}`);
@@ -214,6 +237,56 @@ export function checkComposition(root: ServiceDef, resolve: (address: string) =>
 
 	visit(root, []);
 	return problems;
+}
+
+/**
+ * What is wrong with a step's declared files. A path is relative to the service's folder and stays
+ * in it: an absolute one, or one that climbs, names a place the step's persona may not be allowed to
+ * write, and a check that passed there would prove something about the wrong folder.
+ */
+function producesProblems(produces: readonly string[] | undefined): string[] {
+	if (produces === undefined) return [];
+	if (!Array.isArray(produces)) return ["produces must be a list of file paths"];
+	return produces.flatMap((path): string[] => {
+		if (typeof path !== "string" || path.trim().length === 0) return ["produces has an entry that is not a file path"];
+		if (/^([\\/]|[A-Za-z]:|~)/.test(path)) return [`produces names ${path}, which is not relative to the service's folder`];
+		if (path.split(/[\\/]+/).includes("..")) return [`produces names ${path}, which climbs out of the service's folder`];
+		return [];
+	});
+}
+
+/**
+ * The instruction a step with declared files is given: its own, plus what it will be checked on.
+ * Said to the agent because it is the contract, and an agent that knows the run looks for the file
+ * is an agent that writes it rather than describing it.
+ */
+function instructionWithProduces(step: ServiceStepDef): string {
+	const files = step.produces ?? [];
+	if (files.length === 0) return step.instruction;
+	return `${step.instruction}\n\nWhen this step ends, the run checks that it wrote ${files.join(", ")}. A step that only says it wrote them has not.`;
+}
+
+/**
+ * A completed step that declared files is checked against them. Anything else passes through: a step
+ * that already failed or stopped has its own reason, and one that declared nothing promised nothing.
+ */
+async function checkedAgainstProduces(step: ServiceStepDef, result: StepExecution, since: number, ports: ServicePorts): Promise<StepExecution> {
+	const files = step.produces ?? [];
+	if (files.length === 0 || result.outcome !== "completed") return result;
+	if (!ports.checkProduced) {
+		return { ...result, outcome: "failed", reason: `step ${step.position} declares files, and this runner cannot check them` };
+	}
+	const found = await ports
+		.checkProduced({ paths: files, since })
+		.catch((e: unknown) => ({ produced: [] as ProducedFile[], missing: [...files], error: e instanceof Error ? e.message : String(e) }));
+	if (found.missing.length === 0) return { ...result, produced: found.produced };
+	const failure = "error" in found ? ` (the check itself failed: ${found.error})` : "";
+	return {
+		...result,
+		outcome: "failed",
+		produced: found.produced,
+		reason: `step ${step.position} was to write ${found.missing.join(", ")}, and did not${failure}`,
+	};
 }
 
 /** Run a service to the end, or to the first thing that needs a person who is not there. */
@@ -251,13 +324,16 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 			// The brief goes before this service's own handover: the larger job came first, and the
 			// steps of this service ran inside it. Instruction first still, as `stepPrompt` decides.
 			const background = [context.brief, handover].filter((part): part is string => part !== null).join("\n\n");
-			const prompt = stepPrompt(step.instruction, background.length > 0 ? background : null);
-			const result: StepExecution = step.serviceRef
+			const instruction = instructionWithProduces(step);
+			const prompt = stepPrompt(instruction, background.length > 0 ? background : null);
+			// Taken before the step runs, so a file that was already there does not count as written.
+			const since = Date.now();
+			const executed: StepExecution = step.serviceRef
 				? await runSubService(step.serviceRef, ports, {
 						stack: path,
 						depth: context.depth + 1,
 						workingDir: context.workingDir,
-						brief: briefFor(context.brief, def.name, step.position, step.instruction, handover),
+						brief: briefFor(context.brief, def.name, step.position, instruction, handover),
 					})
 				: await ports
 						.runPersonaStep({
@@ -271,6 +347,7 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 						// record of the steps that already ran, which is the one thing a caller that
 						// writes a journal cannot rebuild.
 						.catch((e: unknown): StepExecution => ({ outcome: "failed", summary: null, reason: e instanceof Error ? e.message : String(e) }));
+			const result = await checkedAgainstProduces(step, executed, since, ports);
 
 			if (result.waitingOnPerson) {
 				// A sub-service is waiting for somebody. The parent cannot go on without it, and
@@ -289,6 +366,7 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 				summary: result.summaryFrom ? null : result.summary,
 				...(result.summaryFrom ? { deliveredBy: result.summaryFrom } : {}),
 				reason: result.reason ?? null,
+				...(result.produced ? { produced: result.produced } : {}),
 			};
 			if (result.childSteps) records.push(...result.childSteps);
 			records.push(record);
@@ -333,6 +411,7 @@ interface StepExecution extends PersonaStepResult {
 	summaryFrom?: StepRef | null;
 	waitingOnPerson?: boolean;
 	childSteps?: StepRecord[];
+	produced?: ProducedFile[];
 }
 
 /**

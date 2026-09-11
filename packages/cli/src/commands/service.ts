@@ -22,11 +22,11 @@
 
 import { Command } from "commander";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
-import { EventBus, personaResourceRoots, policyFromFrontmatter, resolveModel, run, service, type ApprovalAnswer, type LoopEvent } from "@personaxis/core";
+import { EventBus, pathEscapesWorkspace, personaResourceRoots, policyFromFrontmatter, resolveModel, run, service, type ApprovalAnswer, type LoopEvent } from "@personaxis/core";
 
 import { buildAwarenessBlock } from "../repl/awareness.js";
 import { friendlyProviderError } from "../repl/render.js";
@@ -95,10 +95,37 @@ export function stepOutcomeOf(stopReason: StopReason, answer: string): { outcome
 	return { outcome: "failed", reason: `the turn ended ${stopReason}` };
 }
 
+/**
+ * Which of a step's declared files are in the service's folder, written at or after `since`.
+ * Exported for its test.
+ *
+ * E60: read from the disk, never from what the agent said. A path that leaves the folder is
+ * missing, whatever is there. A filesystem that keeps times in two-second steps (FAT) could round
+ * a fresh write down past `since`, which fails the step rather than passing it.
+ */
+export function producedIn(root: string, paths: readonly string[], since: number): { produced: service.ProducedFile[]; missing: string[] } {
+	const produced: service.ProducedFile[] = [];
+	const missing: string[] = [];
+	for (const path of paths) {
+		if (pathEscapesWorkspace(path, root)) {
+			missing.push(path);
+			continue;
+		}
+		try {
+			const found = statSync(resolve(root, path));
+			if (found.isFile() && found.mtimeMs >= since) produced.push({ path, bytes: found.size });
+			else missing.push(path);
+		} catch {
+			missing.push(path);
+		}
+	}
+	return { produced, missing };
+}
+
 const runCommand = new Command("run")
 	.description("Run a service on this machine, step by step, including steps that are other services")
 	.argument("<address>", "The service, as .personaxis/services/<address>.json")
-	.option("--check", "Only check the composition (cycles, depth, references); run nothing")
+	.option("--check", "Only check the composition (cycles, depth, references, declared files); run nothing")
 	.action(async (address: string, opts: { check?: boolean }) => {
 		const root = process.cwd();
 		const def = loadService(root, address);
@@ -117,7 +144,7 @@ const runCommand = new Command("run")
 		}
 		if (opts.check) {
 			console.log(chalk.green("✓"), `${address} composes cleanly`);
-			console.log(chalk.dim(`  no cycles, every reference installed, nesting within the limit of ${service.MAX_SERVICE_DEPTH}`));
+			console.log(chalk.dim(`  no cycles, every reference installed, nesting within the limit of ${service.MAX_SERVICE_DEPTH}, declared files inside the folder`));
 			return;
 		}
 
@@ -219,6 +246,7 @@ const runCommand = new Command("run")
 				return { outcome: "completed", summary: outcome.answer, reason: ended.reason };
 			},
 			approve: approveOnTerminal,
+			checkProduced: async ({ paths, since }) => producedIn(root, paths, since),
 		};
 
 		let result: service.ServiceRunResult;
@@ -237,6 +265,16 @@ const runCommand = new Command("run")
 
 		const mark = result.status === "completed" ? chalk.green("✓") : result.status === "waiting" ? chalk.yellow("…") : chalk.red("✗");
 		console.log(`${mark} ${address} ${result.status}${result.reason ? `: ${result.reason}` : ""}`);
+		// The run's reason is the line's ("step 1 failed"); the step that failed says why.
+		const failedStep = [...result.steps].reverse().find((s) => s.outcome === "failed" && s.reason);
+		if (result.status === "failed" && failedStep) {
+			console.log(chalk.red(`  ${failedStep.path.join(" > ")} · step ${failedStep.position}: ${failedStep.reason}`));
+		}
+		for (const step of result.steps) {
+			for (const file of step.produced ?? []) {
+				console.log(chalk.dim(`  wrote ${file.path} (${file.bytes} bytes) · ${step.path.join(" > ")} · step ${step.position}`));
+			}
+		}
 		console.log(chalk.dim(`  ${result.steps.length} step(s), ${Math.round((Date.now() - started) / 1000)} s · journal ${resolve(out)}`));
 		console.log(chalk.dim(`  ${describeCost("work", total.turn)} · ${describeCost("governed ticks", total.tick)}`));
 		console.log(chalk.dim(`  tools: ${tools.proposed} proposed, ${tools.denied} refused`));
