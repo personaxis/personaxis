@@ -31,7 +31,7 @@
       "status": "proven",
       "figures": ["2,306,140", "28 properties", "0 counterexamples"],
       "retired": [],
-      "source": "E3, research/experiments/results/e3-scale.json"
+      "source": "E3, the property-suite receipt recorded in the research bundle"
     },
     {
       "id": "conformance",
@@ -47,7 +47,7 @@
       "status": "proven",
       "figures": ["0.074 / 0.094 / 0.245 ms"],
       "retired": ["0.06–0.12 ms per tick (n=8–64)", "0.059/0.073/0.119"],
-      "source": "E4, research/experiments/results/e4-bench.json, corrected by the 2026-07-16 amendment"
+      "source": "E4, the committed bench receipt in the research bundle, corrected by the 2026-07-16 amendment"
     },
     {
       "id": "RQ2",
