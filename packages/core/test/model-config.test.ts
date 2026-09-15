@@ -151,6 +151,24 @@ describe("resolveModel, the completion budget travels with the layers", () => {
   });
 });
 
+describe("resolveModel, the scaffold travels with the layers (E83)", () => {
+  it("is absent unless a layer declares it, so the destination table decides", () => {
+    writeProject({ local: { endpoint: "https://p", model: "m", apiKey: "k" } });
+    expect(resolveModel({ cwd: project })?.scaffold).toBeUndefined();
+  });
+
+  it("carries a profile's scaffold, and a persona's own value wins", () => {
+    writeProject({
+      profiles: { qwen: { endpoint: "https://p", model: "m", apiKey: "k", scaffold: "small" } },
+      defaultProfile: "qwen",
+      personas: { cmo: { profile: "qwen", scaffold: "standard" } },
+    });
+    const cmo = join(project, ".personaxis", "personas", "cmo", "personaxis.md");
+    expect(resolveModel({ cwd: project })?.scaffold).toBe("small");
+    expect(resolveModel({ cwd: project, personaPath: cmo })?.scaffold).toBe("standard");
+  });
+});
+
 describe("slugFromPersonaPath", () => {
   it("extracts the last persona slug from a nested path", () => {
     expect(slugFromPersonaPath("/x/.personaxis/personas/cmo/personaxis.md")).toBe("cmo");

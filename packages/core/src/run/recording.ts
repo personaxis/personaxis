@@ -177,6 +177,15 @@ function closing(outcome: TurnOutcome): readonly Written[] {
 	// taken before the model is asked at its step and the calls come back after, so at one step the
 	// compaction comes first. A compaction reported without a step is placed at the start, which is
 	// where a provider that counts no steps would have had to take it.
+	// E83: the decision before anything else the turn did, because it was taken before the first step. The
+	// persona's, like its answer: the route and the reason are what its model said.
+	if (outcome.decision !== undefined) {
+		entries.push({
+			author: answererOf(),
+			body: { type: "decision", turn: outcome.turn, route: outcome.decision.route, why: outcome.decision.why },
+		});
+	}
+
 	const during: { readonly step: number; readonly order: number; readonly written: Written }[] = [];
 	for (const compaction of outcome.compactions ?? []) {
 		during.push({

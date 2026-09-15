@@ -28,6 +28,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { personaxisHome } from "./registry.js";
+import type { Scaffold } from "./run/model-seam.js";
 
 export interface ModelSettings {
   endpoint?: string;
@@ -46,6 +47,11 @@ export interface ModelSettings {
    * only if a server bills by the reservation rather than by what was used.
    */
   maxTokens?: number;
+  /**
+   * E83: how much structure the loop gives this model. `small` adds a short decision step before acting;
+   * absent, the destination table decides, and it declares no model until the bench measured one.
+   */
+  scaffold?: Scaffold;
 }
 
 /** Per-persona settings: an optional reference to a named `profile` plus inline overrides. */
@@ -75,6 +81,8 @@ export interface ResolvedModel {
   fallback?: boolean;
   /** Completion budget per call, carried through from the resolved settings. */
   maxTokens?: number;
+  /** E83: the scaffold the settings declared, carried through like `maxTokens`. */
+  scaffold?: Scaffold;
 }
 
 /** A local inference server (Ollama, LM Studio, llama.cpp, vLLM on this machine) needs no key. */
@@ -126,6 +134,7 @@ function mergeSettings(layers: Array<ModelSettings | undefined>): ModelSettings 
     // E96: dropped here until 2026-09-15, so a budget raised for a model that thinks first reached a call
     // only through the fallback path. A field this function forgets is a setting that silently does nothing.
     if (layer.maxTokens !== undefined) out.maxTokens = layer.maxTokens;
+    if (layer.scaffold !== undefined) out.scaffold = layer.scaffold;
   }
   return out;
 }
@@ -177,7 +186,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
 
   const direct =
     merged.endpoint && merged.model
-      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens }
+      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens, scaffold: merged.scaffold }
       : undefined;
 
   // Usable = it can actually answer: a key resolves, or the endpoint is local (no key needed).
@@ -187,6 +196,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
       model: direct.model,
       ...(direct.apiKey ? { apiKey: direct.apiKey } : {}),
       ...(direct.maxTokens !== undefined ? { maxTokens: direct.maxTokens } : {}),
+      ...(direct.scaffold !== undefined ? { scaffold: direct.scaffold } : {}),
     };
   }
 
@@ -225,6 +235,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
           model: s.model,
           ...(k ? { apiKey: k } : {}),
           ...(s.maxTokens !== undefined ? { maxTokens: s.maxTokens } : {}),
+          ...(s.scaffold !== undefined ? { scaffold: s.scaffold } : {}),
           profile: name,
           ...(direct ? { fallback: true } : {}),
         };

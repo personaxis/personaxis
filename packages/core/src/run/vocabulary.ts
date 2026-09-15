@@ -149,6 +149,14 @@ export interface TurnOutcome {
 	 * nothing to write down about a list that never existed.
 	 */
 	readonly tasks?: Extract<RecordBody, { readonly type: "tasks" }>["tasks"];
+	/**
+	 * E83: the route the persona chose before acting, when its model's scaffold took the decision step and the
+	 * reply could be read. Absent otherwise, and absent is not "answer": no step means nobody decided.
+	 */
+	readonly decision?: {
+		readonly route: Extract<RecordBody, { readonly type: "decision" }>["route"];
+		readonly why: string;
+	};
 }
 
 /** What opens a turn. */

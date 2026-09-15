@@ -263,6 +263,19 @@ export type RecordBody =
 				readonly evidence?: readonly string[];
 			}[];
 	  }
+	/**
+	 * E83: the route the persona chose before acting, in the short step its model's scaffold asks for, and why.
+	 *
+	 * The persona's words, so the persona is the author: the runtime asked and read the reply, it did not
+	 * choose. Only when the step ran and its reply could be read. A turn on a model that takes no step has no
+	 * entry, because reading a decision into its first call would be writing a guess in the persona's name.
+	 */
+	| {
+			readonly type: "decision";
+			readonly turn: string;
+			readonly route: "answer" | "ask" | "consult" | "skills" | "delegate" | "work";
+			readonly why: string;
+	  }
 	/** Something went wrong, with a code so it can be routed and not just read. */
 	| {
 			readonly type: "failure";
