@@ -79,6 +79,24 @@ describe("running a page the persona wrote", () => {
 		expect(probe.error).toContain("on load");
 	});
 
+	it("runs a page that bakes a sprite into an image, which a browser runs fine", () => {
+		// Found on 2026-09-14 in a game a model wrote: an offscreen canvas turned into an image on load
+		// "crashed" here with `toDataURL is not a function`, and would have sent the persona chasing a
+		// fault no browser has.
+		const baking = page(`
+			const sprite = document.createElement("canvas");
+			sprite.getContext("2d").fillRect(0, 0, 8, 8);
+			const image = new Image();
+			image.src = sprite.toDataURL("image/png");
+			sprite.toBlob(() => {});
+			const ctx = document.getElementById("s").getContext("2d");
+			requestAnimationFrame(function frame() { ctx.fillRect(0, 0, 1, 1); requestAnimationFrame(frame); });
+		`);
+		const r = runPage(baking, { frames: 60 });
+		expect(r.error).toBeNull();
+		expect(r.ok).toBe(true);
+	});
+
 	it("runs a page that waits for the document, rather than reporting a page that never starts", () => {
 		const waiting = page(`
 			document.addEventListener("DOMContentLoaded", () => {
