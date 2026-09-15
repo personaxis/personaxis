@@ -71,7 +71,7 @@ import { LoopBreaker, toolSignature } from "./loop-breaker.js";
 import { ForensicLog, type ForensicRecord } from "./security/forensic-log.js";
 import { ToolInterceptor } from "./security/interceptor.js";
 import { Watchdog } from "./security/watchdog.js";
-import { runPlanPhase, type PlanPhaseConfig } from "./plan-run.js";
+import { runPlanPhase, type PlanPhaseConfig, type PlanPhaseResult } from "./plan-run.js";
 import {
   buildTrace,
   describeTrace,
@@ -875,7 +875,8 @@ export class PersonaAgent {
     // model is held to what it said it would do; a refused plan stops the run here, before
     // any tool has been called.
     // E83: a persona that decided the request is several steps of work plans it through the same gate.
-    if (this.opts.plan?.enabled || turnDecision?.route === "work") {
+    const operatorPlans = this.opts.plan?.enabled === true;
+    if (operatorPlans || turnDecision?.route === "work") {
       const planning = await runPlanPhase(
         messages,
         {
@@ -904,9 +905,20 @@ export class PersonaAgent {
             }),
         },
         this.opts.plan ?? {},
-      );
+      ).catch((error: unknown): PlanPhaseResult => {
+        // A planning call that errors ends a run the operator asked to plan, as it always did.
+        if (operatorPlans) throw error;
+        return { ok: false, reason: `the planning call failed: ${error instanceof Error ? error.message : String(error)}`, attempts: 0 };
+      });
 
-      if (!planning.ok) {
+      if (!planning.ok && !operatorPlans) {
+        // E83: a plan the persona's own route asked for is a help, not a gate the operator set. Measured
+        // 2026-09-15: with `command-a-reasoning` the planning call failed and the turn ended failed with 0
+        // steps, on requests it handled before the step existed. So when no usable plan comes out (the call
+        // fails, the plan cannot be read, or the gate refuses its steps) the turn acts without an anchor and
+        // says why, and the gate still judges every call it makes.
+        bus.emit({ type: "agent-think", text: `[plan] no usable plan (${planning.reason}); acting without one` });
+      } else if (!planning.ok) {
         // Stopped before the first tool call, and said so. `finished: false` with the reason
         // as the summary, because a caller that only reads `summary` must not be told the
         // work was done.
@@ -932,13 +944,15 @@ export class PersonaAgent {
           trace: buildTrace(intents, traceNodes),
         };
       }
-      messages.push({ role: "system", content: planning.anchor });
-      // E9: the plan's steps become the intentions a trace is read against, and the
-      // tools they declare become the only honest way to attribute a call to one.
-      planning.steps.forEach((step, index) => {
-        intents.set(index + 1, step.note?.trim() || step.tool);
-      });
-      for (const [tool, step] of unambiguousSteps(planning.steps)) stepOfTool.set(tool, step);
+      if (planning.ok) {
+        messages.push({ role: "system", content: planning.anchor });
+        // E9: the plan's steps become the intentions a trace is read against, and the
+        // tools they declare become the only honest way to attribute a call to one.
+        planning.steps.forEach((step, index) => {
+          intents.set(index + 1, step.note?.trim() || step.tool);
+        });
+        for (const [tool, step] of unambiguousSteps(planning.steps)) stepOfTool.set(tool, step);
+      }
     }
 
     const spent = (steps: number, goalMet = false, confidence?: number): AgentBudgetSpent => ({
