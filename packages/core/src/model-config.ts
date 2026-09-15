@@ -123,6 +123,9 @@ function mergeSettings(layers: Array<ModelSettings | undefined>): ModelSettings 
     if (layer.model) out.model = layer.model;
     if (layer.apiKey) out.apiKey = layer.apiKey;
     if (layer.apiKeyEnv) out.apiKeyEnv = layer.apiKeyEnv;
+    // E96: dropped here until 2026-09-15, so a budget raised for a model that thinks first reached a call
+    // only through the fallback path. A field this function forgets is a setting that silently does nothing.
+    if (layer.maxTokens !== undefined) out.maxTokens = layer.maxTokens;
   }
   return out;
 }
