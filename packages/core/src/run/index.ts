@@ -94,3 +94,5 @@ export {
 	type LiveRecordingOptions,
 	type RecordingOptions,
 } from "./recording.js";
+
+export { renderWorkMap, workMapFor, type MapItem, type MapService, type WorkMap } from "./work-map.js";

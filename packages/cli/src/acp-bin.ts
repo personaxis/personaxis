@@ -33,6 +33,7 @@ import {
 } from "@personaxis/core";
 import { ACP_PROTOCOL_VERSION, serveAcpOverStdio } from "@personaxis/protocol";
 
+import { buildAwarenessBlock } from "./repl/awareness.js";
 import { personaAgent, type PersonaSession } from "./workspace/persona-agent.js";
 
 /** Where a persona lives relative to the work it does. The same join the hook uses. */
@@ -94,6 +95,9 @@ async function openPersona(cwd: string): Promise<PersonaSession> {
 						resourceRoots: personaResourceRoots(assembled.personaPath),
 					},
 					personaBody: run.identityOf(assembled),
+					// E79: what the persona has and where its work goes. A turn from an editor used to get
+					// none of it, so the same persona knew less about itself in Zed than in the TUI.
+					awareness: buildAwarenessBlock(assembled.personaPath, { frontmatter, cwd }),
 					// The envelope, in an application we did not write. When the policy wants
 					// a person rather than a rule, the question goes to the editor and
 					// whoever is sitting there answers it.

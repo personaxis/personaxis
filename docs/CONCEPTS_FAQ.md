@@ -190,10 +190,12 @@ those pass in all postures.
 
 **Q: Does the agent know whether it is root or a sub, and what's around it?**
 
-Yes, injected into the system prompt as a `# Structure & resources` block (`buildAwarenessBlock`): its
-role (root vs `sub-persona @address`), its address, its own sub-tree, and the resource inventory beside
-its spec (`memory.md`, `references/`, `examples/`, `skills/`, …). Detail:
-[architecture/awareness.md](architecture/awareness.md). Inspect the same with `/persona`.
+Yes, injected into the system prompt as a `# Runtime context` block (`buildAwarenessBlock`): its role
+(main persona or `sub-persona @address`), the files that define it, and an index of what it has with
+what each thing is for: its skills with their descriptions, the services it delivers with the files a
+run leaves, its references, examples and assets, its sub-personas with their purpose, the memory it
+keeps, and where its work goes. The full text of each stays on disk and is read when the task needs
+it. Detail: [architecture/awareness.md](architecture/awareness.md). Inspect the same with `/persona`.
 
 ---
 
