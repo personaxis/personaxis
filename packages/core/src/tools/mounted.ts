@@ -38,6 +38,7 @@ import {
 	type PermissionKey,
 	type PermissionSource,
 } from "../kernel/index.js";
+import { checkPageTool } from "./builtin/check-page.js";
 import { editFileTool } from "./builtin/edit-file.js";
 import { finishTool } from "./builtin/finish.js";
 import { listDirTool } from "./builtin/list-dir.js";
@@ -127,6 +128,10 @@ const NEEDED: ReadonlyArray<{ tool: ToolSpec; permission?: PermissionKey }> = [
 	{ tool: findInFilesTool, permission: TOOL_PERMISSIONS.readFiles },
 	{ tool: writeFileTool, permission: TOOL_PERMISSIONS.writeFiles },
 	{ tool: editFileTool, permission: TOOL_PERMISSIONS.writeFiles },
+	// E98: the same permission the reads need. It opens the page through the same guard as
+	// `read_file` and writes nothing; the page's own scripts run isolated, with no filesystem
+	// and no network, so what it needs is permission to read the file it is pointed at.
+	{ tool: checkPageTool, permission: TOOL_PERMISSIONS.readFiles },
 	{ tool: runCommandTool, permission: TOOL_PERMISSIONS.runCommands },
 	// `finish` needs nothing. A persona that cannot say it is done is a persona that
 	// cannot stop, and no operator wants to withhold that.

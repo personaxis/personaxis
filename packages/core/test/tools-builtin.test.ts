@@ -26,6 +26,9 @@ const EXPECTED: Array<{ name: string; category: ToolCategory; isReadOnly: boolea
   { name: "find_in_files", category: "fs", isReadOnly: true },
   { name: "write_file", category: "fs", isReadOnly: false },
   { name: "edit_file", category: "fs", isReadOnly: false },
+  // E98: written in E71, imported by the barrel and left out of its list, so it was offered to nobody. It
+  // reads the page through the same guard as `read_file` and writes nothing, so it sits with the reads.
+  { name: "check_page", category: "fs", isReadOnly: true },
   { name: "finish", category: "meta", isReadOnly: true },
 ];
 

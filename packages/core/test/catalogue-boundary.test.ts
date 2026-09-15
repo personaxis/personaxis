@@ -159,6 +159,9 @@ describe("what the catalogue looks like when nobody refreshes", () => {
 			"find_in_files",
 			"write_file",
 			"edit_file",
+			// E98: it was written in E71 and left out of the list it is imported into, so no persona was
+			// ever shown it. Between the writes and the shell, where its permission puts it.
+			"check_page",
 			"run_command",
 			"finish",
 		]);
@@ -177,6 +180,7 @@ describe("what the catalogue looks like when nobody refreshes", () => {
 			"find_in_files",
 			"write_file",
 			"edit_file",
+			"check_page",
 			"run_command",
 			"finish",
 			"late_arrival",

@@ -212,6 +212,9 @@ describe("the built-ins come through the same door", () => {
 
 		expect(named.map((tool) => tool.name).sort()).toEqual(
 			[
+				// E98: `check_page` belongs here because the manifest has to say what the kernel mounts, and
+				// for four days it said seven while the package had written eight.
+				"check_page",
 				"edit_file",
 				"find_in_files",
 				"finish",
@@ -222,6 +225,8 @@ describe("the built-ins come through the same door", () => {
 			].sort(),
 		);
 		expect(named.find((tool) => tool.name === "read_file")?.requires).toEqual(["tools.read"]);
+		// It opens the page through the same guard as a read and writes nothing, so it asks for the read permission.
+		expect(named.find((tool) => tool.name === "check_page")?.requires).toEqual(["tools.read"]);
 		// `finish` needs nothing, and absent is the honest way to say so.
 		expect(named.find((tool) => tool.name === "finish")?.requires).toBeUndefined();
 	});
