@@ -170,6 +170,18 @@ export function productOf(result: AgentResult): TurnProduct {
 		// E80: every call the gate judged, as the loop reported it. On `common` for the reason the
 		// compactions are: a turn that failed after reading a reference still read it.
 		calls: result.calls,
+		// E81: the persona's list, only when it kept one. The loop's own notes (files, errors) stay in the
+		// loop: they are how it survives compaction, not something the persona said.
+		...((result.tasks ?? []).length > 0
+			? {
+					tasks: result.tasks.map((task) => ({
+						text: task.text,
+						status: task.status,
+						...(task.verified === undefined ? {} : { verified: task.verified }),
+						...(task.evidence === undefined ? {} : { evidence: task.evidence }),
+					})),
+				}
+			: {}),
 	};
 
 	if (result.finished) return { answer, stopReason: "answered", ...common };

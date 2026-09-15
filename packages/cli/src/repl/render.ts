@@ -8,7 +8,7 @@
 
 import chalk from "chalk";
 import { eventLine } from "@personaxis/tui/visual";
-import type { PersonaTheme } from "@personaxis/core";
+import { lineFor, type PersonaTheme } from "@personaxis/core";
 import type { Ctx, LoopEvent } from "./types.js";
 
 export function phaseFor(e: LoopEvent): string {
@@ -68,6 +68,9 @@ export function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
       return null; // surfaced in the concise per-turn summary (not inline noise) / status bar
     case "context-compacted":
       return chalk.dim(`  · context compacted (${e.removed} msgs freed)`);
+    // E81: the persona's own task list, each time it writes it, on one line.
+    case "task-list":
+      return chalk.dim(`  ☰ tasks ${e.tasks.map((task) => lineFor(task)).join(" · ").slice(0, 200)}`);
     default:
       return eventLine(theme, e);
   }

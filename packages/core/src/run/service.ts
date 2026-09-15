@@ -107,6 +107,8 @@ export interface TurnProduct {
 	readonly compactions?: readonly TurnCompaction[];
 	/** E80: every call the gate judged. Passed through untouched, for the reason compactions are. */
 	readonly calls?: readonly TurnCall[];
+	/** E81: the task list the turn ended with, when the persona kept one. Passed through untouched. */
+	readonly tasks?: TurnOutcome["tasks"];
 }
 
 /**
@@ -245,6 +247,7 @@ export class TurnRunner {
 			...(product.cost === undefined ? {} : { cost: product.cost }),
 			...(product.compactions === undefined ? {} : { compactions: product.compactions }),
 			...(product.calls === undefined ? {} : { calls: product.calls }),
+			...(product.tasks === undefined ? {} : { tasks: product.tasks }),
 			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {

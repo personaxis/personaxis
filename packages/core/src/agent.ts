@@ -32,7 +32,8 @@ import {
   type AgentBudgetSpent,
 } from "./governance.js";
 import { runPostmortem, type PostmortemDeps } from "./postmortem.js";
-import { TaskStateTracker } from "./task-state.js";
+import { TaskStateTracker, type SubTask } from "./task-state.js";
+import { applyTaskUpdate, UPDATE_TASKS_TOOL, updateTasksTool } from "./tools/update-tasks.js";
 import { ToolOutputStore, outputStoreTools } from "./tool-output-store.js";
 import {
   runVerification,
@@ -348,6 +349,12 @@ export interface AgentResult {
    * arguments do not fit never reached a verdict, and `find_tools` and `finish` are not gated.
    */
   calls: readonly TurnCall[];
+  /**
+   * E81: the task list the persona kept this run, as it ended, with which done steps a call backs. Empty
+   * when it kept none. The loop's own notes (files, errors) are not here: they are how the run survives
+   * compaction, not something the persona said.
+   */
+  tasks: readonly SubTask[];
   /**
    * E18: what the prompt cache did this run, as reported by the provider.
    *
@@ -717,6 +724,10 @@ export class PersonaAgent {
     // E94: replies in a row with no text and no call, and whether any call did real work in this run.
     let emptyReplies = 0;
     let workedThisRun = false;
+    // E81: every call that succeeded in this run, in order, which is what can mark a step of the persona's
+    // list done; and the one message that puts the list back in front of the model, replaced rather than added.
+    const succeeded: string[] = [];
+    let taskReminder: ChatMessage | undefined;
     let errorCount = 0;
     let retriesLeft = verification.maxRetries;
     let stepProgress = 1;
@@ -766,7 +777,9 @@ export class PersonaAgent {
     // Nothing is re-read between turns other than here, because a tool appearing inside a
     // turn moves the prefix the provider has already cached.
     this.refreshCatalogue();
-    const baseTools = [...this.tools, ...outputStoreTools(outputStore)];
+    // E81: the persona's own task list is offered on every run. A list it never needs costs one declaration;
+    // a plan that lives only in the conversation costs the steps a small model loses when it scrolls away.
+    const baseTools = [...this.tools, ...outputStoreTools(outputStore), updateTasksTool];
 
     // J.2: subset the tools shown to the model to what this task's skills need, so a large
     // catalog does not invite tool-overload. Opt-in: with no skills configured, the full set is
@@ -879,6 +892,7 @@ export class PersonaAgent {
           latency: clock.report(),
           compactions,
           calls,
+          tasks: taskState.snapshot().subTasks,
           trace: buildTrace(intents, traceNodes),
         };
       }
@@ -1031,7 +1045,7 @@ export class PersonaAgent {
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
         }
 
         // K.07: honor an out-of-band abort. The watchdog enforces the WALL-CLOCK ceiling on a
@@ -1045,7 +1059,7 @@ export class PersonaAgent {
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
         }
 
         clock.turnBegan();
@@ -1157,7 +1171,7 @@ export class PersonaAgent {
             // Twice, and nothing was done before it. The closed set's word is `empty`, not answered.
             bus.emit({ type: "agent-finish", summary: "", steps: step });
             this.persist(task, "stopped", "the model returned nothing", step);
-            return { summary: "", steps: step, finished: false, budget: report(step, "empty"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+            return { summary: "", steps: step, finished: false, budget: report(step, "empty"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
           }
           // Twice, after real work: the work stands and the turn ends without words, through the ordinary
           // completion below, so a declared verification still judges it.
@@ -1174,12 +1188,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
-            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
           }
           continue; // retry
         }
@@ -1248,6 +1262,17 @@ export class PersonaAgent {
               name: call.name,
               content: describeMatches(query, matches),
             });
+            continue;
+          }
+
+          // E81: the persona's own task list. Handled here for the reason `find_tools` is: what marks a step
+          // done is a call that succeeded in this run, and only the loop has seen those. It is not work, so it
+          // neither backs a step nor counts as progress.
+          if (call.name === UPDATE_TASKS_TOOL) {
+            const update = applyTaskUpdate(taskState, call.args ?? {}, succeeded);
+            if (update.ok) bus.emit({ type: "task-list", tasks: taskState.snapshot().subTasks });
+            bus.emit({ type: "tool-result", tool: call.name, ok: update.ok, output: update.reply });
+            messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: update.reply });
             continue;
           }
 
@@ -1435,7 +1460,7 @@ export class PersonaAgent {
               const accepted: Accepted<string> = accept(r.output, contextTaint);
               output = accepted.value;
               contextTaint = accepted.taint;
-              if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; }
+              if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
               else { errorCount++; noteFail(call); }
               calls.push(allowed(call, r.ok, "approved when asked"));
             }
@@ -1444,7 +1469,7 @@ export class PersonaAgent {
             const accepted: Accepted<string> = accept(r.output, contextTaint);
             output = accepted.value;
             contextTaint = accepted.taint;
-            if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; }
+            if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
             else { errorCount++; noteFail(call); }
             calls.push(allowed(call, r.ok));
           }
@@ -1499,6 +1524,20 @@ export class PersonaAgent {
 
         // J.4: loop breaker. A finish this step short-circuits below, so only assess when the
         // run is actually continuing.
+        // E81: the list back at the end of what the model reads, after every batch of calls, so a long
+        // conversation does not bury it. One message, replaced each time rather than added, so it never grows
+        // the context it protects, and it moves only the tail of the cached prefix.
+        const taskList = taskState.renderTaskList();
+        if (taskList) {
+          const at = taskReminder ? messages.indexOf(taskReminder) : -1;
+          if (at >= 0) messages.splice(at, 1);
+          taskReminder = {
+            role: "system",
+            content: `[${authorId({ kind: "runtime", mechanism: "task-list", reason: "the persona's own list, put back after a batch of calls" })}] ${taskList}`,
+          };
+          messages.push(taskReminder);
+        }
+
         if (!finishedThisStep) {
           const bv = breaker.assess();
           const nudge = nudgeFor(bv);
@@ -1521,7 +1560,7 @@ export class PersonaAgent {
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
             this.persist(task, "stopped", summary, step);
-            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
           }
         }
 
@@ -1531,12 +1570,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
-            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
           }
           // retry: loop continues; the failure note is already in messages.
         }
@@ -1544,11 +1583,11 @@ export class PersonaAgent {
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
       this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
-      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
       this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
-      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.
       watchdog.stop();

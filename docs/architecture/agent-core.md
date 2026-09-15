@@ -163,6 +163,21 @@ global-only lookup could not find a per-run tool the model was shown). Dogfooded
 `tool-repair.ts` + the section-4 breaker; structured-by-section compaction (1) is partial (the
 summarizer already emits section headers; the pin carries the load-bearing state).
 
+**Build status (2026-09-15): the persona writes its own list.** Until then only the loop wrote
+the task state (files touched, recent errors), so a run with several steps kept its plan in the
+conversation, where it scrolls away, and small open models lose steps exactly there. The persona
+now has `update_tasks` (`core/src/tools/update-tasks.ts`): it sends its whole list each time, every
+step `pending`, `in_progress`, `done` or `blocked`. The loop handles the call, because a step counts
+as done only when a call that succeeded in this run backs it, and only the loop has seen those
+(`TaskStateTracker.replaceTasks`). One call backs one step. A step marked done with nothing behind it
+is kept as *said done* and shown as `[?]`, to the model and to the person: never silently accepted,
+and never refused, since refusing teaches a model to stop reporting. After every batch of calls the
+list goes back to the end of what the model reads, as one message replaced rather than added, so it
+never grows the context it protects. The TUI shows each revision on one line, and the persona's
+record keeps the list the turn ended with, as a `tasks` entry written by the runtime, because
+`verified` is its judgement and not the persona's words. A session that pins a tool subset reaches
+the list through `find_tools`, like any other tool it did not pin.
+
 ## 7. Gaps proposed beyond the six pillars
 
 - **Continuous evaluation.** `packages/evals` measures success/cost/steps by task type; wire it

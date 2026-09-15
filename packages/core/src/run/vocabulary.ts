@@ -142,6 +142,13 @@ export interface TurnOutcome {
 	 * to report, which is a different statement from a loop that looked and made none.
 	 */
 	readonly calls?: readonly TurnCall[];
+	/**
+	 * E81: the persona's task list as the turn left it, when it kept one.
+	 *
+	 * Absent when it kept none, which is the ordinary case for a question answered in one step, and there is
+	 * nothing to write down about a list that never existed.
+	 */
+	readonly tasks?: Extract<RecordBody, { readonly type: "tasks" }>["tasks"];
 }
 
 /** What opens a turn. */
