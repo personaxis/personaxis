@@ -125,6 +125,32 @@ describe("resolveModel, named profiles + references (additive over `local`)", ()
   });
 });
 
+describe("resolveModel, the completion budget travels with the layers", () => {
+  // Found 2026-09-15: `mergeSettings` copied endpoint, model and the key but not `maxTokens`, so on the
+  // ordinary path a budget raised for a model that thinks before it answers was dropped without a word.
+  // Only the fallback path, which reads a profile directly, kept it.
+  it("carries maxTokens from the scope's own settings", () => {
+    writeProject({ local: { endpoint: "https://p", model: "m", apiKey: "k", maxTokens: 8192 } });
+    expect(resolveModel({ cwd: project })?.maxTokens).toBe(8192);
+  });
+
+  it("carries it from a referenced profile, and a persona's own value wins", () => {
+    writeProject({
+      profiles: { thinker: { endpoint: "https://p", model: "m", apiKey: "k", maxTokens: 4096 } },
+      personas: { cmo: { profile: "thinker" }, legal: { profile: "thinker", maxTokens: 16000 } },
+    });
+    const cmo = join(project, ".personaxis", "personas", "cmo", "personaxis.md");
+    const legal = join(project, ".personaxis", "personas", "legal", "personaxis.md");
+    expect(resolveModel({ cwd: project, personaPath: cmo })?.maxTokens).toBe(4096);
+    expect(resolveModel({ cwd: project, personaPath: legal })?.maxTokens).toBe(16000);
+  });
+
+  it("a layer that says nothing about it does not erase it", () => {
+    writeGlobal({ profiles: { thinker: { endpoint: "https://g", model: "m", apiKey: "k", maxTokens: 4096 } }, defaultProfile: "thinker", local: { model: "other" } });
+    expect(resolveModel({ cwd: project })).toMatchObject({ model: "other", maxTokens: 4096 });
+  });
+});
+
 describe("slugFromPersonaPath", () => {
   it("extracts the last persona slug from a nested path", () => {
     expect(slugFromPersonaPath("/x/.personaxis/personas/cmo/personaxis.md")).toBe("cmo");
