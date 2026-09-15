@@ -60,6 +60,8 @@ const CALLS: Record<string, { tool: string; args: Record<string, unknown> }> = {
 	readSecretInside: { tool: "read_file", args: { path: ".env" } },
 	listInside: { tool: "list_dir", args: { path: "." } },
 	memorySearch: { tool: "memory_search", args: { query: "refund limits" } },
+	// E72: a persona loading its own skill is reading. It was asked about under `on-request`.
+	loadSkill: { tool: "use_skill", args: { name: "game-feel" } },
 	writeInside: { tool: "write_file", args: { path: "docs/refunds.md", content: "# Refunds" } },
 	writeOutside: { tool: "write_file", args: { path: "../elsewhere/notes.md", content: "x" } },
 	writeThroughTheMiddle: { tool: "write_file", args: { path: "docs/../../elsewhere/notes.md", content: "x" } },
@@ -97,7 +99,7 @@ const CALLS: Record<string, { tool: string; args: Record<string, unknown> }> = {
 /** The table: what each call gets, by sandbox, then by approval. */
 function expected(name: string, sandbox: Sandbox, approval: Approval): Verdict {
 	const asks: Verdict = approval === "untrusted" || approval === "on-request" ? "gate" : "allow";
-	const knownReadInside = ["readInside", "listInside", "memorySearch", "hostRead"];
+	const knownReadInside = ["readInside", "listInside", "memorySearch", "loadSkill", "hostRead"];
 	const followsApproval = ["readOutside", "readThroughTheMiddle", "readSecretInside", "shellUnrecognised", "fetchAllowed"];
 	const staysInside = ["writeInside", "hostWrite", "hostEdit", "deleteInside", "shellDeleteInside"];
 	// No posture opens these, full access included (E63).
