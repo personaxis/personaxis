@@ -11,16 +11,11 @@
  * badly can still end its turns and still ask for what it lacks.
  */
 import { describe, it, expect } from "vitest";
-import { PersonaAgent, type ActiveSkill, type Policy } from "../src/index.js";
+import { PersonaAgent, type Policy } from "../src/index.js";
 
 function policy(over: Partial<Policy> = {}): Policy {
   return { sandbox: "danger-full-access", approval: "never", allow: [], deny: [], workspaceRoot: process.cwd(), ...over };
 }
-
-const SKILLS: ActiveSkill[] = [
-  { name: "writing", capabilities: ["draft", "prose"], allowedTools: ["write_file", "edit_file"] },
-  { name: "inspection", capabilities: ["inspect", "audit"], allowedTools: ["read_file", "list_dir"] },
-];
 
 /** Captures the tool names offered on every request, then finishes. */
 function capturingFetch(offered: string[][]): typeof fetch {
@@ -48,14 +43,14 @@ const runWith = async (opts: Record<string, unknown>, task: string): Promise<str
 };
 
 describe("a pinned subset does not move between turns (E21)", () => {
-  it("without pinning, two different tasks are offered different catalogues", async () => {
-    // The control for everything below: if per-task selection did not actually vary,
-    // pinning would be proving nothing.
-    const writing = await runWith({ skills: SKILLS }, "draft the release prose");
-    const inspecting = await runWith({ skills: SKILLS }, "audit and inspect the config");
-    expect(writing).not.toEqual(inspecting);
+  it("without pinning, every task is offered the same full catalogue (E72: skills no longer choose it)", async () => {
+    // The control for everything below, rewritten when the word-counting selector retired: before
+    // E72 two tasks got two catalogues, and now nothing moves the catalogue but a pin.
+    const writing = await runWith({}, "draft the release prose");
+    const inspecting = await runWith({}, "audit and inspect the config");
+    expect(writing).toEqual(inspecting);
     expect(writing).toContain("write_file");
-    expect(inspecting).toContain("read_file");
+    expect(writing).toContain("read_file");
   });
 
   it("with a pinned subset, the SAME catalogue is offered whatever the task is", async () => {
@@ -65,13 +60,6 @@ describe("a pinned subset does not move between turns (E21)", () => {
     expect(a).toEqual(b);
     expect(a).toContain("read_file");
     expect(a).not.toContain("write_file");
-  });
-
-  it("pinning wins over the skills, which are what would otherwise move it", async () => {
-    const offered = await runWith({ skills: SKILLS, toolNames: ["read_file"] }, "draft the release prose");
-    // The writing skill matches this task and would have brought write_file along.
-    expect(offered).not.toContain("write_file");
-    expect(offered).toContain("read_file");
   });
 
   it("a pinned session can still END a turn and still ASK for what it lacks", async () => {

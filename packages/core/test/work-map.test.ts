@@ -82,6 +82,8 @@ describe("the work map (E79)", () => {
 		const text = renderWorkMap(workMapFor(gameDesigner(), { workspaceRoot: workspace }));
 		expect(text).toContain("- game-feel: Make a game's actions feel responsive. Use when a game feels floaty. (.personaxis/personas/gamewright/skills/game-feel/SKILL.md)");
 		expect(text).toContain("Declared but not on disk, so not available: not-written-yet.");
+		// E72: the index tells the persona how to use a skill, not just that it exists.
+		expect(text).toContain("load it with use_skill before doing the work");
 		expect(text).toContain('- game-build ("Game build"): A design and a playable prototype that agree. 2 steps, leaves GAME.md, game.html.');
 		expect(text).toContain("- @tester: Plays every build and reports what breaks.");
 		expect(text).toContain("You keep: episodic, semantic.");

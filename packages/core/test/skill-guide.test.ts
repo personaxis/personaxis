@@ -9,13 +9,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	guidesFor,
 	MAX_GUIDES_CHARS,
 	MAX_GUIDE_CHARS,
 	renderGuides,
 	type SkillGuide,
 } from "../src/skill-guide.js";
-import type { ActiveSkill } from "../src/skill-activation.js";
 
 const guide = (name: string, body: string, source?: string): SkillGuide => ({ name, guide: body, ...(source ? { source } : {}) });
 
@@ -92,30 +90,3 @@ describe("what it will not let a guide do", () => {
 	});
 });
 
-describe("choosing whose guides to show", () => {
-	const active: ActiveSkill[] = [
-		{ name: "pdf-forms", capabilities: ["pdf"], allowedTools: [] },
-		{ name: "email", capabilities: ["email"], allowedTools: [] },
-	];
-	const catalog = new Map([
-		["pdf-forms", guide("pdf-forms", "how to fill a form")],
-		["email", guide("email", "how to send mail")],
-		["unused", guide("unused", "not active")],
-	]);
-
-	it("takes the guides of the skills that were activated, in that order", () => {
-		// It does NOT do its own matching. Two different answers to "which skills are
-		// active" is how a model gets a tool from one skill and the instructions from
-		// another, and the transcript looks entirely reasonable.
-		expect(guidesFor(active, catalog).map((g) => g.name)).toEqual(["pdf-forms", "email"]);
-	});
-
-	it("skips an active skill that shipped no guide", () => {
-		const withoutGuide: ActiveSkill[] = [{ name: "no-guide", capabilities: [], allowedTools: [] }];
-		expect(guidesFor(withoutGuide, catalog)).toEqual([]);
-	});
-
-	it("never includes a skill that is not active", () => {
-		expect(guidesFor(active, catalog).map((g) => g.name)).not.toContain("unused");
-	});
-});

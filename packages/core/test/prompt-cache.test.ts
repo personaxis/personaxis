@@ -132,25 +132,6 @@ describe("what the loop puts before what", () => {
 		expect(messages.slice(0, volatile).every((message) => message.role === "system")).toBe(true);
 	});
 
-	it("puts memory after a skill guide, because a guide is fixed for the session too", async () => {
-		// The control that was missing. Every assertion above passes with memory ahead
-		// of the guides, because both are system messages, and the ordering rule is not
-		// about roles: it is about what CHANGES. A guide is chosen once and re-read all
-		// session; memory moves every turn. Memory in front of it drops the guide out
-		// of the cacheable prefix, silently, for exactly the personas that have the
-		// most to cache.
-		const path = personaWithMemory("A memorable fact about the user.");
-		const messages = await sent(path, "please write a report", {
-			skills: [{ name: "reporting", capabilities: ["report"], allowedTools: ["write_file"] }],
-			skillGuides: new Map([["reporting", { name: "reporting", guide: "How to write a report." }]]),
-		});
-
-		const guide = messages.findIndex((message) => message.content.includes("How to write a report"));
-		const memory = messages.findIndex((message) => message.content.includes("A memorable fact"));
-		expect(guide, "the guide should be on the wire at all").toBeGreaterThanOrEqual(0);
-		expect(memory).toBeGreaterThan(guide);
-	});
-
 	it("still sends the memory, because a stable prefix that dropped it would be cheaper and wrong", async () => {
 		// The control against the easy way to pass every test above.
 		const path = personaWithMemory("The user's dog is called Ada.");

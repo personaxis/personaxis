@@ -92,7 +92,6 @@ export * from "./plan-run.js";
 export * from "./regression.js";
 export * from "./causal-trace.js";
 export * from "./skill-guide.js";
-export * from "./skill-activation.js";
 export * from "./skill-writer.js";
 export * from "./postmortem.js";
 export * from "./task-state.js";
