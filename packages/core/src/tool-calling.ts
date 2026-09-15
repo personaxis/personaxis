@@ -10,7 +10,7 @@
  */
 
 import { capabilitiesFor } from "./run/destinations.js";
-import { forDestination, type Effort } from "./run/model-seam.js";
+import { forDestination, type Effort, type Scaffold } from "./run/model-seam.js";
 import { repairToolArgs } from "./tool-repair.js";
 import { readDialect } from "./tools/dialects.js";
 import type { ToolSpec } from "./tools/registry.js";
@@ -183,6 +183,11 @@ export interface ToolCallConfig {
   effort?: Effort;
   /** Told when the asked-for effort had to be stepped down, so it can be recorded. */
   onEffortDowngrade?: (from: Effort, to: Effort | undefined, destination: string) => void;
+  /**
+   * E83: the scaffold this model gets, when its settings declare one. Wins over the destination table, and
+   * absent in both means `standard`, the loop unchanged (`scaffoldFor`).
+   */
+  scaffold?: Scaffold;
 }
 
 /**
@@ -406,11 +411,19 @@ export async function requestToolCall(
     const body = {
       model: cfg.model,
       messages: cfg.cachePrefix ? markedForCache(messages) : messages,
-      tools: tools.map((t) => ({
-        type: "function",
-        function: { name: t.name, description: t.description, parameters: t.parameters },
-      })),
-      tool_choice: "auto",
+      // E83: a call that offers no tools (the decision step, the planning call) sends no `tools` and no
+      // `tool_choice`. Measured 2026-09-15: HuggingFace's router answers HTTP 400 to an empty list with a
+      // choice, and a 400 here is read as "this endpoint has no tool calling", which sent both calls into the
+      // ReAct fallback below. The same request without the two fields answers 200.
+      ...(tools.length > 0
+        ? {
+            tools: tools.map((t) => ({
+              type: "function",
+              function: { name: t.name, description: t.description, parameters: t.parameters },
+            })),
+            tool_choice: "auto",
+          }
+        : {}),
       temperature: 0.3,
       max_tokens: cfg.maxTokens ?? DEFAULT_MAX_TOKENS,
       // Asked for only when somebody is listening. `stream_options` comes with it

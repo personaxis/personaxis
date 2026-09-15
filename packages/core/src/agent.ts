@@ -34,6 +34,8 @@ import {
 import { runPostmortem, type PostmortemDeps } from "./postmortem.js";
 import { TaskStateTracker, type SubTask } from "./task-state.js";
 import { applyTaskUpdate, UPDATE_TASKS_TOOL, updateTasksTool } from "./tools/update-tasks.js";
+import { DECIDE_INSTRUCTION, describeDecision, parseDecision, type Decision } from "./run/decide.js";
+import { scaffoldFor } from "./run/destinations.js";
 import { ToolOutputStore, outputStoreTools } from "./tool-output-store.js";
 import {
   runVerification,
@@ -355,6 +357,11 @@ export interface AgentResult {
    * compaction, not something the persona said.
    */
   tasks: readonly SubTask[];
+  /**
+   * E83: the route the persona chose before acting, when its model's scaffold took the decision step and
+   * the reply could be read. Absent otherwise: no step, or a reply that said no route, means nobody decided.
+   */
+  decision?: Decision;
   /**
    * E18: what the prompt cache did this run, as reported by the provider.
    *
@@ -728,6 +735,9 @@ export class PersonaAgent {
     // list done; and the one message that puts the list back in front of the model, replaced rather than added.
     const succeeded: string[] = [];
     let taskReminder: ChatMessage | undefined;
+    // E83: the route chosen before acting, when this model's scaffold asks for the step. Not `decision`: the
+    // loop already has one of those, the completion verdict, and a second would be shadowed by it.
+    let turnDecision: Decision | undefined;
     let errorCount = 0;
     let retriesLeft = verification.maxRetries;
     let stepProgress = 1;
@@ -837,10 +847,35 @@ export class PersonaAgent {
     ];
     this.lastMessages = messages; // reference; reflects the final state after the run
 
+    // E83: decide before acting, when this model's scaffold asks for it. One call with no tools and one
+    // attempt: a model that cannot write the object the first time rarely writes it the second, and the turn
+    // goes on without a route rather than stopping. The instruction travels only in this request; what stays
+    // in the conversation is the route, as a runtime note after the person's message.
+    if (scaffoldFor(this.opts.llm) === "small") {
+      const res = await clock.time("model", () =>
+        requestToolCall(this.opts.llm, [...messages, { role: "system", content: DECIDE_INSTRUCTION }], [], this.preferFallback),
+      );
+      tokens += res.usage?.total_tokens ?? 0;
+      if (res.usage) priced = true;
+      meter.observe(res.usage);
+      const read = parseDecision(res.text);
+      if (read.ok) {
+        turnDecision = read.decision;
+        messages.push({
+          role: "system",
+          content: `[${authorId({ kind: "runtime", mechanism: "decision", reason: "the route the persona chose before acting" })}] ${describeDecision(read.decision)}`,
+        });
+        bus.emit({ type: "agent-think", text: `[decide] ${read.decision.route}${read.decision.why ? `: ${read.decision.why}` : ""}` });
+      } else {
+        bus.emit({ type: "agent-think", text: `[decide] no route (${read.error}); going on without one` });
+      }
+    }
+
     // J.4c: plan before acting, when asked to. The anchor goes in as system speech so the
     // model is held to what it said it would do; a refused plan stops the run here, before
     // any tool has been called.
-    if (this.opts.plan?.enabled) {
+    // E83: a persona that decided the request is several steps of work plans it through the same gate.
+    if (this.opts.plan?.enabled || turnDecision?.route === "work") {
       const planning = await runPlanPhase(
         messages,
         {
@@ -868,7 +903,7 @@ export class PersonaAgent {
                   : `[plan] attempt ${attempt} ${outcome.kind}: ${outcome.feedback}`,
             }),
         },
-        this.opts.plan,
+        this.opts.plan ?? {},
       );
 
       if (!planning.ok) {
@@ -893,6 +928,7 @@ export class PersonaAgent {
           compactions,
           calls,
           tasks: taskState.snapshot().subTasks,
+          ...(turnDecision === undefined ? {} : { decision: turnDecision }),
           trace: buildTrace(intents, traceNodes),
         };
       }
@@ -1045,7 +1081,7 @@ export class PersonaAgent {
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
         }
 
         // K.07: honor an out-of-band abort. The watchdog enforces the WALL-CLOCK ceiling on a
@@ -1059,7 +1095,7 @@ export class PersonaAgent {
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
         }
 
         clock.turnBegan();
@@ -1171,7 +1207,7 @@ export class PersonaAgent {
             // Twice, and nothing was done before it. The closed set's word is `empty`, not answered.
             bus.emit({ type: "agent-finish", summary: "", steps: step });
             this.persist(task, "stopped", "the model returned nothing", step);
-            return { summary: "", steps: step, finished: false, budget: report(step, "empty"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+            return { summary: "", steps: step, finished: false, budget: report(step, "empty"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
           }
           // Twice, after real work: the work stands and the turn ends without words, through the ordinary
           // completion below, so a declared verification still judges it.
@@ -1188,12 +1224,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
-            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
           }
           continue; // retry
         }
@@ -1560,7 +1596,7 @@ export class PersonaAgent {
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
             this.persist(task, "stopped", summary, step);
-            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
           }
         }
 
@@ -1570,12 +1606,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
-            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
           }
           // retry: loop continues; the failure note is already in messages.
         }
@@ -1583,11 +1619,11 @@ export class PersonaAgent {
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
       this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
-      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
       this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
-      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, trace: buildTrace(intents, traceNodes) };
+      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), trace: buildTrace(intents, traceNodes) };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.
       watchdog.stop();

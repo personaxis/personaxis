@@ -26,7 +26,7 @@
  * the entry was written for.
  */
 
-import type { DestinationCapabilities } from "./model-seam.js";
+import type { DestinationCapabilities, Scaffold } from "./model-seam.js";
 
 /**
  * What a destination nobody declared is assumed to do: nothing extra.
@@ -116,4 +116,15 @@ export function capabilitiesFor(endpoint: string, model: string): DestinationCap
 		}
 	}
 	return { ...UNKNOWN, id: `unknown:${model}` };
+}
+
+/**
+ * E83: the scaffold a run gets.
+ *
+ * The model's own settings first, because an operator who declared it knows the model they run. Then the
+ * table. Then `standard`, which is the loop unchanged, so a destination nobody declared behaves exactly as
+ * it did before this existed.
+ */
+export function scaffoldFor(llm: { readonly endpoint: string; readonly model: string; readonly scaffold?: Scaffold }): Scaffold {
+	return llm.scaffold ?? capabilitiesFor(llm.endpoint, llm.model).scaffold ?? "standard";
 }

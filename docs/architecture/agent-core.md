@@ -178,6 +178,25 @@ record keeps the list the turn ended with, as a `tasks` entry written by the run
 `verified` is its judgement and not the persona's words. A session that pins a tool subset reaches
 the list through `find_tools`, like any other tool it did not pin.
 
+**Build status (2026-09-15): deciding before acting, for the models that need it.** A model can be
+given a *scaffold* (`core/src/run/model-seam.ts`): `standard`, the loop as it is and the default, or
+`small`, which adds one short step before the loop. The step is a call with no tools that asks for a
+single JSON object naming the route and why: `answer`, `ask`, `consult` (read its own references or
+examples first), `skills`, `delegate` or `work` (`core/src/run/decide.ts`). The persona's index is
+already in the prefix, so the step adds a question and not a context. The route comes back as a
+runtime note after the person's message and takes no tool away: a guide the model can argue with,
+not a cage. `work` also goes through the planning gate that already existed (`runPlanPhase`), which
+checks the plan against the persona's limits before any tool runs. A reply that cannot be read
+leaves the turn without a route, said on the activity line, rather than guessed. The record keeps a
+`decision` entry in the persona's name, because the route and the reason are its model's words; a
+turn on `standard` has none, since reading a decision into a first call would be inventing one. The
+scaffold comes from the model's own settings first, then the destination table (`scaffoldFor` in
+`core/src/run/destinations.ts`), then `standard`. The table declares no model yet: a model is
+declared `small` only after the bench shows the step helps it. A request that offers no tools now
+carries no `tools` and no `tool_choice`, because HuggingFace's router answers HTTP 400 to an empty
+list with a choice, and that used to send both this step and the planning call into the ReAct
+fallback.
+
 ## 7. Gaps proposed beyond the six pillars
 
 - **Continuous evaluation.** `packages/evals` measures success/cost/steps by task type; wire it

@@ -38,6 +38,13 @@ export const EFFORT_LADDER = ["minimal", "low", "medium", "high", "max"] as cons
 
 export type Effort = (typeof EFFORT_LADDER)[number];
 
+/**
+ * E83: how much structure the loop gives a model. `standard` is the loop as it is; `small` adds a short
+ * decision step before acting. Two values and not three, because an option nothing distinguishes is code
+ * nobody uses; a level joins when a measurement asks for what it would change.
+ */
+export type Scaffold = "standard" | "small";
+
 /** What a destination says it can do. Data, so it can be compared and reported. */
 export interface DestinationCapabilities {
 	readonly id: string;
@@ -49,6 +56,11 @@ export interface DestinationCapabilities {
 	readonly cacheSeconds: number;
 	/** Schema features it rejects, named rather than discovered by a 400. */
 	readonly rejects: readonly string[];
+	/**
+	 * E83: the scaffold this destination's model gets. Absent means `standard`, and a model is declared
+	 * `small` here only after the bench measured that the decision step helps it.
+	 */
+	readonly scaffold?: Scaffold;
 }
 
 /**

@@ -109,6 +109,8 @@ export interface TurnProduct {
 	readonly calls?: readonly TurnCall[];
 	/** E81: the task list the turn ended with, when the persona kept one. Passed through untouched. */
 	readonly tasks?: TurnOutcome["tasks"];
+	/** E83: the route chosen before acting, when the decision step ran. Passed through untouched. */
+	readonly decision?: TurnOutcome["decision"];
 }
 
 /**
@@ -248,6 +250,7 @@ export class TurnRunner {
 			...(product.compactions === undefined ? {} : { compactions: product.compactions }),
 			...(product.calls === undefined ? {} : { calls: product.calls }),
 			...(product.tasks === undefined ? {} : { tasks: product.tasks }),
+			...(product.decision === undefined ? {} : { decision: product.decision }),
 			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {
