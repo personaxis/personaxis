@@ -16,8 +16,6 @@ import { runHooks, readHooksConfig, type HooksConfig } from "./hooks.js";
 import { EventBus } from "./events.js";
 import { DEFAULT_POLICY, effectiveApproval, type CommandVerdict, type Policy } from "./sandbox.js";
 import { FINISH_TOOL, toolByName, TOOLS, validateToolArgs, type ToolSpec } from "./tools/registry.js";
-import { activeSkillsFor, selectActiveTools, type ActiveSkill } from "./skill-activation.js";
-import { guidesFor, renderGuides, type SkillGuide } from "./skill-guide.js";
 import { describeMatches, expandActive, findTools, findToolsTool, FIND_TOOLS_TOOL } from "./tools/find-tools.js";
 import {
   requestToolCall,
@@ -265,19 +263,6 @@ export interface AgentOptions {
    * `personaxis mcp add`, and whatever else arrives by protocol later.
    */
   extraTools?: ToolSpec[];
-  /**
-   * J.2: skills the persona has (with their `allowed_tools`), used to subset the tool catalog
-   * per task so the model is not shown every tool at once. Opt-in: when absent, the full tool set
-   * is used, unchanged.
-   */
-  skills?: ActiveSkill[];
-  /**
-   * J.2c: the `SKILL.md` of each skill, keyed by name. Delivered to the model as QUOTED
-   * reference material when its skill is active, never folded into the system prompt: a
-   * guide is text a third party wrote, and merging it with the persona's own limits would
-   * let it speak with the persona's authority.
-   */
-  skillGuides?: Map<string, SkillGuide>;
   /**
    * J.3: opt-in post-mortem. When present, a hard-won run reflects and may abstract its
    * method into a governed skill (skill-writer.ts: security floor → governance). The
@@ -789,30 +774,18 @@ export class PersonaAgent {
     // this: "I need something I was not given" beats doing the wrong thing with what
     // you have. Callers that keep an agent per turn pass `toolNames` from the session.
     const pinned = this.opts.toolNames;
-    const subsetting = Boolean(this.opts.skills?.length) || pinned !== undefined;
-    // Computed ONCE and shared by the tool subset and the guides. Two answers to "which
-    // skills are active" is how a model gets a tool from one skill and the instructions
-    // from another, and the transcript looks entirely reasonable.
-    const activeSkills = this.opts.skills?.length ? activeSkillsFor(task, this.opts.skills) : [];
-    let activeTools = !subsetting
-      ? baseTools
-      : pinned !== undefined
-        ? // Pinned by the session. `finish` and `find_tools` are added rather than
+    // E72: skills no longer choose the catalogue or the guides. Choosing them by counting the
+    // words a message shared with each skill activated every skill that shared a word and none
+    // that did not, and its tool subset hid `check_page` from the one step written to use it.
+    // A persona now loads a skill itself with `use_skill`, and a skill never removes a tool.
+    let activeTools =
+      pinned === undefined
+        ? baseTools
+        : // Pinned by the session. `finish` and `find_tools` are added rather than
           // required in the list: a caller pinning a subset should not have to remember
           // the two tools that make a subset survivable, and forgetting them produces a
           // session that cannot end or cannot ask.
-          [...baseTools.filter((t) => pinned.includes(t.name) || t.name === FINISH_TOOL), findToolsTool]
-        : [
-            ...selectActiveTools(task, baseTools, this.opts.skills!, { alwaysNames: [FINISH_TOOL] }),
-            findToolsTool,
-          ];
-
-    // J.2c: the active skills' guides, as their own system message AFTER the identity.
-    // Separate on purpose: a reader of this transcript can see where the persona's own
-    // words end and quoted third-party material begins, and so can the model.
-    const guideBlock = this.opts.skillGuides?.size
-      ? renderGuides(guidesFor(activeSkills, this.opts.skillGuides))
-      : null;
+          [...baseTools.filter((t) => pinned.includes(t.name) || t.name === FINISH_TOOL), findToolsTool];
 
     // E5: the stable half first, then what changes. The order is the cache.
     //
@@ -824,10 +797,7 @@ export class PersonaAgent {
     const remembered = this.resumeContext();
     const messages: ChatMessage[] = [
       { role: "system", content: this.stablePrefix() },
-      ...(guideBlock ? [{ role: "system" as const, content: guideBlock }] : []),
-      // After the guides, because a guide is fixed for the session too and memory is
-      // not. Everything that changes per turn belongs on the far side of everything
-      // that does not.
+      // Everything that changes per turn belongs on the far side of everything that does not.
       ...(remembered.trim() ? [{ role: "system" as const, content: remembered }] : []),
       // E20: the confinement of this turn, out of the identity and into the moment.
       { role: "system" as const, content: this.scopeOfTheMoment() },

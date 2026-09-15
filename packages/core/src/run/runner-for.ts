@@ -57,6 +57,7 @@ import { PersonaAgent, type AgentOptions } from "../agent.js";
 import { compile } from "../enforcement/policy-compile.js";
 import { Kernel } from "../kernel/index.js";
 import { delegateTool, MAX_DELEGATION_DEPTH } from "../tools/delegate.js";
+import { useSkillTool } from "../tools/use-skill.js";
 import { permissionsFor, TOOL_PERMISSIONS, TOOL_POINT } from "../tools/mounted.js";
 import { policyFromPersona } from "../enforcement/policy-from-persona.js";
 import { readAgentBudget } from "../governance.js";
@@ -65,6 +66,7 @@ import { resolveWebSearch, webSearchTool } from "../web/search.js";
 import type { Ledger } from "./budget.js";
 import type { Conversation } from "./conversation.js";
 import { ledgerForChild, type DelegatedScope } from "./delegation.js";
+import { localSkillsOf } from "./local-skills.js";
 import { defaultLoop } from "./default-provider.js";
 import { TurnRunner, type TurnObserver } from "./service.js";
 
@@ -282,6 +284,20 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 			);
 		},
 	});
+
+	// E72: a persona loads its own skills. Mounted here, beside delegation, because what a persona has
+	// is read from its folder and this is where a run is assembled, so the TUI, an editor over ACP and a
+	// service step all get it from one place. Only when there is something to load: a tool that can only
+	// ever answer "you have no skills" is catalogue noise a small model will try anyway.
+	if (localSkillsOf(persona.personaPath, persona.frontmatter).skills.length > 0) {
+		kernel.mount({
+			name: "tool.use-skill",
+			requires: [TOOL_PERMISSIONS.readFiles],
+			activate: (context) => {
+				context.contribute(TOOL_POINT, useSkillTool({ skills: () => localSkillsOf(persona.personaPath, persona.frontmatter).skills }));
+			},
+		});
+	}
 
 	return new TurnRunner({
 		provider: defaultLoop(new PersonaAgent(options), rest.conversation),

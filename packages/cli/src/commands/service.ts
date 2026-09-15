@@ -32,7 +32,6 @@ import { buildAwarenessBlock } from "../repl/awareness.js";
 import { friendlyProviderError } from "../repl/render.js";
 import { holdPresence } from "../presence-session.js";
 import { meterModelCalls, usageBetween, type ModelUsage } from "../usage-meter.js";
-import { personaSkills } from "../workspace/persona-skills.js";
 import { runObserve } from "./observe.js";
 
 type StopReason = run.StopReason;
@@ -225,10 +224,9 @@ const runCommand = new Command("run")
 							{
 								policy: { ...policyFromFrontmatter(frontmatter, root), resourceRoots: personaResourceRoots(assembled.personaPath) },
 								personaBody: run.identityOf(assembled),
-								// The skills the persona declares, so a step is run by a persona that HAS its
-								// methods rather than one that merely lists them. Each guide arrives as quoted
-								// third-party material in its own message, which is `skill-guide.ts`'s rule.
-								...personaSkills(assembled.personaPath, frontmatter),
+								// E72: the persona's skills are no longer computed here. `runnerFor` offers
+								// `use_skill` to every turn of a persona that has skills, and the persona loads
+								// the one a step needs, the same way it does in the TUI and over ACP.
 								awareness: buildAwarenessBlock(assembled.personaPath, { frontmatter, cwd: root }),
 								onApproval: async (call, verdict) => {
 									const answer = await approveToolOnTerminal(call.name, String(verdict?.reason ?? ""));

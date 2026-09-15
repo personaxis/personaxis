@@ -302,7 +302,11 @@ const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
 	//
 	// 171 -> 170 hours later (E52), when the loop started calling `validateToolArgs`, which
 	// said it ran before the gate and had no caller, so a call missing `path` crashed a step.
-	{ pkg: "core", departure: 170 },
+	//
+	// 170 -> 169 on 2026-09-14 (E72), when the word-counting skill selector retired and took an
+	// export nothing outside core read with it. `use_skill` arrived in the same change with two
+	// exported constants nobody else needed, and this gate went red until they were made internal.
+	{ pkg: "core", departure: 169 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the

@@ -35,6 +35,7 @@ import { basename, dirname, extname, join, relative } from "node:path";
 import matter from "gray-matter";
 
 import { readMemoryTypes } from "../memory.js";
+import { localSkillsOf } from "./local-skills.js";
 
 /** One thing a persona has: its name, and the line that says what it is for. */
 export interface MapItem {
@@ -159,27 +160,12 @@ function addressOf(personaPath: string): string | undefined {
 	return segments.length > 0 ? segments.join("/") : undefined;
 }
 
-/** Declared local skills, with the description their own `SKILL.md` gives. */
-function skillsOf(folder: string, frontmatter: Record<string, unknown>): { skills: MapItem[]; missing: string[] } {
-	const declared = (frontmatter.extensions as { skills?: unknown } | undefined)?.skills;
-	const entries = Array.isArray(declared) ? declared.filter((entry): entry is string => typeof entry === "string") : [];
-	const skills = new Map<string, MapItem>();
-	const missing = new Set<string>();
-	for (const entry of entries) {
-		// A registry or GitHub reference is not on this disk, and a run never fetches it.
-		if (entry.startsWith("@") || entry.startsWith("github:")) continue;
-		const name = entry.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? entry;
-		const file = join(folder, "skills", name, "SKILL.md");
-		if (!existsSync(file)) {
-			missing.add(name);
-			continue;
-		}
-		const description = frontmatterOf(file).description;
-		skills.set(name, { name, about: oneLine(typeof description === "string" && description.trim() ? description : aboutFile(file), SKILL_CHARS) });
-	}
+/** Declared local skills, with the description their own `SKILL.md` gives. One reader: `local-skills.ts`. */
+function skillsOf(personaPath: string, frontmatter: Record<string, unknown>): { skills: MapItem[]; missing: string[] } {
+	const { skills, missing } = localSkillsOf(personaPath, frontmatter);
 	return {
-		skills: [...skills.values()].sort((a, b) => a.name.localeCompare(b.name)),
-		missing: [...missing].sort(),
+		skills: skills.map((skill) => ({ name: skill.name, about: oneLine(skill.description || aboutFile(skill.file), SKILL_CHARS) })),
+		missing,
 	};
 }
 
@@ -256,7 +242,7 @@ function shown(workspace: string, path: string): string {
 export function workMapFor(personaPath: string, options: { readonly workspaceRoot: string; readonly frontmatter?: Record<string, unknown> }): WorkMap {
 	const folder = dirname(personaPath);
 	const frontmatter = options.frontmatter ?? frontmatterOf(personaPath);
-	const { skills, missing } = skillsOf(folder, frontmatter);
+	const { skills, missing } = skillsOf(personaPath, frontmatter);
 	const listed = (sub: string): MapItem[] =>
 		filesUnder(join(folder, sub)).map((file) => ({ name: shown(options.workspaceRoot, file), about: aboutFile(file) }));
 	const kinds = readMemoryTypes(frontmatter) as unknown as Record<string, unknown>;
@@ -297,7 +283,7 @@ export function renderWorkMap(map: WorkMap, limits: { readonly perSection?: numb
 
 	section(
 		"Skills",
-		"Your methods. When one fits the task, read its SKILL.md in full before you follow it.",
+		"Your methods. When a task fits one, load it with use_skill before doing the work, then follow it.",
 		map.skills.map((skill) => `- ${skill.name}: ${skill.about} (${map.ownFolder}/skills/${skill.name}/SKILL.md)`),
 		`${map.ownFolder}/skills/`,
 	);

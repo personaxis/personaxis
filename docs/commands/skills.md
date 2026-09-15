@@ -20,22 +20,26 @@ with a `skills-manifest.json`. Security scanning reuses the same engine as [`sca
 ## What a skill does when the persona runs here
 
 The line above is the way out, so another host can find the skill. There is also a way in: when the
-persona works in this engine, a [service step](./service.md) included, it is handed the skills it
-declares.
+persona works in this engine, in the TUI, from an editor over ACP or as a [service step](./service.md),
+it uses the skills it declares on its own. Nobody has to name a skill in a message.
 
+- **The persona sees an index.** Every turn, its runtime context lists each skill with the
+  `description` from its `SKILL.md`. That line is how the persona decides a skill fits the task, so
+  write it as what the skill does and when to use it.
+- **The persona loads a skill when it decides to**, with the `use_skill` tool. Loading is a call:
+  it crosses the gate like any read, and what comes back names the version of the file it read and
+  the files that come with the skill.
 - **Only local skills.** A `github:` or `@org/name` entry is a pointer to something that is not on
   this disk, and a run never fetches it. Pulling one is `skills pull`, with its review.
-- **The guide reaches the model as quoted material**, in its own message, attributed and said to
-  advise rather than authorise. A `SKILL.md` is text the persona did not write, so it never speaks
-  with the persona's voice, and what stops a bad call is the gate, which runs whatever the guide
-  said.
-- **Which skills apply is decided per task**, from the skill's name and its `description`. That is
-  what the `description` field is for, so write it as when to use this.
-- **`allowed-tools` narrows the tools offered**, and is optional. A skill that names none narrows
-  nothing: saying nothing about tools is not saying that no tool is allowed.
+- **The instructions reach the model as quoted material**, attributed and said to advise rather
+  than authorise. A `SKILL.md` is text the persona did not write, so it never speaks with the
+  persona's voice, and what stops a bad call is the gate, which runs whatever the skill said.
+- **A skill never takes a tool away.** `allowed-tools` is kept for hosts that read it, and this
+  engine does not narrow the catalogue with it: an earlier version did, and hid from a persona the
+  one tool a task needed.
 
-So a `description` that does not say when the skill applies is a skill that never activates, and
-that is the one thing worth checking when a declared skill seems to do nothing.
+So when a declared skill seems to do nothing, check two things: that its `description` says when to
+use it, and that its `SKILL.md` is on disk, since a missing one is listed as unavailable.
 
 ## In the TUI
 
