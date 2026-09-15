@@ -168,11 +168,30 @@ export function portableJsonSchema(schema: unknown): unknown {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(schema as Record<string, unknown>)) {
       if (UNSUPPORTED_SCHEMA_KEYWORDS.has(k)) continue;
+      if (k === "properties" && v && typeof v === "object" && !Array.isArray(v)) {
+        out[k] = Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).map(([name, prop]) => [name, acceptsAnyValue(prop) ? { type: "string" } : portableJsonSchema(prop)]),
+        );
+        continue;
+      }
       out[k] = portableJsonSchema(v);
     }
     return out;
   }
   return schema;
+}
+
+/**
+ * E95: a property schema that accepts any value, `{}`, has no portable form, so it travels as its value written as JSON.
+ *
+ * Measured on Cohere's compatibility API on 2026-09-15 with `selfEdits[].toValue`: a property without `type` is rejected,
+ * an `object` without `properties` is rejected, a type list containing `object` is rejected, and a `string` is accepted.
+ * Every rejection is an HTTP 400 for the whole request, and the appraiser paid it on every turn before falling back to a
+ * looser strategy. Whoever sends this projection reads such a value back with `JSON.parse`, keeping text that is not JSON.
+ */
+function acceptsAnyValue(prop: unknown): boolean {
+  if (!prop || typeof prop !== "object" || Array.isArray(prop)) return false;
+  return !["type", "anyOf", "oneOf", "allOf", "enum", "const", "$ref"].some((keyword) => keyword in prop);
 }
 
 /** Anything that can turn an observation into an appraisal signal. */

@@ -274,7 +274,11 @@ export async function nameSession(
     }),
   });
   if (!res.ok) throw new Error(`namer HTTP ${res.status}`);
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const json = (await res.json()) as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
+  // E95: a reply cut at the cap is not a title. Measured 2026-09-15 with Cohere's command-a-plus, which thinks first: all
+  // 16 tokens went to reasoning and the content came back as that reasoning, so a session was named
+  // `The user says: "First message: Design a small arcade game an`. The deterministic name is better than that.
+  if (json.choices?.[0]?.finish_reason === "length") throw new Error("title cut off at the token cap");
   const out = (json.choices?.[0]?.message?.content ?? "").trim().replace(/^["']|["']$/g, "").replace(/[.]+$/, "");
   if (!out) throw new Error("empty title");
   return out.slice(0, 60);
