@@ -155,7 +155,12 @@ export function productOf(result: AgentResult): TurnProduct {
 		compactions: result.compactions.map((record) => ({
 			why: whyCompacted(record),
 			plan: record.plan,
+			// E80: so the record can put a compaction before the calls of the step it came before.
+			step: record.step,
 		})),
+		// E80: every call the gate judged, as the loop reported it. On `common` for the reason the
+		// compactions are: a turn that failed after reading a reference still read it.
+		calls: result.calls,
 	};
 
 	if (result.finished) return { answer, stopReason: "answered", ...common };

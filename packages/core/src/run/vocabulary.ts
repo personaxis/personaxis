@@ -58,6 +58,7 @@ export type StopReason =
 	| "abandoned";
 
 import type { CompactionPlan } from "../compaction/service.js";
+import type { RecordBody } from "../record/entry.js";
 import type { DelegatedScope } from "./delegation.js";
 
 /**
@@ -76,6 +77,30 @@ import type { DelegatedScope } from "./delegation.js";
 export interface TurnCompaction {
 	readonly why: string;
 	readonly plan: CompactionPlan;
+	/**
+	 * E80: the step it was taken before, when the provider counts steps. What lets the record put a
+	 * compaction and the calls of the same turn in the order they happened.
+	 */
+	readonly step?: number;
+}
+
+/**
+ * One call that reached the gate, on its way from the loop to the record.
+ *
+ * E80. Travels through the seam for the reason `TurnCompaction` does: the loop does not write the
+ * record. What the gate decided, and what of the persona's own material the call used, are both
+ * facts the loop saw and the record keeps.
+ */
+export interface TurnCall {
+	readonly callId: string;
+	readonly tool: string;
+	readonly verdict: "allowed" | "denied";
+	/** Why it was refused, or that it was allowed only after asking. */
+	readonly reason?: string;
+	/** The skill it loaded or the reference, example or asset it read. The record's shape, not a second one. */
+	readonly used?: NonNullable<Extract<RecordBody, { readonly type: "call" }>["used"]>;
+	/** The step it was made in, so it lands after a compaction taken before that step. */
+	readonly step: number;
 }
 
 /** What a turn produced. */
@@ -110,6 +135,13 @@ export interface TurnOutcome {
 	 * nothing. Absent is silence; an empty array is a provider saying it looked.
 	 */
 	readonly compactions?: readonly TurnCompaction[];
+	/**
+	 * E80: every call the gate judged this turn, in order, for the record to write down.
+	 *
+	 * Optional for the reason `compactions` is. A provider that runs no tools through our gate has none
+	 * to report, which is a different statement from a loop that looked and made none.
+	 */
+	readonly calls?: readonly TurnCall[];
 }
 
 /** What opens a turn. */

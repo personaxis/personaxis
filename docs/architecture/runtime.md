@@ -123,7 +123,7 @@ auditable event on the bus; nothing is a black box.
 
 | Artifact | Written | Contents |
 |---|---|---|
-| `record.jsonl` | every admitted move, every decaying field, and every turn | the state itself: hash-chained entries, each carrying its author, and the fold over them IS the persona |
+| `record.jsonl` | every admitted move, every decaying field, and every turn, with each call the gate judged and the skill, reference, example or asset it used | the state itself: hash-chained entries, each carrying its author, and the fold over them IS the persona |
 | `state.json` | printed whenever the document it prints came out different | a view of the record: current values + `mutation_log` (actor, reason, clamp/block flags, origin, session) |
 | `memory/episodic.jsonl` | when `memory.types.episodic` and the appraiser proposes memories | hash-chained distilled notes, provenance-tagged |
 | `memory.md` | on episodic->semantic consolidation | consolidated semantic memory |

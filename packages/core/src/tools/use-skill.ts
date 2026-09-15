@@ -22,20 +22,19 @@
  * `allowed-tools` narrows nothing: a skill never takes a tool away from the persona that loaded it.
  */
 
-import { createHash } from "node:crypto";
 import { relative } from "node:path";
 
 import matter from "gray-matter";
 
 import type { ExecutionPort } from "../ports/execution.js";
-import type { LocalSkill } from "../run/local-skills.js";
+import { skillFingerprint, skillNamed, type LocalSkill } from "../run/local-skills.js";
 import type { CommandVerdict, Policy } from "../sandbox.js";
 import { renderGuides } from "../skill-guide.js";
 import { READ_CLASS, readGate } from "./gates.js";
 import type { ToolSpec } from "./registry.js";
 
-/** The name the loop and the work map both use. One owner, so a rename cannot half-happen. */
-const USE_SKILL_TOOL = "use_skill";
+/** The name the loop, the work map and the record (E80) all use. One owner, so a rename cannot half-happen. */
+export const USE_SKILL_TOOL = "use_skill";
 
 /**
  * How much of one loaded skill reaches the model.
@@ -44,11 +43,6 @@ const USE_SKILL_TOOL = "use_skill";
  * in front of it. A skill longer than this is a document, and the rest stays readable by path.
  */
 const MAX_LOADED_SKILL_CHARS = 12_000;
-
-function find(skills: readonly LocalSkill[], requested: string): LocalSkill | undefined {
-	const wanted = requested.trim().toLowerCase();
-	return skills.find((skill) => skill.name.toLowerCase() === wanted);
-}
 
 /** The files a listing names, without the skill's own `SKILL.md`. */
 function supportingFiles(listing: string): string[] {
@@ -86,7 +80,7 @@ export function useSkillTool(options: UseSkillToolOptions): ToolSpec {
 		// Reading its own instructions writes nothing and reaches nothing outside the folder.
 		envelope: [],
 		gate: (args: Record<string, unknown>, policy: Policy): CommandVerdict => {
-			const skill = typeof args.name === "string" ? find(options.skills(), args.name) : undefined;
+			const skill = typeof args.name === "string" ? skillNamed(options.skills(), args.name) : undefined;
 			// A name that matches nothing reads nothing, so there is nothing to gate; the answer lists what exists.
 			return skill
 				? readGate(skill.file, policy)
@@ -95,7 +89,7 @@ export function useSkillTool(options: UseSkillToolOptions): ToolSpec {
 		execute: async (args: Record<string, unknown>, policy: Policy, execution: ExecutionPort): Promise<string> => {
 			const available = options.skills();
 			const requested = typeof args.name === "string" ? args.name : "";
-			const skill = find(available, requested);
+			const skill = skillNamed(available, requested);
 			if (!skill) {
 				const names = available.map((entry) => entry.name).join(", ");
 				return `error: you have no skill named "${requested}". Your skills: ${names || "none"}.`;
@@ -104,7 +98,7 @@ export function useSkillTool(options: UseSkillToolOptions): ToolSpec {
 			const read = await execution.readFile(skill.file, policy);
 			if (!read.ok) return `error: ${read.error}`;
 			const content = read.content ?? "";
-			const version = createHash("sha256").update(content).digest("hex").slice(0, 16);
+			const version = skillFingerprint(content);
 			const instructions = matter(content).content.trim();
 
 			const guide = renderGuides(
