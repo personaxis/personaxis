@@ -11,6 +11,7 @@ import {
 	clientBrief,
 	MAX_SERVICE_DEPTH,
 	checkComposition,
+	resumeService,
 	runService,
 	type PersonaStepResult,
 	type ServiceDef,
@@ -550,5 +551,206 @@ describe("a step that declares the files it leaves (E60)", () => {
 		expect(problems.filter((p) => p.includes("not relative"))).toHaveLength(3);
 		expect(problems.some((p) => p.includes("climbs out"))).toBe(true);
 		expect(problems.some((p) => p.includes("not a file path"))).toBe(true);
+	});
+});
+
+describe("picking up a run that waits (E97)", () => {
+	const question = {
+		question: "What is your niece's name?",
+		options: [{ label: "I will tell you" }, { label: "Leave a blank to fill in" }],
+		recommended: "I will tell you",
+	};
+
+	/** Ports whose `asker` stops at the question the first time it runs, and does its step every time after. */
+	function askingOnce(defs: ServiceDef[], asker: string, script: Script = {}) {
+		const base = ports(defs, script);
+		const seen: Record<string, string[]> = {};
+		let asked = false;
+		base.p.runPersonaStep = async (input) => {
+			base.calls.push(input.personaRef);
+			base.prompts[input.personaRef] = input.prompt;
+			(seen[input.personaRef] ??= []).push(input.prompt);
+			if (input.personaRef === asker && !asked) {
+				asked = true;
+				return { outcome: "failed", summary: null, reason: "waiting for an answer", waitingOnPerson: true, question };
+			}
+			return script[input.personaRef] ?? { outcome: "completed", summary: `${input.personaRef} done` };
+		};
+		return { ...base, seen };
+	}
+
+	it("says what a run waits for, precisely enough to pick it up", async () => {
+		const svc = line("party", { persona: "intake" }, { persona: "builder" });
+		const { p } = askingOnce([svc], "builder");
+		const r = await runService(svc, p);
+		expect(r.status).toBe("waiting");
+		expect(r.waiting).toMatchObject({ kind: "answer", path: ["party"], through: [], position: 2, question });
+	});
+
+	it("runs the step that asked again with the answer, and goes on from there without running the steps before it", async () => {
+		const svc = line("party", { persona: "intake" }, { persona: "builder" }, { persona: "checker" });
+		const { p, calls, seen, prompts } = askingOnce([svc], "builder", {
+			intake: { outcome: "completed", summary: "a cat game for a birthday" },
+			builder: { outcome: "completed", summary: "built Happy Birthday Mia" },
+		});
+		const first = await runService(svc, p);
+		const again = await resumeService(svc, p, { result: first }, { kind: "answer", answer: "Mia" });
+		expect(again.resumed).toBe(true);
+		if (!again.resumed) return;
+		expect(again.result.status).toBe("completed");
+		expect(calls).toEqual(["intake", "builder", "builder", "checker"]);
+		const retaken = seen.builder?.[1] ?? "";
+		expect(retaken).toContain("What is your niece's name?");
+		expect(retaken).toMatch(/\n\nMia$/);
+		// The note of the step that is not run again still reaches the step that asked, rebuilt from its record.
+		expect(retaken).toContain("a cat game for a birthday");
+		expect(prompts.checker).toContain("built Happy Birthday Mia");
+		expect(again.result.steps.map((s) => `${s.position}:${s.outcome}`)).toEqual(["1:completed", "2:completed", "3:completed"]);
+	});
+
+	it("reads a number as the option it names, the way the TUI does", async () => {
+		const svc = line("party", { persona: "builder" });
+		const { p, seen } = askingOnce([svc], "builder");
+		const first = await runService(svc, p);
+		await resumeService(svc, p, { result: first }, { kind: "answer", answer: "2" });
+		expect(seen.builder?.[1]).toMatch(/\n\nLeave a blank to fill in$/);
+	});
+
+	it("keeps waiting on an empty answer, which is no answer and never the recommendation", async () => {
+		const svc = line("party", { persona: "builder" });
+		const { p, calls } = askingOnce([svc], "builder");
+		const first = await runService(svc, p);
+		expect(await resumeService(svc, p, { result: first }, { kind: "answer", answer: "   " })).toEqual({ resumed: false, why: "an empty answer is no answer, so the run keeps waiting" });
+		expect(calls).toEqual(["builder"]);
+	});
+
+	it("goes on after an approved step without running it again, with its note handed on", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const { p, calls, prompts } = ports([svc], { drafter: { outcome: "completed", summary: "the letter to the landlord" } }, "unavailable");
+		const first = await runService(svc, p);
+		expect(first.waiting).toEqual({ kind: "approval", path: ["sign"], through: [], position: 1 });
+		const again = await resumeService(svc, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("completed");
+		expect(calls).toEqual(["drafter", "sender"]);
+		expect(prompts.sender).toContain("the letter to the landlord");
+		if (again.resumed) expect(again.result.steps.filter((s) => s.position === 1)).toHaveLength(1);
+	});
+
+	it("ends a refused run without the next step, with the reason the person gave", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const { p, calls } = ports([svc], {}, "unavailable");
+		const first = await runService(svc, p);
+		const again = await resumeService(svc, p, { result: first }, { kind: "approval", approved: false, reason: "not this landlord" });
+		expect(again.resumed && again.result).toMatchObject({ status: "completed", reason: "not this landlord" });
+		expect(calls).toEqual(["drafter"]);
+	});
+
+	it("goes back into a sub-service at its own waiting point instead of starting it over", async () => {
+		const sub = line("approve-me", { persona: "drafter", approval: true }, { persona: "after" });
+		const main = line("outer", { persona: "intake" }, { service: "approve-me" }, { persona: "final" });
+		const { p, calls, prompts } = ports(
+			[main, sub],
+			{
+				intake: { outcome: "completed", summary: "the tenant is Ana" },
+				drafter: { outcome: "completed", summary: "a draft for Ana" },
+				after: { outcome: "completed", summary: "sent to Ana" },
+			},
+			"unavailable",
+		);
+		const first = await runService(main, p);
+		expect(first.waiting).toMatchObject({ kind: "approval", path: ["outer", "approve-me"], position: 1 });
+		expect(first.waiting?.through.map((t) => t.position)).toEqual([2]);
+		const again = await resumeService(main, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("completed");
+		expect(calls).toEqual(["intake", "drafter", "after", "final"]);
+		// Inside the sub-service, the step after the approval still reads the parent's job and the approved draft.
+		expect(prompts.after).toContain("the tenant is Ana");
+		expect(prompts.after).toContain("a draft for Ana");
+		expect(prompts.final).toContain("sent to Ana");
+		if (again.resumed) {
+			expect(again.result.steps.map((s) => `${s.path.join(">")}/${s.position}`)).toEqual(["outer/1", "outer>approve-me/1", "outer>approve-me/2", "outer/2", "outer/3"]);
+		}
+	});
+
+	it("answers a question asked inside a sub-service, and the parent goes on", async () => {
+		const sub = line("build", { persona: "builder" });
+		const main = line("party", { persona: "intake" }, { service: "build" }, { persona: "wrapper" });
+		const { p, calls, seen } = askingOnce([main, sub], "builder", { intake: { outcome: "completed", summary: "a cat game for a birthday" } });
+		const first = await runService(main, p);
+		expect(first.waiting).toMatchObject({ kind: "answer", path: ["party", "build"], position: 1 });
+		const again = await resumeService(main, p, { result: first }, { kind: "answer", answer: "Mia" });
+		expect(again.resumed && again.result.status).toBe("completed");
+		expect(calls).toEqual(["intake", "builder", "builder", "wrapper"]);
+		expect(seen.builder?.[1]).toContain("a cat game for a birthday");
+		expect(seen.builder?.[1]).toMatch(/\n\nMia$/);
+	});
+
+	it("leaves alone a run that does not wait, and one that waits for something else", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const done = ports([svc], {}, "approved");
+		const completed = await runService(svc, done.p);
+		const before = [...done.calls];
+		expect(await resumeService(svc, done.p, { result: completed }, { kind: "approval", approved: true })).toEqual({
+			resumed: false,
+			why: "only a waiting run is picked up, and this one is completed",
+		});
+		expect(done.calls).toEqual(before);
+
+		const waits = ports([svc], {}, "unavailable");
+		const waiting = await runService(svc, waits.p);
+		expect(await resumeService(svc, waits.p, { result: waiting }, { kind: "answer", answer: "yes" })).toEqual({
+			resumed: false,
+			why: "this run is waiting for an approval, not for an answer",
+		});
+		expect(waits.calls).toEqual(["drafter"]);
+	});
+
+	it("refuses a run of another service, and a stored run that does not say what it waits for", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true });
+		const other = line("other", { persona: "drafter" });
+		const { p, calls } = ports([svc, other], {}, "unavailable");
+		const first = await runService(svc, p);
+		expect((await resumeService(other, p, { result: first }, { kind: "approval", approved: true })).resumed).toBe(false);
+		const { waiting: _dropped, ...unreadable } = first;
+		expect((await resumeService(svc, p, { result: unreadable }, { kind: "approval", approved: true })).resumed).toBe(false);
+		const edited = { ...first, waiting: { kind: "approval", path: ["sign"], through: [{ position: 1, since: 0 }], position: 1 } } as typeof first;
+		expect((await resumeService(svc, p, { result: edited }, { kind: "approval", approved: true })).resumed).toBe(false);
+		expect(calls).toEqual(["drafter"]);
+	});
+
+	it("counts a file a sub-service wrote before the wait as written by the step that waited", async () => {
+		// The step that runs the sub-service is checked on its files when the sub-service ends, against the moment
+		// it began. Picked up later, that moment is still the one it began at, not the moment it was picked up.
+		const sub = line("build", { persona: "writer", approval: true }, { persona: "finisher" });
+		const main: ServiceDef = { address: "party", name: "party", steps: [{ position: 1, serviceRef: "build", instruction: "build the game", produces: ["game.html"] }] };
+		const written = new Map<string, number>();
+		const base = ports([main, sub], {}, "unavailable");
+		const p: ServicePorts = {
+			...base.p,
+			async runPersonaStep(input) {
+				if (input.personaRef === "writer") written.set("game.html", Date.now());
+				return base.p.runPersonaStep(input);
+			},
+			async checkProduced({ paths, since }) {
+				const produced = paths.filter((path) => (written.get(path) ?? -1) >= since).map((path) => ({ path, bytes: 1 }));
+				return { produced, missing: paths.filter((path) => !produced.some((f) => f.path === path)) };
+			},
+		};
+		const first = await runService(main, p);
+		await new Promise((done) => setTimeout(done, 5));
+		const again = await resumeService(main, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("completed");
+	});
+
+	it("fails, running nothing, when the step it waited through no longer runs that sub-service", async () => {
+		const sub = line("approve-me", { persona: "drafter", approval: true }, { persona: "after" });
+		const main = line("outer", { persona: "intake" }, { service: "approve-me" });
+		const { p, calls } = ports([main, sub], {}, "unavailable");
+		const first = await runService(main, p);
+		const changed: ServiceDef = { ...main, steps: main.steps.map((s) => (s.position === 2 ? { position: 2, instruction: "x", personaRef: "someone" } : s)) };
+		const again = await resumeService(changed, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("failed");
+		expect(again.resumed && again.result.reason).toContain("no longer runs approve-me");
+		expect(calls).toEqual(["intake", "drafter"]);
 	});
 });

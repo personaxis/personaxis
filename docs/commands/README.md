@@ -44,7 +44,8 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`orchestrate <task>`](./orchestrate.md) | Route a task to the best-matched registered persona (capability-ranked). |
 | [`team`](./team.md) | Operational multi-agent teams (roles + shared goal), distinct from overseer collections. |
 | [`web search <query>`](./web.md) | Search the web with the configured provider (Tavily first), the same search a persona's `web_search` tool runs. |
-| [`service run <address>`](./service.md) | Run a service locally: numbered steps done by personas **or by other services**, with approvals asked in the terminal (never granted by themselves) and a journal next to the work (`--check` validates the composition only). |
+| [`service run <address>`](./service.md) | Run a service locally: numbered steps done by personas **or by other services**, with approvals asked in the terminal (never granted by themselves) and a journal next to the work (`--check` validates the composition only; `--json` prints one object for a program). |
+| [`service resume <journal>`](./service.md#picking-a-waiting-run-up) | Pick up a run that waits for an approval or for the answer to a question a step asked (`--answer`, `--approve`, `--reject`), from where it stopped, including inside a sub-service. |
 | [`sync`](./sync.md) | Reconcile a persona's state across machines (merge, no clobber). |
 | [`lease`](./lease.md) | Optional exclusive write lease, for when you would rather serialise than merge. Off by default. |
 | [`ps`](./ps.md) | Fleet view for this project: which personas are awake/idle, mutation counts, tone, last activity. |

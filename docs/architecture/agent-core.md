@@ -214,7 +214,9 @@ leaves it written, as `stopped` with the question as its result: every call of t
 result first, so the transcript stays sendable. A sub-task never receives its parent's way to reach a
 person, so its question travels back up to whoever delegated it. A service step that stops at a
 question leaves its run `waiting` with the question, options included, as the reason, readable by a
-person, an agent or an app. Continuing such a run with the answer is its own piece of work. The record
+person, an agent or an app. Such a run is picked up with the engine's `service.resumeService` (E97,
+[`service resume`](../commands/service.md#picking-a-waiting-run-up)): the step that asked runs again with
+the question and the answer in its prompt, and the steps before it are not run again. The record
 keeps a `question` entry in the persona's name and, when somebody answered, an `answer` entry in the
 name of whoever opened the turn.
 

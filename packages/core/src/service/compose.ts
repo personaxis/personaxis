@@ -36,6 +36,7 @@ import { advance, approved, begin, rejected, type Advance, type RunState, type S
 // `ProducedFile` is the SaaS's own shape, copied with `handover`, so a declared file and a file the
 // SaaS reads off the record are one type and travel between the two unchanged.
 import { handoverText, stepPrompt, type PreviousStep, type ProducedFile } from "./handover.js";
+import { answerFrom, renderQuestion, type PersonQuestion } from "../tools/ask-person.js";
 
 /** How deep services may nest. A parent is depth 0; its sub-service is 1. */
 export const MAX_SERVICE_DEPTH = 8;
@@ -92,6 +93,8 @@ export interface PersonaStepResult {
 	 * for a sub-service that needs a person.
 	 */
 	waitingOnPerson?: boolean;
+	/** E97: the question the step stopped at, so whoever picks the run up can answer it and the step can read the answer. */
+	question?: PersonQuestion;
 }
 
 export interface ServicePorts {
@@ -144,6 +147,32 @@ export interface StepRecord {
 
 export type ServiceRunStatus = "completed" | "failed" | "waiting";
 
+/** E97: a step on the way down to a wait inside a sub-service, and the clock it started on. */
+export interface WaitingThrough {
+	position: number;
+	since: number;
+}
+
+/**
+ * E97: what a waiting run waits for, exactly enough to pick it up from there.
+ *
+ * `path` is the services from the root down to the one that waits. `through` is, for each service on that path
+ * but the last, the step that runs the next one: a sub-service can be more than one step of its parent, so its
+ * address alone does not say where to go back in. `since` is when that step first started, so a file it wrote
+ * before the wait still counts as written by it.
+ */
+export type WaitingOn =
+	/** A person owes a yes or a no before the step after `position` may start. */
+	| { kind: "approval"; path: readonly string[]; through: readonly WaitingThrough[]; position: number }
+	/** The step at `position` stopped at a question, and runs again with the answer. */
+	| { kind: "answer"; path: readonly string[]; through: readonly WaitingThrough[]; position: number; since: number; question: PersonQuestion | null };
+
+/** E97: what whoever picks a waiting run up gives it. */
+export type ResumeReply = { kind: "approval"; approved: boolean; reason?: string | null } | { kind: "answer"; answer: string };
+
+/** E97: a run picked up, or left alone with the reason, the way `advance.ts` leaves a stale message alone. */
+export type Resumed = { resumed: true; result: ServiceRunResult } | { resumed: false; why: string };
+
 export interface ServiceRunResult {
 	status: ServiceRunStatus;
 	reason: string | null;
@@ -152,6 +181,8 @@ export interface ServiceRunResult {
 	/** The step that left `summary`, or null when no step left a note and it is the reason. */
 	summaryFrom: StepRef | null;
 	steps: StepRecord[];
+	/** E97: on a waiting run only, what it waits for. */
+	waiting?: WaitingOn;
 }
 
 interface RunContext {
@@ -317,7 +348,103 @@ async function checkedAgainstProduces(step: ServiceStepDef, result: StepExecutio
 
 /** Run a service to the end, or to the first thing that needs a person who is not there. */
 export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Partial<RunContext> = {}): Promise<ServiceRunResult> {
-	const context: RunContext = { stack: ctx.stack ?? [], depth: ctx.depth ?? 0, workingDir: ctx.workingDir ?? null, brief: ctx.brief ?? null };
+	return runLine(def, ports, { stack: ctx.stack ?? [], depth: ctx.depth ?? 0, workingDir: ctx.workingDir ?? null, brief: ctx.brief ?? null }, null);
+}
+
+/**
+ * E97: pick a waiting run up where it stopped, with the approval or the answer it was waiting for.
+ *
+ * It continues THAT run rather than starting another, the decision `advance.ts` takes for a retry: the steps
+ * that already ran are not run again, the handover they left is rebuilt from their records, and the result
+ * carries every step, the earlier ones first. A run that does not wait, or waits for something other than
+ * what is given, is left alone and says why, which is the rule `approved` and `rejected` already keep.
+ *
+ * With an answer, the step that stopped at the question runs again with the question and the answer in its
+ * prompt, and a number or a label picks that option as it does in the TUI. With an approval, the run goes on
+ * from the step after the approved one, or ends if it was refused. A run that waits inside a sub-service goes
+ * back in through every service on the way down, at the step that ran the next one, so the sub-service goes on
+ * from its own waiting point instead of starting over.
+ *
+ * One function for every surface: the CLI, and whatever else picks a run up, give it the run's result as they
+ * stored it and what the person, the agent or the app answered.
+ */
+export async function resumeService(
+	def: ServiceDef,
+	ports: ServicePorts,
+	stored: { result: ServiceRunResult; brief?: string | null; workingDir?: string | null },
+	reply: ResumeReply,
+): Promise<Resumed> {
+	const { result } = stored;
+	if (result.status !== "waiting") return { resumed: false, why: `only a waiting run is picked up, and this one is ${result.status}` };
+	const waiting = result.waiting;
+	if (!isWaitingOn(waiting)) return { resumed: false, why: "this run is waiting, and its record does not say for what, so it cannot be picked up" };
+	if (waiting.path[0] !== def.address) return { resumed: false, why: `this run is of ${waiting.path[0]}, not of ${def.address}` };
+	if (reply.kind !== waiting.kind) {
+		return { resumed: false, why: waiting.kind === "approval" ? "this run is waiting for an approval, not for an answer" : "this run is waiting for an answer, not for an approval" };
+	}
+	let given: ResumeReply = reply;
+	if (reply.kind === "answer") {
+		const asked = waiting.kind === "answer" ? waiting.question : null;
+		const answer = asked ? answerFrom(asked, reply.answer) : reply.answer.replace(/\s+/g, " ").trim();
+		// The same rule as the TUI's: nothing typed is no answer, and the recommendation is not taken for one.
+		if (!answer) return { resumed: false, why: "an empty answer is no answer, so the run keeps waiting" };
+		given = { kind: "answer", answer };
+	}
+	const context: RunContext = { stack: [], depth: 0, workingDir: stored.workingDir ?? null, brief: stored.brief ?? null };
+	return { resumed: true, result: await runLine(def, ports, context, { waiting, reply: given, earlier: result.steps }) };
+}
+
+/** A stored run comes from a file somebody could have edited, so what it waits for is read, not trusted. */
+function isWaitingOn(value: unknown): value is WaitingOn {
+	const w = value as Record<string, unknown> | null | undefined;
+	if (!w || (w.kind !== "approval" && w.kind !== "answer") || !Number.isInteger(w.position)) return false;
+	const path = w.path;
+	if (!Array.isArray(path) || path.length === 0 || !path.every((a) => typeof a === "string")) return false;
+	const through = w.through;
+	if (!Array.isArray(through) || through.length !== path.length - 1) return false;
+	if (!through.every((t) => Number.isInteger((t as WaitingThrough | null)?.position) && Number.isFinite((t as WaitingThrough | null)?.since))) return false;
+	if (w.kind === "approval") return true;
+	if (!Number.isFinite(w.since)) return false;
+	const q = w.question as PersonQuestion | null;
+	return q === null || (typeof q?.question === "string" && Array.isArray(q.options) && q.options.every((o) => typeof o?.label === "string"));
+}
+
+/** E97: where a run is picked up, handed down one service at a time. */
+interface ResumePoint {
+	waiting: WaitingOn;
+	reply: ResumeReply;
+	/** The run's records up to the wait, for this service and the ones inside it, oldest first. */
+	earlier: readonly StepRecord[];
+}
+
+const samePath = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((part, i) => part === b[i]);
+
+/** The note a step left, found the way `deliveredBy` points at it: the latest record at that place. */
+function noteAt(records: readonly StepRecord[], ref: StepRef): string | null {
+	for (let i = records.length - 1; i >= 0; i -= 1) {
+		const record = records[i];
+		if (record && record.position === ref.position && samePath(record.path, ref.path)) return record.summary;
+	}
+	return null;
+}
+
+/**
+ * The question and the answer, for the step that asked. Last in its prompt, after the handover, in the slot a
+ * retake uses, because it is what happened since the step last ran; framed as the person's words, the way the
+ * client's brief is, so the step does not read it as an instruction from another step.
+ */
+function answeredText(question: PersonQuestion | null, answer: string): string {
+	return [
+		"This step stopped earlier at a question for a person, and the person has answered. Go on with the answer; do not ask it again.",
+		...(question ? ["", "The question:", renderQuestion(question)] : []),
+		"",
+		"Their answer, in their own words:",
+		"",
+		answer,
+	].join("\n");
+}
+
+async function runLine(def: ServiceDef, ports: ServicePorts, context: RunContext, resume: ResumePoint | null): Promise<ServiceRunResult> {
 	const records: StepRecord[] = [];
 
 	// Checked again at run time, whatever `checkComposition` said when it loaded.
@@ -335,6 +462,61 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 	let lastSummary: string | null = null;
 	let lastSummaryFrom: StepRef | null = null;
 	let decision: Advance = begin(shapes);
+	// E97: the step a waiting run is picked up at, used once, by the first step this call starts.
+	let pickup: { position: number; since: number | null; withAnswer: string | null; inner: ResumePoint | null } | null = null;
+
+	if (resume !== null) {
+		const { waiting } = resume;
+		const level = context.stack.length;
+		const cannot = (reason: string): ServiceRunResult => ({ status: "failed", reason, summary: null, summaryFrom: null, steps: [...resume.earlier] });
+		if (waiting.path[level] !== def.address) return cannot(`the waiting run went through ${waiting.path[level]} here, and this is ${def.address}`);
+
+		// This service's own steps end at its last record; what follows belongs to the sub-service it waits in.
+		let own = -1;
+		resume.earlier.forEach((record, i) => {
+			if (samePath(record.path, path)) own = i;
+		});
+		const mine = resume.earlier.slice(0, own + 1);
+		records.push(...mine);
+		// The handover the steps that already ran left, rebuilt from their records as `previous` was built when they ran.
+		for (let i = 0; i < mine.length; i += 1) {
+			const record = mine[i];
+			if (!record || !samePath(record.path, path)) continue;
+			const text = record.summary ?? (record.deliveredBy ? noteAt(mine.slice(0, i), record.deliveredBy) : null);
+			const ref = "service" in record.who ? record.who.service : record.who.persona;
+			previous.push({
+				position: record.position,
+				name: def.steps.find((s) => s.position === record.position)?.name ?? ref,
+				personaName: ref,
+				entries: text ? [{ kind: "agent.turn.ended", payload: { summary: text } }] : [],
+			});
+			if (text) {
+				lastSummary = text;
+				lastSummaryFrom = "service" in record.who ? (record.deliveredBy ?? null) : { path, position: record.position };
+			}
+		}
+
+		if (level < waiting.path.length - 1) {
+			const through = waiting.through[level];
+			const step = through ? def.steps.find((s) => s.position === through.position) : undefined;
+			if (!through || !step || step.serviceRef !== waiting.path[level + 1]) {
+				return cannot(`step ${through?.position ?? "?"} of ${def.name} no longer runs ${waiting.path[level + 1]}, so the waiting run cannot be picked up there`);
+			}
+			decision = { kind: "start", position: through.position };
+			pickup = { position: through.position, since: through.since, withAnswer: null, inner: { ...resume, earlier: resume.earlier.slice(own + 1) } };
+		} else if (!def.steps.some((s) => s.position === waiting.position)) {
+			return cannot(`step ${waiting.position} is no longer part of ${def.name}, so the waiting run cannot be picked up there`);
+		} else if (waiting.kind === "approval" && resume.reply.kind === "approval") {
+			run.status = "waiting";
+			run.currentPosition = waiting.position;
+			decision = resume.reply.approved ? approved(run, shapes) : rejected(run, resume.reply.reason ?? null);
+		} else if (waiting.kind === "answer" && resume.reply.kind === "answer") {
+			decision = { kind: "start", position: waiting.position };
+			pickup = { position: waiting.position, since: waiting.since, withAnswer: answeredText(waiting.question, resume.reply.answer), inner: null };
+		} else {
+			return cannot(`this run is waiting for ${waiting.kind === "approval" ? "an approval" : "an answer"}, and was given something else`);
+		}
+	}
 
 	for (;;) {
 		if (decision.kind === "start") {
@@ -351,16 +533,25 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 			// steps of this service ran inside it. Instruction first still, as `stepPrompt` decides.
 			const background = [context.brief, handover].filter((part): part is string => part !== null).join("\n\n");
 			const instruction = instructionWithProduces(step);
-			const prompt = stepPrompt(instruction, background.length > 0 ? background : null);
+			// E97: the step a waiting run is picked up at gets the answer in its prompt, goes back into its sub-service at
+			// the sub-service's own waiting point, and keeps the clock it first started on.
+			const picked = pickup?.position === position ? pickup : null;
+			pickup = null;
+			const prompt = stepPrompt(instruction, background.length > 0 ? background : null, picked?.withAnswer ?? null);
 			// Taken before the step runs, so a file that was already there does not count as written.
-			const since = Date.now();
+			const since = picked?.since ?? Date.now();
 			const executed: StepExecution = step.serviceRef
-				? await runSubService(step.serviceRef, ports, {
-						stack: path,
-						depth: context.depth + 1,
-						workingDir: context.workingDir,
-						brief: briefFor(context.brief, def.name, step.position, instruction, handover),
-					})
+				? await runSubService(
+						step.serviceRef,
+						ports,
+						{
+							stack: path,
+							depth: context.depth + 1,
+							workingDir: context.workingDir,
+							brief: briefFor(context.brief, def.name, step.position, instruction, handover),
+						},
+						picked?.inner ?? null,
+					)
 				: await ports
 						.runPersonaStep({
 							personaRef: step.personaRef as string,
@@ -379,7 +570,12 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 				// A sub-service is waiting for somebody. The parent cannot go on without it, and
 				// pretending it finished would hand the next step work that does not exist yet.
 				records.push(...(result.childSteps ?? []));
-				return { status: "waiting", reason: result.reason ?? "a sub-service is waiting for approval", summary: null, summaryFrom: null, steps: records };
+				// E97: what it waits for, so it can be picked up here: from inside a sub-service, that wait with this step on
+				// the way down; from this step's own persona, the question it stopped at.
+				const waiting: WaitingOn = result.waiting
+					? { ...result.waiting, through: [{ position: step.position, since }, ...result.waiting.through] }
+					: { kind: "answer", path, through: [], position: step.position, since, question: result.question ?? null };
+				return { status: "waiting", reason: result.reason ?? "a sub-service is waiting for approval", summary: null, summaryFrom: null, steps: records, waiting };
 			}
 
 			const record: StepRecord = {
@@ -417,7 +613,14 @@ export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Part
 			run.status = "waiting";
 			const answer = await ports.approve({ serviceName: def.name, position: decision.afterPosition, path });
 			if (answer === "unavailable") {
-				return { status: "waiting", reason: `step ${decision.afterPosition} of ${def.name} is waiting for approval`, summary: null, summaryFrom: null, steps: records };
+				return {
+					status: "waiting",
+					reason: `step ${decision.afterPosition} of ${def.name} is waiting for approval`,
+					summary: null,
+					summaryFrom: null,
+					steps: records,
+					waiting: { kind: "approval", path, through: [], position: decision.afterPosition },
+				};
 			}
 			decision = answer === "approved" ? approved(run, shapes) : rejected(run, null);
 			continue;
@@ -438,18 +641,22 @@ interface StepExecution extends PersonaStepResult {
 	waitingOnPerson?: boolean;
 	childSteps?: StepRecord[];
 	produced?: ProducedFile[];
+	/** E97: what the sub-service that did this step waits for. */
+	waiting?: WaitingOn;
 }
 
 /**
  * A step done by a whole service. Maps the sub-service's end onto the parent step's outcome,
  * including the trap: a sub-service that stopped early is a parent step that delivered empty.
  */
-async function runSubService(address: string, ports: ServicePorts, ctx: RunContext): Promise<StepExecution> {
+async function runSubService(address: string, ports: ServicePorts, ctx: RunContext, resume: ResumePoint | null): Promise<StepExecution> {
 	const sub = ports.resolveService(address);
 	if (!sub) return { outcome: "failed", summary: null, reason: `service ${address} is not installed` };
 
-	const result = await runService(sub, ports, ctx);
-	if (result.status === "waiting") return { outcome: "failed", summary: null, reason: result.reason, waitingOnPerson: true, childSteps: result.steps };
+	const result = await runLine(sub, ports, ctx, resume);
+	if (result.status === "waiting") {
+		return { outcome: "failed", summary: null, reason: result.reason, waitingOnPerson: true, childSteps: result.steps, ...(result.waiting ? { waiting: result.waiting } : {}) };
+	}
 	if (result.status === "failed") {
 		// The sub-service's own reason is its line's ("step 1 failed"), which on the parent's record
 		// reads as the parent's step 1. The first step that failed inside is the one that knows why.

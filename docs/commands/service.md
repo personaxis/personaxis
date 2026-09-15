@@ -15,7 +15,14 @@ personaxis service run contract-review            # run .personaxis/services/con
 personaxis service run contract-review --check    # check the composition only; runs nothing
 personaxis service run game-build --brief "A small game about a cat crossing a road."
 personaxis service run game-build --brief-file brief.txt
+personaxis service run game-build --brief "..." --json   # one JSON object for a program to read
+
+personaxis service resume .personaxis/services/runs/game-build-<timestamp>.json --answer "Mia"
+personaxis service resume .personaxis/services/runs/contract-review-<timestamp>.json --approve
+personaxis service resume .personaxis/services/runs/contract-review-<timestamp>.json --reject "not this counterparty"
 ```
+
+`service run`:
 
 | Arg / flag | Meaning |
 |---|---|
@@ -23,10 +30,23 @@ personaxis service run game-build --brief-file brief.txt
 | `--check` | Report every problem in the composition (cycles, missing references, gaps in the numbering, nesting depth, declared files outside the folder) and exit. Runs no model. |
 | `--brief <text>` | What the client asked for, in their own words. |
 | `--brief-file <path>` | The same, read from a file, for a request too long for one shell argument. |
+| `--json` | Print one JSON object instead of lines; see [For a program](#for-a-program). |
 
-Exit code is `0` when the service completed, `1` when it failed or is waiting for an approval, and
-`2` when the service file does not exist, the two brief flags are given together, or the brief file
-cannot be read.
+`service resume`:
+
+| Arg / flag | Meaning |
+|---|---|
+| `<journal>` | The journal of the waiting run, as `service run` printed it. |
+| `--answer <text>` | The answer to the question the run waits on. A number or an option's label picks that option. |
+| `--approve` | Approve the step the run waits on, and go on. |
+| `--reject [reason]` | Refuse it. The run ends there, as delivered up to that step, with the reason when one is given. |
+| `--json` | The same as for `run`. |
+
+Exit code is `0` when the service completed, `1` when it failed, is waiting, or cannot run as
+written, and `2` when the service file does not exist, the two brief flags are given together, the
+brief file cannot be read, or `resume` is given a journal it cannot pick up (not a journal, a run that
+does not wait, a run already picked up, an empty answer, an answer to a run that waits for an
+approval or the other way round) or not exactly one of `--answer`, `--approve` and `--reject`.
 
 ## The request
 
@@ -107,7 +127,7 @@ Same shape as a service template in the workspace, plus `serviceRef`:
 | completes | completes, and what it delivered is the step's note |
 | fails | fails, and the parent stops there |
 | **stops because there was nothing to do** | **completes**, empty |
-| waits for an approval | the parent waits too |
+| waits for an approval, or for an answer | the parent waits too, and is picked up as a whole |
 
 The third row is deliberate. A step that stops ends its own service early, because "nothing to do"
 is a complete delivery of nothing. If that travelled upward, a sub-service's "nothing to do" would
@@ -128,9 +148,70 @@ end a parent that still had work.
 When a step asks for approval and the run is in a terminal with a person at it, it asks
 `approve step N of <service>? [y/N]`. Anything but `y` or `yes` is a rejection, and a rejection
 closes the service as delivered up to that step, with `not approved at step N` as its reason, without
-running the steps after it. With no terminal (CI, a pipe), the run stops as
+running the steps after it. With no terminal (CI, a pipe) or with `--json`, the run stops as
 **waiting** and says which step. **Nothing approves itself**: an automatic approval would be the gate
 the step asked for, opened by the thing it was there to watch.
+
+## Questions
+
+A persona that needs something only a person can give (a name, a choice that is theirs) asks it with
+its question tool, with two to four options and the one it recommends; it does not invent it. A step
+has nobody to ask, so its turn stops at the question and **the run waits**, with the question and its
+options written whole as the reason, in the journal and on the screen. The step is not handed on as
+done, because the next step would build on a question.
+
+## Picking a waiting run up
+
+`service run` prints the command that picks a waiting run up. `service resume` continues **that run**
+rather than starting another:
+
+- **With an answer**, the step that stopped at the question runs again, with the question and the
+  answer at the end of its prompt, labelled as the person's words. The steps before it are not run
+  again; the notes they left are rebuilt from the journal and handed on as they were.
+- **With an approval**, the run goes on from the step after the approved one, which is not run again.
+  With a refusal it ends there, as delivered up to that step.
+- **A run that waits inside a sub-service** goes back in through the parent at the step that runs
+  that sub-service, and the sub-service goes on from its own waiting point instead of starting over.
+  Its steps still read the parent's job. A step that runs the sub-service and declares `produces` is
+  checked against the moment it first began, so a file written before the wait still counts.
+- A step that runs a different sub-service by then, or no longer exists, fails the run with that
+  reason, and nothing runs.
+
+The picked-up run writes a **new journal**, with `resumedFrom` naming the waiting one and `reply` saying
+what it was given; its `result` carries every step, the earlier ones first, and its costs count only
+what it ran. The waiting journal gets `resumedBy`, written before anything runs, so the same wait
+cannot be picked up twice; it is taken off again when the run is left alone.
+
+The decision about what runs is the engine's `service.resumeService`, the same function for every
+surface that picks a run up.
+
+## For a program
+
+With `--json`, `run` and `resume` print one JSON object on standard output and send the lines meant
+for a person to standard error. Nobody at the terminal is asked anything, the way a pipe is not.
+
+```json
+{
+  "service": "game-build",
+  "status": "waiting",
+  "reason": "waiting for an answer: What is your niece's name?\n  1. I will tell you (recommended)\n  2. Leave a blank to fill in",
+  "summary": null,
+  "waiting": {
+    "kind": "answer",
+    "path": ["game-build"],
+    "through": [],
+    "position": 2,
+    "since": 1789473600000,
+    "question": { "question": "What is your niece's name?", "options": [{ "label": "I will tell you" }, { "label": "Leave a blank to fill in" }], "recommended": "I will tell you" }
+  },
+  "journal": "/work/.personaxis/services/runs/game-build-2026-09-15T12-00-00-000Z.json"
+}
+```
+
+`waiting` is `null` unless the run waits. `kind` is `approval` or `answer`; `path` is the services
+from the root down to the one that waits, `through` the step of each parent that runs the next one,
+and `position` the step approved or the step that asked. A refusal prints `{ "error": "..." }`, with
+`problems` when the composition is wrong.
 
 ## The journal
 
@@ -168,7 +249,11 @@ Said so it is not assumed:
   about, and with nobody at the terminal an ask is a refusal. With `on-request`, the default, every
   write is asked about and the step cannot write. A persona that only reads works under any
   posture, because a known read inside the project is never asked about.
-- **A failed or waiting run is not resumed.** Run it again; the journal of the earlier run stays.
+- **A failed run is not retried.** Run it again; the journal of the earlier run stays. A waiting
+  run is picked up with `service resume`.
+- **The TUI does not run services yet**, so it cannot pick one up either. When it does, it uses
+  the same engine function as `service resume`, and a question a step asks there reaches the person
+  at the keyboard directly.
 - **The workspace cannot hold a sub-service or a declared file yet.** Its steps are one persona
   each and declare nothing; `serviceRef` and `produces` exist here first. The workspace already
   names the files a step wrote, from its record, in the same `{ path, bytes }` shape.
