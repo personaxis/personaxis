@@ -74,6 +74,13 @@ function fakeElement(listeners: Array<{ type: string; fn: () => void }>): Record
 		setAttribute() {},
 		getAttribute: () => null,
 		getBoundingClientRect: () => ({ left: 0, top: 0, width: 480, height: 320, right: 480, bottom: 320 }),
+		// What a real canvas exports. Without these, a page that draws a sprite onto an offscreen canvas and
+		// turns it into an image "crashed on load" here while running fine in a browser, and the persona would
+		// be told to fix a fault that does not exist. Found on 2026-09-14 in a game a model wrote.
+		toDataURL: () => "data:image/png;base64,",
+		toBlob(callback: unknown) {
+			if (typeof callback === "function") (callback as (blob: null) => void)(null);
+		},
 		focus() {},
 		querySelector: () => fakeElement(listeners),
 		querySelectorAll: () => [],
