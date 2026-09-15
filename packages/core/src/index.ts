@@ -95,6 +95,8 @@ export * from "./skill-guide.js";
 export * from "./skill-writer.js";
 export * from "./postmortem.js";
 export * from "./task-state.js";
+// E84: a surface that has a person in front of it shows the question and reads the answer the same way.
+export * from "./tools/ask-person.js";
 export * from "./tool-output-store.js";
 export * from "./security/forensic-log.js";
 export * from "./security/interceptor.js";

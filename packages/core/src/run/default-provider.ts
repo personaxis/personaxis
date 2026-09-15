@@ -95,7 +95,14 @@ const RAN_OUT_OF_ROOM = new Set([
  * are different things, and reporting one as the other tells somebody their budget ran
  * out when their rule fired.
  */
-const A_RULE_STOPPED_IT = new Set(["execution_error", "low_confidence", "no_progress"]);
+const A_RULE_STOPPED_IT = new Set([
+	"execution_error",
+	"low_confidence",
+	"no_progress",
+	// E84: the persona asked something only a person can answer and nobody could. The rule is David's
+	// (P10 of E77): stop at the question and leave it written, rather than guess.
+	"question",
+]);
 
 /** Stops that mean a guard would not let the turn continue. */
 const REFUSED_BY_A_GUARD = new Set([
@@ -172,6 +179,8 @@ export function productOf(result: AgentResult): TurnProduct {
 		calls: result.calls,
 		// E83: the route the persona chose before acting, only when the decision step ran and was read.
 		...(result.decision === undefined ? {} : { decision: result.decision }),
+		// E84: every question put to a person, the last without an answer when the turn stopped at it.
+		...((result.questions ?? []).length > 0 ? { questions: result.questions } : {}),
 		// E81: the persona's list, only when it kept one. The loop's own notes (files, errors) stay in the
 		// loop: they are how it survives compaction, not something the persona said.
 		...((result.tasks ?? []).length > 0

@@ -57,7 +57,15 @@ import { ensureState,
   readHooksConfig,
   runHooks,
   appendHistory,
+  answerFrom,
+  renderQuestion,
+  type PersonQuestion,
 } from "@personaxis/core";
+
+/** E84: a question as the person reads it at the prompt, numbered, with how to answer. */
+function questionPrompt(question: PersonQuestion): string {
+  return `  ${renderQuestion(question).split("\n").join("\n  ")}\n  answer with a number, an option, or your own words: `;
+}
 import { slugAddressFromPath } from "../load.js";
 import { runCompile } from "../commands/compile.js";
 import { buildAwarenessBlock } from "./awareness.js";
@@ -153,6 +161,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   });
   const obs = readObservability(fm);
   const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
+  const ask = ctx.ask;
   const runner = run.runnerFor(
     { personaPath: ctx.handle.personaPath, frontmatter: fm, llm },
     {
@@ -165,6 +174,9 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       awareness: buildAwarenessBlock(ctx.handle.personaPath, awarenessOpts(ctx, llm.model)),
       goal: readGoalText(ctx.handle),
       onApproval: ctx.approve,
+      // E84: a question the persona asks reaches the person at this keyboard, when there is one. Without a
+      // terminal `ask` is absent, and the turn stops at the question instead, as P10 of E77 decided.
+      ...(ask ? { onQuestion: async (question: PersonQuestion) => answerFrom(question, await ask(questionPrompt(question))) } : {}),
       sessionId: ctx.sessionId,
       meter: ctx.meter,
       conversation: conversationOf(ctx),

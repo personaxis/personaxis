@@ -159,7 +159,7 @@ function callEntry(turn: string, call: TurnCall): RecordBody {
 }
 
 /** What closing a turn writes, in the order a reader meets it. */
-function closing(outcome: TurnOutcome): readonly Written[] {
+function closing(outcome: TurnOutcome, asker?: Author): readonly Written[] {
 	const entries: Written[] = [];
 
 	// E25: compactions before the answer, because that is when they happened. A
@@ -200,6 +200,28 @@ function closing(outcome: TurnOutcome): readonly Written[] {
 	// `sort` is stable, so entries of one kind at one step keep the order they were reported in.
 	during.sort((a, b) => a.step - b.step || a.order - b.order);
 	for (const entry of during) entries.push(entry.written);
+
+	// E84: each question the persona put to a person, in its name, and the answer after it in the name of whoever
+	// opened the turn, which is who was in front of it. A question with no answer is the one the turn stopped at,
+	// and it is written all the same: it is what whoever picks the work up has to find.
+	for (const asked of outcome.questions ?? []) {
+		entries.push({
+			author: answererOf(),
+			body: {
+				type: "question",
+				turn: outcome.turn,
+				question: asked.question,
+				options: asked.options,
+				...(asked.recommended === undefined ? {} : { recommended: asked.recommended }),
+			},
+		});
+		if (asked.answer !== undefined) {
+			entries.push({
+				author: asker ?? { kind: "runtime", mechanism: "question", reason: "an answer in a turn whose opening was not seen" },
+				body: { type: "answer", turn: outcome.turn, question: asked.question, answer: asked.answer },
+			});
+		}
+	}
 
 	// E81: the list the turn ended with, once, after the calls that changed it and before the answer.
 	// The runtime's entry, not the persona's: the steps are the persona's words, and `verified` is the
@@ -264,13 +286,18 @@ export interface RecordingOptions {
  * A live session is not that caller: use `recordingTurns`.
  */
 export function recordTurns({ journal }: RecordingOptions): TurnObserver {
+	// E84: who opened the turn, so an answer given inside it is written in their name.
+	let asker: Author | undefined;
 	const write = (entries: readonly Written[]): void => {
 		for (const entry of entries) journal.append(entry.author, entry.body);
 	};
 
 	return {
-		opened: (request) => write(opening(request)),
-		closed: (outcome) => write(closing(outcome)),
+		opened: (request) => {
+			asker = askerOf(request);
+			return write(opening(request));
+		},
+		closed: (outcome) => write(closing(outcome, asker)),
 	};
 }
 
@@ -309,6 +336,8 @@ export function recordingTurns(options: LiveRecordingOptions): TurnObserver {
 			process.stderr.write(`personaxis: a turn was not written to the record (${problem.message})\n`);
 		});
 
+	// E84: who opened the turn, so an answer given inside it is written in their name.
+	let asker: Author | undefined;
 	const write = async (entries: readonly Written[]): Promise<void> => {
 		try {
 			await writingToRecord(personaPath, statePath, ports, (record) => {
@@ -320,7 +349,10 @@ export function recordingTurns(options: LiveRecordingOptions): TurnObserver {
 	};
 
 	return {
-		opened: (request) => write(opening(request)),
-		closed: (outcome) => write(closing(outcome)),
+		opened: (request) => {
+			asker = askerOf(request);
+			return write(opening(request));
+		},
+		closed: (outcome) => write(closing(outcome, asker)),
 	};
 }

@@ -157,6 +157,17 @@ export interface TurnOutcome {
 		readonly route: Extract<RecordBody, { readonly type: "decision" }>["route"];
 		readonly why: string;
 	};
+	/**
+	 * E84: the questions the persona put to a person in this turn, in order, each with its answer when
+	 * somebody gave one. One without an answer is the question the turn stopped at, because nobody could
+	 * answer it: the thing a service, a parent persona or a program has to read to know what is missing.
+	 */
+	readonly questions?: readonly {
+		readonly question: string;
+		readonly options: readonly { readonly label: string; readonly detail?: string }[];
+		readonly recommended?: string;
+		readonly answer?: string;
+	}[];
 }
 
 /** What opens a turn. */

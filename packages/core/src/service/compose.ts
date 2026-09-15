@@ -86,6 +86,12 @@ export interface PersonaStepResult {
 	/** What it left for the next step to read. Becomes the step's note. */
 	summary: string | null;
 	reason?: string | null;
+	/**
+	 * E84: the step stopped at something only a person can give and nobody was there, a question the persona
+	 * asked. The run waits instead of going on, with `reason` saying what is missing, the same way it waits
+	 * for a sub-service that needs a person.
+	 */
+	waitingOnPerson?: boolean;
 }
 
 export interface ServicePorts {
