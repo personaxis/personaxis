@@ -186,7 +186,9 @@ describe("a contribution lives exactly as long as its component", () => {
 });
 
 describe("the built-in tools now go through it", () => {
-	it("offers the six, in the order they are declared", () => {
+	// Named without a number since E98, when the number in this title had been wrong for two tools: what the
+	// assertion is about is the order, and a count in a name drifts without failing anything.
+	it("offers every one of them, in the order they are declared", () => {
 		const kernel = new Kernel();
 
 		const bench = mountBuiltins(kernel, everything);
@@ -197,6 +199,7 @@ describe("the built-in tools now go through it", () => {
 			"find_in_files",
 			"write_file",
 			"edit_file",
+			"check_page",
 			"run_command",
 			"finish",
 		]);
@@ -212,6 +215,9 @@ describe("the built-in tools now go through it", () => {
 			// C5: it needs `tools.read` like the two above it, so a persona that keeps
 			// reading keeps searching.
 			"find_in_files",
+			// E98: the same permission, because running the page it wrote is a read. A persona
+			// that may only look still gets to see whether the page it wrote crashes.
+			"check_page",
 			"finish",
 		]);
 	});

@@ -79,6 +79,8 @@ describe("what a bench offers", () => {
 			"find_in_files",
 			"write_file",
 			"edit_file",
+			// E98: offered since the day it stopped being imported and left out of the list.
+			"check_page",
 			"run_command",
 			"finish",
 		]);

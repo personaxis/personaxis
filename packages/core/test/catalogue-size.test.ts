@@ -72,7 +72,7 @@ function everythingWeShip(): string[] {
 }
 
 describe("how many tools a persona can be shown", () => {
-	it("is fifteen, and one more is a decision rather than a file somebody added", () => {
+	it("is sixteen, and one more is a decision rather than a file somebody added", () => {
 		// Raise this number in the same commit as the tool, with the reason in the
 		// commit message. That is the whole mechanism: it costs one line and it makes
 		// the next tool something a person chose.
@@ -89,11 +89,17 @@ describe("how many tools a persona can be shown", () => {
 		// plain words for exactly what its service delivers improvised the steps. It overlaps nothing: `delegate`
 		// hands a piece of the persona's own work to a sub-run of itself, and a service is a fixed line of steps
 		// with a journal, which only a person approves.
-		expect(everythingWeShip()).toHaveLength(15);
+		//
+		// Sixteen, 2026-09-15: `check_page` (E98) was counted by neither number, because it was written in E71,
+		// imported by the built-in barrel and left out of its list. This is not a tool being added; it is one that
+		// was shipped to nobody for four days being counted for the first time.
+		expect(everythingWeShip()).toHaveLength(16);
 	});
 
-	it("counts seven built-ins, which is the half a plugin cannot change", () => {
-		expect(TOOLS).toHaveLength(7);
+	it("counts eight built-ins, which is the half a plugin cannot change", () => {
+		// Eight, 2026-09-15 (E98): `check_page` was written by E71, imported by the built-in barrel and left out of
+		// its list, so it was offered to nobody. This number froze at seven without anybody checking which seven.
+		expect(TOOLS).toHaveLength(8);
 	});
 
 	it("names each of them once", () => {
