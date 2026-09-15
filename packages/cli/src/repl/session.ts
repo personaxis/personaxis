@@ -25,7 +25,6 @@ import {
   fallbackName,
   nameSession,
   makeRecompileHook,
-  assemblePersonaDoc,
   activeOverlay,
   readState,
   readMemoryTypes,
@@ -48,10 +47,34 @@ import {
 } from "@personaxis/core";
 import chalk from "chalk";
 import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
+import { liveCompiledDocument } from "../compiled-document.js";
 import { replyLine, userLine } from "./render.js";
 import type { Ctx } from "./types.js";
 import type { LineRole } from "@personaxis/tui/screen";
 import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "./config.js";
+
+/**
+ * What the living loop runs when a band is crossed: the compiled document, rewritten in place.
+ *
+ * E92: the document `compile` writes, minus the model polish, from `compiled-document.ts`. It was
+ * assembled inline in `makeCtx` without the resource manifest, the sub-persona header or the skill
+ * list, so the first band a persona crossed erased from its identity what it could see it had.
+ * Named and exported so that promise is checked against a real compile, not against a copy of it.
+ */
+export function recompileHookFor(personaPath: string, compiledPath: string): ReturnType<typeof makeRecompileHook> {
+  return makeRecompileHook({
+    // Always pass the canonical path: the hook itself no-ops while the file does not
+    // exist, and starts keeping it fresh the moment the first /compile creates it.
+    compiledPath,
+    assemble: (h) =>
+      liveCompiledDocument(personaPath, h.frontmatter as Record<string, unknown>, {
+        appliedOverlay: activeOverlay(personaPath),
+        // Undefined when the persona has not started. Building a session must not
+        // bring one into existence as a side effect of describing it.
+        stateValues: stateOf(h)?.values,
+      }),
+  });
+}
 
 /**
  * Build a REPL context for ANY persona (root or a sub-persona), sharing the session
@@ -65,7 +88,6 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
   // which is only where a SUB-persona's lives, so an ordinary project got the raw body.
   const assembled = run.assemble(personaPath);
   const handle = assembled.handle;
-  const isSub = run.isSubagentPath(personaPath);
   const compiled = assembled.compiledPath;
   const personaDoc = run.identityOf(assembled);
   const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
@@ -73,25 +95,7 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
     // F6.5: the inline recompile is REAL, on a band crossing the stage-1
     // assembler rewrites the compiled doc deterministically (band-selected
     // expression from fresh state; F3.1's `assemble` seam, finally wired).
-    recompile: makeRecompileHook({
-      // Always pass the canonical path: the hook itself no-ops while the file does not
-      // exist, and starts keeping it fresh the moment the first /compile creates it.
-      compiledPath: compiled,
-      assemble: (h) =>
-        assemblePersonaDoc({
-          persona: h.frontmatter as Record<string, unknown>,
-          target: {
-            name: displayName(h.frontmatter),
-            isSubagent: isSub,
-            ...(isSub ? { slug: slugAddressFromPath(personaPath) } : {}),
-            resourceBase: isSub ? "./" : "./.personaxis/",
-          },
-          appliedOverlay: activeOverlay(personaPath),
-          // Undefined when the persona has not started. Building a session must not
-          // bring one into existence as a side effect of describing it.
-          stateValues: stateOf(h)?.values,
-        }),
-    }),
+    recompile: recompileHookFor(personaPath, compiled),
   });
   let postureIndex = POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox);
   if (postureIndex < 0) postureIndex = 1;

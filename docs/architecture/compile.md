@@ -38,6 +38,15 @@ that injection is gone, and the strip is idempotent so stale tables disappear on
 See [self-evolution.md](./self-evolution.md) for how the active overlay (applied governed
 self-edits) folds into compile as authoritative overrides.
 
+When a coordinate crosses a band mid-session, the living loop rewrites `PERSONA.md` in place.
+That rewrite is **the same document `compile --no-polish` writes**: the resource manifest, the
+sub-persona header and the skill list included. Both paths ask one function for it
+(`packages/cli/src/compiled-document.ts`), and a test holds the session's hook to a real compile
+byte for byte. What the rewrite does not do is what only `compile` does: polish the prose with a
+model, and copy skills into a host's discovery directory. An earlier version assembled the live
+document without the manifest, the header or the skills, so the first band a persona crossed
+removed from its identity the list of what it had.
+
 ## Decompile (edited compiled doc → proposed `personaxis.md`)
 
 Reverse direction for hand-edits: maps prose changes back to spec fields, including
