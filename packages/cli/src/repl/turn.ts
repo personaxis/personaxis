@@ -197,10 +197,22 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // wrong. Shown as such, and recorded as a note rather than as the persona's reply:
   // handing it on as one is how a transcript comes to quote a component under the
   // persona's name, and how a resumed session feeds that back to the model.
-  const spoke = outcome.failure === undefined || outcome.answer.length > 0;
-  const reply = spoke ? outcome.answer || "…" : friendlyProviderError(outcome.failure!.message);
+  //
+  // E94: the persona's name goes only on words the persona wrote. A turn without them used to print "…"
+  // under its name, which read as the persona still typing, and on 2026-09-15 it stood twice for a turn
+  // in which the model returned nothing at all. What happened is said instead, as the runtime's line.
+  const spoke = outcome.answer.length > 0;
+  const reply = spoke
+    ? outcome.answer
+    : outcome.failure === undefined
+      ? outcome.stopReason === "answered"
+        ? "(finished without a reply; what it did is listed above)"
+        : "(no reply)"
+      : outcome.stopReason === "empty"
+        ? "the model returned nothing, twice in a row, so this turn did nothing. Ask again, or switch the model with /model."
+        : friendlyProviderError(outcome.failure.message);
   if (spoke) ctx.out(replyLine(ctx, reply), "persona");
-  else ctx.out(chalk.yellow(`  ${reply}`), "activity");
+  else ctx.out(outcome.failure === undefined ? chalk.dim(`  ${reply}`) : chalk.yellow(`  ${reply}`), "activity");
   // Cumulative session accounting (F3.D16: /cost, /usage). Steps are always known; a
   // price is only known when the loop talked to something that charges, and a provider
   // that reported none adds nothing rather than adding a zero somebody reads as free.
