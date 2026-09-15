@@ -36,6 +36,7 @@ import { delegateTool } from "../src/tools/delegate.js";
 import { UPDATE_TASKS_TOOL } from "../src/tools/update-tasks.js";
 import { USE_SKILL_TOOL } from "../src/tools/use-skill.js";
 import { ASK_PERSON_TOOL } from "../src/tools/ask-person.js";
+import { RUN_SERVICE_TOOL } from "../src/tools/run-service.js";
 import { readMemoryKnobs } from "../src/memory/knobs.js";
 
 /**
@@ -65,11 +66,13 @@ function everythingWeShip(): string[] {
 		UPDATE_TASKS_TOOL,
 		// E84: a question to the person, offered on every run.
 		ASK_PERSON_TOOL,
+		// E73: mounted by `runnerFor` for a persona that delivers a service, when the host lends a way to run one.
+		RUN_SERVICE_TOOL,
 	];
 }
 
 describe("how many tools a persona can be shown", () => {
-	it("is fourteen, and one more is a decision rather than a file somebody added", () => {
+	it("is fifteen, and one more is a decision rather than a file somebody added", () => {
 		// Raise this number in the same commit as the tool, with the reason in the
 		// commit message. That is the whole mechanism: it costs one line and it makes
 		// the next tool something a person chose.
@@ -81,7 +84,12 @@ describe("how many tools a persona can be shown", () => {
 		// Fourteen, 2026-09-15: `ask_person` (E84), because a persona missing what only a person can give either
 		// invented it or stopped in prose nothing could read as a question. It overlaps nothing: no other tool
 		// reaches a person, and a request for approval is the gate's question about a call, not the persona's.
-		expect(everythingWeShip()).toHaveLength(14);
+		//
+		// Fifteen, 2026-09-15: `run_service` (E73), because a service only ran from a command, so a persona asked in
+		// plain words for exactly what its service delivers improvised the steps. It overlaps nothing: `delegate`
+		// hands a piece of the persona's own work to a sub-run of itself, and a service is a fixed line of steps
+		// with a journal, which only a person approves.
+		expect(everythingWeShip()).toHaveLength(15);
 	});
 
 	it("counts seven built-ins, which is the half a plugin cannot change", () => {

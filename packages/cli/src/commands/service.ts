@@ -31,7 +31,21 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
-import { EventBus, pathEscapesWorkspace, personaResourceRoots, policyFromFrontmatter, renderQuestion, resolveModel, run, service, type ApprovalAnswer, type LoopEvent } from "@personaxis/core";
+import {
+	EventBus,
+	pathEscapesWorkspace,
+	personaResourceRoots,
+	policyFromFrontmatter,
+	renderQuestion,
+	resolveModel,
+	run,
+	service,
+	type ApprovalAnswer,
+	type CommandVerdict,
+	type LoopEvent,
+	type PersonQuestion,
+	type ToolCall,
+} from "@personaxis/core";
 
 import { buildAwarenessBlock } from "../repl/awareness.js";
 import { friendlyProviderError } from "../repl/render.js";
@@ -90,6 +104,31 @@ async function approveToolOnTerminal(tool: string, reason: string, interactive: 
 }
 
 /**
+ * How a service run reaches a person: at this terminal for `service run`, nobody for a program reading `--json`,
+ * and the person at the TUI's keyboard for a service a persona runs from a turn (E73).
+ */
+export interface PersonAt {
+	/** A step that wants approval before the next one starts. `unavailable` when nobody can answer. */
+	approveStep(input: { serviceName: string; position: number }): Promise<"approved" | "rejected" | "unavailable">;
+	/** A tool call a step's policy wants a person for. */
+	approveTool(call: ToolCall, verdict: CommandVerdict): Promise<ApprovalAnswer>;
+	/** A question a step's persona asks. Absent, the step stops at it and the run waits (E84). */
+	onQuestion?: (question: PersonQuestion) => Promise<string>;
+	/** Where the lines for a person go. */
+	say(line: string): void;
+}
+
+/** The person at this terminal, or nobody when a program reads the output. */
+function terminalPerson(json: boolean): PersonAt {
+	const interactive = !json;
+	return {
+		approveStep: (input) => approveOnTerminal(input, interactive),
+		approveTool: (call, verdict) => approveToolOnTerminal(call.name, String(verdict?.reason ?? ""), interactive),
+		say: json ? (line) => console.error(line) : (line) => console.log(line),
+	};
+}
+
+/**
  * E84: the question a step's turn stopped at, as the reason its run waits, or null when every question it
  * asked was answered. Written out whole, options included, because whoever reads a waiting run (a person, an
  * agent, an app reading the journal) needs to see what is missing to be able to give it.
@@ -144,12 +183,10 @@ export function producedIn(root: string, paths: readonly string[], since: number
 }
 
 /**
- * The ports a service runs through on this machine, the same for a run and for a run picked up.
- *
- * `say` is where the lines for a person go: standard output, or standard error when a program reads standard
- * output. `interactive` is false for a program, and then nobody at this terminal is asked anything.
+ * The ports a service runs through on this machine, the same for a run, a run picked up, and a run a persona
+ * starts from the TUI. `person` is who is asked and where the lines go.
  */
-function localPorts(root: string, costs: StepCost[], meter: Meter, say: (line: string) => void, interactive: boolean): service.ServicePorts {
+function localPorts(root: string, costs: StepCost[], meter: Meter, person: PersonAt): service.ServicePorts {
 	// Settled, not snapshotted: the working turn streams, and its usage arrives in the last chunk.
 	const since = async (t: number, u: ModelUsage): Promise<PhaseCost> => {
 		const ms = Date.now() - t;
@@ -161,7 +198,7 @@ function localPorts(root: string, costs: StepCost[], meter: Meter, say: (line: s
 		async runPersonaStep({ personaRef, prompt, path, position }) {
 			const pp = personaPath(root, personaRef);
 			if (!existsSync(pp)) return { outcome: "failed", summary: null, reason: `persona ${personaRef} is not installed` };
-			say(chalk.dim(`  ${path.join(" > ")} · step ${position} · ${personaRef}`));
+			person.say(chalk.dim(`  ${path.join(" > ")} · step ${position} · ${personaRef}`));
 			const cost: StepCost = { path, position, persona: personaRef, turn: null, tick: null, tools: { proposed: 0, allowed: 0, asked: 0, denied: [], calls: [] } };
 			costs.push(cost);
 
@@ -203,10 +240,12 @@ function localPorts(root: string, costs: StepCost[], meter: Meter, say: (line: s
 							// the one a step needs, the same way it does in the TUI and over ACP.
 							awareness: buildAwarenessBlock(assembled.personaPath, { frontmatter, cwd: root }),
 							onApproval: async (call, verdict) => {
-								const answer = await approveToolOnTerminal(call.name, String(verdict?.reason ?? ""), interactive);
+								const answer = await person.approveTool(call, verdict);
 								if (answer !== "approve" && typeof answer === "object") cost.tools.denied.push(`${call.name}: ${answer.reason}`);
 								return answer;
 							},
+							// E73: with somebody at the keyboard, a step's question reaches them and the step goes on.
+							...(person.onQuestion ? { onQuestion: person.onQuestion } : {}),
 							observer: run.recordingTurns({ personaPath: assembled.personaPath, statePath: assembled.handle.statePath }),
 							bus,
 						},
@@ -250,11 +289,11 @@ function localPorts(root: string, costs: StepCost[], meter: Meter, say: (line: s
 			u = await meter.settled();
 			const tick = await runObserve(pp, prompt, "internal");
 			cost.tick = await since(t, u);
-			if (!tick.ok) say(chalk.yellow(`    tick failed: ${tick.error}`));
+			if (!tick.ok) person.say(chalk.yellow(`    tick failed: ${tick.error}`));
 
 			return { outcome: "completed", summary: outcome.answer, reason: ended.reason };
 		},
-		approve: (input) => approveOnTerminal(input, interactive),
+		approve: (input) => person.approveStep(input),
 		checkProduced: async ({ paths, since: from }) => producedIn(root, paths, from),
 	};
 }
@@ -425,11 +464,10 @@ const runCommand = new Command("run")
 		// already in `result.steps`; repeating it here would store every deliverable twice.
 		const costs: StepCost[] = [];
 		const meter = meterModelCalls();
-		const say = json ? (line: string) => console.error(line) : (line: string) => console.log(line);
 
 		let result: service.ServiceRunResult;
 		try {
-			result = await service.runService(def, localPorts(root, costs, meter, say, !json), { workingDir: root, brief });
+			result = await service.runService(def, localPorts(root, costs, meter, terminalPerson(json)), { workingDir: root, brief });
 		} finally {
 			meter.stop();
 		}
@@ -491,11 +529,10 @@ const resumeCommand = new Command("resume")
 		writeFileSync(from, JSON.stringify({ ...stored.journal, resumedBy: resolve(out) }, null, 1));
 		const costs: StepCost[] = [];
 		const meter = meterModelCalls();
-		const say = json ? (line: string) => console.error(line) : (line: string) => console.log(line);
 
 		let resumed: service.Resumed;
 		try {
-			resumed = await service.resumeService(def, localPorts(root, costs, meter, say, !json), { result: stored.journal.result, brief, workingDir: root }, reply);
+			resumed = await service.resumeService(def, localPorts(root, costs, meter, terminalPerson(json)), { result: stored.journal.result, brief, workingDir: root }, reply);
 		} catch (e) {
 			writeFileSync(from, text);
 			throw e;
@@ -514,6 +551,54 @@ const resumeCommand = new Command("resume")
 			json,
 		);
 	});
+
+/**
+ * E73: how a run ended, told to the persona that started it from a turn. Exported for its test.
+ *
+ * What a persona needs to answer the person: the end, the step that failed and why, the files the steps wrote,
+ * the last note, how to pick up a run that waits, and where the journal is. Not the costs: those are the
+ * journal's, and a persona reciting token counts is not answering anybody.
+ */
+export function describeRun(address: string, result: service.ServiceRunResult, journal: string): string {
+	const lines = [`${address} ${result.status}${result.reason ? `: ${result.reason}` : ""}`];
+	const failed = result.steps.find((s) => s.outcome === "failed" && s.reason);
+	if (result.status === "failed" && failed) lines.push(`step ${failed.position} of ${failed.serviceName} failed: ${failed.reason}`);
+	const wrote = result.steps.flatMap((s) => (s.produced ?? []).map((file) => `${file.path} (${file.bytes} bytes)`));
+	if (wrote.length > 0) lines.push(`the steps wrote ${wrote.join(", ")}`);
+	if (result.summary) lines.push(`the last note: ${result.summary.length > 600 ? `${result.summary.slice(0, 600)}...` : result.summary}`);
+	if (result.waiting) lines.push(`it is waiting; it is picked up with ${resumeHint(result.waiting, journal)}`);
+	lines.push(`journal: ${journal}`);
+	return lines.join("\n");
+}
+
+/**
+ * E73: run a service from a persona's turn, for the TUI's `run_service`.
+ *
+ * The same runner as `service run`, with the person at the TUI's keyboard in place of the terminal's, and the
+ * journal written where `service run` writes it. The person already approved this run: the tool's gate asked
+ * before this was called. What comes back is what the persona is told.
+ */
+export async function runServiceFromTurn(root: string, input: { service: string; brief: string }, person: PersonAt): Promise<string> {
+	const def = loadService(root, input.service);
+	if (!def) return `error: no service ${input.service} at ${servicePath(root, input.service)}`;
+	const problems = service.checkComposition(def, (a) => loadService(root, a));
+	if (problems.length) return `error: ${input.service} cannot run as written: ${problems.join("; ")}`;
+
+	const brief = service.clientBrief(input.brief);
+	const started = Date.now();
+	const costs: StepCost[] = [];
+	const meter = meterModelCalls();
+	let result: service.ServiceRunResult;
+	try {
+		result = await service.runService(def, localPorts(root, costs, meter, person), { workingDir: root, brief });
+	} finally {
+		meter.stop();
+	}
+	const out = journalPath(root, input.service, started);
+	const journal: Journal = { service: input.service, started: new Date(started).toISOString(), wallMs: Date.now() - started, brief, result, costs, total: totalOf(costs) };
+	writeFileSync(out, JSON.stringify(journal, null, 1));
+	return describeRun(input.service, result, resolve(out));
+}
 
 interface PhaseCost extends ModelUsage {
 	ms: number;

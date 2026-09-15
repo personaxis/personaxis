@@ -251,12 +251,30 @@ Said so it is not assumed:
   posture, because a known read inside the project is never asked about.
 - **A failed run is not retried.** Run it again; the journal of the earlier run stays. A waiting
   run is picked up with `service resume`.
-- **The TUI does not run services yet**, so it cannot pick one up either. When it does, it uses
-  the same engine function as `service resume`, and a question a step asks there reaches the person
-  at the keyboard directly.
+- **A run started from a conversation is picked up the same way**, with `service resume` on its
+  journal. See [From a persona's turn](#from-a-personas-turn).
 - **The workspace cannot hold a sub-service or a declared file yet.** Its steps are one persona
   each and declare nothing; `serviceRef` and `produces` exist here first. The workspace already
   names the files a step wrote, from its record, in the same `{ path, bytes }` shape.
+
+## From a persona's turn
+
+A persona that delivers a service can run it from a conversation, with nobody typing a command: the
+request is made in plain words, the persona says which of its services delivers it, and `run_service`
+runs that service on the client's request. **The person approves every run before it starts**, with the
+service, how many steps it has, the files it leaves and the request written out in the question. No
+posture skips that: a posture that lets an ordinary write through without asking does not let a service
+through.
+
+Who is shown the tool: only a persona that delivers a service, only where the host can run one (the
+TUI today), and never a read-only persona. A delegated sub-task and a service step never have it, so a
+service cannot start another from inside a run. A service the persona does not deliver is refused by
+name, and so is a run with no request.
+
+While it runs, each step reports in the transcript; a step's tool call that wants a person asks in that
+session, and a question a step's persona asks reaches the keyboard instead of leaving the run waiting.
+The journal goes where `service run` writes it, and the persona is told how the run ended, what the
+steps wrote, the last note, and how to pick the run up when it waits.
 
 ## Not to be confused with
 

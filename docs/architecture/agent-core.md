@@ -74,7 +74,7 @@ ledger records outcomes but nothing writes skills.
 2. Classify the destination: (a) a new skill `.md` with the abstracted method, (b) a refinement
    (diff) of an existing skill, (c) a memory preference/fact, (d) a spec self-edit proposal.
 3. For skills: generate the `.md`, run it through `scanForInjection` + a danger review (a
-   self-written skill is code that will later run: **security first, in every posture** — a
+   self-written skill is code that will later run: **security first, in every posture**, and a
    dangerous body is refused even under `autonomous`), and only then through the governance gate
    (block if `locked`, queue to `skills/pending/` if `suggesting`, write to `skills/` if
    `autonomous`).
@@ -156,7 +156,7 @@ exposes `read_output`/`grep_output`, closured over the per-run store like `memor
 `context.ts` gained `compactMessages({ pinned })`: the task state is pinned as system speech ahead
 of the summary, so the goal + plan are authoritative rather than at the summarizer's mercy. Wired
 into `agent.ts` per run (store + tracker, offload at the tool-output push, `pinned` on compaction),
-which also fixed per-run tool resolution (`activeTools.find(...) ?? toolByName(...)` — the old
+which also fixed per-run tool resolution (`activeTools.find(...) ?? toolByName(...)`; the old
 global-only lookup could not find a per-run tool the model was shown). Dogfooded: a 54,912-char /
 4,000-line log becomes 981 chars in context, and a buried error line is recovered via
 `grep_output` (truncation would have lost it). Standing: auto-correction (3) already exists via
@@ -219,6 +219,17 @@ person, an agent or an app. Such a run is picked up with the engine's `service.r
 the question and the answer in its prompt, and the steps before it are not run again. The record
 keeps a `question` entry in the persona's name and, when somebody answered, an `answer` entry in the
 name of whoever opened the turn.
+
+**Build status (2026-09-15): a persona runs the service it delivers, and the person approves every
+run.** A service used to run only from a command, so a persona asked in plain words for exactly what
+one of its services delivers improvised the steps instead. It now has `run_service`
+(`core/src/tools/run-service.ts`): the service and the client's request in their own words. Its gate
+**asks whatever the posture**, because the loop's verdict is the strictest of its guards and consent
+only tightens it, and the question carries what is being approved: which service, how many steps, what
+it leaves, and on what request. The tool runs nothing itself; the host lends the way to run one, so a
+turn whose host cannot is never shown it, and neither is a persona that delivers no service, a
+read-only persona, a delegated sub-task or a service step, which is what keeps a service from starting
+another from inside a run. The persona's index names the tool only where it is offered.
 
 ## 7. Gaps proposed beyond the six pillars
 

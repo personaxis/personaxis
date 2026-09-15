@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { DECIDE_INSTRUCTION, describeDecision, parseDecision } from "../src/run/decide.js";
 
 /** Written out rather than imported: the list the module keeps to itself, as a reader of the instruction sees it. */
-const ROUTES = ["answer", "ask", "consult", "skills", "delegate", "work"] as const;
+const ROUTES = ["answer", "ask", "consult", "skills", "service", "delegate", "work"] as const;
 import { scaffoldFor } from "../src/run/destinations.js";
 
 describe("reading a decision (E83)", () => {

@@ -36,6 +36,7 @@ import matter from "gray-matter";
 
 import { readMemoryTypes } from "../memory.js";
 import { localSkillsOf } from "./local-skills.js";
+import { RUN_SERVICE_TOOL } from "../tools/run-service.js";
 
 /** One thing a persona has: its name, and the line that says what it is for. */
 export interface MapItem {
@@ -268,7 +269,18 @@ export function workMapFor(personaPath: string, options: { readonly workspaceRoo
  *
  * Deterministic: the same map renders the same bytes, which is what lets it sit in the cached prefix.
  */
-export function renderWorkMap(map: WorkMap, limits: { readonly perSection?: number } = {}): string {
+export function renderWorkMap(
+	map: WorkMap,
+	limits: {
+		readonly perSection?: number;
+		/**
+		 * E73: whether this turn can run a service, because its host lent one. Only then does the index name
+		 * `run_service`: a service step reads the same index and has no such tool, and a model told of a tool
+		 * it does not have calls it anyway.
+		 */
+		readonly canRunServices?: boolean;
+	} = {},
+): string {
 	const cap = limits.perSection ?? PER_SECTION;
 	const lines: string[] = [
 		"## What you have, and when to use it",
@@ -290,9 +302,14 @@ export function renderWorkMap(map: WorkMap, limits: { readonly perSection?: numb
 	if (map.missingSkills.length > 0) {
 		lines.push(`Declared but not on disk, so not available: ${map.missingSkills.join(", ")}.`);
 	}
+	// E73: presented as what the persona offers a client, not as mechanics. Measured on 2026-09-14 (E79): listed
+	// as "a fixed sequence of steps", no persona named its service when asked what it could do, 0 of 3 with both
+	// models. Whether this wording moves that is measured in E73, not assumed.
 	section(
 		"Services you deliver",
-		"A fixed sequence of steps. Every step has to leave the files it names, or the run fails.",
+		limits.canRunServices === true
+			? `What you offer a client, done start to finish. When a request is what one of these delivers, say so and run it with ${RUN_SERVICE_TOOL}; the person approves every run first. Every step has to leave the files it names, or the run fails.`
+			: "What you offer a client, done start to finish. Every step has to leave the files it names, or the run fails.",
 		map.services.map((service) => {
 			// The description's own full stop is dropped: the line goes on after it, and "agree.. 2 steps"
 			// is what a model read before a test caught it.
