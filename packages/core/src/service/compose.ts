@@ -70,6 +70,11 @@ export interface ServiceDef {
 	/** This service's own address, which is what a parent's `serviceRef` points at. */
 	address: string;
 	name: string;
+	/**
+	 * What the service is for, in a line a person or a persona can read. Optional, as it is on the
+	 * SaaS's `Service`, and what a persona's work map shows next to the files the service leaves.
+	 */
+	description?: string;
 	/** Who answers for the whole service. Absent, the first step's persona does. */
 	leadPersonaRef?: string;
 	steps: readonly ServiceStepDef[];

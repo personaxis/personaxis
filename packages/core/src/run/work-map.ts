@@ -1,0 +1,345 @@
+/**
+ * What a persona has, what each thing is for, and where work goes.
+ *
+ * ## Why this exists
+ *
+ * Asked for on 2026-09-14: a persona should know how everything it has is organised and where each
+ * thing is done, so that it does not make things up. What it was given was a list of folders. The
+ * runtime context named `references/` and `skills/` with the files inside them, and never said what
+ * any of them was for, which services the persona delivers, or where a deliverable goes. A model that
+ * does not know a skill exists will not use it, and one that sees only a file name has to open the
+ * file to find out whether it matters.
+ *
+ * This is the index, at the level Agent Skills uses for skills, extended to everything else a persona
+ * has: a name and the line that says what it is for. The full text stays on disk and is read when the
+ * task needs it.
+ *
+ * ## Why it lives in core
+ *
+ * The folder listing was built by the CLI, so a turn run anywhere else, a hosted runner or an editor
+ * over ACP, knew less about the persona than a turn in the TUI. Reading a persona's folder is the same
+ * on a laptop and in the cloud, so it is the engine's.
+ *
+ * ## Byte-stable within a session
+ *
+ * It sits in the cached prefix, so nothing in it moves while a persona works. No posture: that is the
+ * scope of the moment and travels in its own message (`agent.ts`, E20). No session list: the old
+ * listing named every conversation file, so the prefix changed between the first turn of a session
+ * and the second. No clock. Lists are sorted and capped, and what does not fit is counted, never
+ * dropped without a word.
+ */
+
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, relative } from "node:path";
+
+import matter from "gray-matter";
+
+import { readMemoryTypes } from "../memory.js";
+
+/** One thing a persona has: its name, and the line that says what it is for. */
+export interface MapItem {
+	readonly name: string;
+	readonly about: string;
+}
+
+/** A service the persona takes part in, and what a run of it has to leave behind. */
+export interface MapService {
+	readonly address: string;
+	readonly name: string;
+	readonly about: string;
+	readonly delivers: readonly string[];
+	readonly steps: number;
+}
+
+export interface WorkMap {
+	/** Where the session works, and where deliverables go. */
+	readonly workspace: string;
+	/** The persona's own folder, relative to the workspace when it is inside it. */
+	readonly ownFolder: string;
+	readonly skills: readonly MapItem[];
+	/** Declared local skills whose `SKILL.md` is not on disk. Said, because a silent gap looks like a skill the persona forgot. */
+	readonly missingSkills: readonly string[];
+	readonly services: readonly MapService[];
+	readonly references: readonly MapItem[];
+	readonly examples: readonly MapItem[];
+	readonly assets: readonly MapItem[];
+	/** The persona's own sub-personas, addressed from where it stands. */
+	readonly subPersonas: readonly MapItem[];
+	/** The memory kinds this persona keeps. */
+	readonly memory: readonly string[];
+}
+
+/** How many items a section lists before it counts the rest. */
+const PER_SECTION = 20;
+/** How long the line about a file or a service may be. */
+const ABOUT_CHARS = 140;
+/** How long a skill's description may be. Agent Skills allows 1024; a small model reads less. */
+const SKILL_CHARS = 300;
+/** How deep a resource folder is listed. */
+const RESOURCE_DEPTH = 2;
+/** How deep sub-personas nest before the walk stops. */
+const PERSONA_DEPTH = 5;
+
+const TEXT_EXTENSIONS = new Set([".md", ".markdown", ".mdx", ".txt"]);
+
+function oneLine(text: string, max: number): string {
+	const flat = text.replace(/\s+/g, " ").trim();
+	return flat.length <= max ? flat : `${flat.slice(0, max - 3).trimEnd()}...`;
+}
+
+function frontmatterOf(file: string): Record<string, unknown> {
+	try {
+		return matter(readFileSync(file, "utf8")).data as Record<string, unknown>;
+	} catch {
+		return {};
+	}
+}
+
+/** What a file is about: its first heading, or its first line, or what kind of file it is. */
+function aboutFile(file: string): string {
+	const ext = extname(file).toLowerCase();
+	if (!TEXT_EXTENSIONS.has(ext)) return `${ext.slice(1) || "binary"} file`;
+	try {
+		const body = matter(readFileSync(file, "utf8")).content;
+		const heading = /^#{1,6}\s+(.+)$/m.exec(body)?.[1];
+		const first = body
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.find((line) => line.length > 0);
+		return oneLine(heading ?? first ?? "(empty)", ABOUT_CHARS);
+	} catch {
+		return "(unreadable)";
+	}
+}
+
+/** Files under a folder, sorted, hidden entries skipped, to a fixed depth. */
+function filesUnder(dir: string): string[] {
+	const out: string[] = [];
+	const walk = (current: string, level: number): void => {
+		let entries: string[];
+		try {
+			entries = readdirSync(current).sort();
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			if (entry.startsWith(".")) continue;
+			const full = join(current, entry);
+			let isDirectory: boolean;
+			try {
+				isDirectory = statSync(full).isDirectory();
+			} catch {
+				continue;
+			}
+			if (isDirectory) {
+				if (level < RESOURCE_DEPTH) walk(full, level + 1);
+			} else {
+				out.push(full);
+			}
+		}
+	};
+	if (existsSync(dir)) walk(dir, 1);
+	return out;
+}
+
+/**
+ * The persona's address from its path: none for a main persona, `cmo` or `cmo/legal` for a
+ * sub-persona. Read from the path because the address IS the path, under `.personaxis/personas/`.
+ */
+function addressOf(personaPath: string): string | undefined {
+	const parts = personaPath.replace(/\\/g, "/").split("/");
+	const root = parts.lastIndexOf(".personaxis");
+	if (root < 0) return undefined;
+	const between = parts.slice(root + 1, -1);
+	const segments: string[] = [];
+	for (let i = 0; i + 1 < between.length; i += 2) {
+		if (between[i] !== "personas") break;
+		segments.push(between[i + 1]!);
+	}
+	return segments.length > 0 ? segments.join("/") : undefined;
+}
+
+/** Declared local skills, with the description their own `SKILL.md` gives. */
+function skillsOf(folder: string, frontmatter: Record<string, unknown>): { skills: MapItem[]; missing: string[] } {
+	const declared = (frontmatter.extensions as { skills?: unknown } | undefined)?.skills;
+	const entries = Array.isArray(declared) ? declared.filter((entry): entry is string => typeof entry === "string") : [];
+	const skills = new Map<string, MapItem>();
+	const missing = new Set<string>();
+	for (const entry of entries) {
+		// A registry or GitHub reference is not on this disk, and a run never fetches it.
+		if (entry.startsWith("@") || entry.startsWith("github:")) continue;
+		const name = entry.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() ?? entry;
+		const file = join(folder, "skills", name, "SKILL.md");
+		if (!existsSync(file)) {
+			missing.add(name);
+			continue;
+		}
+		const description = frontmatterOf(file).description;
+		skills.set(name, { name, about: oneLine(typeof description === "string" && description.trim() ? description : aboutFile(file), SKILL_CHARS) });
+	}
+	return {
+		skills: [...skills.values()].sort((a, b) => a.name.localeCompare(b.name)),
+		missing: [...missing].sort(),
+	};
+}
+
+/**
+ * Services in the workspace this persona takes part in. A main persona is the project's own and sees
+ * all of them; a sub-persona sees the ones it leads or does a step of.
+ */
+function servicesFor(workspace: string, address: string | undefined): MapService[] {
+	const dir = join(workspace, ".personaxis", "services");
+	let files: string[];
+	try {
+		files = readdirSync(dir).filter((file) => file.endsWith(".json")).sort();
+	} catch {
+		return [];
+	}
+	const out: MapService[] = [];
+	for (const file of files) {
+		let definition: { name?: unknown; description?: unknown; leadPersonaRef?: unknown; steps?: unknown };
+		try {
+			definition = JSON.parse(readFileSync(join(dir, file), "utf8")) as typeof definition;
+		} catch {
+			continue;
+		}
+		const steps = Array.isArray(definition.steps) ? (definition.steps as Array<{ personaRef?: unknown; produces?: unknown }>) : [];
+		const takesPart = address === undefined || definition.leadPersonaRef === address || steps.some((step) => step.personaRef === address);
+		if (!takesPart) continue;
+		const serviceAddress = basename(file, ".json");
+		const delivers = [
+			...new Set(steps.flatMap((step) => (Array.isArray(step.produces) ? step.produces.filter((p): p is string => typeof p === "string") : []))),
+		];
+		out.push({
+			address: serviceAddress,
+			name: typeof definition.name === "string" ? definition.name : serviceAddress,
+			about: typeof definition.description === "string" ? oneLine(definition.description, ABOUT_CHARS) : "",
+			delivers,
+			steps: steps.length,
+		});
+	}
+	return out;
+}
+
+/** The persona's own sub-personas, depth first, each with the purpose its spec declares. */
+function subPersonasOf(folder: string): MapItem[] {
+	const out: MapItem[] = [];
+	const walk = (dir: string, chain: readonly string[]): void => {
+		if (chain.length >= PERSONA_DEPTH) return;
+		const personas = join(dir, "personas");
+		let names: string[];
+		try {
+			names = readdirSync(personas).sort();
+		} catch {
+			return;
+		}
+		for (const name of names) {
+			const spec = join(personas, name, "personaxis.md");
+			if (!existsSync(spec)) continue;
+			const address = [...chain, name];
+			const identity = frontmatterOf(spec).identity as { system_identity?: { purpose?: unknown } } | undefined;
+			const purpose = identity?.system_identity?.purpose;
+			out.push({ name: address.join("/"), about: typeof purpose === "string" ? oneLine(purpose, ABOUT_CHARS) : "" });
+			walk(join(personas, name), address);
+		}
+	};
+	walk(folder, []);
+	return out;
+}
+
+function shown(workspace: string, path: string): string {
+	const rel = relative(workspace, path);
+	return (rel && !rel.startsWith("..") ? rel : path).replace(/\\/g, "/");
+}
+
+/** Everything a persona has, read from its folder and its workspace. */
+export function workMapFor(personaPath: string, options: { readonly workspaceRoot: string; readonly frontmatter?: Record<string, unknown> }): WorkMap {
+	const folder = dirname(personaPath);
+	const frontmatter = options.frontmatter ?? frontmatterOf(personaPath);
+	const { skills, missing } = skillsOf(folder, frontmatter);
+	const listed = (sub: string): MapItem[] =>
+		filesUnder(join(folder, sub)).map((file) => ({ name: shown(options.workspaceRoot, file), about: aboutFile(file) }));
+	const kinds = readMemoryTypes(frontmatter) as unknown as Record<string, unknown>;
+	return {
+		workspace: options.workspaceRoot.replace(/\\/g, "/"),
+		ownFolder: shown(options.workspaceRoot, folder),
+		skills,
+		missingSkills: missing,
+		services: servicesFor(options.workspaceRoot, addressOf(personaPath)),
+		references: listed("references"),
+		examples: listed("examples"),
+		assets: listed("assets"),
+		subPersonas: subPersonasOf(folder),
+		memory: Object.entries(kinds)
+			.filter(([, on]) => on === true)
+			.map(([kind]) => kind.replace(/_/g, " "))
+			.sort(),
+	};
+}
+
+/**
+ * The map as the model reads it.
+ *
+ * Deterministic: the same map renders the same bytes, which is what lets it sit in the cached prefix.
+ */
+export function renderWorkMap(map: WorkMap, limits: { readonly perSection?: number } = {}): string {
+	const cap = limits.perSection ?? PER_SECTION;
+	const lines: string[] = [
+		"## What you have, and when to use it",
+		"",
+		"This is an index. Each line says what a thing is for; open a file only when the task needs it.",
+	];
+	const section = (title: string, intro: string, items: readonly string[], where: string): void => {
+		if (items.length === 0) return;
+		lines.push("", `### ${title}`, intro, ...items.slice(0, cap));
+		if (items.length > cap) lines.push(`- ...and ${items.length - cap} more in ${where}; list it when you need one.`);
+	};
+
+	section(
+		"Skills",
+		"Your methods. When one fits the task, read its SKILL.md in full before you follow it.",
+		map.skills.map((skill) => `- ${skill.name}: ${skill.about} (${map.ownFolder}/skills/${skill.name}/SKILL.md)`),
+		`${map.ownFolder}/skills/`,
+	);
+	if (map.missingSkills.length > 0) {
+		lines.push(`Declared but not on disk, so not available: ${map.missingSkills.join(", ")}.`);
+	}
+	section(
+		"Services you deliver",
+		"A fixed sequence of steps. Every step has to leave the files it names, or the run fails.",
+		map.services.map((service) => {
+			// The description's own full stop is dropped: the line goes on after it, and "agree.. 2 steps"
+			// is what a model read before a test caught it.
+			const about = service.about ? `: ${service.about.replace(/[.\s]+$/, "")}` : "";
+			const leaves = service.delivers.length > 0 ? `leaves ${service.delivers.join(", ")}` : "declares no files";
+			return `- ${service.address} ("${service.name}")${about}. ${service.steps} step${service.steps === 1 ? "" : "s"}, ${leaves}.`;
+		}),
+		".personaxis/services/",
+	);
+	const item = (entry: MapItem): string => `- ${entry.name}: ${entry.about}`;
+	section("References", "Background material you draw on.", map.references.map(item), `${map.ownFolder}/references/`);
+	section("Examples", "Worked outputs, to match their format and voice.", map.examples.map(item), `${map.ownFolder}/examples/`);
+	section("Assets", "Supporting files.", map.assets.map(item), `${map.ownFolder}/assets/`);
+	section(
+		"Sub-personas you can hand work to",
+		"Specialists with their own definition, memory and limits. You may read their files; you never write them.",
+		map.subPersonas.map((sub) => `- @${sub.name}${sub.about ? `: ${sub.about}` : ""}`),
+		`${map.ownFolder}/personas/`,
+	);
+	if (map.memory.length > 0) {
+		lines.push("", "### Memory", `You keep: ${map.memory.join(", ")}. Search it with memory_search before saying you do not remember.`);
+	}
+
+	const nothing =
+		map.skills.length + map.services.length + map.references.length + map.examples.length + map.assets.length + map.subPersonas.length === 0;
+	if (nothing) lines.push("", "You have no skills, services, references, examples, assets or sub-personas yet.");
+
+	lines.push(
+		"",
+		"## Where things go",
+		`- Work happens in the workspace, \`${map.workspace}\`. What you deliver is written there.`,
+		`- Your own folder is \`${map.ownFolder}\`: your definition, state, memory, skills and references. Read from it; do not rewrite your definition or your skills.`,
+		"- Read heavy material by its path when the task needs it, not all at once.",
+	);
+	return lines.join("\n");
+}

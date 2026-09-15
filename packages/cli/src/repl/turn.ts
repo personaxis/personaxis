@@ -64,7 +64,7 @@ import { buildAwarenessBlock } from "./awareness.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import type { Ctx } from "./types.js";
 import { recordReplCompaction } from "./compaction-record.js";
-import { llmConfig, ctxModelArg, buildPolicy, readGoalText, POSTURES } from "./config.js";
+import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
 import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError } from "./render.js";
 import { expandFileMentions } from "./mentions.js";
@@ -76,11 +76,15 @@ import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf }
  * and `/do`: natural language can now call tools. Offline (no model) → the honest
  * reflective responder. Identity evolution (the Living Loop) still runs each turn.
  */
-/** Session facts for the runtime-context block (V5.P0.1). */
+/**
+ * Session facts for the runtime-context block (V5.P0.1).
+ *
+ * No posture since E79: the block sits in the cached prefix and the posture changes with shift+tab.
+ * The model still reads it every turn, in the "Right now" message the loop adds (`agent.ts`, E20).
+ */
 function awarenessOpts(ctx: Ctx, model: string | undefined): AwarenessOpts {
   return {
     frontmatter: ctx.handle.frontmatter as Record<string, unknown>,
-    posture: POSTURES[ctx.postureIndex],
     model,
     cwd: process.cwd(),
     // V7.A7: the standing goal rides the runtime context (recency slot), which the

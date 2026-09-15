@@ -1,24 +1,34 @@
 /**
- * Structural self-awareness for a persona (F2, expanded V5.P0.1).
+ * Structural self-awareness for a persona (F2, expanded V5.P0.1, rebuilt on the work map in E79).
  *
- * A persona must know, at runtime, WHO it is, WHERE it sits and WHAT it has: which spec
- * defines it and under which spec_version it operates, which files it reads and owns,
- * whether it is the project MAIN persona or a SUB-persona, the sub-personas it can
- * delegate to, its resource space, and the session posture. This block is injected into
- * the agent's system prompt every turn, it is NOT baked into the compiled PERSONA.md
- * (which stays portable + purely qualitative) and is NEVER written into personaxis.md.
+ * A persona must know, at runtime, WHO it is, WHERE it sits and WHAT it has: which spec defines it and
+ * under which spec_version it operates, whether it is the project MAIN persona or a SUB-persona, what
+ * each thing it has is for, and where its work goes. This block is injected into the agent's system
+ * prompt every turn, it is NOT baked into the compiled PERSONA.md (which stays portable + purely
+ * qualitative) and is NEVER written into personaxis.md.
+ *
+ * ## What changed in E79, and why
+ *
+ * The block used to list the persona's folders and the files inside them. It never said what any of
+ * them was for, named no services, and said nothing about where a deliverable goes, so a persona had
+ * to open files to learn whether they mattered. What it has now comes from the engine's work map
+ * (`core/src/run/work-map.ts`), which every surface can build.
+ *
+ * Two things left the block on purpose. The sandbox posture, because it changes when somebody presses
+ * shift+tab and this block sits in the cached prefix: the posture already travels in its own message
+ * each turn (`agent.ts`, E20). And the session list, which named every conversation file, so the
+ * prefix changed between the first turn of a session and the second.
  */
 
 import { dirname, relative, resolve } from "node:path";
+
+import { run } from "@personaxis/core";
+
 import { compiledPathFor, isSubagentPath, slugAddressFromPath } from "../load.js";
-import { buildResourceManifest } from "../resource-manifest.js";
-import { discoverTree } from "./roster.js";
 
 export interface AwarenessOpts {
   /** Persona frontmatter (spec_version, apiVersion, improvement_policy, identity). */
   frontmatter?: Record<string, unknown>;
-  /** Active sandbox posture (read-only | workspace-write | danger-full-access). */
-  posture?: string;
   /** Model id answering this session (informational). */
   model?: string;
   /** Working directory of the session (project root). */
@@ -72,32 +82,16 @@ export function buildAwarenessBlock(personaPath: string, opts: AwarenessOpts = {
     `- Mutable state: \`${rel(dirname(personaPath))}/state.json\`: your live values, clamped to declared envelopes; every change lands in the mutation_log.`,
   );
 
-  // Session facts.
+  // Session facts that do not move while the session runs.
   const mode = fmString(fm, ["improvement_policy", "mode"]);
   const session: string[] = [];
   session.push(`- Project: \`${cwd.replace(/\\/g, "/")}\``);
   if (opts.model) session.push(`- Model answering this session: ${opts.model}`);
-  if (opts.posture) session.push(`- Sandbox posture: ${opts.posture}`);
   if (mode) session.push(`- Self-improvement mode: ${mode} (your edits ${mode === "locked" ? "are blocked" : mode === "suggesting" ? "queue for human review" : "may auto-apply within governance"})`);
   lines.push("", "## This session", ...session);
 
-  // Sub-personas THIS persona can delegate to (works for main and for any sub).
-  const subs = discoverTree(personaPath);
-  if (subs.length) {
-    lines.push(
-      "",
-      "## Sub-personas you can delegate to",
-      "Address one with @<address> in a message (also @all for every sub, or @<branch>/all for a subtree). You may READ their files but never edit them.",
-      ...subs.map((s) => `${"  ".repeat(s.depth - 1)}- @${s.address}`),
-    );
-  } else {
-    lines.push("", "## Sub-personas", "(none, you have no sub-personas)");
-  }
-
-  // Resource inventory beside this persona's spec (.personaxis/ or .../personas/<slug>/).
-  const manifest = buildResourceManifest(dirname(personaPath));
-  lines.push("", "## Your resource space", `Everything under \`${rel(dirname(personaPath))}/\` belongs to you (state, memory, sessions, skills, references).`);
-  lines.push(manifest.trim() ? manifest : "(no supporting resources yet)");
+  // E79: what the persona has and what each thing is for, from the engine's work map.
+  lines.push("", run.renderWorkMap(run.workMapFor(personaPath, { workspaceRoot: cwd, ...(fm ? { frontmatter: fm } : {}) })));
 
   // V7.A7: the standing goal goes LAST, the recency slot the model attends to most.
   // It used to sit buried mid-prompt, so when asked "what is your goal" the model went
