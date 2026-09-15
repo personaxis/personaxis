@@ -267,6 +267,11 @@ const KNOWN_READS: ReadonlyMap<string, readonly string[]> = new Map<string, read
 	["memory_get", []],
 	["read_output", []],
 	["grep_output", []],
+	// E72: loads one of the persona's own skills by name. Its arguments carry no path, so this sees a
+	// read where the persona stands; the tool's own gate is still in the cascade and asks when the
+	// skill it resolves lives outside the workspace. Missing from here, every skill a persona chose
+	// to use was put to a person under `on-request`, measured in the E72 bench on 2026-09-14.
+	["use_skill", []],
 	["read", []],
 	// A Glob pattern IS a path, and `../**` lists outside.
 	["glob", ["pattern"]],
