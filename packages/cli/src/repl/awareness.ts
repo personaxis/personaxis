@@ -35,6 +35,11 @@ export interface AwarenessOpts {
   cwd?: string;
   /** The standing objective set with /goal, rendered in the recency slot (V7.A7). */
   goal?: string;
+  /**
+   * E73: this turn's host can run a service, so the index tells the persona how. Only the TUI lends one; a service
+   * step reads the same index and must not be told of a tool it does not have.
+   */
+  canRunServices?: boolean;
 }
 
 function fmString(fm: Record<string, unknown> | undefined, path: string[]): string | undefined {
@@ -91,7 +96,10 @@ export function buildAwarenessBlock(personaPath: string, opts: AwarenessOpts = {
   lines.push("", "## This session", ...session);
 
   // E79: what the persona has and what each thing is for, from the engine's work map.
-  lines.push("", run.renderWorkMap(run.workMapFor(personaPath, { workspaceRoot: cwd, ...(fm ? { frontmatter: fm } : {}) })));
+  lines.push(
+    "",
+    run.renderWorkMap(run.workMapFor(personaPath, { workspaceRoot: cwd, ...(fm ? { frontmatter: fm } : {}) }), { canRunServices: opts.canRunServices === true }),
+  );
 
   // V7.A7: the standing goal goes LAST, the recency slot the model attends to most.
   // It used to sit buried mid-prompt, so when asked "what is your goal" the model went

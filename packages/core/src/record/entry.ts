@@ -273,7 +273,7 @@ export type RecordBody =
 	| {
 			readonly type: "decision";
 			readonly turn: string;
-			readonly route: "answer" | "ask" | "consult" | "skills" | "delegate" | "work";
+			readonly route: "answer" | "ask" | "consult" | "skills" | "service" | "delegate" | "work";
 			readonly why: string;
 	  }
 	/**

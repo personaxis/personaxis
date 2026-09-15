@@ -58,6 +58,7 @@ import { compile } from "../enforcement/policy-compile.js";
 import { Kernel } from "../kernel/index.js";
 import { delegateTool, MAX_DELEGATION_DEPTH } from "../tools/delegate.js";
 import { useSkillTool } from "../tools/use-skill.js";
+import { runServiceTool, type RunServiceInput } from "../tools/run-service.js";
 import { permissionsFor, TOOL_PERMISSIONS, TOOL_POINT } from "../tools/mounted.js";
 import { policyFromPersona } from "../enforcement/policy-from-persona.js";
 import { readAgentBudget } from "../governance.js";
@@ -67,6 +68,7 @@ import type { Ledger } from "./budget.js";
 import type { Conversation } from "./conversation.js";
 import { ledgerForChild, type DelegatedScope } from "./delegation.js";
 import { localSkillsOf } from "./local-skills.js";
+import { workMapFor } from "./work-map.js";
 import { defaultLoop } from "./default-provider.js";
 import { TurnRunner, type TurnObserver } from "./service.js";
 
@@ -110,6 +112,14 @@ export type SessionOptions = Omit<AgentOptions, Derived | "priorMessages"> & {
 	 * never come out smaller than it went in.
 	 */
 	readonly delegationDepth?: number;
+	/**
+	 * E73: the host's way to run one of the persona's services to its end, lent to a turn that may start one.
+	 *
+	 * Absent means nobody here can run a service, and then the persona is not shown `run_service` at all. The
+	 * TUI lends it; a service step and a delegated sub-task never have it, so a service cannot start another
+	 * from inside a turn.
+	 */
+	readonly runService?: (input: RunServiceInput) => Promise<string>;
 };
 
 /**
@@ -191,8 +201,9 @@ export function subTaskSession(
 ): SessionOptions {
 	// E84: the parent's way of reaching a person is dropped with its transcript. A sub-task that asks stops
 	// at the question and hands it back up, which is P10 of E77 and the same rule as `onApproval` below: a
-	// child never puts a prompt in front of whoever is at the keyboard.
-	const { ledger, conversation: _parentTranscript, kernel: _parentKernel, onQuestion: _parentAsks, ...carried } = parent;
+	// child never puts a prompt in front of whoever is at the keyboard. E73: nor its way to run a service, which
+	// asks that same person before every run.
+	const { ledger, conversation: _parentTranscript, kernel: _parentKernel, onQuestion: _parentAsks, runService: _parentRuns, ...carried } = parent;
 
 	return {
 		...carried,
@@ -226,7 +237,7 @@ export function subTaskSession(
 }
 
 export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): TurnRunner {
-	const { ledger, observer, delegationDepth, ...rest } = session;
+	const { ledger, observer, delegationDepth, runService, ...rest } = session;
 
 	// C6: the catalogue gets a way to hand work down.
 	//
@@ -298,6 +309,22 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 			requires: [TOOL_PERMISSIONS.readFiles],
 			activate: (context) => {
 				context.contribute(TOOL_POINT, useSkillTool({ skills: () => localSkillsOf(persona.personaPath, persona.frontmatter).skills }));
+			},
+		});
+	}
+
+	// E73: a persona runs a service it delivers, when the host lends a way to run one and there is one to run.
+	// Beside `use_skill` for the same reason, and behind the write permission, because a service's steps write
+	// files: a read-only persona is never shown a tool it would only be refused for using. What it delivers is
+	// read with the same function as its index, so the tool and the index cannot disagree about it.
+	const workspaceRoot = rest.policy?.workspaceRoot ?? process.cwd();
+	const delivered = () => workMapFor(persona.personaPath, { workspaceRoot, frontmatter: persona.frontmatter }).services;
+	if (runService !== undefined && delivered().length > 0) {
+		kernel.mount({
+			name: "tool.run-service",
+			requires: [TOOL_PERMISSIONS.writeFiles],
+			activate: (context) => {
+				context.contribute(TOOL_POINT, runServiceTool({ services: delivered, run: runService }));
 			},
 		});
 	}

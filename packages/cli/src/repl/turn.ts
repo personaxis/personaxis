@@ -66,8 +66,31 @@ import { ensureState,
 function questionPrompt(question: PersonQuestion): string {
   return `  ${renderQuestion(question).split("\n").join("\n  ")}\n  answer with a number, an option, or your own words: `;
 }
+
+/**
+ * E73: the person at this keyboard, for a service the persona runs from a turn.
+ *
+ * The same runner as `personaxis service run`, with its terminal prompts replaced by this session's: the step
+ * that wants approval asks here, a tool call a step's policy wants a person for goes through the session's own
+ * approval, a question a step asks reaches this keyboard instead of leaving the run waiting, and every line the
+ * run would print lands in the transcript. Without a terminal nobody is asked, which is a refusal, not a yes.
+ */
+function keyboardPerson(ctx: Ctx, ask: ((prompt: string) => Promise<string>) | undefined): PersonAt {
+  return {
+    approveStep: async ({ serviceName, position }) => {
+      if (!ask) return "unavailable";
+      const said = (await ask(chalk.yellow(`  approve step ${position} of ${serviceName}? [y/N] `))).trim().toLowerCase();
+      return said === "y" || said === "yes" ? "approved" : "rejected";
+    },
+    approveTool: (call, verdict) => ctx.approve(call, verdict),
+    ...(ask ? { onQuestion: async (question: PersonQuestion) => answerFrom(question, await ask(questionPrompt(question))) } : {}),
+    say: (line) => ctx.out(line, "activity"),
+  };
+}
+
 import { slugAddressFromPath } from "../load.js";
 import { runCompile } from "../commands/compile.js";
+import { runServiceFromTurn, type PersonAt } from "../commands/service.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import type { Ctx } from "./types.js";
@@ -171,12 +194,16 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       // server has not lost the ability to read a file.
       ...(ctx.mcp && ctx.mcp.tools.length > 0 ? { extraTools: [...ctx.mcp.tools] } : {}),
       personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
-      awareness: buildAwarenessBlock(ctx.handle.personaPath, awarenessOpts(ctx, llm.model)),
+      // E73: this turn can run one of the persona's services, so its index says so and names the tool.
+      awareness: buildAwarenessBlock(ctx.handle.personaPath, { ...awarenessOpts(ctx, llm.model), canRunServices: true }),
       goal: readGoalText(ctx.handle),
       onApproval: ctx.approve,
       // E84: a question the persona asks reaches the person at this keyboard, when there is one. Without a
       // terminal `ask` is absent, and the turn stops at the question instead, as P10 of E77 decided.
       ...(ask ? { onQuestion: async (question: PersonQuestion) => answerFrom(question, await ask(questionPrompt(question))) } : {}),
+      // E73: the persona runs a service it delivers on this project, and the person approves every run, which is
+      // P3 of E77 as David answered it: the tool's gate asks before this is ever called.
+      runService: (input) => runServiceFromTurn(process.cwd(), input, keyboardPerson(ctx, ask)),
       sessionId: ctx.sessionId,
       meter: ctx.meter,
       conversation: conversationOf(ctx),

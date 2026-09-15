@@ -18,10 +18,11 @@
  */
 
 /**
- * What a request can need, in the order a persona should consider them. `service` joins with `E73`. Not
- * exported: nothing outside this file needs the list, and the rule on unreachable exports holds for it.
+ * What a request can need, in the order a persona should consider them. `service` joined with `E73`, when a
+ * persona could run a service from a turn. Not exported: nothing outside this file needs the list, and the rule
+ * on unreachable exports holds for it.
  */
-const ROUTES = ["answer", "ask", "consult", "skills", "delegate", "work"] as const;
+const ROUTES = ["answer", "ask", "consult", "skills", "service", "delegate", "work"] as const;
 
 export type Route = (typeof ROUTES)[number];
 
@@ -36,6 +37,7 @@ const MEANING: Record<Route, string> = {
 	ask: "something you need is missing and only the person can give it, so ask for exactly that",
 	consult: "the answer is in your own material, a reference or an example your index lists, so read it before replying",
 	skills: "one of your skills fits this work, so load it before you start",
+	service: "the request is exactly what one of the services you deliver delivers, so run that service; the person approves it first",
 	delegate: "a colleague or one of your sub-personas is better placed, so hand it over",
 	work: "it takes several steps that leave files, so plan them and then do them",
 };
