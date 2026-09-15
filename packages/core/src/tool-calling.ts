@@ -491,7 +491,12 @@ export async function requestToolCall(
       };
     }
     // Auth/rate/server errors won't be fixed by the fallback, surface them.
-    if (res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500) {
+    //
+    // E83: and neither is anything wrong with a request that offered no tools. The fallback below exists for
+    // an endpoint that cannot take `tools`, and a request without them cannot be refused for that. Measured
+    // 2026-09-15: `command-a-reasoning` answered the planning call 422 "No valid response generated", the
+    // fallback turned it into a ReAct prompt that failed again, and the whole turn ended failed with 0 steps.
+    if (tools.length === 0 || res.status === 401 || res.status === 403 || res.status === 429 || res.status >= 500) {
       throw new Error(`tool-calling HTTP ${res.status}: ${await safeText(res)}`);
     }
     // 400/422 → endpoint likely doesn't support `tools`; degrade to ReAct.

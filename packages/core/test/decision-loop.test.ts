@@ -31,7 +31,7 @@ type Request = { messages: Array<{ role: string; content?: unknown }>; tools: un
  * A model that answers requests without tools from `texts`, in order, and requests with tools by finishing.
  * Keeps every request it was sent.
  */
-function scripted(texts: readonly string[]): { fetchImpl: typeof fetch; sent: Request[] } {
+function scripted(texts: ReadonlyArray<string | { readonly status: number; readonly body: string }>): { fetchImpl: typeof fetch; sent: Request[] } {
 	const sent: Request[] = [];
 	let written = 0;
 	const fetchImpl = (async (url: string, init?: { body?: string }) => {
@@ -40,9 +40,12 @@ function scripted(texts: readonly string[]): { fetchImpl: typeof fetch; sent: Re
 		const request = { messages: body.messages ?? [], tools: body.tools ?? [], toolsField: "tools" in body };
 		sent.push(request);
 		if (request.tools.length === 0) {
-			const content = texts[written] ?? "";
+			const next = texts[written] ?? "";
 			written += 1;
-			return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content }, finish_reason: "stop" }] }) };
+			if (typeof next !== "string") {
+				return { ok: false, status: next.status, text: async () => next.body, json: async () => JSON.parse(next.body) };
+			}
+			return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: next }, finish_reason: "stop" }] }) };
 		}
 		const call = { id: `c${sent.length}`, type: "function", function: { name: "finish", arguments: JSON.stringify({ summary: "done" }) } };
 		return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "", tool_calls: [call] }, finish_reason: "tool_calls" }] }) };
@@ -50,10 +53,11 @@ function scripted(texts: readonly string[]): { fetchImpl: typeof fetch; sent: Re
 	return { fetchImpl, sent };
 }
 
-async function turn(texts: readonly string[], scaffold?: Scaffold) {
+async function turn(texts: Parameters<typeof scripted>[0], scaffold?: Scaffold, operatorPlans = false) {
 	const model = scripted(texts);
 	const permissions = { sandbox: "workspace-write", approval: "never" };
 	const agent = new PersonaAgent({
+		...(operatorPlans ? { plan: { enabled: true } } : {}),
 		llm: { endpoint: "http://x/v1", model: "m", fetchImpl: model.fetchImpl, ...(scaffold === undefined ? {} : { scaffold }) },
 		policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" },
 		capability: compile(policyFromPersona({ permissions }, { personaVersionId: "pv_decide" })),
@@ -122,5 +126,36 @@ describe("deciding before acting (E83)", () => {
 		// The accepted plan is anchored for the rest of the run.
 		expect(says(sent[2]!, "This run is executing the following plan")).toBe(true);
 		expect(decisionOf(entries)?.body).toMatchObject({ route: "work" });
+	});
+
+	it("goes on acting without a plan when the persona's own route asked for one and none came out readable", async () => {
+		const { sent, events, entries } = await turn(['{"route": "work", "why": "three files"}', "I will write the files.", "Still no plan here."], "small");
+
+		// Two planning attempts, then the loop with its tools, not a stopped run.
+		expect(sent.filter((request) => says(request, PLAN_INSTRUCTION))).toHaveLength(2);
+		expect(sent.at(-1)!.tools.length).toBeGreaterThan(0);
+		expect(events.some((event) => event.type === "agent-think" && event.text.startsWith("[plan] no usable plan"))).toBe(true);
+		expect(entries.find((entry) => entry.body.type === "turn-close")?.body).toMatchObject({ outcome: "answered" });
+		expect(decisionOf(entries)?.body).toMatchObject({ route: "work" });
+	});
+
+	it("still stops a run the operator asked to plan when no plan comes out, which is that rule's promise", async () => {
+		const { sent, entries } = await turn(["I will write the files.", "Still no plan here."], undefined, true);
+
+		expect(sent.filter((request) => says(request, PLAN_INSTRUCTION))).toHaveLength(2);
+		expect(sent.some((request) => request.tools.length > 0)).toBe(false);
+		expect(entries.find((entry) => entry.body.type === "turn-close")?.body).toMatchObject({ outcome: "refused" });
+	});
+
+	it("does not turn a failed call with no tools into a ReAct prompt, and the turn still acts", async () => {
+		// Measured with command-a-reasoning: the planning call came back 422 and the fallback ended the turn failed.
+		const refused = { status: 422, body: '{"error_type":"NO_VALID_RESPONSE_GENERATED","message":"No valid response generated"}' };
+		const { sent, entries } = await turn(['{"route": "work", "why": "three files"}', refused], "small");
+
+		// Decision, one planning call, then straight to the loop: no request with a ReAct instruction in between.
+		expect(sent).toHaveLength(3);
+		expect(sent.some((request) => says(request, "You are an agent that acts ONLY by emitting a single JSON action"))).toBe(false);
+		expect(sent[2]!.tools.length).toBeGreaterThan(0);
+		expect(entries.find((entry) => entry.body.type === "turn-close")?.body).toMatchObject({ outcome: "answered" });
 	});
 });
