@@ -10,6 +10,7 @@
  * disk, and a run never fetches it: pulling a skill is `personaxis skills pull`, with its review.
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -67,4 +68,22 @@ export function localSkillsOf(personaPath: string, frontmatter?: Record<string, 
 		skills: [...skills.values()].sort((a, b) => a.name.localeCompare(b.name)),
 		missing: [...missing].sort(),
 	};
+}
+
+/**
+ * The skill a name asks for, matched the way a person or a model writes it: whatever the case, with stray
+ * spaces trimmed. One matcher for `use_skill`, which loads the skill, and for the record, which writes down
+ * that it was loaded (E80), so the two cannot disagree about which skill a name meant.
+ */
+export function skillNamed(skills: readonly LocalSkill[], requested: string): LocalSkill | undefined {
+	const wanted = requested.trim().toLowerCase();
+	return skills.find((skill) => skill.name.toLowerCase() === wanted);
+}
+
+/**
+ * The version a loaded skill is named by: the first 16 hex characters of the SHA-256 of its `SKILL.md` as
+ * read. One place, so the version `use_skill` shows the persona and the one the record keeps are the same.
+ */
+export function skillFingerprint(content: string): string {
+	return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }

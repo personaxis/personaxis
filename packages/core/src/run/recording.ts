@@ -51,7 +51,7 @@ import { writingToRecord, type RecordPorts } from "../record/transaction.js";
 import type { Author, RecordBody } from "../record/entry.js";
 import type { Journal } from "../record/journal.js";
 import type { TurnObserver } from "./service.js";
-import type { TurnOutcome, TurnRequest } from "./vocabulary.js";
+import type { TurnCall, TurnOutcome, TurnRequest } from "./vocabulary.js";
 
 /** One entry, decided but not yet written anywhere. */
 interface Written {
@@ -137,6 +137,27 @@ function idOf(request: TurnRequest): string {
 	return asker.kind === "component" ? `component:${asker.name}` : asker.id;
 }
 
+/**
+ * Who a call entry is attributed to: the gate, because the verdict is what the entry says. The persona
+ * asked for the call and the entry names the tool it asked for, but refusing or allowing it was not the
+ * persona's act, and a record that put the verdict in its mouth would be the forgery the author exists
+ * to prevent.
+ */
+const GATE: Author = { kind: "runtime", mechanism: "gate", reason: "the gate decided on a call the persona made" };
+
+/** One call as the record writes it. Absent fields stay absent: an allowed call has no refusal to give. */
+function callEntry(turn: string, call: TurnCall): RecordBody {
+	return {
+		type: "call",
+		turn,
+		callId: call.callId,
+		tool: call.tool,
+		verdict: call.verdict,
+		...(call.reason === undefined ? {} : { reason: call.reason }),
+		...(call.used === undefined ? {} : { used: call.used }),
+	};
+}
+
 /** What closing a turn writes, in the order a reader meets it. */
 function closing(outcome: TurnOutcome): readonly Written[] {
 	const entries: Written[] = [];
@@ -151,12 +172,25 @@ function closing(outcome: TurnOutcome): readonly Written[] {
 	// real and it belongs to the seam; in the record they are the same absence of an
 	// event, and an entry saying a compaction did not happen is noise in a chain whose
 	// value is that everything in it happened.
+	//
+	// E80: the calls go in the same pass, because they happened in the same turn. A compaction is
+	// taken before the model is asked at its step and the calls come back after, so at one step the
+	// compaction comes first. A compaction reported without a step is placed at the start, which is
+	// where a provider that counts no steps would have had to take it.
+	const during: { readonly step: number; readonly order: number; readonly written: Written }[] = [];
 	for (const compaction of outcome.compactions ?? []) {
-		entries.push({
-			author: compactionAuthor(compaction.why),
-			body: compactionEntry(compaction.plan, compaction.why),
+		during.push({
+			step: compaction.step ?? 0,
+			order: 0,
+			written: { author: compactionAuthor(compaction.why), body: compactionEntry(compaction.plan, compaction.why) },
 		});
 	}
+	for (const call of outcome.calls ?? []) {
+		during.push({ step: call.step, order: 1, written: { author: GATE, body: callEntry(outcome.turn, call) } });
+	}
+	// `sort` is stable, so entries of one kind at one step keep the order they were reported in.
+	during.sort((a, b) => a.step - b.step || a.order - b.order);
+	for (const entry of during) entries.push(entry.written);
 
 	// The answer next, so a reader walking the entries meets what was said before it
 	// meets the note that the turn ended.

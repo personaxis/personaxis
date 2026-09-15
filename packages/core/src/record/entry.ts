@@ -210,6 +210,23 @@ export type RecordBody =
 			readonly tool: string;
 			readonly verdict: "allowed" | "denied";
 			readonly reason?: string;
+			/**
+			 * E80: the persona's own material this call used, when it used any: a skill it loaded, or a
+			 * reference, example or asset it read. What turns "this work leaned on that source" into
+			 * something a reader can check instead of taking the persona's word for it.
+			 *
+			 * Only on an allowed call that succeeded. Named the way the persona's index names it, a skill
+			 * by its name and a file by its path in the workspace, and a skill carries the fingerprint of
+			 * the `SKILL.md` it loaded, because a skill edited tomorrow is not the one used today.
+			 *
+			 * Optional and additive, like `spent`: every entry written before it stays valid and means
+			 * exactly what it meant.
+			 */
+			readonly used?: {
+				readonly kind: "skill" | "reference" | "example" | "asset";
+				readonly name: string;
+				readonly version?: string;
+			};
 	  }
 	/**
 	 * Which tools were put in front of the model on one request, and why.

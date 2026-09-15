@@ -29,6 +29,10 @@ it uses the skills it declares on its own. Nobody has to name a skill in a messa
 - **The persona loads a skill when it decides to**, with the `use_skill` tool. Loading is a call:
   it crosses the gate like any read, and what comes back names the version of the file it read and
   the files that come with the skill.
+- **What it used stays in the record.** Every call the gate judged is written to the persona's
+  record with its verdict, and a call that loaded a skill, or read a file from the persona's own
+  `references/`, `examples/` or `assets/`, names it, a skill with the version it loaded. So whether a
+  piece of work leaned on a source is something you can check afterwards, not the persona's word.
 - **Only local skills.** A `github:` or `@org/name` entry is a pointer to something that is not on
   this disk, and a run never fetches it. Pulling one is `skills pull`, with its review.
 - **The instructions reach the model as quoted material**, attributed and said to advise rather

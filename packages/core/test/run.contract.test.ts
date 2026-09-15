@@ -40,7 +40,7 @@ import {
  */
 function resultOf(
 	over: Pick<AgentResult, "summary" | "steps" | "finished"> &
-		Partial<Pick<AgentResult, "budget" | "compactions">>,
+		Partial<Pick<AgentResult, "budget" | "compactions" | "calls">>,
 ): AgentResult {
 	// Assigned rather than spread: spreading a partial widens every optional key with
 	// `| undefined`, which `exactOptionalPropertyTypes` refuses, and the refusal is
@@ -57,6 +57,7 @@ function resultOf(
 			stoppedBy: null,
 		},
 		compactions: over.compactions ?? [],
+		calls: over.calls ?? [],
 		cache: {
 			reported: false,
 			calls: 0,
@@ -232,6 +233,8 @@ describe("the loop we already have goes through the same seam", () => {
 			// did not have to compact. A provider that manages none reports nothing at
 			// all, and the two are not the same statement.
 			compactions: [],
+			// E80: the same, for calls. This loop reports what its gate judged, and here it judged none.
+			calls: [],
 		});
 	});
 

@@ -152,8 +152,11 @@ function abs(path: string, policy: Policy): string {
  * the persona's OWN home, which only equals the process CWD by coincidence;
  * without the fallback those reads fail as "file not found". Reads/edits of
  * existing files only; write-creates stay at `workspaceRoot`.
+ *
+ * Exported for `run/material-use.ts` (E80), which has to name the file a read
+ * actually opened. Resolving it a second way would name one it never touched.
  */
-function absRead(path: string, policy: Policy): string {
+export function absRead(path: string, policy: Policy): string {
   const first = abs(path, policy);
   if (existsSync(first)) return first;
   for (const root of policy.resourceRoots ?? []) {

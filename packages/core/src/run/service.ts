@@ -31,7 +31,7 @@
  */
 
 import { Ledger, describeRoom } from "./budget.js";
-import type { StopReason, TurnCompaction, TurnOutcome, TurnRequest } from "./vocabulary.js";
+import type { StopReason, TurnCall, TurnCompaction, TurnOutcome, TurnRequest } from "./vocabulary.js";
 
 /** What a provider is given. Deliberately small. */
 export interface TurnContext {
@@ -105,6 +105,8 @@ export interface TurnProduct {
 	 * and is in no position to describe what did.
 	 */
 	readonly compactions?: readonly TurnCompaction[];
+	/** E80: every call the gate judged. Passed through untouched, for the reason compactions are. */
+	readonly calls?: readonly TurnCall[];
 }
 
 /**
@@ -242,6 +244,7 @@ export class TurnRunner {
 			// as "checked, and free".
 			...(product.cost === undefined ? {} : { cost: product.cost }),
 			...(product.compactions === undefined ? {} : { compactions: product.compactions }),
+			...(product.calls === undefined ? {} : { calls: product.calls }),
 			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {

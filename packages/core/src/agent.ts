@@ -87,6 +87,8 @@ import { ask, deny, type GuardOutcome } from "./gate/verdict.js";
 import { runGuards } from "./gate/waterfall.js";
 import { breakerGuard, nudgeFor } from "./run/breaker-guard.js";
 import { LatencyMeter, type LatencyReport } from "./run/latency.js";
+import { materialUsed } from "./run/material-use.js";
+import type { TurnCall } from "./run/vocabulary.js";
 import { authorId } from "./record/entry.js";
 import { Kernel, type PermissionKey } from "./kernel/index.js";
 import { ALL_TOOL_PERMISSIONS, grantedPermissions, mountBuiltins, type ToolBench } from "./tools/mounted.js";
@@ -337,6 +339,15 @@ export interface AgentResult {
    * never taken, and a caller cannot tell those apart from a number alone.
    */
   compactions: readonly CompactionRecord[];
+  /**
+   * E80: every call that reached the gate, in order: what the gate decided, and what of the
+   * persona's own material it used. The loop writes it nowhere, for the reason `compactions`
+   * gives: a record entry is the runner's to write.
+   *
+   * Only calls the gate judged. A call to a tool that does not exist, one cut off, or one whose
+   * arguments do not fit never reached a verdict, and `find_tools` and `finish` are not gated.
+   */
+  calls: readonly TurnCall[];
   /**
    * E18: what the prompt cache did this run, as reported by the provider.
    *
@@ -683,6 +694,8 @@ export class PersonaAgent {
     // E6: what each compaction cost, so the caller is told rather than trusting
     // that a run which felt slow did or did not rewrite its own transcript.
     const compactions: CompactionRecord[] = [];
+    // E80: every call the gate judged, as it was judged.
+    const calls: TurnCall[] = [];
     // E9: the material a causal trace is built from, collected as it happens.
     //
     // At write time rather than reconstructed afterwards, which is the design decision
@@ -862,6 +875,7 @@ export class PersonaAgent {
           cache: meter.cacheReport(),
           latency: clock.report(),
           compactions,
+          calls,
           trace: buildTrace(intents, traceNodes),
         };
       }
@@ -1014,7 +1028,7 @@ export class PersonaAgent {
           const summary = budget.onExhaust === "summarize_and_stop" ? (lastText || `stopped: ${check.stopReason}`) : `stopped: ${check.stopReason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, check.stopReason), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
         }
 
         // K.07: honor an out-of-band abort. The watchdog enforces the WALL-CLOCK ceiling on a
@@ -1028,7 +1042,7 @@ export class PersonaAgent {
           const summary = lastText || `stopped: ${reason}`;
           bus.emit({ type: "agent-finish", summary, steps: step - 1 });
           this.persist(task, "stopped", summary, step - 1);
-          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+          return { summary, steps: step - 1, finished: false, budget: report(step - 1, "watchdog"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
         }
 
         clock.turnBegan();
@@ -1119,12 +1133,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             this.persist(task, "success", res.text || "", step);
             await maybePostmortem("success", step);
-            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
           }
           continue; // retry
         }
@@ -1147,6 +1161,21 @@ export class PersonaAgent {
         let firstFailSig: string | null = null;
         const noteFail = (call: ToolCall): void => {
           if (firstFailSig === null) firstFailSig = toolSignature(call.name, call.args);
+        };
+        // E80: an allowed call as the record will write it. What of the persona's material it used is
+        // asked only when it succeeded: a read that failed used nothing.
+        const allowed = (call: ToolCall, ok: boolean, reason?: string): TurnCall => {
+          const used = ok
+            ? materialUsed({ tool: call.name, args: call.args ?? {}, policy: this.policy, personaPath: this.opts.personaPath })
+            : undefined;
+          return {
+            callId: call.id,
+            tool: call.name,
+            verdict: "allowed",
+            step,
+            ...(reason === undefined ? {} : { reason }),
+            ...(used === undefined ? {} : { used }),
+          };
         };
         for (const call of res.toolCalls) {
           // Whether THIS call did real work, which is what the breaker now records.
@@ -1240,6 +1269,7 @@ export class PersonaAgent {
               noteFail(call);
               interceptor.recordBlocked(call.name, "deny", "blocked by PreToolUse hook");
               bus.emit({ type: "tool-verdict", tool: call.name, decision: "deny", reason: "blocked by PreToolUse hook" });
+              calls.push({ callId: call.id, tool: call.name, verdict: "denied", reason: "blocked by PreToolUse hook", step });
               messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: "denied by PreToolUse hook" });
               continue;
             }
@@ -1331,6 +1361,7 @@ export class PersonaAgent {
             deniedCount++;
             noteFail(call);
             interceptor.recordBlocked(call.name, "deny", decisionReason);
+            calls.push({ callId: call.id, tool: call.name, verdict: "denied", reason: decisionReason, step });
             output = `denied by policy: ${decisionReason}`;
           } else if (consented.decision === "ask") {
             // C6b: who refused, in their own words when they gave any. Absent a
@@ -1348,6 +1379,7 @@ export class PersonaAgent {
               deniedCount++;
               noteFail(call);
               interceptor.recordBlocked(call.name, "ask", refusal);
+              calls.push({ callId: call.id, tool: call.name, verdict: "denied", reason: refusal, step });
               output = `denied: ${refusal}`;
             } else {
               if (decision === "always") this.policy.allow.push(escapeRegExp(firstArg(call)));
@@ -1364,6 +1396,7 @@ export class PersonaAgent {
               contextTaint = accepted.taint;
               if (r.ok) { producedWork = true; callProduced = true; }
               else { errorCount++; noteFail(call); }
+              calls.push(allowed(call, r.ok, "approved when asked"));
             }
           } else {
             const r = await clock.time("tool", () => interceptor.run(tool, call));
@@ -1372,6 +1405,7 @@ export class PersonaAgent {
             contextTaint = accepted.taint;
             if (r.ok) { producedWork = true; callProduced = true; }
             else { errorCount++; noteFail(call); }
+            calls.push(allowed(call, r.ok));
           }
 
           // E9: the call as a trace node, with the plan step that named its tool when
@@ -1446,7 +1480,7 @@ export class PersonaAgent {
             const summary = lastText || `stopped: ${bv.reason}`;
             bus.emit({ type: "agent-finish", summary, steps: step });
             this.persist(task, "stopped", summary, step);
-            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary, steps: step, finished: false, budget: report(step, "loop_breaker"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
           }
         }
 
@@ -1456,12 +1490,12 @@ export class PersonaAgent {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             this.persist(task, "success", finishedThisStep.summary, step);
             await maybePostmortem("success", step);
-            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
             this.persist(task, "verification_failed", "verification failed", step);
-            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+            return { summary: "verification failed", steps: step, finished: false, budget: report(step, "verification_failed"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
           }
           // retry: loop continues; the failure note is already in messages.
         }
@@ -1469,11 +1503,11 @@ export class PersonaAgent {
 
       bus.emit({ type: "agent-finish", summary: `stopped at hard ceiling`, steps: HARD_CEIL });
       this.persist(task, "stopped", "stopped at hard ceiling", HARD_CEIL);
-      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+      return { summary: `stopped at hard ceiling`, steps: HARD_CEIL, finished: false, budget: report(HARD_CEIL, "hard_ceiling"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
     } catch (err) {
       bus.emit({ type: "agent-error", message: (err as Error).message });
       this.persist(task, "error", `agent error: ${(err as Error).message}`, 0);
-      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, trace: buildTrace(intents, traceNodes) };
+      return { summary: `agent error: ${(err as Error).message}`, steps: 0, finished: false, budget: report(0, "error"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
     } finally {
       // K.07: always disarm the out-of-band timer when the run ends, on any exit path.
       watchdog.stop();
