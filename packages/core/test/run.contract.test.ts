@@ -40,7 +40,7 @@ import {
  */
 function resultOf(
 	over: Pick<AgentResult, "summary" | "steps" | "finished"> &
-		Partial<Pick<AgentResult, "budget" | "compactions" | "calls">>,
+		Partial<Pick<AgentResult, "budget" | "compactions" | "calls" | "tasks">>,
 ): AgentResult {
 	// Assigned rather than spread: spreading a partial widens every optional key with
 	// `| undefined`, which `exactOptionalPropertyTypes` refuses, and the refusal is
@@ -58,6 +58,7 @@ function resultOf(
 		},
 		compactions: over.compactions ?? [],
 		calls: over.calls ?? [],
+		tasks: over.tasks ?? [],
 		cache: {
 			reported: false,
 			calls: 0,

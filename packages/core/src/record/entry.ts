@@ -247,6 +247,22 @@ export type RecordBody =
 			readonly tools: readonly string[];
 			readonly reason: string;
 	  }
+	/**
+	 * E81: the persona's task list as the turn left it, and which done steps something done backs.
+	 *
+	 * Written once, at the close: the list is replaced whole on every update, and the last one is what the
+	 * turn ended committed to. A fact and not state, because the next turn starts its own list.
+	 */
+	| {
+			readonly type: "tasks";
+			readonly turn: string;
+			readonly tasks: readonly {
+				readonly text: string;
+				readonly status: "pending" | "active" | "done" | "blocked";
+				readonly verified?: boolean;
+				readonly evidence?: readonly string[];
+			}[];
+	  }
 	/** Something went wrong, with a code so it can be routed and not just read. */
 	| {
 			readonly type: "failure";

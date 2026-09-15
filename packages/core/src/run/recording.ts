@@ -192,6 +192,16 @@ function closing(outcome: TurnOutcome): readonly Written[] {
 	during.sort((a, b) => a.step - b.step || a.order - b.order);
 	for (const entry of during) entries.push(entry.written);
 
+	// E81: the list the turn ended with, once, after the calls that changed it and before the answer.
+	// The runtime's entry, not the persona's: the steps are the persona's words, and `verified` is the
+	// runtime's judgement of them against the calls that succeeded, which the persona did not write.
+	if (outcome.tasks !== undefined && outcome.tasks.length > 0) {
+		entries.push({
+			author: { kind: "runtime", mechanism: "task-list", reason: "the list the persona kept, checked against the calls that succeeded" },
+			body: { type: "tasks", turn: outcome.turn, tasks: outcome.tasks },
+		});
+	}
+
 	// The answer next, so a reader walking the entries meets what was said before it
 	// meets the note that the turn ended.
 	if (outcome.answer.length > 0) {

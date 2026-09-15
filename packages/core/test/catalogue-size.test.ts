@@ -33,6 +33,8 @@ import { TOOLS } from "../src/tools/registry.js";
 import { FIND_TOOLS_TOOL } from "../src/tools/find-tools.js";
 import { memoryTools } from "../src/memory/retrieval.js";
 import { delegateTool } from "../src/tools/delegate.js";
+import { UPDATE_TASKS_TOOL } from "../src/tools/update-tasks.js";
+import { USE_SKILL_TOOL } from "../src/tools/use-skill.js";
 import { readMemoryKnobs } from "../src/memory/knobs.js";
 
 /**
@@ -55,15 +57,24 @@ function everythingWeShip(): string[] {
 		...memory.map((tool) => tool.name),
 		delegation.name,
 		FIND_TOOLS_TOOL,
+		// E72: mounted by `runnerFor` for a persona with skills, so it came from a fifth source this list
+		// did not read, and the ceiling stayed at eleven while the catalogue was twelve. Counted now.
+		USE_SKILL_TOOL,
+		// E81: the persona's own task list, offered on every run.
+		UPDATE_TASKS_TOOL,
 	];
 }
 
 describe("how many tools a persona can be shown", () => {
-	it("is eleven, and one more is a decision rather than a file somebody added", () => {
+	it("is thirteen, and one more is a decision rather than a file somebody added", () => {
 		// Raise this number in the same commit as the tool, with the reason in the
 		// commit message. That is the whole mechanism: it costs one line and it makes
-		// the twelfth tool something a person chose.
-		expect(everythingWeShip()).toHaveLength(11);
+		// the next tool something a person chose.
+		//
+		// Twelve and thirteen, 2026-09-15: `use_skill` (E72), which loads a skill by name because counting
+		// words chose the wrong ones, and `update_tasks` (E81), because a small model loses steps when its
+		// plan lives only in the conversation. Neither overlaps another: one reads a method, one keeps a list.
+		expect(everythingWeShip()).toHaveLength(13);
 	});
 
 	it("counts seven built-ins, which is the half a plugin cannot change", () => {

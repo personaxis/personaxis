@@ -10,6 +10,7 @@ import type { AppraisalSignal } from "./appraisal.js";
 import type { Verdict } from "./governance.js";
 import type { MemoryEntry } from "./memory.js";
 import type { DriftReport } from "./math/drift.js";
+import type { SubTask } from "./task-state.js";
 
 export type LoopEvent =
   | { type: "observe"; observation: string; source: string }
@@ -50,6 +51,8 @@ export type LoopEvent =
   | { type: "tool-verdict"; tool: string; decision: "allow" | "ask" | "deny"; reason: string }
   | { type: "tool-result"; tool: string; ok: boolean; output: string }
   | { type: "agent-finish"; summary: string; steps: number }
+  /** E81: the persona wrote its task list. Every revision, for a screen beside the turn; the record keeps the last. */
+  | { type: "task-list"; tasks: readonly SubTask[] }
   | { type: "agent-error"; message: string }
   // Agent budget + stop conditions (v0.9)
   /**

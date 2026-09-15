@@ -286,6 +286,11 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 		case "trace-exported":
 			return { drop: "local-only" };
 
+		// E81: every revision of the persona's task list, for the screen beside it. The list the turn ended
+		// with is written to the record at the close, once, so the durable wire does not carry each draft.
+		case "task-list":
+			return { drop: "local-only" };
+
 		default: {
 			// Unreachable while the switch stays exhaustive. If a LoopEvent kind
 			// is added without a case, this line stops compiling, which is the
