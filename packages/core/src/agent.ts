@@ -714,6 +714,9 @@ export class PersonaAgent {
     // meter is only told about the step calls and the planning call is a model call too.
     let priced = false;
     let deniedCount = 0;
+    // E94: replies in a row with no text and no call, and whether any call did real work in this run.
+    let emptyReplies = 0;
+    let workedThisRun = false;
     let errorCount = 0;
     let retriesLeft = verification.maxRetries;
     let stepProgress = 1;
@@ -1122,6 +1125,44 @@ export class PersonaAgent {
           bus.emit({ type: "agent-think", text: res.text });
         }
 
+        // E94: a reply with no text and no call is not an answer.
+        //
+        // It was taken as one. Measured on 2026-09-15 against `command-a-plus-05-2026`: after reading its
+        // reference and loading two skills, the model ended with `finish_reason: stop`, 1 226 characters of
+        // reasoning and no text, and the turn closed answered with nothing for the person. Told once, with
+        // the reason, it writes the answer. Nothing empty goes into the conversation on the way: some
+        // providers refuse an empty message, and it would teach the model that silence is a reply.
+        const saidNothing = res.toolCalls.length === 0 && !(res.text ?? "").trim();
+        if (!saidNothing) emptyReplies = 0;
+        if (saidNothing) {
+          emptyReplies += 1;
+          if (emptyReplies === 1) {
+            const why =
+              res.finish === "length"
+                ? "it was cut at the length limit before any text"
+                : res.reasoned
+                  ? "only your reasoning came back, and the person never sees your reasoning"
+                  : "nothing came back";
+            messages.push({
+              role: "system",
+              content:
+                `[${authorId({ kind: "runtime", mechanism: "empty-reply", reason: "the model returned no text and no action" })}] ` +
+                `Your last reply had no text for the person and no action: ${why}. ` +
+                "Reply to the person now, in plain words, with what you did and what you found, or continue with a tool call.",
+            });
+            bus.emit({ type: "agent-think", text: "[empty-reply] the model returned no text and no action; asking once more" });
+            continue;
+          }
+          if (!workedThisRun) {
+            // Twice, and nothing was done before it. The closed set's word is `empty`, not answered.
+            bus.emit({ type: "agent-finish", summary: "", steps: step });
+            this.persist(task, "stopped", "the model returned nothing", step);
+            return { summary: "", steps: step, finished: false, budget: report(step, "empty"), verification: this.lastVerification, cache: meter.cacheReport(), latency: clock.report(), compactions, calls, trace: buildTrace(intents, traceNodes) };
+          }
+          // Twice, after real work: the work stands and the turn ends without words, through the ordinary
+          // completion below, so a declared verification still judges it.
+        }
+
         // No tool call → the model answered in prose; treat as a completion candidate.
         if (res.toolCalls.length === 0) {
           // Persist the assistant's reply into the transcript BEFORE returning, so
@@ -1394,7 +1435,7 @@ export class PersonaAgent {
               const accepted: Accepted<string> = accept(r.output, contextTaint);
               output = accepted.value;
               contextTaint = accepted.taint;
-              if (r.ok) { producedWork = true; callProduced = true; }
+              if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; }
               else { errorCount++; noteFail(call); }
               calls.push(allowed(call, r.ok, "approved when asked"));
             }
@@ -1403,7 +1444,7 @@ export class PersonaAgent {
             const accepted: Accepted<string> = accept(r.output, contextTaint);
             output = accepted.value;
             contextTaint = accepted.taint;
-            if (r.ok) { producedWork = true; callProduced = true; }
+            if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; }
             else { errorCount++; noteFail(call); }
             calls.push(allowed(call, r.ok));
           }

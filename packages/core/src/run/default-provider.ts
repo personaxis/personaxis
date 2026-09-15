@@ -115,6 +115,15 @@ const THE_TURN_FAILED = new Set([
 ]);
 
 /**
+ * E94: the model gave no text and no action, twice in a row, and nothing had been done.
+ *
+ * Not a failure of the runtime and not an answer. The closed set already had the word, `empty`, and
+ * until this existed nothing produced it on this path: the loop took the silence as a completion and
+ * the turn closed answered, with nothing in it.
+ */
+const NOTHING_CAME_BACK = new Set(["empty"]);
+
+/**
  * What the run cost, when the loop was talking to something that charges.
  *
  * Absent rather than zero when there is no budget to read. A turn nobody priced and a
@@ -173,6 +182,17 @@ export function productOf(result: AgentResult): TurnProduct {
 			answer: "",
 			stopReason: "failed",
 			failure: { code: stoppedBy, message: answer || stoppedBy },
+			...common,
+		};
+	}
+
+	if (stoppedBy !== null && NOTHING_CAME_BACK.has(stoppedBy)) {
+		// The failure carries the runtime's words, so a surface can say what happened without
+		// putting them in the persona's mouth.
+		return {
+			answer: "",
+			stopReason: "empty",
+			failure: { code: stoppedBy, message: "the model returned no text and no action, twice in a row, so nothing was done" },
 			...common,
 		};
 	}

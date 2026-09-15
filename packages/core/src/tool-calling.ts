@@ -83,6 +83,15 @@ export interface ToolCallResponse {
   unknownTools?: readonly string[];
   /** Token accounting from the provider (for budget enforcement), when reported. */
   usage?: TokenUsage;
+  /**
+   * E94: why the provider says the reply ended (`stop`, `length`, `tool_calls`), when it says.
+   *
+   * What separates two empty replies that look identical: one that ended on `length` ran out of room,
+   * usually spent thinking, and one that ended on `stop` said nothing.
+   */
+  finish?: string;
+  /** E94: the reply carried reasoning (`reasoning_content` or `reasoning`), which the loop does not show. */
+  reasoned?: boolean;
 }
 
 /**
@@ -187,6 +196,10 @@ interface Reply {
   content: string;
   toolCalls: RawToolCall[];
   usage?: Partial<TokenUsage>;
+  /** E94: see `ToolCallResponse.finish`. */
+  finish?: string;
+  /** E94: see `ToolCallResponse.reasoned`. */
+  reasoned?: boolean;
 }
 
 /**
@@ -202,11 +215,21 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
   const kind = res.headers?.get?.("content-type") ?? "";
   if (!kind.includes("text/event-stream") || !res.body) {
     const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string; tool_calls?: RawToolCall[] } }>;
+      choices?: Array<{
+        finish_reason?: string | null;
+        message?: { content?: string; reasoning_content?: string; reasoning?: string; tool_calls?: RawToolCall[] };
+      }>;
       usage?: Partial<TokenUsage>;
     };
-    const msg = json.choices?.[0]?.message ?? {};
-    return { content: msg.content ?? "", toolCalls: msg.tool_calls ?? [], usage: json.usage };
+    const choice = json.choices?.[0];
+    const msg = choice?.message ?? {};
+    return {
+      content: msg.content ?? "",
+      toolCalls: msg.tool_calls ?? [],
+      usage: json.usage,
+      ...(choice?.finish_reason ? { finish: choice.finish_reason } : {}),
+      ...(msg.reasoning_content || msg.reasoning ? { reasoned: true } : {}),
+    };
   }
 
   // Assembled by index, which is how the wire identifies which call a fragment
@@ -215,6 +238,8 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
   const parts = new Map<number, RawToolCall>();
   let content = "";
   let usage: Partial<TokenUsage> | undefined;
+  let finish: string | undefined;
+  let reasoned = false;
   let pending = "";
 
   const decoder = new TextDecoder();
@@ -231,7 +256,15 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
         const data = line.slice(5).trim();
         if (!data || data === "[DONE]") continue;
         let frame: {
-          choices?: Array<{ delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>;
+          choices?: Array<{
+            finish_reason?: string | null;
+            delta?: {
+              content?: string;
+              reasoning_content?: string;
+              reasoning?: string;
+              tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }>;
+            };
+          }>;
           usage?: Partial<TokenUsage>;
         };
         try {
@@ -243,7 +276,12 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
           continue;
         }
         if (frame.usage) usage = frame.usage;
-        const delta = frame.choices?.[0]?.delta;
+        const choice = frame.choices?.[0];
+        // E94: kept, not shown. An empty reply means one thing after thinking to the ceiling and
+        // another after saying nothing, and only these two say which.
+        if (choice?.finish_reason) finish = choice.finish_reason;
+        const delta = choice?.delta;
+        if (delta?.reasoning_content || delta?.reasoning) reasoned = true;
         if (delta?.content) {
           content += delta.content;
           onDelta?.(delta.content);
@@ -266,6 +304,8 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
     // reordered by a Map's insertion history is a different plan.
     toolCalls: [...parts.entries()].sort(([one], [other]) => one - other).map(([, call]) => call),
     ...(usage ? { usage } : {}),
+    ...(finish ? { finish } : {}),
+    ...(reasoned ? { reasoned } : {}),
   };
 }
 
@@ -433,6 +473,8 @@ export async function requestToolCall(
         toolCalls,
         usedFallback: false,
         usage: extractUsage({ usage: reply.usage }),
+        ...(reply.finish ? { finish: reply.finish } : {}),
+        ...(reply.reasoned ? { reasoned: true } : {}),
       };
     }
     // Auth/rate/server errors won't be fixed by the fallback, surface them.
