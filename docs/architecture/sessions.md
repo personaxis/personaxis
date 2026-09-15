@@ -29,7 +29,9 @@ notes are dropped when a session is rehydrated.
 `listSessions` (newest-activity first) · `renameSession` · `findSession` (exact id, else
 case-insensitive name fragment). Auto-titling: `nameSession` asks the LLM for a 2-5 word
 title (best-effort, may throw); `fallbackName` is the deterministic fallback (first six words
-of the first user message).
+of the first user message). A reply that stopped at the token cap is refused rather than used:
+a model that thinks before it answers can spend the whole small budget reasoning and hand back
+the cut reasoning as its content.
 
 ## REPL integration
 

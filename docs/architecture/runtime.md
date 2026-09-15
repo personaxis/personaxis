@@ -84,7 +84,12 @@ auditable event on the bus; nothing is a black box.
    grounded evolution view, and returns **structured signals only**:
    `{ confidence, mutations, selfEdits, preferences, memories }`. The model proposes; it never
    writes free text into state. An appraiser error degrades to "no evolution this turn" and the
-   persona still replied (`loop.ts:146`). `confidence < 0.2` -> **abstain**, nothing changes
+   persona still replied (`loop.ts:146`). `LlmAppraiser` asks for a strict `json_schema` first,
+   then `json_object`, then plain JSON. The schema it sends is the portable projection
+   (`portableJsonSchema`): value constraints are dropped, and a property that takes any value
+   (`selfEdits[].toValue`) travels as a string holding JSON and is read back with `JSON.parse`,
+   because strict endpoints such as Cohere's reject a property with no `type` and refuse the
+   whole request. `confidence < 0.2` -> **abstain**, nothing changes
    (`loop.ts:154`).
 4. **Govern, then clamp and audit** (`loop.ts:159`). `governMutations` admits or rejects each
    proposed delta against the envelopes and the governance mode. Under a lock (`loop.ts:189`), the

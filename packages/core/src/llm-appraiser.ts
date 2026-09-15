@@ -185,7 +185,11 @@ export class LlmAppraiser implements Appraiser {
           const m = content.match(/\{[\s\S]*\}/);
           parsed = m ? JSON.parse(m[0]) : {};
         }
-        return parseAppraisalSignal(parsed);
+        const signal = parseAppraisalSignal(parsed);
+        // E95: the portable schema sends a property that takes any value as a string holding JSON, so under that
+        // strategy a self-edit's value comes back written as JSON. The other strategies send no schema, and a
+        // string there is the value itself.
+        return responseFormat?.type === "json_schema" ? { ...signal, selfEdits: signal.selfEdits?.map((edit) => ({ ...edit, toValue: fromJsonText(edit.toValue) })) } : signal;
       }
 
       lastErr = `HTTP ${res.status}: ${await safeText(res)}`;
@@ -197,6 +201,16 @@ export class LlmAppraiser implements Appraiser {
       }
     }
     throw new Error(`LLM appraiser ${lastErr}`);
+  }
+}
+
+/** A value sent as JSON text, read back. Text that is not JSON is taken as the string it is. */
+function fromJsonText(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
   }
 }
 
