@@ -291,6 +291,9 @@ function fold(start: DerivedState, entries: readonly RecordEntry[]): DerivedStat
 			case "tasks":
 			// E83: the route a turn took is how that turn went, not where the persona stands.
 			case "decision":
+			// E84: what was asked and answered is history of a turn too.
+			case "question":
+			case "answer":
 				// Facts worth keeping and not part of the persona's current position.
 				break;
 			case "delegation":

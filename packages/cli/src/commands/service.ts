@@ -26,7 +26,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
-import { EventBus, pathEscapesWorkspace, personaResourceRoots, policyFromFrontmatter, resolveModel, run, service, type ApprovalAnswer, type LoopEvent } from "@personaxis/core";
+import { EventBus, pathEscapesWorkspace, personaResourceRoots, policyFromFrontmatter, renderQuestion, resolveModel, run, service, type ApprovalAnswer, type LoopEvent } from "@personaxis/core";
 
 import { buildAwarenessBlock } from "../repl/awareness.js";
 import { friendlyProviderError } from "../repl/render.js";
@@ -87,6 +87,18 @@ async function approveToolOnTerminal(tool: string, reason: string): Promise<Appr
  * so. Every other early end fails the step: work the gate cut short, handed on as if it were done,
  * is the one thing a service must not do, because the next step builds on it.
  */
+/**
+ * E84: the question a step's turn stopped at, as the reason its run waits, or null when every question it
+ * asked was answered. Written out whole, options included, because whoever reads a waiting run (a person, an
+ * agent, an app reading the journal) needs to see what is missing to be able to give it.
+ */
+export function waitingForAnswer(
+	questions: readonly (Parameters<typeof renderQuestion>[0] & { readonly answer?: string })[] | undefined,
+): string | null {
+	const pending = (questions ?? []).find((asked) => asked.answer === undefined);
+	return pending === undefined ? null : `waiting for an answer: ${renderQuestion(pending)}`;
+}
+
 export function stepOutcomeOf(stopReason: StopReason, answer: string): { outcome: "completed" | "failed"; reason: string | null } {
 	if (stopReason === "answered") return { outcome: "completed", reason: null };
 	if ((stopReason === "budget" || stopReason === "stopped") && answer.trim().length > 0) {
@@ -251,6 +263,11 @@ const runCommand = new Command("run")
 				if (outcome.failure) {
 					return { outcome: "failed", summary: null, reason: friendlyProviderError(outcome.failure.message) };
 				}
+				// E84: the persona asked something only a person can answer, and nobody was there. The run waits
+				// with the question as its reason, the way it waits for a sub-service that needs a person, instead
+				// of handing the next step a question as if it were the delivery.
+				const waiting = waitingForAnswer(outcome.questions);
+				if (waiting !== null) return { outcome: "failed", summary: null, reason: waiting, waitingOnPerson: true };
 				const ended = stepOutcomeOf(outcome.stopReason, outcome.answer);
 				if (ended.outcome === "failed") return { outcome: "failed", summary: null, reason: ended.reason };
 

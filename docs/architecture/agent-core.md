@@ -202,6 +202,22 @@ list with a choice, and that used to send both this step and the planning call i
 fallback. And an error on such a request is reported as it is rather than sent to that fallback,
 which exists for endpoints that cannot take tools and has nothing to offer a request without them.
 
+**Build status (2026-09-15): asking for what is missing, and never inventing it.** A persona that
+needs something only a person can give (a choice that is theirs, information it cannot find itself)
+now has `ask_person` (`core/src/tools/ask-person.ts`): the question, two to four options, and the one
+it recommends. The loop handles the call, because only the run knows whether anybody is there. With
+somebody in front of it (the TUI passes `onQuestion` when it has a terminal), the question is shown
+numbered and the answer comes back as the call's result: a number or a label picks that option,
+anything else is the person's own words, and nothing typed is no answer, never the recommendation.
+With nobody (a service step, a delegated sub-task, a headless run), the turn stops at the question and
+leaves it written, as `stopped` with the question as its result: every call of that batch gets a
+result first, so the transcript stays sendable. A sub-task never receives its parent's way to reach a
+person, so its question travels back up to whoever delegated it. A service step that stops at a
+question leaves its run `waiting` with the question, options included, as the reason, readable by a
+person, an agent or an app. Continuing such a run with the answer is its own piece of work. The record
+keeps a `question` entry in the persona's name and, when somebody answered, an `answer` entry in the
+name of whoever opened the turn.
+
 ## 7. Gaps proposed beyond the six pillars
 
 - **Continuous evaluation.** `packages/evals` measures success/cost/steps by task type; wire it

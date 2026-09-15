@@ -189,7 +189,10 @@ export function subTaskSession(
 	scope: DelegatedScope,
 	statement: string,
 ): SessionOptions {
-	const { ledger, conversation: _parentTranscript, kernel: _parentKernel, ...carried } = parent;
+	// E84: the parent's way of reaching a person is dropped with its transcript. A sub-task that asks stops
+	// at the question and hands it back up, which is P10 of E77 and the same rule as `onApproval` below: a
+	// child never puts a prompt in front of whoever is at the keyboard.
+	const { ledger, conversation: _parentTranscript, kernel: _parentKernel, onQuestion: _parentAsks, ...carried } = parent;
 
 	return {
 		...carried,

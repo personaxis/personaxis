@@ -276,6 +276,27 @@ export type RecordBody =
 			readonly route: "answer" | "ask" | "consult" | "skills" | "delegate" | "work";
 			readonly why: string;
 	  }
+	/**
+	 * E84: a question the persona put to a person, with its options and the one it recommended.
+	 *
+	 * The persona's words, so the persona is the author. Written whether or not anybody answered: a question
+	 * nobody could answer is exactly what whoever picks the work up has to find, and an `answer` entry after
+	 * it, from whoever gave it, is what says it was answered.
+	 */
+	| {
+			readonly type: "question";
+			readonly turn: string;
+			readonly question: string;
+			readonly options: readonly { readonly label: string; readonly detail?: string }[];
+			readonly recommended?: string;
+	  }
+	/** E84: the answer to the question before it, in the name of whoever gave it, never the persona's. */
+	| {
+			readonly type: "answer";
+			readonly turn: string;
+			readonly question: string;
+			readonly answer: string;
+	  }
 	/** Something went wrong, with a code so it can be routed and not just read. */
 	| {
 			readonly type: "failure";

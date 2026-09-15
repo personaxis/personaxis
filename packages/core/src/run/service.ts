@@ -111,6 +111,8 @@ export interface TurnProduct {
 	readonly tasks?: TurnOutcome["tasks"];
 	/** E83: the route chosen before acting, when the decision step ran. Passed through untouched. */
 	readonly decision?: TurnOutcome["decision"];
+	/** E84: the questions put to a person, with their answers when given. Passed through untouched. */
+	readonly questions?: TurnOutcome["questions"];
 }
 
 /**
@@ -251,6 +253,7 @@ export class TurnRunner {
 			...(product.calls === undefined ? {} : { calls: product.calls }),
 			...(product.tasks === undefined ? {} : { tasks: product.tasks }),
 			...(product.decision === undefined ? {} : { decision: product.decision }),
+			...(product.questions === undefined ? {} : { questions: product.questions }),
 			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {

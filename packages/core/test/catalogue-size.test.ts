@@ -35,6 +35,7 @@ import { memoryTools } from "../src/memory/retrieval.js";
 import { delegateTool } from "../src/tools/delegate.js";
 import { UPDATE_TASKS_TOOL } from "../src/tools/update-tasks.js";
 import { USE_SKILL_TOOL } from "../src/tools/use-skill.js";
+import { ASK_PERSON_TOOL } from "../src/tools/ask-person.js";
 import { readMemoryKnobs } from "../src/memory/knobs.js";
 
 /**
@@ -62,11 +63,13 @@ function everythingWeShip(): string[] {
 		USE_SKILL_TOOL,
 		// E81: the persona's own task list, offered on every run.
 		UPDATE_TASKS_TOOL,
+		// E84: a question to the person, offered on every run.
+		ASK_PERSON_TOOL,
 	];
 }
 
 describe("how many tools a persona can be shown", () => {
-	it("is thirteen, and one more is a decision rather than a file somebody added", () => {
+	it("is fourteen, and one more is a decision rather than a file somebody added", () => {
 		// Raise this number in the same commit as the tool, with the reason in the
 		// commit message. That is the whole mechanism: it costs one line and it makes
 		// the next tool something a person chose.
@@ -74,7 +77,11 @@ describe("how many tools a persona can be shown", () => {
 		// Twelve and thirteen, 2026-09-15: `use_skill` (E72), which loads a skill by name because counting
 		// words chose the wrong ones, and `update_tasks` (E81), because a small model loses steps when its
 		// plan lives only in the conversation. Neither overlaps another: one reads a method, one keeps a list.
-		expect(everythingWeShip()).toHaveLength(13);
+		//
+		// Fourteen, 2026-09-15: `ask_person` (E84), because a persona missing what only a person can give either
+		// invented it or stopped in prose nothing could read as a question. It overlaps nothing: no other tool
+		// reaches a person, and a request for approval is the gate's question about a call, not the persona's.
+		expect(everythingWeShip()).toHaveLength(14);
 	});
 
 	it("counts seven built-ins, which is the half a plugin cannot change", () => {
