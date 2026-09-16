@@ -119,6 +119,14 @@ export interface ServicePorts {
 	checkProduced?(input: { paths: readonly string[]; since: number }): Promise<{ produced: ProducedFile[]; missing: string[] }>;
 	/** Optional: every step as it ends, for a journal next to the work. */
 	onStep?(record: StepRecord): void;
+	/**
+	 * E89: the run is over for good, so whoever holds the disk can close what it opened.
+	 *
+	 * A port and not a call, for the reason `onStep` is one: the engine has no business knowing what a session
+	 * on disk is. Fired on the two definitive endings and NEVER on `waiting`, because that run is picked up
+	 * later and closing it there would consolidate half a working conversation as if it were the whole of one.
+	 */
+	onRunEnd?(result: { status: "completed" | "failed"; reason: string | null }): void;
 }
 
 /** Where a step's note lives in a run: the service path down to it, and its position there. */
@@ -626,12 +634,16 @@ async function runLine(def: ServiceDef, ports: ServicePorts, context: RunContext
 			continue;
 		}
 
+		// E89: the three endings that are final, told once each. A run that waits is not one of them.
 		if (decision.kind === "complete") {
+			ports.onRunEnd?.({ status: "completed", reason: decision.reason });
 			return { status: "completed", reason: decision.reason, summary: lastSummary ?? decision.reason, summaryFrom: lastSummary ? lastSummaryFrom : null, steps: records };
 		}
 		if (decision.kind === "fail") {
+			ports.onRunEnd?.({ status: "failed", reason: decision.reason });
 			return { status: "failed", reason: decision.reason, summary: null, summaryFrom: null, steps: records };
 		}
+		ports.onRunEnd?.({ status: "failed", reason: decision.why });
 		return { status: "failed", reason: decision.why, summary: null, summaryFrom: null, steps: records };
 	}
 }

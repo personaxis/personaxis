@@ -50,6 +50,7 @@ import {
 import { buildAwarenessBlock } from "../repl/awareness.js";
 import { friendlyProviderError } from "../repl/render.js";
 import { holdPresence } from "../presence-session.js";
+import { serviceSessions } from "../service-session.js";
 import { meterModelCalls, usageBetween, type ModelUsage } from "../usage-meter.js";
 import { runObserve } from "./observe.js";
 
@@ -187,6 +188,10 @@ export function producedIn(root: string, paths: readonly string[], since: number
  * starts from the TUI. `person` is who is asked and where the lines go.
  */
 function localPorts(root: string, costs: StepCost[], meter: Meter, person: PersonAt): service.ServicePorts {
+	// E89: the sessions this run keeps, one per persona. Until this, only the terminal wrote session turns, so
+	// a persona working through a service remembered nothing of it: there were no turns for the distillation
+	// to read, and the memory that governs the next run was built from the conversations nobody had.
+	const sessions = serviceSessions();
 	// Settled, not snapshotted: the working turn streams, and its usage arrives in the last chunk.
 	const since = async (t: number, u: ModelUsage): Promise<PhaseCost> => {
 		const ms = Date.now() - t;
@@ -291,10 +296,22 @@ function localPorts(root: string, costs: StepCost[], meter: Meter, person: Perso
 			cost.tick = await since(t, u);
 			if (!tick.ok) person.say(chalk.yellow(`    tick failed: ${tick.error}`));
 
+			// E89: the step, as two turns of this persona's session for this run.
+			sessions.note({ personaPath: assembled.personaPath, personaRef, prompt, answer: outcome.answer, frontmatter });
+
 			return { outcome: "completed", summary: outcome.answer, reason: ended.reason };
 		},
 		approve: (input) => person.approveStep(input),
 		checkProduced: async ({ paths, since: from }) => producedIn(root, paths, from),
+		// E89: the run is over for good, so every session it opened closes the way each persona's document says.
+		// Never on a run that waits: the engine does not report those here, because they are picked up later (`E97`).
+		onRunEnd: () => {
+			for (const { personaRef, result } of sessions.close()) {
+				const kept = result.why === undefined ? `kept ${result.distilled} from this run` : `kept nothing: ${result.why}`;
+				const fold = result.semantic === "consolidated" ? ", and folded what it knows" : result.semantic === "proposed" ? ", with a fold waiting for a person" : "";
+				person.say(chalk.dim(`  ${personaRef} · ${kept}${fold}`));
+			}
+		},
 	};
 }
 
