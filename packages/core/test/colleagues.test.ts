@@ -12,7 +12,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { colleaguePathFor, colleaguesOf, lowerCeiling, lowerSandbox } from "../src/run/colleagues.js";
+import { colleaguePathFor, colleaguesOf, lowerCeiling } from "../src/run/colleagues.js";
+import type { SandboxMode } from "../src/sandbox.js";
 
 let dir: string;
 let personaPath: string;
@@ -35,10 +36,16 @@ function subPersona(address: string, purpose: string): void {
 
 describe("the lower ceiling of the two (E87, O22)", () => {
 	it("takes the stricter sandbox, whichever side it came from", () => {
-		expect(lowerSandbox("workspace-write", "read-only")).toBe("read-only");
-		expect(lowerSandbox("read-only", "workspace-write")).toBe("read-only");
-		expect(lowerSandbox("danger-full-access", "workspace-write")).toBe("workspace-write");
-		expect(lowerSandbox("read-only", "read-only")).toBe("read-only");
+		// Through the ceiling and not through the comparison behind it: the comparison is internal, because an
+		// export nothing outside its module reaches is one the `designed-not-connected` sweep counts, and a test
+		// reaching in would be proving the code runs rather than that anything uses it.
+		const sandboxOf = (asking: SandboxMode, colleague: SandboxMode): SandboxMode =>
+			lowerCeiling({ sandbox: asking, approval: "on-request" }, { sandbox: colleague, approval: "on-request" }).sandbox;
+
+		expect(sandboxOf("workspace-write", "read-only")).toBe("read-only");
+		expect(sandboxOf("read-only", "workspace-write")).toBe("read-only");
+		expect(sandboxOf("danger-full-access", "workspace-write")).toBe("workspace-write");
+		expect(sandboxOf("read-only", "read-only")).toBe("read-only");
 	});
 
 	it("does not let a looser colleague widen either axis", () => {

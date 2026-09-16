@@ -16,7 +16,6 @@ import type { RecordBody } from "../src/record/entry.js";
 import { Journal } from "../src/record/journal.js";
 import { recordTurns } from "../src/run/recording.js";
 import { runnerFor } from "../src/run/runner-for.js";
-import { ROUND_LIST_FLOOR } from "../src/run/rounds.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
 
 let dir: string;
@@ -44,7 +43,9 @@ const SIX_TASKS: Call = {
 	args: {
 		tasks: [
 			{ text: "draw level two", status: "in_progress" },
-			...Array.from({ length: ROUND_LIST_FLOOR - 1 }, (_, i) => ({ text: `step ${i}`, status: "pending" })),
+			// Five more, so the list holds six: the floor lives in `rounds.ts` and is internal, so it is spelled
+			// out here rather than reached for.
+			...Array.from({ length: 5 }, (_, i) => ({ text: `step ${i}`, status: "pending" })),
 		],
 	},
 };
