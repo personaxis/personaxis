@@ -60,6 +60,9 @@ import { DEFAULT_POLICY } from "../sandbox.js";
 import { assemble, identityOf } from "./assembled.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { wordlessReport } from "./wordless.js";
+import { LESSON_INSTRUCTION, parseLesson } from "./lesson.js";
+import { requestToolCall } from "../tool-calling.js";
+import type { Lesson, PostmortemInput } from "../postmortem.js";
 import { compile } from "../enforcement/policy-compile.js";
 import { Kernel } from "../kernel/index.js";
 import { delegateTool, MAX_DELEGATION_DEPTH } from "../tools/delegate.js";
@@ -290,6 +293,33 @@ function underLowerCeiling(child: SessionOptions, ceiling: Ceiling): SessionOpti
 	return { ...child, policy: { ...asking, sandbox: ceiling.sandbox, approval: ceiling.approval } };
 }
 
+/**
+ * E88: what the persona says it learned, asked with its own model.
+ *
+ * The call lives here and not in `run/lesson.ts` for the reason `E83` split the decision step the same way:
+ * the instruction and the reading of the reply are pure and can be checked without a model, and a module
+ * that reached for the network would be a module nobody can test without one.
+ *
+ * The persona's own model, like the judge beside it: a lesson abstracted by a model the persona never
+ * declared would be written into its folder as a skill it wrote, which its document cannot support.
+ *
+ * Null on anything that is not a readable lesson, including the persona saying the method is not worth
+ * keeping. Never a guess: a skill invented by the runtime and filed under the persona's name is durable.
+ */
+export function lessonFrom(llm: AgentOptions["llm"]): (input: PostmortemInput) => Promise<Lesson | null> {
+	return async (input) => {
+		const asked = [
+			{ role: "user" as const, content: `# What was asked\n${input.task}\n\n# How it went\n${input.transcript}` },
+			{ role: "system" as const, content: LESSON_INSTRUCTION },
+		];
+		// No tools: this is one short question about method, and a catalogue here would invite the model to
+		// go and do more work instead of answering it.
+		const said = await requestToolCall(llm, asked, []);
+		const read = parseLesson(said.text);
+		return read.ok ? read.lesson : null;
+	};
+}
+
 export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): TurnRunner {
 	const { ledger, observer, delegationDepth, runService, ...rest } = session;
 
@@ -310,7 +340,19 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 	// its constructor and the photograph below reads what this derivation decided. Two
 	// compilations of one document could disagree, which is the reason `agentOptionsFor`
 	// gives for compiling once itself.
-	const options = agentOptionsFor(persona, { ...rest, kernel });
+	// E88: the run reflects, and only the run somebody asked for.
+	//
+	// `agentOptionsFor` builds the options for EVERY run, and `subTaskSession` carries them through, so wiring
+	// this without the depth check would have a round (`E86`) or a colleague (`E87`) writing skills of its own:
+	// one turn could leave several, each abstracted from a piece nobody asked about on its own. The parent's
+	// turn is the unit of work a person asked for, so that is the one that learns from itself.
+	//
+	// Nothing changes for a persona that declared no `improvement_policy`: `readMode` answers `locked` and the
+	// draft is never written.
+	const options =
+		(delegationDepth ?? 0) > 0
+			? agentOptionsFor(persona, { ...rest, kernel })
+			: agentOptionsFor(persona, { ...rest, kernel, postmortem: { extract: lessonFrom(persona.llm) } });
 
 	kernel.mount({
 		name: "tool.delegate",

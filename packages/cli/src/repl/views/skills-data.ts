@@ -21,24 +21,48 @@ export interface SkillEntry {
   name: string;
   /** local | github | registry | unknown */
   kind: string;
-  status: "materialized" | "missing-local" | "reference-only";
+  status: "materialized" | "missing-local" | "reference-only" | "pending";
   ref?: string;
 }
 
-/** Every skill declared by the persona at `personaPath`, with its real status. */
+/**
+ * E88: the drafts a persona wrote about its own work, waiting for a person.
+ *
+ * They are read off disk and not out of the spec, because that is what they are: under `suggesting` the writer
+ * puts the file in `skills/pending/` and deliberately does NOT declare or register it, so a person still
+ * decides. A list built only from `extensions.skills` therefore cannot see them, and a draft nobody can see is
+ * a draft nobody approves.
+ */
+function pendingDrafts(personaPath: string): SkillEntry[] {
+  try {
+    return readdirSync(join(dirname(personaPath), "skills", "pending"))
+      .filter((file) => file.endsWith(".md"))
+      .sort()
+      .map((file) => ({ name: basename(file, ".md"), kind: "self-written", status: "pending" as const }));
+  } catch {
+    // No folder means no drafts, which is the ordinary case and not a failure.
+    return [];
+  }
+}
+
+/** Every skill declared by the persona at `personaPath`, with its real status, and the drafts waiting for one. */
 export function listSkills(personaPath: string): SkillEntry[] {
   try {
     const { data } = loadPersonaFile(personaPath);
-    return resolveDeclaredSkills(data as PersonaData, dirname(personaPath)).map((s) => ({
+    const declared = resolveDeclaredSkills(data as PersonaData, dirname(personaPath)).map((s) => ({
       // The resolver reports a local entry's raw ref as its name ("./sources/research");
       // every surface (view, actions, messages) uses the short, human name.
       name: s.name.includes("/") || s.name.startsWith(".") ? skillNameFromRef(s.name) : s.name,
       kind: s.kind,
       status: s.missing ? "missing-local" : s.sourceDir ? "materialized" : "reference-only",
       ref: s.ref ?? (s.name.includes("/") ? s.name : undefined),
-    }));
+    })) as SkillEntry[];
+    // After the declared ones: a draft is not part of what the persona says it has, it is what it is asking to
+    // have, and a list that mixed the two would let a pending method read as one already in use.
+    return [...declared, ...pendingDrafts(personaPath)];
   } catch {
-    return [];
+    // The spec could not be read, which says nothing about drafts on disk beside it.
+    return pendingDrafts(personaPath);
   }
 }
 

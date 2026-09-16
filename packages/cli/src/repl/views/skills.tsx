@@ -133,7 +133,10 @@ export function registerSkillsView(actions: SkillsActions): void {
         ) : null}
         {rows.map((r, i) => {
           const selected = i === cursor;
-          const statusColor = r.status === "materialized" ? "green" : r.status === "missing-local" ? "red" : undefined;
+          // E88: a draft the persona wrote about its own work shows as what it is, something waiting for a
+          // person. Amber rather than green: it is not in use, and colouring it like the rest would say it was.
+          const statusColor =
+            r.status === "materialized" ? "green" : r.status === "missing-local" ? "red" : r.status === "pending" ? "yellow" : undefined;
           return (
             <Box key={r.name} flexDirection="column">
               <Text inverse={selected}>

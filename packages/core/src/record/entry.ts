@@ -427,6 +427,31 @@ export type RecordBody =
 	 * every checkpoint and fold from zero and get the same answer. That property is
 	 * what makes it safe to skip, and it is checked rather than assumed.
 	 */
+	/**
+	 * E88: a skill the persona wrote about its own work, and what happened to it.
+	 *
+	 * Written because a skill that appears in a folder with no provenance is a method nobody can audit: the
+	 * file says what to do and nothing says who decided it, out of which piece of work, or whether a person
+	 * ever approved it. The security floor runs in every mode, so `blocked` is a real outcome and belongs here
+	 * as much as the other two: a draft the scanner refused is a thing that happened.
+	 *
+	 * The runtime is the author, not the persona. The persona wrote the METHOD; that it became a file, in this
+	 * folder, under this policy, is the runtime's doing, and an entry in the persona's name would be claiming
+	 * it chose where its own skills land.
+	 */
+	| {
+			readonly type: "skill";
+			/** The sanitised name the file took, which is what the folder shows. */
+			readonly name: string;
+			/** Content hash of what was rendered, so a skill edited tomorrow is not the one written today. */
+			readonly hash: string;
+			/** Queued for a person to approve, active already, or refused before it was written. */
+			readonly outcome: "queued" | "written" | "blocked";
+			/** Why it landed that way, in the writer's own words: the policy that decided, or the floor that refused. */
+			readonly reason: string;
+			/** The work it was abstracted from, so the method can be read against the job that taught it. */
+			readonly from: string;
+	  }
 	| { readonly type: "checkpoint"; readonly state: DerivedState };
 
 /**

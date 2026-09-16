@@ -98,6 +98,8 @@ import { deliveredBy, deliveredIn, type Delivered } from "./run/delivered.js";
 import { runDerivedChecks, type DeliveredVerification } from "./run/derived-checks.js";
 import type { TurnCall } from "./run/vocabulary.js";
 import { authorId } from "./record/entry.js";
+import { writingToRecord } from "./record/transaction.js";
+import { dirname as pathDirname, join as pathJoin } from "node:path";
 import { Kernel, type PermissionKey } from "./kernel/index.js";
 import { ALL_TOOL_PERMISSIONS, grantedPermissions, mountBuiltins, type ToolBench } from "./tools/mounted.js";
 
@@ -1067,6 +1069,32 @@ export class PersonaAgent {
         );
         if (res.write && res.write.outcome !== "blocked") {
           bus.emit({ type: "agent-think", text: `[post-mortem] skill ${res.write.outcome}: ${res.write.name}` });
+         }
+         // E88: the provenance, whatever happened to the draft. A skill in a folder with nothing saying who
+         // decided it, out of which work, or whether a person approved it, is a method nobody can audit; and a
+         // draft the security floor refused is a thing that happened too, so `blocked` is written like the rest.
+         //
+         // The runtime is the author: the persona wrote the METHOD, and that it became a file under this policy
+         // is not something it chose. An entry in its name would be claiming otherwise.
+         if (res.write) {
+         	try {
+         		const write = res.write;
+         		await writingToRecord(p, pathJoin(pathDirname(p), "state.json"), {}, (record) => {
+         			record.append(
+         				{ kind: "runtime", mechanism: "skill-writer", reason: "a method the persona abstracted from its own work, and where it landed" },
+         				{
+         					type: "skill",
+         					name: write.name,
+         					hash: write.hash,
+         					outcome: write.outcome,
+         					reason: write.reason,
+         					from: task.replace(/\s+/g, " ").slice(0, 160),
+         				},
+         			);
+         		});
+         	} catch {
+         		/* provenance is additive; a record that cannot be written never takes down a run */
+         	}
         }
       } catch {
         /* reflection is additive; never let it take down the run */
