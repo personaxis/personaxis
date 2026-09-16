@@ -136,6 +136,17 @@ export interface TurnOutcome {
 	 */
 	readonly compactions?: readonly TurnCompaction[];
 	/**
+	 * E85: what the runtime checked about what this turn left, and what it could not check.
+	 *
+	 * Optional the way `calls` is: a turn that left nothing has nothing to report, and that silence is
+	 * different from a turn that left a page nobody ran. The second one is written down, because the note
+	 * this rule comes from is explicit that terminating without verifying has to be observable.
+	 */
+	readonly delivered?: {
+		readonly checks: readonly Extract<RecordBody, { readonly type: "verification" }>["checks"][number][];
+		readonly unverified: readonly string[];
+	};
+	/**
 	 * E80: every call the gate judged this turn, in order, for the record to write down.
 	 *
 	 * Optional for the reason `compactions` is. A provider that runs no tools through our gate has none

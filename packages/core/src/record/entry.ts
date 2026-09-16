@@ -253,6 +253,34 @@ export type RecordBody =
 	 * Written once, at the close: the list is replaced whole on every update, and the last one is what the
 	 * turn ended committed to. A fact and not state, because the next turn starts its own list.
 	 */
+	/**
+	 * E85: what this turn checked before saying it was done, and what it could not check.
+	 *
+	 * Its own body, not a field on `turn-close`: that entry says how the turn ended, and this says what was
+	 * proven about what it left, which is a different question with a different author. The note this rule
+	 * comes from is explicit that **terminating without verifying has to be an observable state**, not an
+	 * absence, because a reader cannot tell "nothing to check" from "nobody checked" when both are silence.
+	 *
+	 * `scope` is `targeted` for a check about one deliverable and never climbs to anything wider: promoting a
+	 * targeted check to "everything is green" is the lie an attestation cannot afford.
+	 */
+	| {
+			readonly type: "verification";
+			readonly turn: string;
+			/** One entry per deliverable the turn left, in the order they were checked. */
+			readonly checks: readonly {
+				/** The file, as the workspace names it. */
+				readonly what: string;
+				/** What was run: the page was executed, the JSON was parsed, a declared command ran. */
+				readonly how: string;
+				readonly passed: boolean;
+				/** Why, in the checker's words, when it has any to give. */
+				readonly reason?: string;
+				readonly scope: "targeted";
+			}[];
+			/** Deliverables with no obvious check. Written out, because an absence nobody names reads as verified. */
+			readonly unverified: readonly string[];
+	  }
 	| {
 			readonly type: "tasks";
 			readonly turn: string;
