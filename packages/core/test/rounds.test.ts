@@ -26,7 +26,7 @@ describe("when a round opens (E86)", () => {
 		const opened = nextRound({ ...roomy, tasks: waiting(ROUND_LIST_FLOOR) });
 
 		expect(opened?.because).toBe("list");
-		expect(opened?.task.id).toBe("t0");
+		expect(opened?.task?.id).toBe("t0");
 	});
 
 	it("opens on a filling context, short list or not, before anything rewrites the transcript", () => {
@@ -39,7 +39,7 @@ describe("when a round opens (E86)", () => {
 		// Jumping would leave the active one half done in a context about to be rewritten.
 		const opened = nextRound({ ...roomy, contextPct: 0.9, tasks: [task("a", "pending"), task("b", "active")] });
 
-		expect(opened?.task.id).toBe("b");
+		expect(opened?.task?.id).toBe("b");
 	});
 
 	it("never hands the same task down twice", () => {
@@ -47,7 +47,7 @@ describe("when a round opens (E86)", () => {
 		// happened in the child. Without this the same task goes down for the rest of the turn.
 		const opened = nextRound({ ...roomy, contextPct: 0.9, tasks: [task("a", "active"), task("b", "pending")], rounded: new Set(["a"]) });
 
-		expect(opened?.task.id).toBe("b");
+		expect(opened?.task?.id).toBe("b");
 	});
 
 	it("stops at the ceiling, because each round is a second agent on the same ledger", () => {
@@ -58,8 +58,24 @@ describe("when a round opens (E86)", () => {
 		expect(nextRound({ ...roomy, contextPct: 0.99, tasks: [task("a", "done"), task("b", "blocked")] })).toBeUndefined();
 	});
 
-	it("does not open for a run that keeps no list, because a round needs a task", () => {
-		expect(nextRound({ ...roomy, contextPct: 0.99, tasks: [] })).toBeUndefined();
+	it("opens on a full context for a run that keeps no list, and hands down what is left of the job", () => {
+		// Measured on 2026-09-16: neither model wrote a list on a job of six pieces, so a context signal that
+		// needed a listed task could never fire, and one of the two signals this row names was decorative.
+		const opened = nextRound({ ...roomy, contextPct: 0.85, tasks: [] });
+
+		expect(opened?.because).toBe("context");
+		expect(opened?.task).toBeUndefined();
+	});
+
+	it("does not open with no list while the context still has room", () => {
+		expect(nextRound({ ...roomy, tasks: [] })).toBeUndefined();
+	});
+
+	it("does not hand down the rest on top of a list whose every task already had its round", () => {
+		// There is a list, all of it has been handed down, and handing down "the rest" too would be the same
+		// work twice.
+		const rounded = new Set(["a"]);
+		expect(nextRound({ ...roomy, contextPct: 0.99, tasks: [task("a", "active")], rounded })).toBeUndefined();
 	});
 
 	it("is off unless the settings ask for it", () => {
@@ -147,5 +163,14 @@ describe("what a round is told (E86)", () => {
 
 	it("asks for what it left and what it checked, which is all that goes back", () => {
 		expect(brief()).toContain("Answer with what you left and what you checked about it");
+	});
+
+	it("tells a round with no listed task to finish what the job still needs", () => {
+		const text = briefFor({ goal: "build the arcade game", tasks: [], delivered: { checks: [], unverified: [] }, errors: [] });
+
+		expect(text).toContain("Your task: finish what this job still needs.");
+		expect(text).toContain("The job: build the arcade game");
+		// And it does not talk about a list that does not exist.
+		expect(text).not.toContain("the rest of the list");
 	});
 });
