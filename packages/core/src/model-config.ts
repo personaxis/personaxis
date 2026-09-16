@@ -52,6 +52,8 @@ export interface ModelSettings {
    * absent, the destination table decides, and it declares no model until the bench measured one.
    */
   scaffold?: Scaffold;
+  /** E86: whether a long job on this model is worked in rounds of fresh context. Absent is off (`roundsOn`). */
+  rounds?: boolean;
 }
 
 /** Per-persona settings: an optional reference to a named `profile` plus inline overrides. */
@@ -83,6 +85,8 @@ export interface ResolvedModel {
   maxTokens?: number;
   /** E83: the scaffold the settings declared, carried through like `maxTokens`. */
   scaffold?: Scaffold;
+  /** E86: whether the settings asked for rounds of fresh context, carried through the same way. */
+  rounds?: boolean;
 }
 
 /** A local inference server (Ollama, LM Studio, llama.cpp, vLLM on this machine) needs no key. */
@@ -135,6 +139,7 @@ function mergeSettings(layers: Array<ModelSettings | undefined>): ModelSettings 
     // only through the fallback path. A field this function forgets is a setting that silently does nothing.
     if (layer.maxTokens !== undefined) out.maxTokens = layer.maxTokens;
     if (layer.scaffold !== undefined) out.scaffold = layer.scaffold;
+    if (layer.rounds !== undefined) out.rounds = layer.rounds;
   }
   return out;
 }
@@ -186,7 +191,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
 
   const direct =
     merged.endpoint && merged.model
-      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens, scaffold: merged.scaffold }
+      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens, scaffold: merged.scaffold, rounds: merged.rounds }
       : undefined;
 
   // Usable = it can actually answer: a key resolves, or the endpoint is local (no key needed).
@@ -197,6 +202,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
       ...(direct.apiKey ? { apiKey: direct.apiKey } : {}),
       ...(direct.maxTokens !== undefined ? { maxTokens: direct.maxTokens } : {}),
       ...(direct.scaffold !== undefined ? { scaffold: direct.scaffold } : {}),
+      ...(direct.rounds !== undefined ? { rounds: direct.rounds } : {}),
     };
   }
 
