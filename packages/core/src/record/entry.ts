@@ -452,6 +452,24 @@ export type RecordBody =
 			/** The work it was abstracted from, so the method can be read against the job that taught it. */
 			readonly from: string;
 	  }
+	/**
+	 * E88: a reflection that ran and left no method behind.
+	 *
+	 * Its own body and not the `skill` one, which needs a name, a hash and an outcome: a reflection that
+	 * produced nothing has none of those, and inventing a name for something that does not exist is how a
+	 * record starts describing things that never happened.
+	 *
+	 * Written for the reason `E85` wrote its unverified list: a run that reflected and kept nothing, and a run
+	 * that never reflected, are different facts, and silence renders them the same. Without this, a persona
+	 * that is asked after every hard job and never keeps anything looks exactly like one that is never asked.
+	 */
+	| {
+			readonly type: "reflection";
+			/** Why nothing was kept, in the post-mortem's own words: no lesson came back, or the writer refused it. */
+			readonly reason: string;
+			/** The work it was asked about, so the silence can be read against the job that prompted it. */
+			readonly from: string;
+	  }
 	| { readonly type: "checkpoint"; readonly state: DerivedState };
 
 /**

@@ -1076,6 +1076,20 @@ export class PersonaAgent {
          //
          // The runtime is the author: the persona wrote the METHOD, and that it became a file under this policy
          // is not something it chose. An entry in its name would be claiming otherwise.
+         if (res.ran && !res.write) {
+         	// E88: the reflection happened and kept nothing. Written down for `E85`'s reason: a run that reflected
+         	// and kept nothing, and a run that never reflected, are different facts that silence renders identical.
+         	try {
+         		await writingToRecord(p, pathJoin(pathDirname(p), "state.json"), {}, (record) => {
+         			record.append(
+         				{ kind: "runtime", mechanism: "skill-writer", reason: "the persona was asked what it learned and kept nothing" },
+         				{ type: "reflection", reason: res.reason, from: task.replace(/\s+/g, " ").slice(0, 160) },
+         			);
+         		});
+         	} catch {
+         		/* provenance is additive; a record that cannot be written never takes down a run */
+         	}
+         }
          if (res.write) {
          	try {
          		const write = res.write;
