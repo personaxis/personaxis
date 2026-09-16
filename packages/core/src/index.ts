@@ -45,6 +45,7 @@ export * from "./memory/knobs.js";
 export * from "./memory/facts.js";
 export * from "./memory/retrieval.js";
 export * from "./memory/consolidate.js";
+export * from "./memory/close.js";
 export * from "./sessions.js";
 export * from "./provenance.js";
 export * from "./injection.js";

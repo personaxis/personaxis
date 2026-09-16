@@ -31,7 +31,7 @@ import {
   readWritePolicy,
   readConsolidationMode,
   readMemoryKnobs,
-  distillSession,
+  closeSessionMemory,
   consolidateSemantic,
   pruneMemory,
   listSessions,
@@ -181,17 +181,10 @@ export function closeSession(ctx: Ctx): void {
   const p = ctx.handle.personaPath;
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
   try {
-    const memTypes = readMemoryTypes(fm);
-    if (memTypes.episodic && readWritePolicy(fm).default !== "ephemeral") {
-      distillSession(p, ctx.sessionId);
-    }
-    if (memTypes.autobiographical && listSessions(p).length === 1) {
-      const already = readAutobiographical(p).some((e) => e.tags.includes("first-conversation"));
-      // Owned internal: the engine counted its own sessions to know this, nobody said it.
-      if (!already) appendAutobiographical(p, { event: "first conversation with the user", tags: ["milestone", "first-conversation"], owner: "internal" });
-    }
-    if (memTypes.semantic && readConsolidationMode(fm) === "auto") consolidateSemantic(p);
-    pruneMemory(p, readMemoryKnobs(fm).retentionDays);
+    // E89: the five decisions live in `core` now, so a service run and an editor over ACP close a session
+    // the same way this does. They used to live here and only here, which is why a persona consolidated its
+    // memory in the terminal and consolidated nothing anywhere else, and why nothing ever tested them.
+    closeSessionMemory(p, ctx.sessionId, fm);
     // V6.10: fold this session's per-model usage into the global stats cache
     // (~/.personaxis/stats-cache.json), so Settings > Stats draws tokens/day
     // per model instantly, across every project.
