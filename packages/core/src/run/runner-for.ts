@@ -60,7 +60,7 @@ import { DEFAULT_POLICY } from "../sandbox.js";
 import { assemble, identityOf } from "./assembled.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { wordlessReport } from "./wordless.js";
-import { LESSON_INSTRUCTION, parseLesson } from "./lesson.js";
+import { lessonFrom } from "./lesson-extract.js";
 import { requestToolCall } from "../tool-calling.js";
 import type { Lesson, PostmortemInput } from "../postmortem.js";
 import { compile } from "../enforcement/policy-compile.js";
@@ -291,33 +291,6 @@ function ceilingFor(child: SessionOptions, colleague: PersonaFacts): Ceiling {
 function underLowerCeiling(child: SessionOptions, ceiling: Ceiling): SessionOptions {
 	const asking = child.policy ?? DEFAULT_POLICY;
 	return { ...child, policy: { ...asking, sandbox: ceiling.sandbox, approval: ceiling.approval } };
-}
-
-/**
- * E88: what the persona says it learned, asked with its own model.
- *
- * The call lives here and not in `run/lesson.ts` for the reason `E83` split the decision step the same way:
- * the instruction and the reading of the reply are pure and can be checked without a model, and a module
- * that reached for the network would be a module nobody can test without one.
- *
- * The persona's own model, like the judge beside it: a lesson abstracted by a model the persona never
- * declared would be written into its folder as a skill it wrote, which its document cannot support.
- *
- * Null on anything that is not a readable lesson, including the persona saying the method is not worth
- * keeping. Never a guess: a skill invented by the runtime and filed under the persona's name is durable.
- */
-export function lessonFrom(llm: AgentOptions["llm"]): (input: PostmortemInput) => Promise<Lesson | null> {
-	return async (input) => {
-		const asked = [
-			{ role: "user" as const, content: `# What was asked\n${input.task}\n\n# How it went\n${input.transcript}` },
-			{ role: "system" as const, content: LESSON_INSTRUCTION },
-		];
-		// No tools: this is one short question about method, and a catalogue here would invite the model to
-		// go and do more work instead of answering it.
-		const said = await requestToolCall(llm, asked, []);
-		const read = parseLesson(said.text);
-		return read.ok ? read.lesson : null;
-	};
 }
 
 export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): TurnRunner {

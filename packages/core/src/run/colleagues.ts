@@ -47,10 +47,17 @@ export interface Ceiling {
  * about them one `if` at a time. The approval axis already had its order in `sandbox.ts` and is reused rather
  * than restated, because two scales for one question disagree the day somebody adds a value to one of them.
  */
-export const SANDBOX_STRICTNESS: readonly SandboxMode[] = ["danger-full-access", "workspace-write", "read-only"];
+const SANDBOX_STRICTNESS: readonly SandboxMode[] = ["danger-full-access", "workspace-write", "read-only"];
 
-/** The stricter of two postures, which on this axis is the lower ceiling. */
-export function lowerSandbox(a: SandboxMode, b: SandboxMode): SandboxMode {
+/**
+ * The stricter of two postures, which on this axis is the lower ceiling.
+ *
+ * Internal, with the order above it: both are used by `lowerCeiling` and by nothing else, and an export
+ * reached only from its own module is what the `designed-not-connected` sweep counts as unreachable. It was
+ * exported at first and the ratchet caught it, which is the same correction `use_skill` needed on 2026-09-14.
+ * What crosses the boundary is the ceiling, not the comparison that builds it.
+ */
+function lowerSandbox(a: SandboxMode, b: SandboxMode): SandboxMode {
 	return SANDBOX_STRICTNESS.indexOf(a) >= SANDBOX_STRICTNESS.indexOf(b) ? a : b;
 }
 

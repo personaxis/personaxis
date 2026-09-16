@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { briefFor, MAX_ROUNDS_PER_TURN, nextRound, ROUND_LIST_FLOOR, roundsOn } from "../src/run/rounds.js";
+import { briefFor, MAX_ROUNDS_PER_TURN, nextRound, roundsOn } from "../src/run/rounds.js";
 import type { SubTask } from "../src/task-state.js";
 
 const task = (id: string, status: SubTask["status"], extra: Partial<SubTask> = {}): SubTask => ({ id, text: `do ${id}`, status, ...extra });
@@ -19,11 +19,13 @@ const roomy = { contextPct: 0.1, contextThreshold: 0.8, rounded: new Set<string>
 
 describe("when a round opens (E86)", () => {
 	it("does not open on a short list in a context with room, which is the ordinary turn", () => {
-		expect(nextRound({ ...roomy, tasks: waiting(ROUND_LIST_FLOOR - 1) })).toBeUndefined();
+		// Five and six, which is the floor written in `rounds.ts`, spelled out here because that constant is
+		// internal: a test reaching in for it would be the kind of back door the export sweep exists to stop.
+		expect(nextRound({ ...roomy, tasks: waiting(5) })).toBeUndefined();
 	});
 
 	it("opens on a list that has grown past what one context holds", () => {
-		const opened = nextRound({ ...roomy, tasks: waiting(ROUND_LIST_FLOOR) });
+		const opened = nextRound({ ...roomy, tasks: waiting(6) });
 
 		expect(opened?.because).toBe("list");
 		expect(opened?.task?.id).toBe("t0");

@@ -46,7 +46,7 @@ export type RoundTrigger = "list" | "context";
  * for nothing. The list is capped at twenty (`DEFAULT_LIMITS.maxSubTasks`), so a floor near that cap would
  * only ever fire on a list already being truncated.
  */
-export const ROUND_LIST_FLOOR = 6;
+const ROUND_LIST_FLOOR = 6;
 
 /**
  * How many rounds one turn may open.

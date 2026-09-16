@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { lessonFrom } from "../src/run/runner-for.js";
+import { lessonFrom } from "../src/run/lesson-extract.js";
 
 type Sent = { messages: Array<{ role: string; content?: unknown }>; tools?: unknown[] };
 
