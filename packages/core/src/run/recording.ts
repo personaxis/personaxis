@@ -239,6 +239,15 @@ function closing(outcome: TurnOutcome, asker?: Author): readonly Written[] {
 		});
 	}
 
+	// E86: the rounds the loop opened, beside the verification and before the answer. The runtime's entry, not
+	// the persona's: the persona did not decide to work in rounds, and what came back is a sub-task's summary.
+	if (outcome.rounds !== undefined && outcome.rounds.length > 0) {
+		entries.push({
+			author: { kind: "runtime", mechanism: "round", reason: "a task worked in a fresh context because this one was no longer a good place to work" },
+			body: { type: "round", turn: outcome.turn, rounds: outcome.rounds },
+		});
+	}
+
 	// E81: the list the turn ended with, once, after the calls that changed it and before the answer.
 	// The runtime's entry, not the persona's: the steps are the persona's words, and `verified` is the
 	// runtime's judgement of them against the calls that succeeded, which the persona did not write.

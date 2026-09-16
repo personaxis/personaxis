@@ -281,6 +281,26 @@ export type RecordBody =
 			/** Deliverables with no obvious check. Written out, because an absence nobody names reads as verified. */
 			readonly unverified: readonly string[];
 	  }
+	/**
+	 * E86: the rounds this turn opened, each one a task of the list worked in a context with none of its history.
+	 *
+	 * The runtime's entry and not the persona's: the persona did not choose to work in rounds, the loop did,
+	 * and `reply` is a sub-task's summary rather than anything the persona said. Written because a round that
+	 * nobody can see is work nobody can audit: what was handed down, why it was handed down then, and what came
+	 * back are the three facts a reader needs to judge whether the round earned its second agent.
+	 */
+	| {
+			readonly type: "round";
+			readonly turn: string;
+			readonly rounds: readonly {
+				/** The task the round was given, in the persona's own words. */
+				readonly task: string;
+				/** Why the round opened: the list had grown past what one context holds, or the context was filling. */
+				readonly because: "list" | "context";
+				/** What came back to the parent: the sub-task's summary, never its transcript. */
+				readonly reply: string;
+			}[];
+	  }
 	| {
 			readonly type: "tasks";
 			readonly turn: string;

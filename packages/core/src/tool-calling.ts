@@ -188,6 +188,14 @@ export interface ToolCallConfig {
    * absent in both means `standard`, the loop unchanged (`scaffoldFor`).
    */
   scaffold?: Scaffold;
+  /**
+   * E86: whether a long job on this model is worked in rounds of fresh context (`roundsOn`).
+   *
+   * Beside the scaffold because it is declared the same way and for the same kind of reason: how much the
+   * loop does for a model is a property of running THAT model, written once in its settings. Absent is off,
+   * so nothing about an existing run changes until somebody asks for it.
+   */
+  rounds?: boolean;
 }
 
 /**

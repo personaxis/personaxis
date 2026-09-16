@@ -50,6 +50,14 @@ import type { ToolSpec } from "./registry.js";
  */
 export const MAX_DELEGATION_DEPTH = 2;
 
+/**
+ * The name the model calls it by.
+ *
+ * A constant because the loop reaches for this tool itself now (`E86`, a round of fresh context), and a loop
+ * matching a bare string against a catalogue is a rename away from silently never finding it.
+ */
+export const DELEGATE_TOOL = "delegate";
+
 /** What a sub-task produced, as the parent's tool needs to report it. */
 export interface SubTaskResult {
 	/** What it answered. Empty is a real outcome and says so rather than pretending. */
