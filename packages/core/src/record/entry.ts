@@ -377,6 +377,22 @@ export type RecordBody =
 			readonly directories: readonly string[];
 			/** The posture the parent had declared, when it had declared one. */
 			readonly sandbox: string | null;
+			/**
+			 * E87: the colleague this work was handed to, by the address its asker named, when it went to one.
+			 *
+			 * Absent when the sub-task is the same persona, which is what delegation was before colleagues
+			 * existed. Written because "who did this" is the first question anybody asks of a handover, and a
+			 * record that only said how deep it sat could not answer it.
+			 */
+			readonly to?: string;
+			/**
+			 * E87: the approval mode actually applied, which for a colleague is the stricter of the two (`O22`).
+			 *
+			 * Beside the sandbox because the gate reads both, and because the pair is what "the lower ceiling of
+			 * the two" means. Absent when nothing crossed two ceilings, so the entry never implies a narrowing
+			 * that did not happen.
+			 */
+			readonly approval?: string;
 			/** What the sub-task was asked to do, so the entry is legible on its own. */
 			readonly task: string;
 	  }

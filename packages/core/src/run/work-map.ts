@@ -208,8 +208,14 @@ function servicesFor(workspace: string, address: string | undefined): MapService
 	return out;
 }
 
-/** The persona's own sub-personas, depth first, each with the purpose its spec declares. */
-function subPersonasOf(folder: string): MapItem[] {
+/**
+ * The persona's own sub-personas, depth first, each with the purpose its spec declares.
+ *
+ * Exported since E87, because handing work to a colleague has to reach exactly the ones the map SHOWS. A
+ * second walk over the same folders would be an index and a mechanism that drift apart, which is the shape of
+ * bug this repository keeps finding.
+ */
+export function subPersonasOf(folder: string): MapItem[] {
 	const out: MapItem[] = [];
 	const walk = (dir: string, chain: readonly string[]): void => {
 		if (chain.length >= PERSONA_DEPTH) return;

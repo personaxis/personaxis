@@ -388,6 +388,20 @@ export function effectiveApproval(policy: Policy, klass: CommandClass): Approval
 }
 
 /**
+ * O22: the stricter of two approval modes.
+ *
+ * Exported beside the order it reads, and reading that same order, because a second strictness scale written
+ * somewhere else is a scale that disagrees with this one the day somebody adds a mode. It exists for work
+ * handed to a colleague: the colleague acts under the lower ceiling of the two, which is David's decision of
+ * 2026-09-15, and on this dimension the lower ceiling IS the stricter mode. It is not a preference: with
+ * `never` or `on-failure` a risky operation comes back `allow` from `evaluateCommand`, so a looser colleague
+ * would turn into silent permission what the asker would have sent to a person.
+ */
+export function stricterApproval(a: ApprovalMode, b: ApprovalMode): ApprovalMode {
+  return APPROVAL_STRICTNESS.indexOf(a) >= APPROVAL_STRICTNESS.indexOf(b) ? a : b;
+}
+
+/**
  * Decide allow | ask | deny for a FILE WRITE/EDIT under a policy. Mirrors
  * evaluateCommand's precedence but for a path target (the agent's write_file /
  * edit_file tools). Reuses pathEscapesWorkspace so a write that escapes the

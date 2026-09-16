@@ -64,6 +64,21 @@ export interface DelegatedScope {
 	readonly depth: number;
 	/** When the photograph was taken, so the record can say what it was of. */
 	readonly at: string;
+	/**
+	 * E87: the colleague this work was addressed to, when it was addressed to one.
+	 *
+	 * Here rather than beside the instruction because it belongs to the photograph: who does the work and what
+	 * they may do are decided in the same moment, and a record that carried one without the other could not say
+	 * whose ceiling the run was under.
+	 */
+	readonly to?: string;
+	/**
+	 * E87, O22: the approval mode applied to the work, which for a colleague is the stricter of the two.
+	 *
+	 * The sandbox half lives in `inherited`, because that is what the parent narrowed. This one is the crossing
+	 * itself, so it is named apart: it is not something either side declared alone.
+	 */
+	readonly approval?: string;
 }
 
 export interface DelegationRequest {

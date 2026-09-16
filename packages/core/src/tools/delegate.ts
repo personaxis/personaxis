@@ -15,6 +15,15 @@
  * BEFORE the model was asked anything. A sub-task that needs something wider ends with
  * the limitation reported, which is what `scopeStatement` tells it in so many words.
  *
+ * ## E87: an address is not a scope, which is why there is a second argument now
+ *
+ * The rule above still holds, and this does not bend it. A scope argument would be the model deciding its own
+ * limits one indirection away; an address is the model saying WHO does the work, and the answer to "what may
+ * they do" is decided nowhere near here: the colleague runs under the lower of its own ceiling and the
+ * asker's (`O22`, David, 2026-09-15), so naming one can narrow the work or leave it as it was, and can never
+ * widen it. The addresses are the ones the persona's own map already shows it, and one that is not on that
+ * list is refused by name rather than resolved.
+ *
  * ## What it can DO, declared
  *
  * K6 asks a contributed tool what it can do rather than inferring it, and the honest
@@ -79,10 +88,27 @@ export type SubTaskRunner = (task: {
 	readonly scope: DelegatedScope;
 	/** The sentence the child is told about its own limits, ready to hand over. */
 	readonly statement: string;
+	/**
+	 * E87: the colleague this work was addressed to, when it was addressed to one.
+	 *
+	 * Absent means a sub-task of the same persona, which is everything this tool did before. The address comes
+	 * from the persona's own map and is checked against it here, so what reaches the runner is a colleague that
+	 * exists rather than a string to resolve.
+	 */
+	readonly to?: string;
 }) => Promise<SubTaskResult>;
 
 export interface DelegateToolOptions {
 	readonly run: SubTaskRunner;
+	/**
+	 * E87: the colleagues this persona may hand work to, by address, read when the tool is CALLED.
+	 *
+	 * A function for the reason `depth` and `scope` are: a persona can gain or lose a sub-persona while a
+	 * session is open, and a list captured when the catalogue was built would offer an address that is gone or
+	 * hide one that is there. Empty means this persona has no colleagues, and then the tool says so by name
+	 * rather than starting a run against a folder nobody has.
+	 */
+	readonly colleagues?: () => readonly { readonly name: string }[];
 	/**
 	 * How deep the caller of this tool already is, read when the tool is CALLED.
 	 *
@@ -112,9 +138,11 @@ export function delegateTool(options: DelegateToolOptions): ToolSpec {
 		category: "meta",
 		description:
 			"Hand one self-contained piece of this work to a sub-task and wait for its answer. " +
-			"The sub-task runs under the limits you already have and cannot be given wider ones, " +
+			"Name a colleague in 'to' to give the work to one of your sub-personas instead, by the address your map lists. " +
+			"Either way it runs under limits no wider than yours, a colleague under the stricter of its own and yours, " +
 			"it cannot ask anybody for permission, and it spends from the same budget as you. " +
-			"Use it to keep a long piece of work out of your own context, not to get access you lack.",
+			"Use it to keep a long piece of work out of your own context, or to give a piece to whoever is made for it, " +
+			"not to get access you lack.",
 		parameters: {
 			type: "object",
 			additionalProperties: false,
@@ -124,6 +152,12 @@ export function delegateTool(options: DelegateToolOptions): ToolSpec {
 					type: "string",
 					description:
 						"What the sub-task should do, complete enough to act on without asking you anything.",
+				},
+				to: {
+					type: "string",
+					description:
+						"Optional. The address of one of your sub-personas, as your map lists it, such as cmo or cmo/legal. " +
+						"Leave it out to do the work as a sub-task of your own.",
 				},
 			},
 		},
@@ -148,6 +182,20 @@ export function delegateTool(options: DelegateToolOptions): ToolSpec {
 				return "refused: a sub-task needs an instruction, and this one was empty.";
 			}
 
+			// E87: checked against the persona's own map before anything starts, so what reaches the runner is a
+			// colleague that exists. Refused by name, with the ones that do exist listed: a model that misspells
+			// an address should be able to fix it from the answer, and a silent resolution would start a run in
+			// whatever folder the string happened to point at.
+			const to = typeof args.to === "string" ? args.to.trim().replace(/^@/, "") : "";
+			if (to) {
+				const colleagues = options.colleagues?.() ?? [];
+				if (!colleagues.some((colleague) => colleague.name === to)) {
+					return colleagues.length === 0
+						? `refused: you have no colleagues to hand work to, so there is no ${to}. Do this piece yourself, or leave 'to' out to give it to a sub-task of your own.`
+						: `refused: you have no colleague at ${to}. Yours are: ${colleagues.map((colleague) => colleague.name).join(", ")}.`;
+				}
+			}
+
 			const photograph = delegate({
 				parentDepth: options.depth(),
 				parentScope: options.scope(),
@@ -159,7 +207,7 @@ export function delegateTool(options: DelegateToolOptions): ToolSpec {
 			const result = await options.run({
 				instruction,
 				scope: photograph.scope,
-				statement: scopeStatement(photograph.scope),
+				statement: scopeStatement(photograph.scope), ...(to ? { to } : {}),
 			});
 
 			return describeSubTask(result);
