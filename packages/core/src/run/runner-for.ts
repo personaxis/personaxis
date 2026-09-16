@@ -52,8 +52,13 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 
 import { PersonaAgent, type AgentOptions } from "../agent.js";
+import { resolveModel } from "../model-config.js";
+import { DEFAULT_POLICY } from "../sandbox.js";
+import { assemble, identityOf } from "./assembled.js";
+import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { compile } from "../enforcement/policy-compile.js";
 import { Kernel } from "../kernel/index.js";
 import { delegateTool, MAX_DELEGATION_DEPTH } from "../tools/delegate.js";
@@ -236,6 +241,54 @@ export function subTaskSession(
 	};
 }
 
+/**
+ * E87: a colleague as a persona that can run, from the address its asker named.
+ *
+ * Its own document and its own model, because a colleague is somebody else: reading the asker's spec into it
+ * would make "hand this to the lawyer" mean "do it yourself in a different folder". The asker's model is the
+ * fallback and only that, for a colleague whose settings declare none, because a persona with a thin config
+ * should not become unreachable; what it declares always wins.
+ *
+ * Undefined when the address resolves to nothing on disk. The tool has already checked it against the map, so
+ * this is the second half of the same guard: between the check and the run, a folder can be gone.
+ */
+function colleagueFor(asking: PersonaFacts, address: string): { readonly facts: PersonaFacts; readonly identity: string } | undefined {
+	const path = colleaguePathFor(asking.personaPath, address);
+	if (path === undefined || !existsSync(path)) return undefined;
+	const read = assemble(path);
+	const own = resolveModel({ personaPath: read.personaPath, frontmatter: read.frontmatter });
+	return {
+		facts: { personaPath: read.personaPath, frontmatter: read.frontmatter, llm: (own ?? asking.llm) as PersonaFacts["llm"] },
+		// Its own document, or its own spec body when it has never been compiled. Without this the colleague
+		// would be handed the asker's identity, because a sub-task session carries `personaBody` through.
+		identity: identityOf(read),
+	};
+}
+
+/**
+ * O22: the session a colleague works in, which is the sub-task session with the policy narrowed.
+ *
+ * The lower ceiling of the two, on both axes, landing on the executable policy the session lends. That is the
+ * half a caller decides: the colleague's own compiled document is recompiled by `agentOptionsFor` and applies
+ * on top of this through `capabilityGuard`, and no caller can loosen it. So the colleague ends up under the
+ * lower of the two ceilings and under its own rules as well, which is least privilege rather than a
+ * negotiation between two specs.
+ */
+function ceilingFor(child: SessionOptions, colleague: PersonaFacts): Ceiling {
+	const asking = child.policy ?? DEFAULT_POLICY;
+	const declared = policyFromPersona(colleague.frontmatter, { personaVersionId: colleague.personaPath });
+	return lowerCeiling(
+		{ sandbox: asking.sandbox, approval: asking.approval },
+		{ sandbox: declared.sandbox, approval: declared.approval },
+	);
+}
+
+/** The same ceiling, applied to the policy the session lends. Computed once next door, so the two cannot disagree. */
+function underLowerCeiling(child: SessionOptions, ceiling: Ceiling): SessionOptions {
+	const asking = child.policy ?? DEFAULT_POLICY;
+	return { ...child, policy: { ...asking, sandbox: ceiling.sandbox, approval: ceiling.approval } };
+}
+
 export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): TurnRunner {
 	const { ledger, observer, delegationDepth, runService, ...rest } = session;
 
@@ -266,6 +319,11 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 				TOOL_POINT,
 				delegateTool({
 					depth: () => delegationDepth ?? 0,
+					// E87: the colleagues the persona's own map already shows it, read when the tool is CALLED
+					// rather than when the catalogue was built, for the reason `depth` and `scope` are: a
+					// sub-persona added while a session is open should be reachable, and one that was removed
+					// should not be offered as an address that resolves to nothing.
+					colleagues: () => colleaguesOf(persona.personaPath),
 					// What the persona narrowed for ITSELF: its declared posture, read
 					// from the policy compiled out of its own document rather than from
 					// the environment's. Directories are absent and that is measured, not
@@ -278,14 +336,36 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 							: { sandbox: options.capability.policy.sandbox }),
 					}),
 					maxDepth: MAX_DELEGATION_DEPTH,
-					run: async ({ instruction, scope, statement }) => {
-						const outcome = await runnerFor(persona, subTaskSession(session, scope, statement)).run({
+					run: async ({ instruction, scope, statement, to }) => {
+						// E87: who does the work, and under what. With no address this is what it always was, a
+						// sub-task of the same persona. With one, somebody else does it, under the lower of the two
+						// ceilings. A colleague that has gone since the tool checked the map is reported rather than
+						// quietly run as the asker, which would be the asker doing the work it decided to give away.
+						const colleague = to === undefined ? undefined : colleagueFor(persona, to);
+						if (to !== undefined && colleague === undefined) {
+							return { answer: `There is no persona at ${to} any more, so nothing ran.`, stopReason: "refused", steps: 0 };
+						}
+						const child = subTaskSession(session, scope, statement);
+						// O22: computed once, and used for BOTH the policy the colleague works under and the photograph that
+						// travels with it. Two computations of one ceiling could disagree, and the photograph is what the record
+						// writes down and what the child is told about its own limits.
+						const ceiling = colleague === undefined ? undefined : ceilingFor(child, colleague.facts);
+						// Described by its own document, never by the asker's: `subTaskSession` carries `personaBody` through,
+						// which is right for a sub-task of the same persona and wrong for somebody else.
+						const under =
+							colleague === undefined || ceiling === undefined
+								? child
+								: { ...underLowerCeiling(child, ceiling), personaBody: colleague.identity };
+						const outcome = await runnerFor(colleague?.facts ?? persona, under).run({
 							turn: randomUUID(),
 							prompt: instruction,
-							// A persona asked for this turn, which is the one kind of asker
-							// the vocabulary already had and nothing ever produced.
+							// A persona asked for this turn, which is the one kind of asker the vocabulary already had.
 							asker: { kind: "persona", id: persona.personaPath },
-							delegation: scope,
+							// The applied ceiling, with who it went to, so the record and the child's own statement agree.
+							delegation:
+								ceiling === undefined || to === undefined
+									? scope
+									: { ...scope, inherited: { ...scope.inherited, sandbox: ceiling.sandbox }, to, approval: ceiling.approval },
 						});
 
 						return {

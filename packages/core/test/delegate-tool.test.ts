@@ -79,10 +79,17 @@ describe("the delegate tool", () => {
 	it("takes no scope argument, so a model cannot name its own limits", () => {
 		// The whole point of the photograph is that the scope comes from what was
 		// declared before the model was asked anything.
+		//
+		// E87 added `to`, and it does not bend this: an address says WHO does the work, and what they may do
+		// is the lower of the two ceilings, so naming a colleague can narrow the work and never widen it. What
+		// this still refuses is a way to say the limits themselves.
 		const properties = (toolFor(0, spy().run).parameters as { properties: Record<string, unknown> })
 			.properties;
 
-		expect(Object.keys(properties)).toEqual(["task"]);
+		expect(Object.keys(properties)).toEqual(["task", "to"]);
+		for (const scopeish of ["sandbox", "approval", "directories", "scope", "permissions"]) {
+			expect(Object.keys(properties)).not.toContain(scopeish);
+		}
 	});
 
 	it("tells the sub-task its limits, in the words the study kept", () => {

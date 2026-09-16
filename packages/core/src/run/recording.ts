@@ -118,6 +118,12 @@ function opening(request: TurnRequest): readonly Written[] {
 				// default, which is what an empty list says here.
 				directories: request.delegation.inherited.directories ?? [],
 				sandbox: request.delegation.inherited.sandbox ?? null,
+				// E87: who it went to and under which approval, when the work crossed into another persona. The
+				// sandbox above is already the APPLIED one in that case, because the photograph handed down is
+				// the crossed ceiling: an entry naming the asker's posture while the colleague ran under a
+				// stricter one would be a record saying something that did not happen.
+				...(request.delegation.to === undefined ? {} : { to: request.delegation.to }),
+				...(request.delegation.approval === undefined ? {} : { approval: request.delegation.approval }),
 				task: request.prompt,
 			},
 		});
