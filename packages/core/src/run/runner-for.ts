@@ -59,6 +59,7 @@ import { resolveModel } from "../model-config.js";
 import { DEFAULT_POLICY } from "../sandbox.js";
 import { assemble, identityOf } from "./assembled.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
+import { wordlessReport } from "./wordless.js";
 import { compile } from "../enforcement/policy-compile.js";
 import { Kernel } from "../kernel/index.js";
 import { delegateTool, MAX_DELEGATION_DEPTH } from "../tools/delegate.js";
@@ -369,7 +370,12 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 						});
 
 						return {
-							answer: outcome.answer,
+							// E99: a sub-task that worked and then said nothing still tells its parent what it did. Measured on
+							// 2026-09-16: three of four sub-tasks closed answered after four steps with no answer, and all of
+							// their work was invisible, because the only thing that crosses a delegation is the answer. Here
+							// and not in the loop: the loop cannot tell a sub-task from a turn somebody is watching, and this
+							// closure only ever runs for sub-tasks. Facts the runtime already holds, never invented prose.
+							answer: outcome.answer || wordlessReport(outcome) || "",
 							stopReason: outcome.stopReason,
 							steps: outcome.steps,
 						};
