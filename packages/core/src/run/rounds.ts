@@ -77,7 +77,13 @@ export interface RoundTaken {
 
 /** The task a round would take, and why now. */
 export interface RoundOpening {
-	readonly task: SubTask;
+	/**
+	 * The listed task this round takes.
+	 *
+	 * Absent when the persona kept no list and the context filled anyway, which is not a corner case: measured
+	 * on 2026-09-16, neither model wrote a list on a six piece job, in any of eight runs.
+	 */
+	readonly task?: SubTask;
 	readonly because: RoundTrigger;
 }
 
@@ -111,17 +117,31 @@ export function nextRound(state: {
 	if (state.taken >= MAX_ROUNDS_PER_TURN) return undefined;
 
 	const left = state.tasks.filter((task) => task.status === "pending" || task.status === "active");
-	if (left.length === 0) return undefined;
-
-	const because: RoundTrigger | undefined =
-		left.length >= ROUND_LIST_FLOOR ? "list" : state.contextPct >= state.contextThreshold ? "context" : undefined;
+	const full = state.contextPct >= state.contextThreshold;
+	const because: RoundTrigger | undefined = left.length >= ROUND_LIST_FLOOR ? "list" : full ? "context" : undefined;
 	if (because === undefined) return undefined;
 
 	// The one being worked on, and failing that the next one waiting. A round takes the task the run is
 	// already on rather than jumping the list, which would leave the active one half done in a context about
 	// to be rewritten.
 	const task = left.find((t) => t.status === "active" && !state.rounded.has(t.id)) ?? left.find((t) => !state.rounded.has(t.id));
-	return task === undefined ? undefined : { task, because };
+	if (task !== undefined) return { task, because };
+
+	// No listed task, and the context is full anyway. This branch exists because of a measurement rather than
+	// a guess: on 2026-09-16, across the eight runs of `e86base` and `e86rounds`, neither model wrote a list on
+	// a job of six pieces, with `update_tasks` offered in every catalogue. A context signal that needed a
+	// listed task could therefore never fire, which made one of the two signals this row names decorative.
+	//
+	// So what goes down is what is LEFT of the job, and the per-turn ceiling is what bounds it rather than the
+	// one-round-per-task rule, which has no task to key on. A second one is not a repeat of the first: the
+	// deliverables and their checks have moved underneath it, so its brief is about a different state.
+	//
+	// Only with NO LIST AT ALL. A list that exists takes neither branch once it has nothing to give: whether
+	// its tasks are all done, all blocked, or all already handed down, the list is the persona's own account of
+	// what is left, and handing down "the rest" on top of it would be work it says is finished, or work that
+	// has been done once already. Written this way because the first version fired on an empty `left` and an
+	// existing test caught it: a list saying "nothing pending" is not the same fact as no list.
+	return full && state.tasks.length === 0 ? { because: "context" } : undefined;
 }
 
 /** What running each deliverable proved, in the words the check itself used. */
@@ -145,15 +165,20 @@ function whatWasLeft(delivered: DerivedResult): string[] {
  */
 export function briefFor(input: {
 	readonly goal: string;
-	readonly task: SubTask;
+	/** The listed task this round takes. Absent when there is no list, and then the round finishes what is left. */
+	readonly task?: SubTask;
 	readonly tasks: readonly SubTask[];
 	readonly delivered: DerivedResult;
 	readonly errors: readonly string[];
 }): string {
-	const out: string[] = ["You are doing one task of a longer job, in a context that has none of its history."];
+	const out: string[] = [
+		input.task === undefined
+			? "You are picking up a job part way through, in a context that has none of its history."
+			: "You are doing one task of a longer job, in a context that has none of its history.",
+	];
 
 	if (input.goal.trim()) out.push("", `The job: ${input.goal.trim()}`);
-	out.push("", `Your task, and the only one: ${input.task.text}`);
+	out.push("", input.task === undefined ? "Your task: finish what this job still needs." : `Your task, and the only one: ${input.task.text}`);
 
 	// `E81`'s own words for a step said done that nothing backs, so the same sentence a person reads on screen
 	// is the one a round reads. A round that took "done" at face value would build on a claim.
@@ -174,7 +199,9 @@ export function briefFor(input: {
 
 	out.push(
 		"",
-		"How to work here: do this task and nothing else, because the rest of the list belongs to whoever picks it up next. " +
+		(input.task === undefined
+			? "How to work here: finish what the job still needs, and nothing beyond it. "
+			: "How to work here: do this task and nothing else, because the rest of the list belongs to whoever picks it up next. ") +
 			"Nobody can be asked anything from here: there is no person at this keyboard and anything needing approval is refused, " +
 			"so if this task needs something only a person has, stop and say exactly what is missing instead of inventing it. " +
 			"Answer with what you left and what you checked about it, in a few lines: that answer is all that goes back.",

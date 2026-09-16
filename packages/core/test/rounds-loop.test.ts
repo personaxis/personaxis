@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { ContextMeter } from "../src/context.js";
 import type { RecordBody } from "../src/record/entry.js";
 import { Journal } from "../src/record/journal.js";
 import { recordTurns } from "../src/run/recording.js";
@@ -27,8 +28,12 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 type Call = { name: string; args: Record<string, unknown> };
 type Sent = Array<{ role: string; content?: unknown }>;
 
-/** The first words of the brief, which is how a request from a round is told apart from one from the parent. */
-const BRIEF_MARK = "You are doing one task of a longer job";
+/**
+ * A sentence both shapes of the brief carry, which is how a request from a round is told apart from the
+ * parent's. Not the opening words: a round with no listed task opens differently, and anchoring on the opening
+ * would have made this test blind to exactly the case that was added after the first measurement.
+ */
+const BRIEF_MARK = "in a context that has none of its history";
 /** Something only the sub-task's own transcript ever contains. */
 const SCRATCH = "CHILD-SCRATCH-that-must-never-reach-the-parent";
 const DONE = "level two is in place, and I ran it";
@@ -48,7 +53,7 @@ const SIX_TASKS: Call = {
  * A model that answers the parent from a script and the sub-task from another, telling them apart by what it
  * was sent, and keeping every request the PARENT made.
  */
-function scripted(parent: readonly Call[]): { fetchImpl: typeof fetch; parentSent: Sent[]; briefs: string[] } {
+function scripted(parent: readonly Call[], afterFirstParent?: () => void): { fetchImpl: typeof fetch; parentSent: Sent[]; briefs: string[] } {
 	const parentSent: Sent[] = [];
 	const briefs: string[] = [];
 	let parentTurn = 0;
@@ -83,14 +88,23 @@ function scripted(parent: readonly Call[]): { fetchImpl: typeof fetch; parentSen
 
 		parentSent.push(messages);
 		parentTurn += 1;
+		// After the first request and before the second step, which is where a context that filled while the
+		// work was happening is noticed.
+		if (parentTurn === 1) afterFirstParent?.();
 		return reply(parentTurn, parent[parentTurn - 1] ?? { name: "finish", args: { summary: "the job is done" } });
 	}) as unknown as typeof fetch;
 
 	return { fetchImpl, parentSent, briefs };
 }
 
-async function turn(options: { rounds?: boolean; sandbox?: string; script?: readonly Call[] } = {}) {
-	const model = scripted(options.script ?? [SIX_TASKS]);
+async function turn(options: { rounds?: boolean; sandbox?: string; script?: readonly Call[]; meter?: ContextMeter; fillTo?: number } = {}) {
+	const { meter, fillTo } = options;
+	// An absolute fill, against a window the test pins to the one the loop will resolve anyway. Computing it
+	// from the limit of the moment did not work: the loop resolves the real window in the background, and for
+	// an unknown model that is the table's 32768, so a fill measured against a smaller number became a trickle
+	// as soon as the resolution landed. Pinning both sides makes the outcome the same whichever order they
+	// happen in, which is what a test of a threshold needs.
+	const model = scripted(options.script ?? [SIX_TASKS], meter && fillTo !== undefined ? () => (meter.used = fillTo) : undefined);
 	const journal = new Journal({});
 	const outcome = await runnerFor(
 		{
@@ -101,6 +115,7 @@ async function turn(options: { rounds?: boolean; sandbox?: string; script?: read
 		{
 			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" },
 			observer: recordTurns({ journal }),
+			...(meter === undefined ? {} : { meter }),
 		},
 	).run({ turn: "t1", prompt: "build the whole arcade game", asker: { kind: "human", id: "david" } });
 
@@ -156,6 +171,25 @@ describe("a long job in rounds of fresh context (E86)", () => {
 		expect(outcome.rounds).toBeUndefined();
 		expect(briefs).toEqual([]);
 		expect(outcome.stopReason).toBe("answered");
+	});
+
+	it("opens a round on a filling context even when the persona kept no list", async () => {
+		// The case the first measurement exposed: on 2026-09-16, across eight runs, neither model wrote a list
+		// at all, so a context signal that needed a listed task could never fire. The window fills after the
+		// first request, which is also what keeps the turn-start compaction, a step-one thing, out of the way.
+		// The window the loop resolves for a model it does not know, pinned here so both sides agree, and a fill
+		// of about 0.915 of it: above the 0.8 that opens a round, below the 0.92 that rewrites the transcript.
+		const meter = new ContextMeter(32_768);
+		const { outcome, briefs } = await turn({
+			rounds: true,
+			script: [{ name: "write_file", args: { path: "notes.md", content: "# notes" } }],
+			meter,
+			fillTo: 30_000,
+		});
+
+		expect(outcome.rounds).toHaveLength(1);
+		expect(outcome.rounds?.[0]).toMatchObject({ task: "what is left of the job", because: "context" });
+		expect(briefs[0]).toContain("Your task: finish what this job still needs.");
 	});
 
 	it("opens no round for a job the list says is short, however the model is configured", async () => {

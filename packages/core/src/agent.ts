@@ -1204,18 +1204,22 @@ export class PersonaAgent {
           // are no rounds and the turn goes on as before, which is what makes this additive.
           const handDown = opening ? activeTools.find((t) => t.name === DELEGATE_TOOL) : undefined;
           if (opening && handDown) {
-            rounded.add(opening.task.id);
+            // What this round is about, in one phrase, for the record and for the line the parent reads back.
+            // A round with no listed task is not a corner case: measured on 2026-09-16, neither model wrote a
+            // list at all on a job of six pieces, so this is what a filling context hands down.
+            const what = opening.task?.text ?? "what is left of the job";
+            if (opening.task !== undefined) rounded.add(opening.task.id);
             const left = deliveredIn(deliveredHere);
             const brief = briefFor({
               goal: state.goal,
-              task: opening.task,
+              ...(opening.task === undefined ? {} : { task: opening.task }),
               tasks: state.subTasks,
               // Checked now rather than read off the close: what a fresh context needs is what is true when it
               // starts, and the close has not happened yet.
               delivered: left.length > 0 ? runDerivedChecks(left.map((file) => file.path)) : { checks: [], unverified: [] },
               errors: state.recentErrors,
             });
-            bus.emit({ type: "agent-think", text: `[round] ${opening.because}: ${opening.task.text}` });
+            bus.emit({ type: "agent-think", text: `[round] ${opening.because}: ${what}` });
             // Through the interceptor like any other call, so the round is sealed into the same forensic log as
             // the work around it. Nothing is skipped by the loop making this call itself: delegation's gate
             // allows unconditionally, and every call the child makes faces its own gate inside the child's run.
@@ -1226,7 +1230,7 @@ export class PersonaAgent {
             );
             const accepted: Accepted<string> = accept(ran.output, contextTaint);
             contextTaint = accepted.taint;
-            rounds.push({ task: opening.task.text, because: opening.because, reply: accepted.value.slice(0, ROUND_REPLY_CHARS) });
+            rounds.push({ task: what, because: opening.because, reply: accepted.value.slice(0, ROUND_REPLY_CHARS) });
             // Only the answer comes back, and it comes back as the runtime speaking. The sub-task's transcript
             // never reached here (`subTaskSession` drops the parent's and keeps its own), and labelling this as
             // the person would be the forgery the author invariant exists to prevent.
@@ -1234,7 +1238,7 @@ export class PersonaAgent {
               role: "system",
               content:
                 `[${authorId({ kind: "runtime", mechanism: "round", reason: "one task of the list worked in a context with none of this one's history" })}] ` +
-                `A round worked "${opening.task.text}" in a fresh context. All that comes back is its answer:\n${accepted.value}`,
+                `A round worked "${what}" in a fresh context. All that comes back is its answer:\n${accepted.value}`,
             });
           }
         }
