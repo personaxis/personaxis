@@ -223,6 +223,22 @@ function closing(outcome: TurnOutcome, asker?: Author): readonly Written[] {
 		}
 	}
 
+	// E85: what the runtime checked about what the turn left, before the answer that claims it is done. The
+	// runtime's entry and not the persona's: the persona wrote the file, and this is somebody else running it.
+	// Written whenever the turn left anything, including when nothing could be checked, because an absence
+	// nobody names reads as verified.
+	if (outcome.delivered !== undefined && (outcome.delivered.checks.length > 0 || outcome.delivered.unverified.length > 0)) {
+		entries.push({
+			author: { kind: "runtime", mechanism: "verification", reason: "what was checked about what this turn left" },
+			body: {
+				type: "verification",
+				turn: outcome.turn,
+				checks: [...outcome.delivered.checks],
+				unverified: outcome.delivered.unverified,
+			},
+		});
+	}
+
 	// E81: the list the turn ended with, once, after the calls that changed it and before the answer.
 	// The runtime's entry, not the persona's: the steps are the persona's words, and `verified` is the
 	// runtime's judgement of them against the calls that succeeded, which the persona did not write.

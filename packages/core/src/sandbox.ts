@@ -212,6 +212,54 @@ export function classifyCommand(cmd: string, workspaceRoot: string): CommandClas
 }
 
 /**
+ * E85: when a zero exit code proves what somebody thinks it proves.
+ *
+ * Adopted without changes from the note `trabajar-sin-nadie-delante` (2026-08-22), which measured it in a
+ * repository that had already been wrong about it: a command's exit code attributes to that command only when
+ * it was the ONLY command of the sequence, or when the whole sequence is conjunctions (`&&`) and the code was
+ * zero. A pipeline reports the LAST stage, so `tests | tee log` exits zero when the tests failed; a disjunction
+ * runs the right side precisely when the left failed, so zero can mean the fallback worked; and a background
+ * job exits immediately with the shell's code, not the job's.
+ *
+ * Pure and about the text, because the verdict has to be readable before anything runs. Quotes are respected,
+ * so an operator inside a string is not an operator: `echo "a && b"` is one command.
+ */
+export function exitCodeAttributes(cmd: string): { readonly attributes: boolean; readonly why: string } {
+  const text = cmd.trim();
+  if (!text) return { attributes: false, why: "there is no command" };
+
+  const operators: string[] = [];
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    const pair = text.slice(i, i + 2);
+    if (pair === "&&" || pair === "||") {
+      operators.push(pair);
+      i += 1;
+      continue;
+    }
+    // A single `&` that is not `&&` backgrounds what came before it; `;` and a newline chain unconditionally,
+    // so what the code reports is only the last one. A pipe reports the last stage.
+    if (ch === "&" || ch === "|" || ch === ";" || ch === "\n") operators.push(ch);
+  }
+
+  if (operators.length === 0) return { attributes: true, why: "one command, so its code is its own" };
+  const bad = operators.find((op) => op !== "&&");
+  if (bad === undefined) return { attributes: true, why: "every step is a conjunction, so zero means each one passed" };
+  const named =
+    bad === "|" ? "a pipeline reports its last stage" : bad === "||" ? "a disjunction runs the right side only when the left failed" : bad === "&" ? "a background job returns the shell's code, not its own" : "an unconditional chain reports only the last command";
+  return { attributes: false, why: named };
+}
+
+/**
  * The tokens of a command that could be a way out: absolute (`/x`, `C:\x`), home (`~/x`), or any
  * token with a `..` segment anywhere in it. The last used to be only a token STARTING with `../`, so
  * `cat docs/../../secret` was never looked at. A relative token with no `..` is not returned: it

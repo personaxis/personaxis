@@ -181,6 +181,9 @@ export function productOf(result: AgentResult): TurnProduct {
 		...(result.decision === undefined ? {} : { decision: result.decision }),
 		// E84: every question put to a person, the last without an answer when the turn stopped at it.
 		...((result.questions ?? []).length > 0 ? { questions: result.questions } : {}),
+		// E85: what the runtime checked about what the turn left, and what it could not check. Carried like the
+		// calls are, and for the same reason: a turn that failed after writing a page still wrote that page.
+		...(result.delivered === undefined ? {} : { delivered: result.delivered }),
 		// E81: the persona's list, only when it kept one. The loop's own notes (files, errors) stay in the
 		// loop: they are how it survives compaction, not something the persona said.
 		...((result.tasks ?? []).length > 0

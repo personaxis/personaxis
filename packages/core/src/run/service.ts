@@ -98,6 +98,14 @@ export interface TurnProduct {
 	/** What it cost, when this provider talks to something that charges. */
 	readonly cost?: { readonly tokens: number; readonly usd: number };
 	/**
+	 * E85: what the runtime checked about what this turn left, and what it could not check.
+	 *
+	 * Reported by the provider rather than derived here, for the reason `compactions` is: the runner did not
+	 * write the files and is in no position to say what was proven about them. Absent from a turn that left
+	 * nothing, which is a different statement from a turn that left a page nobody ran.
+	 */
+	readonly delivered?: TurnOutcome["delivered"];
+	/**
 	 * E25: what it compacted, when this provider manages a context window.
 	 *
 	 * Absent from a provider that manages none, which is a different statement from an
@@ -254,6 +262,10 @@ export class TurnRunner {
 			...(product.tasks === undefined ? {} : { tasks: product.tasks }),
 			...(product.decision === undefined ? {} : { decision: product.decision }),
 			...(product.questions === undefined ? {} : { questions: product.questions }),
+			// E85: what the runtime checked about what the turn left. Copied here like the rest: this is the
+			// one place where a field a loop reported is lost by not being named, which is how `E84` lost its
+			// questions for an afternoon.
+			...(product.delivered === undefined ? {} : { delivered: product.delivered }),
 			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {
