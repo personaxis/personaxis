@@ -149,6 +149,15 @@ export interface ToolCallConfig {
   apiKey?: string;
   /** Ceiling on ONE reply. Defaults to `DEFAULT_MAX_TOKENS`. */
   maxTokens?: number;
+  /**
+   * E86: the context window, declared instead of discovered.
+   *
+   * Nothing in this file reads it: the request does not carry a window. It rides here because the loop is
+   * handed the resolved model AS this config (`run/runner-for.ts:160` passes it through untouched), and the
+   * loop is what needs to know how full the context is. Declared, it wins over the table and over the
+   * background refresh; absent, the loop discovers it, which is right for real use.
+   */
+  contextWindow?: number;
   fetchImpl?: typeof fetch;
   /**
    * Called with assistant text as it arrives, when the endpoint streams (E4).

@@ -44,6 +44,45 @@ describe("resolveModel fallback (V5.FIX.2: a broken default can no longer strand
     expect(r?.fallback).toBe(true);
   });
 
+  /**
+   * E86, 2026-09-17: the settings a fallback profile declared must survive the fallback.
+   *
+   * `rounds` did not. The direct path carried it and this one silently dropped it, so a profile reached
+   * through a fallback lost its rounds of fresh context without a word, and the only way to notice was to
+   * wonder why a switch that was on behaved as if it were off. That is the fault `E96` recorded two lines
+   * above the same code ("a field this function forgets is a setting that silently does nothing"), repeated in
+   * the function next door, which is what a copy-by-hand seam does when nothing counts its fields.
+   *
+   * Nothing asserted on these here before, which is why a whole class of setting could go missing unseen: the
+   * cases above check the endpoint, the model, the key and the flag, and stop there.
+   */
+  it("keeps the settings the fallback profile declared, which `rounds` did not until this was written", () => {
+    writeGlobal({
+      defaultProfile: "broken",
+      profiles: {
+        broken: { endpoint: "https://api.example.com/v1", model: "x", apiKeyEnv: "NOPE_KEY_ENV" },
+        good: {
+          endpoint: "https://api.cohere.ai/compatibility/v1",
+          model: "command-a",
+          apiKey: "k-123",
+          maxTokens: 4096,
+          scaffold: "small",
+          rounds: true,
+          contextWindow: 8192,
+        },
+      },
+    });
+
+    const r = resolveModel({ cwd });
+
+    expect(r?.fallback).toBe(true);
+    expect(r?.maxTokens).toBe(4096);
+    expect(r?.scaffold).toBe("small");
+    // The two this case exists for: a long job worked in rounds, and the window that decides when.
+    expect(r?.rounds).toBe(true);
+    expect(r?.contextWindow).toBe(8192);
+  });
+
   it("a LOCAL endpoint is usable with no key (Ollama/LM Studio class)", () => {
     writeGlobal({
       defaultProfile: "ollama",
