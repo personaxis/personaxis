@@ -735,7 +735,10 @@ export class PersonaAgent {
     // E17: the three parts of a turn, timed apart, because a total cannot say which
     // one got slower and that is the only question anybody asks about latency.
     const clock = new LatencyMeter(startTime, this.opts.latencyBudgetMs);
-    const meter = this.opts.meter ?? new ContextMeter(cachedContextWindow(this.opts.llm.model));
+    // E86: a declared window wins over the table AND over the refresh below. The only reason to write one
+    // down is to make this run behave as if the window were that size, so discovery must not undo it.
+    const declaredWindow = this.opts.llm.contextWindow;
+    const meter = this.opts.meter ?? new ContextMeter(declaredWindow ?? cachedContextWindow(this.opts.llm.model));
     const compactThreshold = this.opts.compactThreshold ?? 0.8;
     // E6: what each compaction cost, so the caller is told rather than trusting
     // that a run which felt slow did or did not rewrite its own transcript.
@@ -751,8 +754,11 @@ export class PersonaAgent {
     const intents = new Map<number, string>();
     const stepOfTool = new Map<string, number>();
     const traceNodes: TraceNode[] = [];
-    // Refine the window from the endpoint in the background (best-effort).
-    void resolveContextWindow(this.opts.llm).then((w) => (meter.limit = w)).catch(() => {});
+    // Refine the window from the endpoint in the background (best-effort), unless one was declared: this
+    // assignment lands mid-turn, so without the guard it silently overwrites what the operator asked for.
+    if (declaredWindow === undefined) {
+      void resolveContextWindow(this.opts.llm).then((w) => (meter.limit = w)).catch(() => {});
+    }
 
     let tokens = 0;
     // E34: whether ANYBODY priced this run, which is not the same question as whether it
