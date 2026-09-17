@@ -190,6 +190,10 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
       tags: [],
       license: "private",
     },
+    // E65: only when there is something to list. The schema declares `extensions` closed
+    // (`additionalProperties: false`) and every key optional, so an empty block would be noise in
+    // every persona created without research, and a persona's document is read by people.
+    ...((seed.references ?? []).length === 0 ? {} : { extensions: { references: [...new Set(seed.references)] } }),
     identity: {
       canonical_id: slug,
       display_name: displayName,

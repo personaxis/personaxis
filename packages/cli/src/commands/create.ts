@@ -52,6 +52,18 @@ import {
   type GenesisResult,
 } from "@personaxis/core";
 import { resolveModel } from "@personaxis/core";
+import {
+	RESEARCH_QUERIES_INSTRUCTION,
+	RESEARCH_QUERIES_SCHEMA,
+	fallbackQueries,
+	findingsFrom,
+	parseQueries,
+	referenceName,
+	renderReferenceNote,
+	researchContribution,
+	resolveWebSearch,
+	type Finding,
+} from "@personaxis/core";
 import { runCompile } from "./compile.js";
 import { validatePersona, exitCodeFor } from "../schema.js";
 import { runRules } from "../linter/rules.js";
@@ -72,6 +84,8 @@ interface CreateOpts {
   noPolish?: boolean;
   /** Ask the whole question bank instead of the twelve core ones. */
   deep?: boolean;
+  /** E65: research the field on the web and leave what it found behind the persona. */
+  research?: boolean;
 }
 
 /** Provider adapter → core's StructuredCaller. Null when no model is usable. */
@@ -340,6 +354,56 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     contributions.push({ label: "cli-arg", seed: { slug: slugArg }, evidence: [] });
   }
 
+  // ── E65: the web research, only when asked for ─────────────────────────────
+  //
+  // It contributes ONE seed field, the path of the note it leaves, plus its evidence. Everything the pages
+  // actually said is in the note and in the ledger, so nothing found here can define the identity, the hard
+  // limits or a number. Each result passes `ingestUntrusted` inside `findingsFrom`, because this command is
+  // not the agent loop and the loop's injection scan does not cover this path.
+  let researchNote: { name: string; content: string } | null = null;
+  if (opts.research) {
+    const provider = resolveWebSearch({ cwd: process.cwd() });
+    const brief = opts.fromPrompt ?? "";
+    if (!provider) {
+      llmNotes.push("no web search provider available (no key); nothing was researched");
+    } else if (!brief.trim()) {
+      llmNotes.push("--research needs --from-prompt to know what to search for; nothing was researched");
+    } else {
+      let queries: string[] = [];
+      if (call) {
+        try {
+          const said = (await call(`${RESEARCH_QUERIES_INSTRUCTION}\n\nBRIEF:\n${brief}`, RESEARCH_QUERIES_SCHEMA, "research_queries")) as { queries?: string[] };
+          queries = parseQueries((said?.queries ?? []).join("\n"));
+        } catch (e) {
+          llmNotes.push(`the model could not write the research queries (${(e as Error).message}); the brief was searched as given`);
+        }
+      }
+      if (queries.length === 0) {
+        queries = fallbackQueries(brief);
+        if (queries.length > 0 && !call) llmNotes.push("no model provider available for the research queries; the brief was searched as given");
+      }
+      const findings: Finding[] = [];
+      for (const query of queries) {
+        try {
+          // `advanced` buys better excerpts, which is what makes reading a URL unnecessary here: the provider
+          // returns each page's relevant text already cleaned, and fetching a named host is refused by design.
+          findings.push(...findingsFrom(query, await provider.search(query, { maxResults: 6, depth: "advanced" })));
+        } catch (e) {
+          llmNotes.push(`the web search failed for "${query}" (${(e as Error).message})`);
+        }
+      }
+      if (findings.length === 0) {
+        llmNotes.push("the web search returned nothing usable; nothing was researched");
+      } else {
+        const now = new Date();
+        const name = referenceName(now);
+        researchNote = { name, content: renderReferenceNote(findings, { provider: provider.name, now, brief }) };
+        contributions.push(researchContribution(findings, { referencePath: `references/${name}`, now }));
+        console.log(chalk.dim(`  researched ${queries.length} quer${queries.length === 1 ? "y" : "ies"}, kept ${findings.length} source(s) in references/${name}`));
+      }
+    }
+  }
+
   // ── build + gates ──────────────────────────────────────────────────────────
   const result: GenesisResult = genesis(contributions);
   const gates: Array<{ name: string; pass: boolean; detail: string }> = [];
@@ -414,6 +478,12 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   mkdirSync(baseDir, { recursive: true });
   writeFileSync(personaPath, result.document, "utf-8");
   writeFileSync(join(baseDir, "creation-report.md"), report, "utf-8");
+  // E65: the note goes where the spec says it is. The document already lists it, because the contribution put
+  // the path in the seed and the builder rendered `extensions.references` from there.
+  if (researchNote) {
+    mkdirSync(join(baseDir, "references"), { recursive: true });
+    writeFileSync(join(baseDir, "references", researchNote.name), researchNote.content, "utf-8");
+  }
   // The persona exists: the interview draft has served its purpose and must not linger as
   // a stale offer to "resume" an interview that already produced a persona.
   clearDraft(process.cwd());
@@ -506,6 +576,7 @@ export const createCommand = new Command("create")
   .option("--provider <name>", "Override the configured provider (local | byok | agent | remote)")
   .option("--no-polish", "Skip the automatic LLM polish after creation (offline template, marked pending)")
   .option("--deep", "Ask the FULL question bank (envelope width, mood half-life, refusals, uncertainty, memory, improvement, a voice exemplar) instead of the twelve core questions")
+  .option("--research", "Search the web for the field, and leave what it found in references/ with each source and its date (needs a web provider key)")
   .action(async (slug: string | undefined, opts: CreateOpts) => {
     try {
       await runCreate(slug, opts);

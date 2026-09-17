@@ -16,7 +16,11 @@ export type EvidenceKind =
   | "default"
   /** FASE 7 P1: deterministic construct-table prose (expression-synth.ts). A third
    *  honesty tier: not user-earned evidence, but not an unlabeled default either. */
-  | "synthesis";
+  | "synthesis"
+  /** E65: material found on the web, which carries its URL and the day it was
+   *  retrieved. Its own kind because "where it came from" is the whole question
+   *  for anything this persona did not author and nobody typed. */
+  | "researched";
 
 export interface EvidenceItem {
   id: string;
@@ -27,6 +31,10 @@ export interface EvidenceItem {
   excerpt: string;
   /** Spec dot-paths this evidence justified, with the mapping rule applied. */
   mappedFields: Array<{ path: string; value: unknown; rule: string }>;
+  /** E65: the page this came from, for evidence that was found rather than given. */
+  url?: string;
+  /** E65: when it was retrieved (ISO). A source without a date ages invisibly. */
+  retrieved?: string;
 }
 
 export interface EvidenceLedger {
@@ -92,6 +100,15 @@ export interface PersonaSeed {
    *  item maps here (rule volatility-to-halflife). Builder default: 4. */
   moodHalfLife?: number;
   memoryTypes?: Partial<Record<"episodic" | "semantic" | "procedural" | "autobiographical" | "user_preferences" | "evaluations", boolean>>;
+  /**
+   * E65: paths under `references/` for the heavy knowledge this persona was given, rendered into
+   * `extensions.references`.
+   *
+   * It is the ONLY field a web research contribution is allowed to write, and it holds file paths rather than
+   * anything the material said. A page cannot reach the identity, the limits or a number through a list of
+   * filenames, and that is the point: the restriction is a type, not a promise in a comment.
+   */
+  references?: string[];
 }
 
 /** A provider-agnostic structured-output caller (the CLI injects its provider). */
