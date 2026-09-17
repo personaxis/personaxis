@@ -466,8 +466,12 @@ export function buildRoster(rootCtx: Ctx): Roster {
  * turns (once, with a visible notice) instead of waiting for a manual /compact.
  * Best-effort: needs a model, and never breaks the turn on failure.
  */
-export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85): Promise<void> {
-  const llm = llmConfig(ctxModelArg(ctx));
+export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85, model?: { endpoint: string; model: string; apiKey?: string; fetchImpl?: typeof fetch }): Promise<void> {
+  // The model, injected or resolved. Injected only by a test: `llmConfig` answers from the persona and the
+  // project config and carries no `fetchImpl`, so nothing could drive this path without a live endpoint, and
+  // that is exactly why the compaction a person actually meets had never been exercised. The same shape as
+  // `writeSelfSkill`'s scanner and the postmortem's extractor: a default that production always takes.
+  const llm = model ?? llmConfig(ctxModelArg(ctx));
   if (!llm || ctx.meter.pct < threshold) return;
   const before = ctx.meter.used;
   try {
