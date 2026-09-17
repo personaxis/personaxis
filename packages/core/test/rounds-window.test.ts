@@ -34,6 +34,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { Journal } from "../src/record/journal.js";
+import { recordTurns } from "../src/run/recording.js";
 import { runnerFor } from "../src/run/runner-for.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
 
@@ -52,6 +54,11 @@ type Sent = Array<{ role: string; content?: unknown }>;
 function scripted(): { fetchImpl: typeof fetch; askedModels: () => number; parentSteps: () => number } {
 	let models = 0;
 	let parentTurn = 0;
+	// The child works before it answers, and that is not decoration: a round is decided at the START of a step,
+	// so a child that finishes on its first request never reaches a second one and could never open a round of
+	// its own, whether or not it inherited the switch. An earlier version of this fixture did exactly that, and
+	// its negative control stayed green while the rule it claimed to watch was not being watched at all.
+	let childTurn = 0;
 
 	const toolCall = (id: string, name: string, args: unknown) => ({
 		ok: true,
@@ -68,8 +75,15 @@ function scripted(): { fetchImpl: typeof fetch; askedModels: () => number; paren
 		}
 		const messages = (JSON.parse(init?.body ?? "{}") as { messages?: Sent }).messages ?? [];
 		const whole = messages.map((message) => String(message.content ?? "")).join("\n");
-		// A round's sub-task is told it has none of this turn's history. Answer briefly and be done.
-		if (whole.includes("in a context that has none of its history")) return toolCall("child", "finish", { summary: "done in a fresh context" });
+		// A round's sub-task is told it has none of this turn's history. It reads the notes first, so it reaches
+		// a second step: that is where a child which inherited the switch would open a round of its own, and
+		// where the whole tree came from in the real run.
+		if (whole.includes("in a context that has none of its history")) {
+			childTurn += 1;
+			return childTurn === 1
+				? toolCall(`c${childTurn}`, "read_file", { path: "notes.md" })
+				: toolCall(`c${childTurn}`, "finish", { summary: "done in a fresh context" });
+		}
 
 		parentTurn += 1;
 		return parentTurn === 1 ? toolCall("p1", "read_file", { path: "notes.md" }) : toolCall(`p${parentTurn}`, "finish", { summary: "the job is done" });
@@ -82,6 +96,10 @@ async function turn(options: { contextWindow?: number; threshold: number }) {
 	// Real work, not filler: a note the persona reads, well under the offload threshold so it is counted.
 	writeFileSync(join(dir, "notes.md"), "the level design, at length. ".repeat(40), "utf-8");
 	const model = scripted();
+	// The journal is how a child's turn becomes visible from here: the observer travels with the session, so a
+	// sub-task's own `turn-open` lands in the same record as its parent's. That is the signal the first real
+	// measurement showed (14 turns in one job) and the only one that separates one turn from a tree of them.
+	const journal = new Journal({});
 	const outcome = await runnerFor(
 		{
 			personaPath: join(dir, ".personaxis", "personaxis.md"),
@@ -93,10 +111,12 @@ async function turn(options: { contextWindow?: number; threshold: number }) {
 		{
 			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" },
 			compactThreshold: options.threshold,
+			observer: recordTurns({ journal }),
 		},
 	).run({ turn: "t1", prompt: "write up the whole arcade game", asker: { kind: "human", id: "david" } });
 
-	return { outcome, askedModels: model.askedModels(), parentSteps: model.parentSteps() };
+	const turnsOpened = journal.all().map((entry) => entry.body).filter((body) => body.type === "turn-open").length;
+	return { outcome, askedModels: model.askedModels(), parentSteps: model.parentSteps(), turnsOpened };
 }
 
 describe("a context window declared instead of discovered (E86)", () => {
@@ -129,5 +149,29 @@ describe("a context window declared instead of discovered (E86)", () => {
 		const { outcome } = await turn({ contextWindow: DECLARED, threshold: 0.99 });
 
 		expect(outcome.rounds ?? []).toHaveLength(0);
+	});
+
+	/**
+	 * E86, 2026-09-17: a round's child must not round, and this is the case that says so.
+	 *
+	 * Found by the first real measurement, not by reading: with a declared window the trigger finally fired,
+	 * and one job opened 14 turns and 11 rounds, delegations at depth 1 and 2 and a stream of refusals at 3,
+	 * six times the tokens of the same job without rounds and three deliverables instead of five. The per-turn
+	 * cap of 4 was holding the whole time. What exploded was a tree: rounds ride on the model config, and the
+	 * sub-task seam drops capabilities without touching it, so every child inherited the switch.
+	 *
+	 * The child here answers with a plain `finish`, so if it ever opened a round of its own the only way to
+	 * see it is the turn count: a sub-task that rounds asks the model more times than one that does not.
+	 */
+	it("does not let a round's child open rounds of its own, which is what made one job into fourteen turns", async () => {
+		const { outcome, turnsOpened } = await turn({ contextWindow: DECLARED, threshold: 0.01 });
+
+		// One round from the parent, and the child answered it without starting a tree.
+		expect(outcome.rounds ?? []).toHaveLength(1);
+		// TWO turns: the parent's and the round's child. A child that inherited the switch would open its own
+		// under the same full context and its children theirs, which is exactly the shape the real run had.
+		// Counted through the journal and not through the parent's requests: a child asks the model on its own
+		// path, so the parent's count cannot see it, and an earlier version of this case passed either way.
+		expect(turnsOpened).toBe(2);
 	});
 });
