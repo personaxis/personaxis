@@ -122,17 +122,20 @@ export function renderCreationReport(result: GenesisResult, gates: Array<{ name:
     `- Synthesized (deterministic construct table, versioned): ${summary.synthesizedOnly.length}`,
     `- Defaults (labeled, review these): ${summary.defaultsOnly.length}`,
     "",
-    "| Evidence | Kind | Maps to | Rule |",
-    "|---|---|---|---|",
+    // E65: the source column exists for evidence that was FOUND rather than given. A researched line without
+    // its URL and its date is an assertion, and this report exists so that nothing in a persona is one.
+    "| Evidence | Kind | Maps to | Rule | Source |",
+    "|---|---|---|---|---|",
   ];
   for (const e of ledger.items) {
     const excerpt = e.excerpt.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 80);
+    const source = e.url ? `${e.url}${e.retrieved ? ` (${e.retrieved.slice(0, 10)})` : ""}` : "";
     if (e.mappedFields.length === 0) {
-      lines.push(`| ${excerpt} | ${e.kind} |, |, |`);
+      lines.push(`| ${excerpt} | ${e.kind} |, |, | ${source} |`);
       continue;
     }
     for (const m of e.mappedFields) {
-      lines.push(`| ${excerpt} | ${e.kind} | \`${m.path}\` | ${m.rule} |`);
+      lines.push(`| ${excerpt} | ${e.kind} | \`${m.path}\` | ${m.rule} | ${source} |`);
     }
   }
   lines.push("", "## Defaults to review", "");
