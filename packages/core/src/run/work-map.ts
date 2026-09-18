@@ -326,7 +326,17 @@ export function renderWorkMap(
 		".personaxis/services/",
 	);
 	const item = (entry: MapItem): string => `- ${entry.name}: ${entry.about}`;
-	section("References", "Background material you draw on.", map.references.map(item), `${map.ownFolder}/references/`);
+	// E91: the same promise Memory makes below, and for the same reason. Asked which sources its advice rested
+	// on, a persona with exactly that file on disk answered "I do not have a specific external source list",
+	// 0 of 6 across two models. It was shown the file every turn and never opened it. Memory says to look
+	// before denying; this said nothing, so "I have no sources" was the references version of "I do not
+	// remember".
+	section(
+		"References",
+		"Background material you draw on. Read the one that fits before saying you do not know where something of yours comes from.",
+		map.references.map(item),
+		`${map.ownFolder}/references/`,
+	);
 	section("Examples", "Worked outputs, to match their format and voice.", map.examples.map(item), `${map.ownFolder}/examples/`);
 	section("Assets", "Supporting files.", map.assets.map(item), `${map.ownFolder}/assets/`);
 	section(

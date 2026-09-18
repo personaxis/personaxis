@@ -93,6 +93,23 @@ describe("the work map (E79)", () => {
 		expect(text).not.toMatch(/sandbox|posture|approval/i);
 	});
 
+	/**
+	 * E91: the references section has to say what the memory section says, or the files go unread.
+	 *
+	 * Measured 2026-09-18 with the autonomy bench: asked which sources its advice on game feel rested on, a
+	 * persona with `references/web-research-2026-09-11.md` on disk answered that it had none. 0 of 6, two
+	 * different models, same answer. It was shown the file every turn. Memory already promised "search it
+	 * before saying you do not remember" and references promised nothing, so "I have no sources" was the
+	 * references version of "I do not remember".
+	 */
+	it("tells the persona to read a reference before saying it does not know where its advice came from", () => {
+		const text = renderWorkMap(workMapFor(gameDesigner(), { workspaceRoot: workspace }));
+
+		expect(text).toContain("before saying you do not know where something of yours comes from");
+		// And the same promise for memory is still there: this adds one, it does not move the other.
+		expect(text).toContain("before saying you do not remember");
+	});
+
 	it("does not move while a persona works: a new session file, memory or state change nothing", () => {
 		const path = gameDesigner();
 		const before = renderWorkMap(workMapFor(path, { workspaceRoot: workspace }));
