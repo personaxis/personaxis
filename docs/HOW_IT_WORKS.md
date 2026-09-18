@@ -74,10 +74,15 @@ executes **tasks**). In the REPL there is no separate command: **speaking in nat
 the persona converses AND uses tools in a single governed loop:
 
 ```
-task → [ the model proposes a tool (run_command / read_file / write_file / edit_file / list_dir)
-         → sandbox GATE (allow | ask | deny) → (if ask) human approval → run → observe ]*
+task → [ the model proposes a tool → sandbox GATE (allow | ask | deny)
+         → (if ask) human approval → run → observe ]*
        → finish
 ```
+
+The built-in catalogue is `run_command`, `read_file`, `list_dir`, `find_in_files`, `write_file`,
+`edit_file`, `check_page` and `finish`, in that order, because the order it is shown in is part of
+the prompt prefix. Two more groups are added per persona: the memory tools, and `use_skill` when the
+persona has local skills.
 
 The model **only proposes** the tool call; the **sandbox decides** (a `deny` never runs), risky
 actions **ask for approval** (`shift+tab` cycles the posture: `read-only → workspace-write →
@@ -85,6 +90,20 @@ danger-full-access`), and **every tool output is scanned for injection** before 
 model. It uses the provider's native function-calling with a fallback to constrained JSON
 (provider-agnostic). The same agent is exposed over MCP (`agent_run`) and HTTP (`POST
 /persona/agent`).
+
+Three things the loop does that are worth naming, because they are what a persona left alone
+runs into:
+
+- **It chooses its own skills.** Nobody selects one for it and no message has to name one. The
+  persona reads the one-line description of each skill it declares and calls `use_skill` when one
+  fits. See [`skills`](./commands/skills.md).
+- **It can delegate.** A sub-task runs with clean context and only the parts of the parent's scope
+  that were explicit, to a depth the deployment declares. A request past that depth is refused by
+  name.
+- **A long conversation gets compacted.** Either because you typed `/compact`, or automatically
+  between turns once the session crosses its threshold, with a notice on screen. Older turns become
+  one summary, the most recent survive verbatim, and the checkpoint is persisted so `/resume`
+  returns the compacted conversation rather than the bloat.
 
 The evolution mode is decided by the spec's `improvement_policy.mode`:
 - `locked` (default): the loop appraises and remembers, but envelope mutations are human-directed only.
