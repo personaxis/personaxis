@@ -507,6 +507,10 @@ export async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, s
   const msg = rest || line;
   if (targets.length === 0) {
     await handleTurn(msg, rootCtx);
+    // AFTER the turn, never before it. The rounds of E86 decide INSIDE the turn at 0,8 and this decides
+    // between turns at 0,85, so the two never race: the turn runs against the window as it stands, and what
+    // is left is shortened once it is over. Moved ahead of `handleTurn` they would collide, because the turn
+    // would start against a window this had just emptied and a round would never find it full.
     await maybeAutoCompact(rootCtx);
     return;
   }
@@ -542,5 +546,9 @@ export async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, s
       /* delegation logging is best-effort */
     }
   }
+  // AFTER the turn, never before it. The rounds of E86 decide INSIDE the turn at 0,8 and this decides
+  // between turns at 0,85, so the two never race: the turn runs against the window as it stands, and what
+  // is left is shortened once it is over. Moved ahead of `handleTurn` they would collide, because the turn
+  // would start against a window this had just emptied and a round would never find it full.
   await maybeAutoCompact(rootCtx);
 }
