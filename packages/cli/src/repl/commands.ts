@@ -41,8 +41,6 @@ import { ensureState,
   readRecompilePending,
   displayName,
   readMode,
-  compactMessages,
-  recordCompaction,
   loadConversation,
   listSessions,
   findSession,
@@ -52,7 +50,7 @@ import { envelopeBars, auraLines } from "@personaxis/tui/visual";
 import { sigilParams, liveIntensity } from "@personaxis/core";
 import { renderFrame } from "@personaxis/tui";
 import type { SlashItem } from "@personaxis/tui/screen";
-import { recordReplCompaction } from "./compaction-record.js";
+import { compactConversation } from "./compact.js";
 import { isSubagentPath, slugAddressFromPath, loadPersonaFile, compiledPathFor } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/improve.js";
 import { runCompile } from "../commands/compile.js";
@@ -69,7 +67,7 @@ import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, re
 import { fmtK, panel, meterBar, userLine } from "./render.js";
 import { version } from "../generated/assets.js";
 import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
-import { ensureCtxSession, resumeSessionInto, replayTranscript } from "./session.js";
+import { resumeSessionInto, replayTranscript } from "./session.js";
 import { maybeRecompile, handleTurn } from "./turn.js";
 import { loadCustomCommands, findCustomCommand, expandCommand } from "./custom-commands.js";
 import { resolveDeclaredSkills } from "../targets/skills.js";
@@ -419,34 +417,19 @@ export const COMMANDS: CommandDef[] = [
     run: async (_a, ctx) => {
       const llm = llmConfig(ctxModelArg(ctx));
       if (!llm) return void ctx.out(chalk.dim("  /compact needs a model, configure with /model."));
-      const before = ctx.meter.used;
-      const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
-      if (r.compacted) {
-        ctx.conversation = r.messages.filter((m) => m.role !== "system");
-        // E25: a compaction a person asked for is still a compaction, and the record is
-        // where this persona's facts live. The author is the runtime either way: asking
-        // for one is not performing one, and the asking goes in the reason.
-        if (r.plan) {
-          await recordReplCompaction(
-            ctx.handle.personaPath,
-            ctx.handle.statePath,
-            { kind: "asked" },
-            r.plan,
-            (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`)),
-          );
-        }
-        // PERSIST the checkpoint so leaving and /resume returns the COMPACTED conversation, not the
-        // raw bloat, the user shouldn't have to /compact again after re-entering the same session.
-        if (r.summary) {
-          ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
-          recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
-        }
-        const after = ctx.meter.used;
-        const freed = Math.max(0, before - after);
-        ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept · ${fmtK(before)} → ${fmtK(after)} tok${freed ? ` (freed ~${fmtK(freed)})` : ""} · persisted (survives /resume)`));
-      } else {
-        ctx.out(chalk.dim("  nothing to compact yet."));
-      }
+      // Threshold 0: a person who types this means now, not when it gets tight. E25: asking for a
+      // compaction is not performing one, so the author in the record is the runtime either way and
+      // the asking goes in the reason. Everything after the summarising is shared with the automatic
+      // door, which is why it lives in one place: these two had already drifted, and the drift was
+      // that this one never counted itself.
+      const r = await compactConversation(ctx, {
+        threshold: 0,
+        kind: "asked",
+        llm,
+        onProblem: (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`)),
+      });
+      if (!r.compacted) return void ctx.out(chalk.dim("  nothing to compact yet."));
+      ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept · ${fmtK(r.before)} → ${fmtK(r.after)} tok${r.freed ? ` (freed ~${fmtK(r.freed)})` : ""} · persisted (survives /resume)`));
     },
   },
   {

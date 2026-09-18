@@ -52,8 +52,6 @@ import { ensureState,
   appendTurn,
   readRecompilePending,
   readObservability,
-  compactMessages,
-  recordCompaction,
   readHooksConfig,
   runHooks,
   appendHistory,
@@ -94,7 +92,7 @@ import { runServiceFromTurn, type PersonAt } from "../commands/service.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import type { Ctx } from "./types.js";
-import { recordReplCompaction } from "./compaction-record.js";
+import { compactConversation } from "./compact.js";
 import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
 import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError } from "./render.js";
@@ -473,31 +471,14 @@ export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85, model?: { end
   // `writeSelfSkill`'s scanner and the postmortem's extractor: a default that production always takes.
   const llm = model ?? llmConfig(ctxModelArg(ctx));
   if (!llm || ctx.meter.pct < threshold) return;
-  const before = ctx.meter.used;
   try {
-    const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold });
+    const r = await compactConversation(ctx, {
+      threshold,
+      kind: "auto",
+      llm,
+      onProblem: (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`), "activity"),
+    });
     if (!r.compacted) return;
-    // E18: this compaction happens OUTSIDE the agent loop, so the loop's own
-    // bookkeeping never sees it. A session that compacted here and reported zero
-    // compactions would be reporting on the agent, not on the session.
-    ctx.meter.compacted(before, ctx.meter.used);
-    ctx.conversation = r.messages.filter((m) => m.role !== "system");
-    // E25: and into the RECORD, because this compaction happens between turns and no
-    // turn observer is ever going to see it. Awaited rather than fired off: an entry
-    // written after the next turn opened would sit behind facts that happened later.
-    if (r.plan) {
-      await recordReplCompaction(
-        ctx.handle.personaPath,
-        ctx.handle.statePath,
-        { kind: "auto", pct: ctx.meter.pct },
-        r.plan,
-        (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`), "activity"),
-      );
-    }
-    if (r.summary) {
-      ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
-      recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
-    }
     ctx.out(chalk.dim(`  · context auto-compacted (${r.removed} msg freed, ${Math.round(ctx.meter.pct * 100)}% full)`), "activity");
   } catch {
     /* best-effort; a failed compaction must never break the turn */
