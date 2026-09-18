@@ -106,6 +106,15 @@ describe("the compaction a conversation actually reaches", () => {
 		expect(meter.used).toBeLessThan(Math.round(WINDOW * 0.9));
 	});
 
+	/**
+	 * Below the threshold nothing is touched, and breaking this takes TWO patches, not one.
+	 *
+	 * The conversation is guarded twice in series: `maybeAutoCompact` checks the meter before it calls, and
+	 * `compactMessages` checks it again inside. Removing either guard on its own leaves this green, which
+	 * reads like a test that watches nothing; removing BOTH turns it red. So the invariant is watched, and
+	 * the redundancy belongs to the product rather than being a hole here. Measured 2026-09-18, five
+	 * controls in one run against a rebuilt `core` dist: A and B stay green alone, C, D and E fall.
+	 */
 	it("leaves a conversation alone while it still fits, however long it looks", async () => {
 		const { ctx } = sessionAt(0.4, 30);
 		const before = [...ctx.conversation];
