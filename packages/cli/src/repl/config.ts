@@ -26,6 +26,7 @@ import {
   type Policy,
   type SandboxMode,
   type PersonaHandle,
+  type ResolvedModel,
 } from "@personaxis/core";
 import { slugChainFromPath, resolvePersonaSourcePath } from "../load.js";
 import type { Ctx } from "./types.js";
@@ -73,7 +74,7 @@ export function notePostureChange(ctx: { postureIndex: number; pendingEnvNote?: 
  * The resolved model for the (optionally persona-scoped) session. Delegates to core's layered
  * resolveModel: env > frontmatter.runtime > per-persona config > project config > global config.
  */
-export function llmConfig(ctx?: { personaPath?: string; frontmatter?: Record<string, unknown> }): { endpoint: string; model: string; apiKey?: string } | undefined {
+export function llmConfig(ctx?: { personaPath?: string; frontmatter?: Record<string, unknown> }): ResolvedModel | undefined {
   return resolveModel({ personaPath: ctx?.personaPath, frontmatter: ctx?.frontmatter, cwd: process.cwd() });
 }
 
@@ -161,7 +162,12 @@ export function readGoalText(handle: PersonaHandle): string | undefined {
 
 export function makeMeter(): ContextMeter {
   const llm0 = llmConfig();
-  const meter = new ContextMeter(llm0 ? cachedContextWindow(llm0.model) : 0);
-  if (llm0) void resolveContextWindow(llm0).then((w) => (meter.limit = w)).catch(() => {});
+  // E86/E100: a DECLARED window wins over the table and over the refresh below, here for the same reason it
+  // already does inside a turn (`agent.ts`). This is the meter a whole SESSION shares, and it is the one the
+  // automatic compaction reads, so a window declared and then quietly overwritten meant a conversation that
+  // compacted at some other size than the one somebody asked for.
+  const declared = llm0?.contextWindow;
+  const meter = new ContextMeter(llm0 ? (declared ?? cachedContextWindow(llm0.model)) : 0);
+  if (llm0 && declared === undefined) void resolveContextWindow(llm0).then((w) => (meter.limit = w)).catch(() => {});
   return meter;
 }
