@@ -22,12 +22,12 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
-    "@fast-check/vitest": "^0.4.1",
+    "@fast-check/vitest": "^0.5.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.10.0",
-    "fast-check": "^4.8.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.0.0"
+    "@types/node": "^26.6.1",
+    "fast-check": "^4.10.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   },
   "publishConfig": {
     "access": "public"
