@@ -147,14 +147,6 @@ export interface TurnOutcome {
 		readonly unverified: readonly string[];
 	};
 	/**
-	 * E86: the rounds this turn opened, each one task of the list handed to a sub-task with a fresh context.
-	 *
-	 * Absent from a turn that opened none, which is every turn on a model whose settings never asked for them.
-	 * What travels is what came back to the parent, which is the sub-task's summary: its transcript never
-	 * reached the parent and has no business reaching the record through it either.
-	 */
-	readonly rounds?: Extract<RecordBody, { readonly type: "round" }>["rounds"];
-	/**
 	 * E80: every call the gate judged this turn, in order, for the record to write down.
 	 *
 	 * Optional for the reason `compactions` is. A provider that runs no tools through our gate has none

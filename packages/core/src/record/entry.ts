@@ -282,7 +282,13 @@ export type RecordBody =
 			readonly unverified: readonly string[];
 	  }
 	/**
-	 * E86: the rounds this turn opened, each one a task of the list worked in a context with none of its history.
+	 * E86: the rounds a turn opened, each one a task of the list worked in a context with none of its history.
+	 *
+	 * HISTORICAL. Nothing writes this any more: rounds were retired on 2026-09-21, measured against the same
+	 * job with the same declared window, where the loop passed 2 of 3 without them and 0 of 3 with them, and
+	 * chose the right route 3 of 3 against 0 of 3. The type stays because a record is append-only and there
+	 * are records with these entries inside. Deleting it would not remove the rounds that happened, it would
+	 * only stop anybody reading the records that hold them, which is the one damage this format cannot take.
 	 *
 	 * The runtime's entry and not the persona's: the persona did not choose to work in rounds, the loop did,
 	 * and `reply` is a sub-task's summary rather than anything the persona said. Written because a round that
