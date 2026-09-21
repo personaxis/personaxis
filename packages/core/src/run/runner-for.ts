@@ -372,23 +372,14 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 							colleague === undefined || ceiling === undefined
 								? child
 								: { ...underLowerCeiling(child, ceiling), personaBody: colleague.identity };
-						// E86, 2026-09-17: a sub-task never rounds, and this is the seam that says so.
-						//
-						// Rounds ride on the MODEL config, and `subTaskSession` drops capabilities without ever
-						// touching it, so every child inherited `rounds: true` and opened four of its own, whose
-						// children tried again until the depth limit refused them. Measured on a real run with a
-						// declared window: 14 turns opened and 11 rounds in one job, delegations at depth 1 and 2
-						// and a stream of refusals at 3, six times the tokens of the same job without rounds and
-						// THREE deliverables instead of five. The per-turn cap of 4 was holding the whole time:
-						// what exploded was a tree of turns nobody intended.
-						//
-						// Here rather than in `subTaskSession` because the model config is not part of the session,
-						// and here rather than in the loop because the loop cannot tell a sub-task from a turn
-						// somebody is watching. It is the same rule and the same place as E88's postmortem gate:
-						// the parent's turn is the unit of work a person asked for.
+						// What the child runs with. Anything that rides on the MODEL config reaches it untouched:
+						// `subTaskSession` drops capabilities and never looks at the model, which on 2026-09-17 let
+						// every child inherit `rounds: true` and open four of its own, 14 turns and 11 rounds in one
+						// job at six times the tokens. `E86` retired that setting on 2026-09-21, and the seam it
+						// exposed is still here: a model-level switch that makes a turn expensive multiplies down
+						// this line, so anything added there is decided for the child too, on purpose or by default.
 						const childFacts = colleague?.facts ?? persona;
-						const rounding = childFacts.llm.rounds === true ? { ...childFacts, llm: { ...childFacts.llm, rounds: false } } : childFacts;
-						const outcome = await runnerFor(rounding, under).run({
+						const outcome = await runnerFor(childFacts, under).run({
 							turn: randomUUID(),
 							prompt: instruction,
 							// A persona asked for this turn, which is the one kind of asker the vocabulary already had.

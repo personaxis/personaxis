@@ -115,8 +115,6 @@ export interface TurnProduct {
 	readonly compactions?: readonly TurnCompaction[];
 	/** E80: every call the gate judged. Passed through untouched, for the reason compactions are. */
 	readonly calls?: readonly TurnCall[];
-	/** E86: the rounds of fresh context this turn opened, when the loop works in rounds. Passed through untouched. */
-	readonly rounds?: TurnOutcome["rounds"];
 	/** E81: the task list the turn ended with, when the persona kept one. Passed through untouched. */
 	readonly tasks?: TurnOutcome["tasks"];
 	/** E83: the route chosen before acting, when the decision step ran. Passed through untouched. */
@@ -268,9 +266,6 @@ export class TurnRunner {
 			// one place where a field a loop reported is lost by not being named, which is how `E84` lost its
 			// questions for an afternoon.
 			...(product.delivered === undefined ? {} : { delivered: product.delivered }),
-			// E86: the rounds the loop opened. Named here like the rest, because this is the copy that loses a
-			// field by not naming it, which is exactly how `E84` lost its questions for an afternoon.
-			...(product.rounds === undefined ? {} : { rounds: product.rounds }),
 			...(product.failure === undefined ? {} : { failure: product.failure }),
 			...(stopReason === "abandoned"
 				? {

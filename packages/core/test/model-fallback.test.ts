@@ -53,10 +53,14 @@ describe("resolveModel fallback (V5.FIX.2: a broken default can no longer strand
    * above the same code ("a field this function forgets is a setting that silently does nothing"), repeated in
    * the function next door, which is what a copy-by-hand seam does when nothing counts its fields.
    *
+   * `rounds` itself was retired on 2026-09-21, and this case was reaimed rather than deleted: the field is
+   * gone and the seam is not. `contextWindow` crosses it today and would go missing the same way, which is
+   * the whole reason to keep a case here instead of a case about one setting.
+   *
    * Nothing asserted on these here before, which is why a whole class of setting could go missing unseen: the
    * cases above check the endpoint, the model, the key and the flag, and stop there.
    */
-  it("keeps the settings the fallback profile declared, which `rounds` did not until this was written", () => {
+  it("keeps the settings the fallback profile declared, which one of them did not until this was written", () => {
     writeGlobal({
       defaultProfile: "broken",
       profiles: {
@@ -67,7 +71,6 @@ describe("resolveModel fallback (V5.FIX.2: a broken default can no longer strand
           apiKey: "k-123",
           maxTokens: 4096,
           scaffold: "small",
-          rounds: true,
           contextWindow: 8192,
         },
       },
@@ -78,8 +81,8 @@ describe("resolveModel fallback (V5.FIX.2: a broken default can no longer strand
     expect(r?.fallback).toBe(true);
     expect(r?.maxTokens).toBe(4096);
     expect(r?.scaffold).toBe("small");
-    // The two this case exists for: a long job worked in rounds, and the window that decides when.
-    expect(r?.rounds).toBe(true);
+    // The one this case exists for now: the window a small model declares, which decides when the loop
+    // compacts. A session that lost it would measure itself against a window nobody asked for.
     expect(r?.contextWindow).toBe(8192);
   });
 

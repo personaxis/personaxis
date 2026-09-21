@@ -184,9 +184,6 @@ export function productOf(result: AgentResult): TurnProduct {
 		// E85: what the runtime checked about what the turn left, and what it could not check. Carried like the
 		// calls are, and for the same reason: a turn that failed after writing a page still wrote that page.
 		...(result.delivered === undefined ? {} : { delivered: result.delivered }),
-		// E86: the rounds of fresh context this turn opened. On `common` for the same reason: a turn that
-		// handed a task down and then ran out of budget still handed it down.
-		...((result.rounds ?? []).length > 0 ? { rounds: result.rounds } : {}),
 		// E81: the persona's list, only when it kept one. The loop's own notes (files, errors) stay in the
 		// loop: they are how it survives compaction, not something the persona said.
 		...((result.tasks ?? []).length > 0

@@ -52,8 +52,6 @@ export interface ModelSettings {
    * absent, the destination table decides, and it declares no model until the bench measured one.
    */
   scaffold?: Scaffold;
-  /** E86: whether a long job on this model is worked in rounds of fresh context. Absent is off (`roundsOn`). */
-  rounds?: boolean;
   /**
    * E86: how big this model's context window is, declared instead of discovered.
    *
@@ -95,8 +93,6 @@ export interface ResolvedModel {
   maxTokens?: number;
   /** E83: the scaffold the settings declared, carried through like `maxTokens`. */
   scaffold?: Scaffold;
-  /** E86: whether the settings asked for rounds of fresh context, carried through the same way. */
-  rounds?: boolean;
   /** E86: the window the settings declared, carried through the same way. Absent means discover it. */
   contextWindow?: number;
 }
@@ -151,7 +147,6 @@ function mergeSettings(layers: Array<ModelSettings | undefined>): ModelSettings 
     // only through the fallback path. A field this function forgets is a setting that silently does nothing.
     if (layer.maxTokens !== undefined) out.maxTokens = layer.maxTokens;
     if (layer.scaffold !== undefined) out.scaffold = layer.scaffold;
-    if (layer.rounds !== undefined) out.rounds = layer.rounds;
     if (layer.contextWindow !== undefined) out.contextWindow = layer.contextWindow;
   }
   return out;
@@ -204,7 +199,7 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
 
   const direct =
     merged.endpoint && merged.model
-      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens, scaffold: merged.scaffold, rounds: merged.rounds, contextWindow: merged.contextWindow }
+      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens, scaffold: merged.scaffold, contextWindow: merged.contextWindow }
       : undefined;
 
   // Usable = it can actually answer: a key resolves, or the endpoint is local (no key needed).
@@ -215,7 +210,6 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
       ...(direct.apiKey ? { apiKey: direct.apiKey } : {}),
       ...(direct.maxTokens !== undefined ? { maxTokens: direct.maxTokens } : {}),
       ...(direct.scaffold !== undefined ? { scaffold: direct.scaffold } : {}),
-      ...(direct.rounds !== undefined ? { rounds: direct.rounds } : {}),
       ...(direct.contextWindow !== undefined ? { contextWindow: direct.contextWindow } : {}),
     };
   }
@@ -256,10 +250,11 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
           ...(k ? { apiKey: k } : {}),
           ...(s.maxTokens !== undefined ? { maxTokens: s.maxTokens } : {}),
           ...(s.scaffold !== undefined ? { scaffold: s.scaffold } : {}),
-          // E86, 2026-09-17: `rounds` was missing here while the direct path carried it, so a profile that
-          // fell back lost its rounds in silence. The same fault `E96` recorded two lines above, in the
-          // function next door, which is what a copy-by-hand seam does when nothing counts its fields.
-          ...(s.rounds !== undefined ? { rounds: s.rounds } : {}),
+          // Copied field by field, and on 2026-09-17 that cost a field: `rounds` was carried by the direct
+          // path above and missing here, so a profile that fell back lost it in silence. `E86` retired that
+          // field on 2026-09-21 and the fault outlived it, which is the point: `E96` recorded the same one
+          // in the function next door. Whatever is added above is added here too, or it exists on one path
+          // only and nothing says so. `contextWindow` below is the one that carries that risk today.
           ...(s.contextWindow !== undefined ? { contextWindow: s.contextWindow } : {}),
           profile: name,
           ...(direct ? { fallback: true } : {}),

@@ -9,7 +9,7 @@
  * `designed-not-connected` sweep counts, and it caught it on 2026-09-16.
  *
  * Moving it here is not a way around that sweep, it is the fix the sweep asks for: `runner-for.ts` imports it
- * like any other piece it assembles, the way it already imports `colleagues`, `rounds` and `wordless`. The
+ * like any other piece it assembles, the way it already imports `colleagues` and `wordless`. The
  * alternative, making it private, would have meant deleting its test or asserting it through a path that
  * cannot see whether the question carried the work.
  *
