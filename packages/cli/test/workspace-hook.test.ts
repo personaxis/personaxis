@@ -455,7 +455,7 @@ function hookScriptPathThatExists(): string {
  * backslashes into a single one, so the hook connects to an address that does not
  * exist, fails closed, and refuses every call the agent makes.
  *
- * That was found in a real job on this machine and not by reading. All three of its
+ * That was found in a real job on a Windows machine and not by reading. All three of its
  * tool calls, including the one the policy allowed, came back with
  * `connect ENOENT` while the daemon was listening on the pipe next door.
  *
@@ -463,6 +463,9 @@ function hookScriptPathThatExists(): string {
  * what a shell does to it, and require the address to still be the right one.
  */
 describe("what survives being written into a shell command", () => {
+	// A generic path on purpose: what this measures is what a shell does to a backslash, which does not
+	// depend on whose machine it is. The first version carried the author's own Windows user name into a
+	// public repository, which is nobody's business and buys the test nothing.
 	const root = "C:@@Users@@example@@Documents@@GitHub@@cli".split("@@").join(BACKSLASH);
 
 	/** What a POSIX shell leaves of a double-quoted argument. */
