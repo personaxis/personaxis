@@ -370,11 +370,17 @@ export function renderWorkMap(
 	// E73: presented as what the persona offers a client, not as mechanics. Measured on 2026-09-14 (E79): listed
 	// as "a fixed sequence of steps", no persona named its service when asked what it could do, 0 of 3 with both
 	// models. Whether this wording moves that is measured in E73, not assumed.
+	// E110: and which one wins when a skill and a service both fit, which the map never said. Measured
+	// 2026-09-22 on `build-game`: the four runs that ran the service left a game that can be won, and five of
+	// the eight that improvised with skills left one that can only be lost, because the service's third step
+	// is what checks that the win condition is reachable. One model ran it three times out of six and the
+	// other never. A service is the declared delivery, with its steps, its named files and its check; doing
+	// the same work with skills skips all three, so when both fit, the service is the answer.
 	section(
 		"Services you deliver",
 		limits.canRunServices === true
-			? `What you offer a client, done start to finish. When a request is what one of these delivers, say so and run it with ${RUN_SERVICE_TOOL}; the person approves every run first. Every step has to leave the files it names, or the run fails.`
-			: "What you offer a client, done start to finish. Every step has to leave the files it names, or the run fails.",
+			? `What you offer a client, done start to finish. When a request is what one of these delivers, say so and run it with ${RUN_SERVICE_TOOL}; the person approves every run first. Prefer it over doing the same work yourself with skills: the steps and their checks are what make it a delivery rather than an attempt. Every step has to leave the files it names, or the run fails.`
+			: "What you offer a client, done start to finish. When a request is what one of these delivers, say so; it is what you are for, more than any skill that would do part of it. Every step has to leave the files it names, or the run fails.",
 		map.services.map((service) => {
 			// The description's own full stop is dropped: the line goes on after it, and "agree.. 2 steps"
 			// is what a model read before a test caught it.

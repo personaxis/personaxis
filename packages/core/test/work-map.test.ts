@@ -117,6 +117,25 @@ describe("the work map (E79)", () => {
 	});
 
 	/**
+	 * E110: which one wins when a skill and a service both fit the request.
+	 *
+	 * Measured 2026-09-22 on the autonomy bench. Asked for a small arcade game, the four runs that ran the
+	 * `game-build` service left a game that can be won; five of the eight that improvised with skills left one
+	 * that can only be lost, because winning and losing set the same flag. The service's third step is what
+	 * checks the win condition is reachable, and the map never said to prefer the service when both fit.
+	 */
+	it("says a service beats doing the same work with skills, and only where a service can be run", () => {
+		const canRun = renderWorkMap(workMapFor(gameDesigner(), { workspaceRoot: workspace }), { canRunServices: true });
+		const cannot = renderWorkMap(workMapFor(gameDesigner(), { workspaceRoot: workspace }), { canRunServices: false });
+
+		expect(canRun).toContain("Prefer it over doing the same work yourself with skills");
+		// A service step has no `run_service`, so its copy cannot tell the persona to reach for one.
+		expect(cannot).not.toContain("Prefer it over");
+		expect(cannot).not.toContain(RUN_SERVICE_TOOL);
+		expect(cannot).toContain("more than any skill that would do part of it");
+	});
+
+	/**
 	 * E103: a section that asks for an action names the tool that performs it, or the action does not happen.
 	 *
 	 * Measured 2026-09-21 over the 505 runs the autonomy bench has saved. The three sections that named their
