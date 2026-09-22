@@ -44,12 +44,104 @@ export interface PageRun {
 	listens: string[];
 }
 
+/** One `<script>` the page carries itself, and where in the file it starts. */
+interface OwnScript {
+	readonly body: string;
+	/**
+	 * E103: lines before this script's first line, so a fault can be reported at its line in the FILE.
+	 *
+	 * The script's own coordinates are useless to whoever has to fix it: told "line 24" of a body that starts
+	 * on line 31, a persona edits line 24 of the page, which is a different line and usually the markup.
+	 */
+	readonly linesBefore: number;
+}
+
 /** Every `<script>` the page carries itself, without the ones that name a `src`. */
-function ownScripts(html: string): string[] {
-	return [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
-		.filter((m) => !/\bsrc\s*=/i.test(m[1] ?? ""))
-		.map((m) => m[2] ?? "")
-		.filter((body) => body.trim().length > 0);
+function ownScripts(html: string): OwnScript[] {
+	const out: OwnScript[] = [];
+	for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+		const body = m[2] ?? "";
+		if (/\bsrc\s*=/i.test(m[1] ?? "") || body.trim().length === 0) continue;
+		// Where the body starts: the opening tag is `<script` plus its attributes plus `>`, so its length is
+		// known without searching for the body inside the match, which would find the wrong place for a script
+		// whose text happens to repeat its own tag.
+		const bodyStart = (m.index ?? 0) + "<script".length + (m[1] ?? "").length + 1;
+		out.push({ body, linesBefore: (html.slice(0, bodyStart).match(/\n/g) ?? []).length });
+	}
+	return out;
+}
+
+/**
+ * E103: the name each script runs under, so its faults can be found in the stack by an exact match.
+ *
+ * Without one, `node:vm` calls every script `evalmachine.<anonymous>`, which is also what any other vm in the
+ * process is called, and a stack read by pattern would be reading somebody else's frames.
+ */
+const scriptName = (index: number): string => `personaxis-page-script-${index}`;
+
+/**
+ * Where a fault is, in the line numbers of the file, read from the error's own stack.
+ *
+ * V8 already knows this and puts it in the stack twice over: a syntax error's stack opens with the file, the
+ * line, the offending source and a caret under the column, and a runtime error carries `file:line:column` in
+ * every frame. `check_page` threw all of it away and returned the bare message, so a persona told its page did
+ * not compile had a file it could only edit by search and replace and no idea which of its own edits broke it.
+ * Measured on 2026-09-21 over the autonomy bench: on `fix-crash`, four of six runs across two models ended in
+ * `stopped: max_steps` after editing and re-checking in a circle, and the one that finished said it was fixed
+ * with the file still broken.
+ */
+function faultSite(error: unknown, scripts: readonly OwnScript[]): { line: number; column: number | null; source: string | null } | null {
+	const stack = stackOf(error);
+	if (!stack) return null;
+	for (const [index, script] of scripts.entries()) {
+		const name = scriptName(index).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const at = new RegExp(`${name}:(\\d+)(?::(\\d+))?`).exec(stack);
+		if (!at) continue;
+		const inScript = Number(at[1]);
+		if (!Number.isFinite(inScript) || inScript < 1) return null;
+		const line = script.linesBefore + inScript;
+		const column = at[2] === undefined ? null : Number(at[2]);
+		// The source line comes from the script and not from the stack: the stack only carries it for syntax
+		// errors, and it is the same line either way.
+		const source = script.body.split(/\r?\n/)[inScript - 1] ?? null;
+		return { line, column: Number.isFinite(column as number) ? column : null, source: source === null ? null : source.trim() };
+	}
+	return null;
+}
+
+/**
+ * The stack of whatever was thrown, without asking whether it is an `Error`.
+ *
+ * It usually is not. A fault thrown while the page runs is built inside the vm context, so it carries THAT
+ * realm's `Error` prototype and `e instanceof Error` is false out here, even though it has a message and a
+ * stack. A syntax error is the exception, because the compiler throws it before the context exists. The first
+ * version of this asked `instanceof` and so found the line for a page that does not compile and never for one
+ * that dies while playing, which is the half that sends a persona hunting.
+ */
+function stackOf(error: unknown): string {
+	if (typeof error !== "object" || error === null) return "";
+	const stack = (error as { stack?: unknown }).stack;
+	return typeof stack === "string" ? stack : "";
+}
+
+/** What was thrown, as a sentence, whatever realm built it. */
+function messageOf(error: unknown): string {
+	if (typeof error !== "object" || error === null) return String(error);
+	const message = (error as { message?: unknown }).message;
+	const name = (error as { name?: unknown }).name;
+	if (typeof message !== "string") return String(error);
+	return typeof name === "string" && name.length > 0 ? `${name}: ${message}` : message;
+}
+
+/** A fault, said with its place in the file when the stack knew one. */
+function withSite(what: string, error: unknown, scripts: readonly OwnScript[]): string {
+	const site = faultSite(error, scripts);
+	const message = messageOf(error);
+	if (site === null) return `${what}: ${message}`;
+	const where = site.column === null ? `line ${site.line}` : `line ${site.line}, column ${site.column}`;
+	// The line itself, quoted, because counting to line 24 of a file you cannot see is the work this saves.
+	const quoted = site.source ? `, which reads \`${site.source.slice(0, 160)}\`` : "";
+	return `${what}, at ${where} of the file${quoted}: ${message}`;
 }
 
 /** An element that accepts everything, does nothing, and remembers who listens. */
@@ -217,9 +309,9 @@ export function runPage(html: string, opts: { frames?: number } = {}): PageRun {
 
 	const vm = createContext(sandbox);
 	try {
-		for (const body of scripts) runInContext(body, vm, { timeout: 5000 });
+		for (const [index, script] of scripts.entries()) runInContext(script.body, vm, { timeout: 5000, filename: scriptName(index) });
 	} catch (e) {
-		return { ok: false, error: `on load: ${e instanceof Error ? e.message : String(e)}`, frames: 0, drew: drew(), listens: listens() };
+		return { ok: false, error: withSite("on load", e, scripts), frames: 0, drew: drew(), listens: listens() };
 	}
 
 	for (let i = 0; i < frames; i += 1) {
@@ -228,7 +320,7 @@ export function runPage(html: string, opts: { frames?: number } = {}): PageRun {
 			try {
 				t.fn();
 			} catch (e) {
-				return { ok: false, error: `after ${i} frames, in a timer: ${e instanceof Error ? e.message : String(e)}`, frames: i, drew: drew(), listens: listens() };
+				return { ok: false, error: withSite(`after ${i} frames, in a timer`, e, scripts), frames: i, drew: drew(), listens: listens() };
 			}
 			if (t.every) t.at = clock + t.every;
 			else timers.splice(timers.indexOf(t), 1);
@@ -237,7 +329,7 @@ export function runPage(html: string, opts: { frames?: number } = {}): PageRun {
 			try {
 				fn(clock);
 			} catch (e) {
-				return { ok: false, error: `after ${i} frames: ${e instanceof Error ? e.message : String(e)}`, frames: i, drew: drew(), listens: listens() };
+				return { ok: false, error: withSite(`after ${i} frames`, e, scripts), frames: i, drew: drew(), listens: listens() };
 			}
 		}
 	}
