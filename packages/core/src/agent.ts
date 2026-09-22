@@ -778,6 +778,13 @@ export class PersonaAgent {
     let delivered: DeliveredVerification | undefined;
     let errorCount = 0;
     let retriesLeft = verification.maxRetries;
+    /**
+     * E106: whether the turn has already been handed back over a derived check that failed.
+     *
+     * Its own flag and not `retriesLeft`, which belongs to the persona's declared gates: sharing them would
+     * make a persona that declares gates spend on this the one retry those gates were given.
+     */
+    let handedBackOnce = false;
     let stepProgress = 1;
     let lastText = "";
     // K.04: how injection-tainted the context is so far (max verdict of prior tool outputs). A
@@ -1115,15 +1122,36 @@ export class PersonaAgent {
     const verifyCompletion = async (summary: string): Promise<"accept" | "retry" | "stop"> => {
       // E85: what follows from what the turn LEFT runs first, and runs whether or not the persona declared
       // gates of its own. Deriving it from the deliverables is what makes it possible at all: nobody declares
-      // `verification:` today, so hanging this on that switch would ship a row that is off everywhere. It does
-      // not decide the turn: a check that fails is written down, and what judges completion is still the
-      // persona's own gates below. Saying "it runs" is exactly as much as running it proves.
+      // `verification:` today, so hanging this on that switch would ship a row that is off everywhere.
+      // Saying "it runs" is exactly as much as running it proves.
       const left = deliveredIn(deliveredHere);
       if (left.length > 0) {
         const result = runDerivedChecks(left.map((file) => file.path));
         delivered = result;
         for (const check of result.checks) {
           bus.emit({ type: "verify-result", verifier: `${check.what}: ${check.how}`, pass: check.passed, reason: check.reason ?? "" });
+        }
+        // E106: and now it decides the turn, once. Until 2026-09-22 this ran the page the persona had just
+        // written, saw it not start, wrote that in the record and let the turn close announcing the work done.
+        // The hand-back already existed twenty-eight lines below and was reachable only through declared gates,
+        // which default to off and which nobody declares. So the engine knew the delivery was broken, knew how
+        // to hand it back, and the two were not joined.
+        //
+        // ONCE, and not until it passes: the failure E103 measured is exactly the loop of editing and
+        // re-checking until the steps run out, and retrying here would be building that loop by hand. It does
+        // not decide FOR the persona either: it hands over the observation and the persona chooses, and a
+        // second finish without a fix closes the turn with the check written down as before.
+        const broken = result.checks.filter((check) => !check.passed);
+        if (broken.length > 0 && !handedBackOnce) {
+          handedBackOnce = true;
+          messages.push({
+            role: "user",
+            content:
+              `You said this is done, and what you left does not work:\n` +
+              broken.map((check) => `- ${check.reason ?? `${check.what}: ${check.how} and it failed`}`).join("\n") +
+              `\nFix it and finish again, or finish and say plainly that it does not work.`,
+          });
+          return "retry";
         }
       }
       if (verification.mode === "off" || verification.gates.length === 0) return "accept";
