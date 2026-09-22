@@ -7,6 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { renderWorkMap, workMapFor } from "../src/run/work-map.js";
+// E103: the tool names the map hands the model, taken from the tools that own them and not typed again here.
+import { memoryTools } from "../src/memory/retrieval.js";
+import { readFileTool } from "../src/tools/builtin/read-file.js";
+import { DELEGATE_TOOL } from "../src/tools/delegate.js";
+import { RUN_SERVICE_TOOL } from "../src/tools/run-service.js";
+import { USE_SKILL_TOOL } from "../src/tools/use-skill.js";
 
 let workspace: string;
 
@@ -108,6 +114,62 @@ describe("the work map (E79)", () => {
 		expect(text).toContain("before saying you do not know where something of yours comes from");
 		// And the same promise for memory is still there: this adds one, it does not move the other.
 		expect(text).toContain("before saying you do not remember");
+	});
+
+	/**
+	 * E103: a section that asks for an action names the tool that performs it, or the action does not happen.
+	 *
+	 * Measured 2026-09-21 over the 505 runs the autonomy bench has saved. The three sections that named their
+	 * tool are the three that got used: `use_skill` 476 calls, `memory_search` 91, `run_service` 27. The two
+	 * that asked in prose and named nothing are the two that did not: References was read only when a model
+	 * worked out the tool for itself, and `delegate` was called 3 times in the whole bench, never by one of the
+	 * two models. The proof that the wording is the cause and not the model: asked which sources its advice
+	 * rested on, a model called `memory_search` and then answered that it had no sources, without opening the
+	 * reference listed on the same screen. It obeyed the promise that named a tool and not the one that did not.
+	 *
+	 * Written as the rule and not as the two cases, and against each tool's real name, so a section added later
+	 * without its tool fails here, and so does a tool renamed without its line in the map.
+	 */
+	it("names the tool for every section that asks the persona to do something", () => {
+		const text = renderWorkMap(workMapFor(gameDesigner(), { workspaceRoot: workspace }), { canRunServices: true });
+		const memorySearch = memoryTools(gameDesigner(), { maxItems: 20, useEmbeddings: false, useReranker: false })[0];
+		const asksForAnAction: ReadonlyArray<readonly [string, string]> = [
+			["### Skills", USE_SKILL_TOOL],
+			["### Services you deliver", RUN_SERVICE_TOOL],
+			["### References", readFileTool.name],
+			["### Sub-personas you can hand work to", DELEGATE_TOOL],
+			["### Memory", memorySearch?.name ?? "memory_search"],
+		];
+
+		for (const [heading, tool] of asksForAnAction) {
+			const at = text.indexOf(heading);
+			expect(at, `${heading} is not in the map`).toBeGreaterThan(-1);
+			const next = text.indexOf("\n###", at + 1);
+			const body = text.slice(at, next === -1 ? text.indexOf("\n## ", at + 1) : next);
+			expect(body, `${heading} asks for an action and does not name ${tool}`).toContain(tool);
+		}
+	});
+
+	/**
+	 * E103: and the colleague section leads with handing the work over, not with reading.
+	 *
+	 * Its title said "you can hand work to" and its body offered only "you may read their files", so reading is
+	 * what happened: asked for the one thing only its colleague knew how to do, a persona opened the colleague's
+	 * folder and wrote the report itself, 3 of 3. The permission to read stays, behind the tool, as the qualifier
+	 * it always was.
+	 */
+	it("offers the colleague the work before it offers their files", () => {
+		const text = renderWorkMap(workMapFor(gameDesigner(), { workspaceRoot: workspace }));
+		const body = text.slice(text.indexOf("### Sub-personas you can hand work to"));
+
+		const handOver = body.indexOf(DELEGATE_TOOL);
+		const read = body.indexOf("read their files");
+		// Both found first: a missing tool gives -1, and -1 is less than everything, so an order check on its
+		// own would pass on exactly the map this test exists to refuse.
+		expect(handOver).toBeGreaterThan(-1);
+		expect(read).toBeGreaterThan(-1);
+		expect(handOver).toBeLessThan(read);
+		expect(body).toContain("you never write them");
 	});
 
 	it("does not move while a persona works: a new session file, memory or state change nothing", () => {
