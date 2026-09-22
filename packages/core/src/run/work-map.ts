@@ -130,7 +130,12 @@ function coveredIn(body: string, budget: number): string {
 	const inside = [...new Set(headings.slice(1))].filter((heading) => heading !== title);
 	if (inside.length === 0) return "";
 	const listed = inside.map((heading) => oneLine(heading, COVERS_ONE_CHARS));
-	const covers = ` Covers: ${listed.join("; ")}.`;
+	// "Sections inside it", and not "Covers". Measured on 2026-09-22 and it cost a task: with "Covers: core
+	// loop game design principles; game balance difficulty curve pacing; level design fundamentals...", a
+	// persona asked what it could do for a client answered with THAT LIST, headed "Here is what I can do for
+	// you", and stopped naming the service it delivers. A bare list of topics hanging off a file reads as a
+	// list of the persona's own capabilities, so the words have to say whose they are and where they live.
+	const covers = ` Sections inside it: ${listed.join("; ")}.`;
 	// ALL of them or none, never the first few. Measured on 2026-09-22 and it cost a measurement: with the
 	// list cut at four and "and 4 more" after it, a persona asked about game feel took the FIRST topic on the
 	// list, searched the file for that, and cited the sources of the wrong section. The one it needed was
@@ -150,7 +155,13 @@ function aboutFile(file: string, coversBudget = 0): string {
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.find((line) => line.length > 0);
-		return oneLine(heading ?? first ?? "(empty)", ABOUT_CHARS) + coveredIn(body, coversBudget);
+		const about = oneLine(heading ?? first ?? "(empty)", ABOUT_CHARS);
+		const covers = coveredIn(body, coversBudget);
+		// The full stop is ADDED here, not dropped. A title rarely ends in one, and without it the line read
+		// "...where it came from Sections inside it: ..." as a single run-on sentence. The services renderer a
+		// few lines below has the opposite note, dropping a full stop its description already had, and the two
+		// together are the whole rule: one sentence ends before the next begins, exactly once.
+		return covers === "" ? about : `${about.replace(/[.\s]+$/, "")}.${covers}`;
 	} catch {
 		return "(unreadable)";
 	}

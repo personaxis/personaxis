@@ -189,6 +189,18 @@ describe("the work map (E79)", () => {
 			return join(folder, "personaxis.md");
 		};
 
+		it("keeps the sections a sentence of their own, and says whose they are", () => {
+			const path = withSections("# What was read on the web\n\n### one topic\n\nbody\n");
+			const line = renderWorkMap(workMapFor(path, { workspaceRoot: workspace })).split("\n").find((l) => l.includes("web-research.md")) ?? "";
+
+			// Measured 2026-09-22: worded "Covers:" and run on into the title with no full stop, a persona
+			// asked what it could do for a client answered with the file's topic list and stopped naming its
+			// own service. The words have to say these are the file's sections, and the sentence has to end.
+			expect(line).toContain("What was read on the web. Sections inside it: one topic.");
+			expect(line).not.toContain("web Sections");
+			expect(line).not.toContain("Covers:");
+		});
+
 		it("names the sections under the title, which is what the question has to match", () => {
 			const path = withSections(
 				"# What was read on the web, and where it came from\n\nSearched on 2026-09-11.\n\n### core loop game design principles\n\n- a link\n\n### game feel juice screen shake hit pause\n\n- another link\n",
@@ -230,7 +242,7 @@ describe("the work map (E79)", () => {
 			const path = withSections(`# A big reference\n\n${many}`);
 			const line = renderWorkMap(workMapFor(path, { workspaceRoot: workspace })).split("\n").find((l) => l.includes("web-research.md")) ?? "";
 
-			expect(line).not.toContain("Covers:");
+			expect(line).not.toContain("Sections inside it:");
 			expect(line).not.toContain("more");
 			expect(line).toContain("A big reference");
 			expect(line.length).toBeLessThan(300);
