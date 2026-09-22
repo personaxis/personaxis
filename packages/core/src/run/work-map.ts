@@ -76,12 +76,15 @@ const PER_SECTION = 20;
 /** How long the line about a file or a service may be. */
 const ABOUT_CHARS = 140;
 /**
- * E108: how much of what a text file covers fits on its index line, and how long one section title may be.
+ * E108: how much of what text files cover fits in ONE section of the map, and how long a section title may be.
  *
- * Two caps and not one. Without the per-heading cap, a single section with a paragraph for a title would eat
- * the whole budget and the line would say what one section is about instead of what the file is about.
+ * A budget for the whole section and not for each file, so twenty references cost the same as one and the
+ * prompt cannot grow with the folder. Each listed file gets an equal share of it.
+ *
+ * The per-heading cap is separate: without it, one section with a paragraph for a title would eat the share
+ * and the line would say what one section is about instead of what the file is about.
  */
-const COVERS_CHARS = 220;
+const COVERS_SECTION_CHARS = 900;
 const COVERS_ONE_CHARS = 60;
 /** How long a skill's description may be. Agent Skills allows 1024; a small model reads less. */
 const SKILL_CHARS = 300;
@@ -105,7 +108,6 @@ function frontmatterOf(file: string): Record<string, unknown> {
 	}
 }
 
-/** What a file is about: its first heading, or its first line, or what kind of file it is. */
 /**
  * E108: what a text file COVERS, from the headings under its title.
  *
@@ -117,30 +119,28 @@ function frontmatterOf(file: string): Record<string, unknown> {
  * the match and dropped it, which is the same shape as `check_page` holding the line number and returning only
  * the message.
  *
- * Bounded twice, by count and by characters, because this line is paid for on every turn of every persona, and
- * deterministic, because the map sits in the cached prefix and two renders of one file have to be the same
- * bytes.
+ * All of the sections or none of them, within the budget its section of the map allows. Deterministic, because
+ * the map sits in the cached prefix and two renders of one file have to be the same bytes.
  */
-function coveredIn(body: string): string {
+function coveredIn(body: string, budget: number): string {
 	const headings = [...body.matchAll(/^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/gm)].map((m) => m[1]!.trim()).filter((h) => h.length > 0);
 	// The first heading is the title, which `aboutFile` already reports. Dropped by its TEXT and not by its
 	// position: a file that repeats its title as a section printed it twice on one line, and a test caught it.
 	const title = headings[0];
 	const inside = [...new Set(headings.slice(1))].filter((heading) => heading !== title);
 	if (inside.length === 0) return "";
-	const taken: string[] = [];
-	let length = 0;
-	for (const heading of inside) {
-		const one = oneLine(heading, COVERS_ONE_CHARS);
-		if (length + one.length + 2 > COVERS_CHARS) break;
-		taken.push(one);
-		length += one.length + 2;
-	}
-	if (taken.length === 0) return "";
-	return ` Covers: ${taken.join("; ")}${taken.length < inside.length ? `; and ${inside.length - taken.length} more` : ""}.`;
+	const listed = inside.map((heading) => oneLine(heading, COVERS_ONE_CHARS));
+	const covers = ` Covers: ${listed.join("; ")}.`;
+	// ALL of them or none, never the first few. Measured on 2026-09-22 and it cost a measurement: with the
+	// list cut at four and "and 4 more" after it, a persona asked about game feel took the FIRST topic on the
+	// list, searched the file for that, and cited the sources of the wrong section. The one it needed was
+	// inside the "4 more". A partial list of what a file covers is read as the whole list, so it is worse than
+	// no list: it turns an index into a menu of wrong answers.
+	return covers.length <= budget ? covers : "";
 }
 
-function aboutFile(file: string): string {
+/** What a file is about: its first heading, or its first line, or what kind of file it is, plus what it covers. */
+function aboutFile(file: string, coversBudget = 0): string {
 	const ext = extname(file).toLowerCase();
 	if (!TEXT_EXTENSIONS.has(ext)) return `${ext.slice(1) || "binary"} file`;
 	try {
@@ -150,7 +150,7 @@ function aboutFile(file: string): string {
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.find((line) => line.length > 0);
-		return oneLine(heading ?? first ?? "(empty)", ABOUT_CHARS) + coveredIn(body);
+		return oneLine(heading ?? first ?? "(empty)", ABOUT_CHARS) + coveredIn(body, coversBudget);
 	} catch {
 		return "(unreadable)";
 	}
@@ -293,7 +293,13 @@ export function workMapFor(personaPath: string, options: { readonly workspaceRoo
 	const frontmatter = options.frontmatter ?? frontmatterOf(personaPath);
 	const { skills, missing } = skillsOf(personaPath, frontmatter);
 	const listed = (sub: string): MapItem[] =>
-		filesUnder(join(folder, sub)).map((file) => ({ name: shown(options.workspaceRoot, file), about: aboutFile(file) }));
+		((files) =>
+			// E108: the covers budget is for the whole section, split evenly, so twenty references cost the same
+			// as one and this cannot grow with the folder.
+			files.map((file) => ({
+				name: shown(options.workspaceRoot, file),
+				about: aboutFile(file, Math.floor(COVERS_SECTION_CHARS / Math.max(1, Math.min(files.length, PER_SECTION)))),
+			})))(filesUnder(join(folder, sub)));
 	const kinds = readMemoryTypes(frontmatter) as unknown as Record<string, unknown>;
 	return {
 		workspace: options.workspaceRoot.replace(/\\/g, "/"),
