@@ -217,13 +217,32 @@ describe("the work map (E79)", () => {
 			expect(line.match(/Only a title/g)).toHaveLength(1);
 		});
 
-		it("caps what it lists, by section and in total, because every turn pays for this line", () => {
+		/**
+		 * All of them or none, and this one cost a measurement to learn.
+		 *
+		 * The first version listed the first few and wrote "and N more" after them. Asked about game feel, a
+		 * persona took the FIRST topic on that list, searched the file for it, and cited the sources of the
+		 * wrong section; the one it needed was inside the "4 more". A partial list is read as the whole list,
+		 * so it is worse than no list: it turns an index into a menu of wrong answers.
+		 */
+		it("lists every section or none, and never the first few", () => {
 			const many = Array.from({ length: 40 }, (_, i) => `### section number ${i} with a fairly long title to push the budget\n\nbody\n`).join("\n");
 			const path = withSections(`# A big reference\n\n${many}`);
 			const line = renderWorkMap(workMapFor(path, { workspaceRoot: workspace })).split("\n").find((l) => l.includes("web-research.md")) ?? "";
 
-			expect(line.length).toBeLessThan(500);
-			expect(line).toContain("more");
+			expect(line).not.toContain("Covers:");
+			expect(line).not.toContain("more");
+			expect(line).toContain("A big reference");
+			expect(line.length).toBeLessThan(300);
+		});
+
+		it("keeps the whole list when it fits, because the one that matters may be the last", () => {
+			const eight = Array.from({ length: 8 }, (_, i) => `### topic ${i}\n\nbody\n`).join("\n");
+			const path = withSections(`# A reference\n\n${eight}`);
+			const line = renderWorkMap(workMapFor(path, { workspaceRoot: workspace })).split("\n").find((l) => l.includes("web-research.md")) ?? "";
+
+			for (let i = 0; i < 8; i += 1) expect(line).toContain(`topic ${i}`);
+			expect(line).not.toContain("more");
 		});
 
 		it("renders the same bytes twice, because the map sits in the cached prefix", () => {
