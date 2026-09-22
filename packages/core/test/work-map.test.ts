@@ -172,6 +172,69 @@ describe("the work map (E79)", () => {
 		expect(body).toContain("you never write them");
 	});
 
+	/**
+	 * E108: the index line says what is inside a reference, not only what it is called.
+	 *
+	 * Measured 2026-09-22 with the autonomy bench, 0 of 6 across two models and six measurements. Asked which
+	 * sources its advice on game feel and juice rested on, a persona answered that it had none, while holding a
+	 * file with a section called "game feel juice screen shake hit pause principles". The question carried the
+	 * words, the file carried the words, and the index line carried the file's title, which says where it came
+	 * from and not what is in it.
+	 */
+	describe("what a reference covers (E108)", () => {
+		const withSections = (body: string): string => {
+			const folder = join(workspace, ".personaxis", "personas", "gamewright");
+			write(join(folder, "personaxis.md"), spec([]));
+			write(join(folder, "references", "web-research.md"), body);
+			return join(folder, "personaxis.md");
+		};
+
+		it("names the sections under the title, which is what the question has to match", () => {
+			const path = withSections(
+				"# What was read on the web, and where it came from\n\nSearched on 2026-09-11.\n\n### core loop game design principles\n\n- a link\n\n### game feel juice screen shake hit pause\n\n- another link\n",
+			);
+			const text = renderWorkMap(workMapFor(path, { workspaceRoot: workspace }));
+
+			expect(text).toContain("What was read on the web, and where it came from");
+			expect(text).toContain("game feel juice screen shake hit pause");
+			expect(text).toContain("core loop game design principles");
+		});
+
+		it("leaves a file with no sections exactly as it was", () => {
+			const path = withSections("# A single note\n\nJust a paragraph, no sections at all.\n");
+			const text = renderWorkMap(workMapFor(path, { workspaceRoot: workspace }));
+
+			expect(text).toContain("A single note");
+			expect(text).not.toContain("Covers:");
+		});
+
+		it("does not repeat the title as though it were a section", () => {
+			const path = withSections("# Only a title\n\n## Only a title\n\nbody\n");
+			const text = renderWorkMap(workMapFor(path, { workspaceRoot: workspace }));
+			const line = text.split("\n").find((l) => l.includes("web-research.md")) ?? "";
+
+			// The title appears once as the description; the duplicate heading adds nothing after it.
+			expect(line.match(/Only a title/g)).toHaveLength(1);
+		});
+
+		it("caps what it lists, by section and in total, because every turn pays for this line", () => {
+			const many = Array.from({ length: 40 }, (_, i) => `### section number ${i} with a fairly long title to push the budget\n\nbody\n`).join("\n");
+			const path = withSections(`# A big reference\n\n${many}`);
+			const line = renderWorkMap(workMapFor(path, { workspaceRoot: workspace })).split("\n").find((l) => l.includes("web-research.md")) ?? "";
+
+			expect(line.length).toBeLessThan(500);
+			expect(line).toContain("more");
+		});
+
+		it("renders the same bytes twice, because the map sits in the cached prefix", () => {
+			const path = withSections("# A reference\n\n### one\n\n### two\n");
+			const first = renderWorkMap(workMapFor(path, { workspaceRoot: workspace }));
+			const second = renderWorkMap(workMapFor(path, { workspaceRoot: workspace }));
+
+			expect(second).toBe(first);
+		});
+	});
+
 	it("does not move while a persona works: a new session file, memory or state change nothing", () => {
 		const path = gameDesigner();
 		const before = renderWorkMap(workMapFor(path, { workspaceRoot: workspace }));
