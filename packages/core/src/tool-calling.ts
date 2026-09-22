@@ -590,8 +590,27 @@ async function reactFallback(
           parsed = r.ok && r.value ? (r.value as typeof parsed) : {};
         }
       }
+      // E36: the envelope is never the answer. Measured 2026-09-22 against a hosted model that refuses the
+      // `tools` parameter, which is what drives a run down here: asked for advice, the persona replied with
+      // `{ "args": { "acceleration": 0.8, "friction": 0.12, ... } }`, because a JSON object with no `tool`
+      // field was handed to the reader as prose. Whoever runs a local server that cannot take `tools` sees
+      // that as the persona's answer. The `thought` is the only part of this shape meant for a person.
       if (!parsed.tool) {
-        return { text: parsed.thought ?? content.slice(0, 200), toolCalls: [], usedFallback: true, usage };
+        return { text: parsed.thought ?? "", toolCalls: [], usedFallback: true, usage };
+      }
+      // E36: and the name has to be one that was offered, which is the rule `readDialect` enforces in the
+      // other half of this file and this half did not. Not a hole, and that was checked before saying it:
+      // `agent.ts` refuses a name that is not in the catalogue and tells the model so. What was lost is the
+      // diagnosis, because a refusal read as the model calling badly and `unknownTools` was never reported
+      // here, and that field exists so a deployment missing its parser is visible.
+      if (!tools.some((tool) => tool.name === parsed.tool)) {
+        return {
+          text: parsed.thought ?? "",
+          toolCalls: [],
+          usedFallback: true,
+          usage,
+          unknownTools: [parsed.tool],
+        };
       }
       return {
         text: parsed.thought ?? "",
