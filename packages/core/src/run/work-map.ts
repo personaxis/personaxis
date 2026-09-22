@@ -331,17 +331,28 @@ export function renderWorkMap(
 	// 0 of 6 across two models. It was shown the file every turn and never opened it. Memory says to look
 	// before denying; this said nothing, so "I have no sources" was the references version of "I do not
 	// remember".
+	//
+	// E103: and then it names the tool, which is what E91 still left out. Of the five sections here that ask
+	// for an action, the three that name their tool are the three that get used: `use_skill` 476 calls across
+	// the 505 bench runs, `memory_search` 91, `run_service` 27. This one asked to read and named nothing, and
+	// on the same screen in the same turn a model called `memory_search` and then said it had no sources
+	// without opening the file listed right above. A promise with no tool in it is a sentence, not an action.
 	section(
 		"References",
-		"Background material you draw on. Read the one that fits before saying you do not know where something of yours comes from.",
+		"Background material you draw on. Open the one that fits with read_file, by the path below, before saying you do not know where something of yours comes from.",
 		map.references.map(item),
 		`${map.ownFolder}/references/`,
 	);
 	section("Examples", "Worked outputs, to match their format and voice.", map.examples.map(item), `${map.ownFolder}/examples/`);
 	section("Assets", "Supporting files.", map.assets.map(item), `${map.ownFolder}/assets/`);
+	// E103: the title always said "hand work to" and the body only offered to read, so reading is what happened.
+	// Asked for something only the colleague knows how to do, a persona with that colleague listed here opened the
+	// colleague's folder and wrote the report itself, 3 of 3. `delegate` was in its catalogue the whole time: 3
+	// calls to it in 505 bench runs against 476 to `use_skill`, which the Skills section does name. So the tool
+	// comes first and the permission to read comes after it, as the qualifier it always was.
 	section(
 		"Sub-personas you can hand work to",
-		"Specialists with their own definition, memory and limits. You may read their files; you never write them.",
+		"Specialists with their own definition, memory and limits. When a task is what one of them is made for, give it to them with delegate and their address below, rather than doing it yourself. You may read their files; you never write them.",
 		map.subPersonas.map((sub) => `- @${sub.name}${sub.about ? `: ${sub.about}` : ""}`),
 		`${map.ownFolder}/personas/`,
 	);
