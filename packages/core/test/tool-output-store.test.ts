@@ -134,4 +134,85 @@ describe("outputStoreTools", () => {
     const out = await grep.execute({ handle: "out-1", pattern: "ERROR" }, DEFAULT_POLICY, INERT);
     expect(out).toContain("beta ERROR here");
   });
+
+  /**
+   * E109: a document gets its outline, with the line each section starts on.
+   *
+   * Measured 2026-09-22 with the autonomy bench. Asked which sources its advice on game feel rested on, a
+   * persona opened the right 9,836-character file and then answered from the preview, which is the first 800
+   * characters, which happen to be the first section: it cited the sources of "core loops" in six runs out of
+   * six. The one run that searched for "game feel juice" got the heading line back and nothing else, because
+   * grep returns matching LINES. Knowing a section exists is not enough; the only way to read one is
+   * read_output at its offset, and offsets here are lines.
+   */
+  describe("the preview of a document (E109)", () => {
+    /**
+     * A reference with a title, an intro, and sections whose contents are what somebody would want.
+     *
+     * Big enough to be offloaded, which a first version was not: under the threshold the store passes the
+     * content through untouched and there is no preview to test at all.
+     */
+    const document = (): string => {
+      const section = (n: string, body: string) => `### ${n}\n\n${body}\n\n${"filler line that makes this section long enough to matter\n".repeat(40)}`;
+      const text =
+        `# What was read on the web\n\nSearched with a tool.\n\n` +
+        section("core loops", "- [A core loop guide](https://example.com/loops)") +
+        section("game feel and juice", "- [The juice guide](https://example.com/juice)") +
+        section("level design", "- [A level guide](https://example.com/levels)");
+      expect(text.length).toBeGreaterThan(OFFLOAD_THRESHOLD);
+      return text;
+    };
+
+    it("shows the sections and the line each starts on, not the first 800 characters", () => {
+      const store = new ToolOutputStore();
+      const text = store.offload("read_file", document()).text;
+
+      expect(text).toContain("Its sections:");
+      expect(text).toMatch(/line \d+: ### game feel and juice/);
+      // The head is exactly what it must NOT answer from: the first section's link is not in the preview.
+      expect(text).not.toContain("example.com/loops");
+    });
+
+    it("gives a line number read_output can use to bring back that section's contents", () => {
+      const store = new ToolOutputStore();
+      const text = store.offload("read_file", document()).text;
+      const at = /line (\d+): ### game feel and juice/.exec(text);
+
+      expect(at).not.toBeNull();
+      // The whole point: from the outline to the thing the question was about, in one call.
+      const section = store.slice("out-1", Number(at![1]), 4);
+      expect(section).toContain("example.com/juice");
+      expect(section).not.toContain("example.com/loops");
+    });
+
+    it("says that grep returns lines, which is the trap the measurement found", () => {
+      const store = new ToolOutputStore();
+      const text = store.offload("read_file", document()).text;
+
+      expect(text).toContain("returns the matching LINES only");
+      // And it is true: searching for the heading gives the heading, not the link under it.
+      const hit = store.grep("out-1", "game feel and juice");
+      expect(hit).toContain("### game feel and juice");
+      expect(hit).not.toContain("example.com/juice");
+    });
+
+    it("leaves an output with no headings on its head, because an outline of nothing says nothing", () => {
+      const store = new ToolOutputStore();
+      const log = Array.from({ length: 900 }, (_, i) => `2026-09-22 worker ${i} did something`).join("\n");
+      const text = store.offload("run_command", log).text;
+
+      expect(text).toContain("worker 0 did something");
+      expect(text).toContain("output truncated in context");
+      expect(text).not.toContain("Its sections:");
+    });
+
+    it("falls back to the head when the outline does not fit, rather than showing part of one", () => {
+      const store = new ToolOutputStore();
+      const many = Array.from({ length: 200 }, (_, i) => `### section ${i} with a long enough title to blow the budget\n\nbody\n`).join("\n");
+      const text = store.offload("read_file", `# Huge\n\n${many}`).text;
+
+      expect(text).not.toContain("Its sections:");
+      expect(text).toContain("output truncated in context");
+    });
+  });
 });
