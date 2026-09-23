@@ -51,12 +51,6 @@ export interface MapService {
 	readonly about: string;
 	readonly delivers: readonly string[];
 	readonly steps: number;
-	/**
-	 * It LEADS this one, rather than doing a step of somebody else's. The map shows both,
-	 * because both are work it takes part in; the compiled identity shows only these, because
-	 * what you deliver is part of who you are and a step you do for someone else is not (E113).
-	 */
-	readonly leads: boolean;
 }
 
 export interface WorkMap {
@@ -230,20 +224,6 @@ function skillsOf(personaPath: string, frontmatter: Record<string, unknown>): { 
 }
 
 /**
- * The services a persona leads, for the document that says who it is (E113).
- *
- * Measured on 2026-09-22: a persona's compiled identity did not contain the word "service" once in
- * 12.155 characters, and the only place in the engine that resolved which services were hers was the
- * RUNTIME index below. So the link ran one way, from the service's `leadPersonaRef` to her, and asked
- * what she could do she answered from her identity and never named it: 6 of 6 with one model, 4 of 6
- * with the other. This is the same reader as the map, on purpose, so the two can never answer
- * differently about what she delivers.
- */
-export function servicesLedBy(workspace: string, personaPath: string): readonly MapService[] {
-	return servicesFor(workspace, addressOf(personaPath)).filter((service) => service.leads);
-}
-
-/**
  * Services in the workspace this persona takes part in. A main persona is the project's own and sees
  * all of them; a sub-persona sees the ones it leads or does a step of.
  */
@@ -264,10 +244,7 @@ function servicesFor(workspace: string, address: string | undefined): MapService
 			continue;
 		}
 		const steps = Array.isArray(definition.steps) ? (definition.steps as Array<{ personaRef?: unknown; produces?: unknown }>) : [];
-		// A main persona is the project's own and leads everything in it; a sub-persona leads
-		// only what names it, which is the distinction the compiled identity turns on.
-		const leads = address === undefined || definition.leadPersonaRef === address;
-		const takesPart = leads || steps.some((step) => step.personaRef === address);
+		const takesPart = address === undefined || definition.leadPersonaRef === address || steps.some((step) => step.personaRef === address);
 		if (!takesPart) continue;
 		const serviceAddress = basename(file, ".json");
 		const delivers = [
@@ -279,7 +256,6 @@ function servicesFor(workspace: string, address: string | undefined): MapService
 			about: typeof definition.description === "string" ? oneLine(definition.description, ABOUT_CHARS) : "",
 			delivers,
 			steps: steps.length,
-			leads,
 		});
 	}
 	return out;
