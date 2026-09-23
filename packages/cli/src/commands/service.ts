@@ -286,7 +286,7 @@ function localPorts(root: string, costs: StepCost[], meter: Meter, person: Perso
 			const lived = run.experienceOf(outcome);
 			const feel = async (): Promise<void> => {
 				if (lived === undefined) return;
-				const felt = await runObserve(pp, lived, "internal");
+				const felt = await runObserve(pp, lived, "internal", { experience: true });
 				if (!felt.ok) person.say(chalk.yellow(`    tick failed: ${felt.error}`));
 			};
 			if (ended.outcome === "failed") {

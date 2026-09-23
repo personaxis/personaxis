@@ -89,5 +89,5 @@ export async function livedThrough(
 	await evolver.observe({ observation: turn.request, source: "user", actor: "actor-llm", ...session }).catch(() => undefined);
 	const experience = experienceOf(turn.outcome);
 	if (experience === undefined) return;
-	await evolver.observe({ observation: experience, source: "internal", actor: "runtime-context", ...session }).catch(() => undefined);
+	await evolver.observe({ observation: experience, source: "internal", actor: "runtime-context", experience: true, ...session }).catch(() => undefined);
 }
