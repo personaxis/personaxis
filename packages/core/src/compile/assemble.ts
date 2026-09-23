@@ -50,6 +50,22 @@ export interface AssembleInput {
   /** Current state.json values (F6.2): selects WHICH band's `expression` prose is
    *  injected per coordinate (Def. 6 / ADR-004). Absent → each envelope's mean. */
   stateValues?: Record<string, number>;
+  /**
+   * The services this persona LEADS, resolved from the workspace by the caller (E113).
+   *
+   * Passed in rather than read here: this assembler never touches the disk, which is what
+   * makes it the hashable ground truth. A caller with no workspace (the drift view compares
+   * two assemblies of the same spec) passes nothing and gets today's document.
+   */
+  services?: readonly AssembledService[];
+}
+
+/** A service in the compiled identity: what it is called, what it is, and what a run leaves. */
+export interface AssembledService {
+  readonly address: string;
+  readonly name: string;
+  readonly about: string;
+  readonly delivers: readonly string[];
 }
 
 /** Read the persona-prompting source, preferring v1.0 layer-10 over legacy. */
@@ -88,6 +104,40 @@ function sectionOpener(persona: Dict, target: AssembleTarget): string {
       "below are who you are, not instructions you are following.",
   );
   return lines.join("\n");
+}
+
+/**
+ * What this persona delivers, by name (E113).
+ *
+ * This is in the identity document and not only in the runtime index because of what the two
+ * are. The index is titled "what you have and when to use it", and a model reads it as
+ * reference material it may consult; this document is who you are, and asked what it can do a
+ * model answers from here. Measured on 2026-09-22, with the service listed in the index by
+ * name, address and deliverables the whole time: asked what she could do, the persona described
+ * exactly what her service does and never once called it by its name, 6 of 6 on one model and 4
+ * of 6 on the other. She enumerated her three skills, which her own spec declares, and not her
+ * service, which nothing in her spec mentions.
+ *
+ * Derived, never declared: a persona file gains no new field, so no existing persona changes,
+ * and a service that stops naming her as lead disappears from here on the next compile. It says
+ * what a run leaves behind because that is what distinguishes delivering a service from talking
+ * about one, and it names `run_service` for the same reason the map's sections name their tool.
+ */
+function sectionServices(services: readonly AssembledService[] | undefined): string {
+  if (!services || services.length === 0) return "";
+  const out: string[] = ["## What you deliver", ""];
+  out.push(
+    services.length === 1
+      ? "You are the lead of one service. It is yours: when a request is what it delivers, say so by name and run it with `run_service`, rather than doing the work some other way."
+      : `You are the lead of ${services.length} services. They are yours: when a request is what one of them delivers, say so by name and run it with \`run_service\`, rather than doing the work some other way.`,
+    "",
+  );
+  for (const service of services) {
+    const about = service.about ? `: ${service.about.replace(/[.\s]+$/, "")}` : "";
+    const leaves = service.delivers.length > 0 ? ` A run of it leaves ${service.delivers.join(", ")}.` : "";
+    out.push(`- **${service.name}** (\`${service.address}\`)${about}.${leaves}`);
+  }
+  return out.join("\n");
 }
 
 function sectionWhoYouAre(persona: Dict): string {
@@ -392,6 +442,9 @@ export function assemblePersonaDoc(input: AssembleInput): string {
   const sections = [
     sectionOpener(persona, target),
     sectionWhoYouAre(persona),
+    // Right after who you are, before how you speak: what you deliver is closer to the first
+    // than to the second, and a reader who stops early has still read it.
+    sectionServices(input.services),
     sectionHowYouSpeak(persona),
     sectionExpression(persona, input.stateValues),
     sectionAlwaysNever(persona),

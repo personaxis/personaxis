@@ -23,7 +23,7 @@
 
 import { dirname, join } from "node:path";
 
-import { assemblePersonaDoc, type AssembleInput } from "@personaxis/core";
+import { assemblePersonaDoc, run, type AssembleInput } from "@personaxis/core";
 
 import { isSubagentPath, slugAddressFromPath } from "./load.js";
 import { buildResourceManifest } from "./resource-manifest.js";
@@ -65,13 +65,32 @@ interface DocumentFacts {
 	readonly stateValues?: Record<string, number>;
 }
 
-/** The assembler's input for a persona, with the resource manifest a document has to carry. */
+/**
+ * The workspace a persona lives in: everything above its `.personaxis` folder.
+ *
+ * Derived from the persona's own path rather than from `process.cwd()`, because the compiled
+ * document is hashed: compiling the same persona from a different directory has to produce the
+ * same bytes. A persona outside a `.personaxis` folder has no workspace, so no services.
+ */
+function workspaceOf(sourcePath: string): string | undefined {
+	const parts = sourcePath.replace(/\\/g, "/").split("/");
+	const at = parts.lastIndexOf(".personaxis");
+	return at < 0 ? undefined : parts.slice(0, at).join("/") || ".";
+}
+
+/** The assembler's input for a persona, with what a document has to carry from the disk. */
 export function assembleInputFor(sourcePath: string, data: PersonaDocument, facts: DocumentFacts = {}): AssembleInput {
 	const { isSubagent, slug } = placementOf(sourcePath);
 	const overlay = facts.appliedOverlay && Object.keys(facts.appliedOverlay).length > 0 ? facts.appliedOverlay : undefined;
+	// The services this persona leads (E113). Read here, next to the resource manifest, because
+	// both are the same kind of fact: what the persona HAS, which lives in the workspace and not
+	// in the spec. The assembler itself stays free of the disk.
+	const workspace = workspaceOf(sourcePath);
+	const services = workspace === undefined ? [] : run.servicesLedBy(workspace, sourcePath);
 	return {
 		persona: data,
 		resourceManifest: buildResourceManifest(dirname(sourcePath)),
+		...(services.length === 0 ? {} : { services }),
 		target: {
 			name: personaName(data),
 			isSubagent,

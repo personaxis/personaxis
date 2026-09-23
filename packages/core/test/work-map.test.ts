@@ -64,7 +64,7 @@ describe("the work map (E79)", () => {
 	it("lists the services a sub-persona takes part in, with what a run has to leave, and not the others", () => {
 		const map = workMapFor(gameDesigner(), { workspaceRoot: workspace });
 		expect(map.services).toEqual([
-			{ address: "game-build", name: "Game build", about: "A design and a playable prototype that agree.", delivers: ["GAME.md", "game.html"], steps: 2 },
+			{ address: "game-build", name: "Game build", about: "A design and a playable prototype that agree.", delivers: ["GAME.md", "game.html"], steps: 2, leads: true },
 		]);
 	});
 
