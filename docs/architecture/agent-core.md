@@ -59,8 +59,19 @@ with the full tool catalog.
 
 **Why.** Fewer tools in the prompt means less tool hallucination and fewer tokens (the
 "tool-overload" failure). The skill anchors *method*, cutting blind exploration. Subsetting with
-on-demand expansion keeps decision quality high as the catalog grows. New module:
-`core/src/skill-activation.ts`, invoked in `agent.ts` before the loop.
+on-demand expansion keeps decision quality high as the catalog grows.
+
+**What was built, and it is not what this section proposed.** There is no activation step before
+the loop. A selector that scored a message against each skill's name and description was measured
+on 2026-09-13 and retired: "game" activated all three of a game designer's skills, "a kitten
+crossing the street" activated none, and the tool subset that arrived with them hid `check_page`
+from the one step written to use it. So the persona chooses instead of being matched. It reads its
+skills in the work map and loads one by name with `use_skill`
+(`packages/core/src/tools/use-skill.ts`), which is a gated call and therefore also the trace of
+which skill was used in which turn. The subset it cannot predict is reached with `find_tools`
+(`packages/core/src/tools/find-tools.ts`): the model searches, gets names and descriptions, and
+asks for what it wants, while searching grants nothing and each tool's own gate still runs at call
+time.
 
 ## 3. Self-evolution: a post-mortem that writes skills
 

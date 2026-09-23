@@ -191,6 +191,15 @@ jobs:
         working-directory: cli
         run: pnpm run check-private
 
+      # The architecture docs explain the engine by pointing at it, and a pointer is the
+      # first sentence to rot: renaming a module does not touch the prose that named it.
+      # Two were already dead when this was written, one of them in a document whose own
+      # header promises the code and the prose never drift. Source files only, so a file
+      # the product GENERATES in a user's folder is not mistaken for a missing one.
+      - name: The architecture docs cite code that exists
+        working-directory: cli
+        run: pnpm run check-docs-refs
+
   evals:
     name: governance evals (deterministic, no API keys)
     runs-on: ubuntu-latest
