@@ -557,7 +557,12 @@ export class PersonaAgent {
       GUARD,
       "",
       "# Identity",
-      (this.opts.personaBody ?? "").slice(0, 5000),
+      // E116: whole, never cut from the end. A 5.000-character cut sat here from the first agent
+      // loop (5661e7d, 2026-06-23) with no reason written, and by 2026-09-23 the compiled
+      // document had grown past it: the bench persona's is 5.780, so the model had never read
+      // its own "Self-improvement" or "Above all", and "Memory & resources" arrived half. A cut
+      // from the end loses exactly what a document writes as its summary.
+      this.opts.personaBody ?? "",
       "",
       "# Environment",
       `os: ${process.platform} (use commands valid for this OS, e.g. PowerShell/cmd on win32)`,
