@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Persona, scanText, evaluateCmd } from "../src/index.js";
@@ -59,6 +59,36 @@ describe("@personaxis/sdk, Persona embed API", () => {
     const { decision } = await p.adjust("mood.tone", -0.1, "customer frustrated");
     expect(decision.to).toBeCloseTo(-0.1);
     expect(p.audit().mutationCount).toBe(1);
+  });
+
+  /**
+   * E125: the kill-switch holds on this door too. Until 2026-09-23 `adjust` moved the state without
+   * looking at the mode, so a persona stopped with `locked` could be moved by any program connected
+   * over MCP, signed as the persona itself.
+   */
+  it("does not move a stopped persona, and the record says why", async () => {
+    writeFileSync(personaPath, readFileSync(personaPath, "utf-8").replace("mode: suggesting", "mode: locked"));
+    const p = new Persona(personaPath);
+    const { decision } = await p.adjust("mood.tone", -0.1, "customer frustrated");
+    expect(decision.to).toBe(0);
+    expect(decision.blocked).toBe(true);
+    expect(p.state().values["mood.tone"]).toBe(0);
+  });
+
+  it("still lets a person move a stopped persona, which is what stopped means", async () => {
+    writeFileSync(personaPath, readFileSync(personaPath, "utf-8").replace("mode: suggesting", "mode: locked"));
+    const p = new Persona(personaPath);
+    const { decision } = await p.adjust("mood.tone", -0.4, "the operator set it by hand", { by: "person" });
+    // No mode lock and no per-step cap for a person; the envelope still clamps everyone.
+    expect(decision.blocked).toBe(false);
+    expect(decision.to).toBeCloseTo(-0.4);
+  });
+
+  it("bounds a living persona's own move per step, the way the living loop does", async () => {
+    const p = new Persona(personaPath);
+    const { decision } = await p.adjust("mood.tone", -0.9, "a very bad day");
+    // The default per-step cap is 0.15: a move the persona makes on itself is its own proposal.
+    expect(decision.to).toBeCloseTo(-0.15);
   });
 
   it("observe runs a governed tick offline (heuristic) without throwing", async () => {
