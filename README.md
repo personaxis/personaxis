@@ -113,7 +113,7 @@ character card.
 
 ```bash
 personaxis --persona .personaxis/personas/dev-buddy/personaxis.md
-# chat in natural language, or: /state /drift /arbitrate /replay /audit /memory /persona /help
+# chat in natural language, or: /persona /status /drift /audit /memory /doctor /help
 ```
 
 It works offline (heuristic appraiser). For real conversation quality, point it at any
@@ -137,7 +137,7 @@ personaxis dash                                                          # live 
 
 ```bash
 personaxis compile dev-buddy --platform claude-code   # writes .claude/agents/dev-buddy.md
-personaxis-mcp                                        # or run the MCP server (16 persona tools)
+personaxis-mcp                                        # or run the MCP server (20 persona tools)
 ```
 
 Where to next: [`docs/guides/getting-started.md`](docs/guides/getting-started.md) (by audience) ·
@@ -162,6 +162,32 @@ The eight lockstep packages: **`@personaxis/spec`** (schemas, validator, univers
 **`personaxis`** (the CLI), **`mcp`** (the MCP server), **`sdk`** (the in-process façade),
 **`evals`** (the conformance harness), and **`tui`** (the ASCII dashboard).
 
+## What a persona brings to a job
+
+A persona is not a prompt with a name on it. It is a worker with things of its own, and the
+engine puts them in front of it on every turn, each one next to the tool that reaches it.
+
+| What it has | Where it lives | How it reaches it |
+|---|---|---|
+| **Skills** | `.personaxis/personas/<slug>/skills/<name>/SKILL.md` | `use_skill` loads the method before the work starts |
+| **Services** | `.personaxis/services/<name>.json` | `run_service` delivers one start to finish: the person approves the run, every step has to leave the files it declares or the run fails, and the run writes its own journal under `.personaxis/services/runs/` |
+| **References** | `.personaxis/personas/<slug>/references/` | `read_file`, by the path the index gives it |
+| **Sub-personas** | `.personaxis/personas/<slug>/personas/` | `delegate`, for work one of them is made for. It may read their files; it never writes them |
+| **Memory** | its own store, an append-only hash chain | `memory_search`, before it says it does not remember |
+
+It also gets `ask_person`, for a fact a job is missing and it should not invent, and
+`check_page`, which runs the page it just built and reads back the line that failed. The same
+services run without a session: `personaxis service`.
+
+**What this guarantees, and what it does not.** The engine owns the half that does not depend
+on the model: what a persona has is declared in its own files, listed in front of it every
+turn, and reachable by a named tool; a call no permission covers does not execute; and what
+happened is on the record. Whether the model then makes the right call is the model's own. A
+small open model will sometimes answer from memory a question its own service answers better,
+or do a job itself instead of handing it to the sub-persona built for exactly that. We measure
+that rather than promise it, and it is the reason a persona's limits are enforced in the tool
+layer instead of asked for in the prompt.
+
 ## The three version numbers
 
 They are independent on purpose, so read them separately:
@@ -182,8 +208,9 @@ validating because `1.1.0` only adds optional fields.
 
 - **Fourteen commands, not forty.** The slash surface is four groups (Talk / Identity /
   Build / Run), eighteen entries in the palette once you count `/sandbox`, `/bg`, `/help` and
-  `/exit`. Twenty-three older verbs still run when typed, and `/help moved` says where each
-  one now lives.
+  `/exit`. Twenty-three older verbs were absorbed into those: typing one says where its
+  capability lives now and what to call outside the REPL, without running it, and `/help
+  moved` prints the whole map.
 - **Miniapps instead of walls of text.** `/persona`, `/status`, `/audit`, `/drift`, `/doctor`
   and the rest are navigable views with tabs, selectable rows and drill-downs. `p` switches
   persona in every one of them, so a sub-persona is one key away rather than a syntax to
@@ -228,6 +255,8 @@ code, is [`docs/commands/`](docs/commands/README.md).
 | `sigil [--persona <p>]` | Render a persona's deterministic, state-aware ASCII sigil and envelope panel |
 | `push \| pull` | Publish or fetch a persona version (spec, compiled document, and support folders) |
 | `skills list \| pull` | Inspect `extensions.skills` entries and pull `github:` skills into `skills/<name>/` |
+| `service run \| resume` | Run a service on this machine step by step, including steps that are other services; `resume` picks a run back up from its journal when it is waiting on an approval or an answer |
+| `status \| drift \| audit \| memory \| doctor` | The same views the REPL opens, non-interactive and `--json`: what a persona is right now, how far it moved from what it declared, the ledger, what it remembers, and an offline health check |
 | `overseer` / `team` / `orchestrate` | The master view; operational multi-agent teams; capability-routed task dispatch |
 | `serve --persona <p>` | Serve a persona over HTTP and `agents.md` for agents that do not speak MCP |
 | `sync <other-state.json>` | Reconcile a portable persona's `state.json` across machines (no clobber) |
