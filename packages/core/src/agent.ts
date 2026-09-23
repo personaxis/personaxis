@@ -66,7 +66,10 @@ function snipDetail(s: string, n = 64): string {
 import { factsView, renderFacts } from "./memory/facts.js";
 import { recallWindow, memoryTools } from "./memory/retrieval.js";
 import { sessionBrief, isInfraErrorReply } from "./memory/consolidate.js";
-import { ensureState, loadPersona } from "./persona.js";
+import { ensureState, loadPersona, readState } from "./persona.js";
+import { existsSync } from "node:fs";
+import { howYouAreNow } from "./moment.js";
+import { activeOverlay, applyOverlay } from "./self-evolution.js";
 import { ContextMeter, compactMessages, cachedContextWindow, resolveContextWindow, type CacheReport } from "./context.js";
 import type { CompactionPlan } from "./compaction/service.js";
 import { LoopBreaker, toolSignature } from "./loop-breaker.js";
@@ -597,11 +600,33 @@ export class PersonaAgent {
    * real model over a dozen turns, and it is `E28`.
    */
   private scopeOfTheMoment(): string {
+    const now = this.howYouAreNow();
     return [
       "# Right now",
       `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
       "This is the scope of this turn, not a description of who you are. Act within it.",
+      ...(now ? ["", now] : []),
     ].join("\n");
+  }
+
+  /**
+   * E118: what changed in the persona since its identity was frozen, and nothing when nothing did.
+   * Read fresh every turn from the state on disk, never cached here: the living loop writes it after
+   * each turn, and a copy held by the agent would be the stale thing this exists to replace. Any
+   * failure to read says nothing rather than breaking the turn, because this is context, not work.
+   */
+  private howYouAreNow(): string {
+    const p = this.opts.personaPath;
+    const identity = this.opts.personaBody;
+    if (!p || !identity) return "";
+    try {
+      const handle = loadPersona(p);
+      if (!existsSync(handle.statePath)) return "";
+      const persona = applyOverlay(handle.frontmatter as Record<string, unknown>, activeOverlay(p));
+      return howYouAreNow(identity, persona, readState(handle.statePath).values);
+    } catch {
+      return "";
+    }
   }
 
   /**
