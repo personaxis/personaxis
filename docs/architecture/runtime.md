@@ -152,8 +152,8 @@ tick. What survives is the audited numeric change (`mutation_log`) and the disti
   how it ended and what it cost. It writes an observability **trace** too. What it does not
   do is move the persona's coordinates: that is the living loop, and it happens when you also
   call `observe`.
-- **Session**: persistent conversation history for the **REPL** (`/sessions`, `/resume`,
-  `/compact`; `packages/core/src/sessions.ts`, `session-writer.ts`). The hook/observe path does
+- **Session**: persistent conversation history for the **REPL** (`/resume`, `/compact`;
+  `packages/core/src/sessions.ts`, which both writes and reads them). The hook/observe path does
   **not** create a session. Details in [sessions.md](./sessions.md).
 
 So "sessions are only for a direct CLI conversation" is correct: they are a REPL feature. Learning
