@@ -310,7 +310,10 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     }
     // NB: within-band ticks emit no recompile; the fast .live.json marker stays internal.
   });
-  await ctx.loop.observe({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch(() => {});
+  // E117: the request and then what the work was like, which until 2026-09-23 the loop never saw: a
+  // persona that broke its delivery and one that got it right evolved the same when told the same
+  // words. The same function every working surface calls, so the four cannot come to disagree.
+  await run.livedThrough(ctx.loop, { request: line, outcome, sessionId: ctx.sessionId });
   off();
   // Per-turn telemetry as a distinct, labeled BLOCK (one line per fact) so it never blends into
   // the persona's reply above. Rendered dim, with a gutter (┊) and an aligned label; only the

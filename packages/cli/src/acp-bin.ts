@@ -34,6 +34,7 @@ import {
 import { ACP_PROTOCOL_VERSION, serveAcpOverStdio } from "@personaxis/protocol";
 
 import { buildAwarenessBlock } from "./repl/awareness.js";
+import { recompileHookFor } from "./repl/session.js";
 import { personaAgent, type PersonaSession } from "./workspace/persona-agent.js";
 
 /** Where a persona lives relative to the work it does. The same join the hook uses. */
@@ -62,6 +63,13 @@ async function openPersona(cwd: string): Promise<PersonaSession> {
 	}
 
 	let controller: AbortController | null = null;
+	// E117: the persona evolves from what it does here too. Until 2026-09-23 a persona working from an
+	// editor never changed however much it worked, because only the TUI ran its living loop. The inline
+	// recompile is the TUI's own, so a band crossed here rewrites the same document for the next session.
+	const evolver = run.evolverFor(
+		{ personaPath: assembled.personaPath, frontmatter },
+		{ recompile: recompileHookFor(assembled.personaPath, assembled.compiledPath) },
+	);
 
 	return {
 		cancel: () => controller?.abort(),
@@ -135,6 +143,10 @@ async function openPersona(cwd: string): Promise<PersonaSession> {
 				},
 				controller.signal,
 			);
+			// After the answer is in hand, and never able to cost it: `livedThrough` does not throw.
+			// The prompt is observed as a person's words because in an editor a person typed it; the
+			// approval hook above already names that person as the one who said yes or no.
+			await run.livedThrough(evolver, { request: prompt, outcome });
 
 			return { stopReason: outcome.stopReason };
 		},
