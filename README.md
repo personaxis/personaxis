@@ -279,8 +279,13 @@ code, is [`docs/commands/`](docs/commands/README.md).
 |---|---|---|---|
 | `claude-code` | `PERSONA.md` (+ `CLAUDE.md` baseline) | `.claude/agents/<slug>.md` | materialized to `.claude/skills/<name>/` |
 | `codex` | `PERSONA.md` (+ `AGENTS.md` baseline) | `.codex/agents/<slug>.toml` | materialized to `.agents/skills/<name>/` |
-| `cursor` | `.cursor/rules/persona.mdc` | n/a | archived |
-| `soul-md` | `SOUL.md` | n/a | archived |
+| `openclaw` | `SOUL.md` | `.openclaw/agents/<slug>/SOUL.md` | as `claude-code` |
+| `hermes` | `.hermes/SOUL.md` | `.hermes/agents/<slug>/SOUL.md` | as `claude-code` |
+
+The SOUL.md hosts re-read that file at the start of every session, so a recompile takes effect
+with no restart. Claude Code and Codex reach the root document through an `@PERSONA.md`
+reference from `CLAUDE.md` or `AGENTS.md`, so for them only a subagent compile places a new
+file. Editors that read `AGENTS.md`, Cursor among them, are served by the `codex` target.
 
 Compile is LLM-based (via the configured provider). Edit
 `.personaxis/[personas/<slug>/]personaxis.md`, then recompile; do not hand-edit the generated
