@@ -59,6 +59,18 @@ export interface TickInput {
   /** V2-F1: the conversation session this observation belongs to. Under
    * write_policy "session", memories are tagged to it (recall-scoped). */
   sessionId?: string;
+  /**
+   * E117: this observation is the runtime's own record of a turn (how it ended, what its checks
+   * found), not anybody's words. It moves the layers and may leave an episodic memory; it never
+   * writes a preference, because a report that "1 of 3 checks failed" is nobody's preference.
+   *
+   * A flag and not a source, because the source is already right (`internal`, trust 2, which
+   * keeps self-edits out) and closing preferences to every `internal` observation would also
+   * close them to a service step's brief, where a client's stated preference is real data.
+   * Found on 2026-09-23 with a real model: the first measured turn wrote two preferences out of
+   * its own experience report, and the commit that added the report had said it could not.
+   */
+  experience?: boolean;
 }
 
 export interface TickReport {
@@ -322,7 +334,9 @@ export class LivingLoop {
       // (memory.types.user_preferences) and never under a malicious injection.
       const memTypesForPrefs = readMemoryTypes(fm);
       const prefs = signal.preferences ?? [];
-      if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
+      if (input.experience === true && prefs.length > 0) {
+        bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `refused: ${prefs.length} from the runtime's own report of a turn` });
+      } else if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
         for (const pref of prefs) {
           // A subject-qualified FACT learned for the FIRST time is an autobiographical
           // milestone (any entity, not just a user): "learned interlocutor.name = Mara".

@@ -49,6 +49,8 @@ export async function runObserve(
   personaPath: string,
   observation: string,
   source: ProvenanceSource = "user",
+  /** E117: the observation is the runtime's own report of a turn, never a source of preferences. */
+  opts: { readonly experience?: boolean } = {},
 ): Promise<ObserveResult> {
   const handle = loadPersona(personaPath);
   ensureState(handle);
@@ -63,7 +65,7 @@ export async function runObserve(
   // where the fleet claiming "idle" was furthest from the truth.
   const presence = holdPresence(personaPath, { host: "loop", activity: "running a governed tick" });
   try {
-    const report = await evolver.observe({ observation, source });
+    const report = await evolver.observe({ observation, source, ...(opts.experience === true ? { experience: true } : {}) });
     // Drift-gated recompile: only when a governed self-edit marked PERSONA.md stale.
     let recompiled = false;
     if (readRecompilePending(personaPath).pending) {

@@ -17,8 +17,10 @@ import {
 	HeuristicAppraiser,
 	LivingLoop,
 	loadPersona,
+	readPreferences,
 	run,
 	writeState,
+	type AppraisalSignal,
 	type StateFile,
 } from "../src/index.js";
 import type { TurnOutcome } from "../src/run/vocabulary.js";
@@ -105,6 +107,38 @@ describe("a turn, lived through (E117)", () => {
 		).resolves.toBeUndefined();
 		// And a failed first observation does not stop the second one from being attempted.
 		expect(seen).toHaveLength(2);
+	});
+});
+
+describe("the runtime's report of a turn is nobody's preference (E117)", () => {
+	// Found with a real model on 2026-09-23: the first measured turn wrote two preferences out of its
+	// own experience report, while the commit that added the report said it could not.
+	const WITH_PREFERENCES = FIX.replace("affect:", "memory:\n  types: { user_preferences: true }\naffect:");
+
+	class Extractor {
+		async appraise(): Promise<AppraisalSignal> {
+			return { appraisal: "x", confidence: 0.9, mutations: [], memories: [], preferences: [{ key: "style", value: "terse", rationale: "read it somewhere" }] };
+		}
+	}
+
+	const preferencesAfter = async (experience: boolean): Promise<Record<string, unknown>> => {
+		const dir = mkdtempSync(join(tmpdir(), "pxs-pref-"));
+		try {
+			const personaPath = join(dir, "personaxis.md");
+			writeFileSync(personaPath, WITH_PREFERENCES);
+			ensureState(loadPersona(personaPath));
+			const loop = new LivingLoop(personaPath, { appraiser: new Extractor() });
+			await loop.tick({ observation: "What happened in the turn: 1 of 3 checks failed.", source: "internal", actor: "runtime-context", ...(experience ? { experience: true } : {}) });
+			return readPreferences(personaPath);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	};
+
+	it("writes no preference from an experience, and the same observation unmarked still would", async () => {
+		expect(Object.keys(await preferencesAfter(true))).toEqual([]);
+		// The control: the flag is what refuses, not the source or the appraiser.
+		expect(Object.keys(await preferencesAfter(false))).toContain("style");
 	});
 });
 
