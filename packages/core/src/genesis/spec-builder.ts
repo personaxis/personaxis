@@ -40,6 +40,14 @@ function sanitizeVerbosity(v: unknown): "adaptive" | "concise" | "detailed" {
   return "adaptive";
 }
 
+/**
+ * E127: how many turns a personality trait takes to halve its distance from baseline, absent a stimulus.
+ * The spec composes personality as the slow layer and affect as the fast one; 24 is one order of magnitude
+ * slower than the mood default of 4, inside the 1 to 50 the extraction already accepts. A default, and the
+ * owner changes it: it is the third control of the model David decided (plan, section 13.9).
+ */
+const PERSONALITY_HALF_LIFE = 24;
+
 /** Sanitize one trait envelope: 0 ≤ min ≤ mean ≤ max ≤ 1 always holds. */
 function sanitizeTrait(t: SeedTrait): Record<string, unknown> {
   const mean = clamp01(t.mean, 0.5);
@@ -61,7 +69,9 @@ function sanitizeTrait(t: SeedTrait): Record<string, unknown> {
   // decorative by geometry. Emit explicit envelope-third boundaries instead.
   const fix = crossableBands({ mean, min: lo, max: hi, bands: out.bands as { low_max?: number; moderate_max?: number } | undefined });
   if (fix) out.bands = fix;
-  if (typeof t.halfLife === "number" && t.halfLife > 0) out.half_life = t.halfLife;
+  // E127: every trait returns to its baseline. The slow layer, an order of magnitude slower than affect,
+  // unless the interview or the extraction said otherwise; the creation report labels it a default.
+  out.half_life = typeof t.halfLife === "number" && t.halfLife > 0 ? t.halfLife : PERSONALITY_HALF_LIFE;
   return out;
 }
 
@@ -96,6 +106,8 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
   const displayName = nonEmpty(seed.displayName, slug);
   const purpose = nonEmpty(seed.purpose, `Serve as ${displayName}.`);
   const today = new Date().toISOString().slice(0, 10);
+  // E127: the fast layer's half-life, one number for every affect coordinate (see the affect block below).
+  const affectHalfLife = typeof seed.moodHalfLife === "number" && seed.moodHalfLife > 0 ? seed.moodHalfLife : 4;
 
   // Traits: at least one is required (schema minProperties), default a balanced core.
   // FASE 7 P1: the default is born load-bearing (band prose from the construct table).
@@ -241,15 +253,18 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
       // half_life (T6 observable by default; seed.moodHalfLife overrides it,
       // interview rule volatility-to-halflife).
       baseline: {
+        // E127: the whole fast layer returns to baseline, not only the tone: the same half-life for every
+        // affect coordinate, the interview's (volatility-to-halflife) or the mood default of 4. Until
+        // 2026-09-23 only mood.tone had one, so whatever a failure moved in valence or dominance stayed there.
         core_affect: {
-          valence: affectCoord(0.0, -0.3, 0.3, "core_affect.valence"),
-          arousal: affectCoord(0.4, 0.2, 0.6, "core_affect.arousal"),
-          dominance: affectCoord(0.6, 0.4, 0.8, "core_affect.dominance"),
+          valence: affectCoord(0.0, -0.3, 0.3, "core_affect.valence", affectHalfLife),
+          arousal: affectCoord(0.4, 0.2, 0.6, "core_affect.arousal", affectHalfLife),
+          dominance: affectCoord(0.6, 0.4, 0.8, "core_affect.dominance", affectHalfLife),
         },
         mood: {
-          tone: affectCoord(0.0, -0.25, 0.25, "mood.tone", typeof seed.moodHalfLife === "number" && seed.moodHalfLife > 0 ? seed.moodHalfLife : 4),
-          stability: affectCoord(0.7, 0.5, 0.9, "mood.stability"),
-          recovery_rate: affectCoord(0.6, 0.4, 0.8, "mood.recovery_rate"),
+          tone: affectCoord(0.0, -0.25, 0.25, "mood.tone", affectHalfLife),
+          stability: affectCoord(0.7, 0.5, 0.9, "mood.stability", affectHalfLife),
+          recovery_rate: affectCoord(0.6, 0.4, 0.8, "mood.recovery_rate", affectHalfLife),
         },
       },
       regulation_policy: { express_only_if_relevant: true, never_claim_real_feeling: true },
