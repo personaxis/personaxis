@@ -82,7 +82,10 @@ export class LlmAppraiser implements Appraiser {
 
     const userMsg = [
       `# Persona identity (slot #1)`,
-      input.personaBody.slice(0, 4000),
+      // E116: whole. This is the judge of how the persona evolves, and it was reading 4.000
+      // characters of an identity that runs past 5.000: it decided what a turn meant to a
+      // persona whose limits and summary it had never seen.
+      input.personaBody,
       ``,
       evolutionBlock,
       ``,

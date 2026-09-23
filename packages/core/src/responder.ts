@@ -56,7 +56,8 @@ export class LlmResponder implements Responder {
       GUARD,
       "",
       "# Identity",
-      input.personaBody.slice(0, 6000),
+      // E116: whole, for the same reason as the agent's prefix: a cut from the end loses the summary.
+      input.personaBody,
       "",
       input.awareness ? `${input.awareness}\n` : "",
       "# Current modeled state",
