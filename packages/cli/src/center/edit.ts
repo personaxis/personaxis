@@ -24,7 +24,9 @@ export function applyFieldEdit(node: ScopeNode, value: string): EditResult {
   }
   const current = Number(node.attributes.find((a) => a.key === "current")?.value ?? "0");
   try {
-    new Persona(node.personaPath).adjust(node.id, target - current, "edited via Command Center");
+    // A person typed this value, so it is a person's move (E125): it passes the mode the way a human
+    // mutation always has, and the record names a person rather than the persona.
+    new Persona(node.personaPath).adjust(node.id, target - current, "edited via Command Center", { by: "person" });
     return { ok: true, message: `${node.id} → ${target.toFixed(2)} (envelope-clamped)` };
   } catch (e) {
     // The clamp/gate may reject it; report rather than crash.

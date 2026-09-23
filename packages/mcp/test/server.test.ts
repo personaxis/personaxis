@@ -70,9 +70,22 @@ describe("personaxis MCP server", () => {
   });
 
   it("adjust_persona_state clamps + audits", async () => {
+    // A living persona: this is what the tool is for. The per-step cap (0.15 by default) and the
+    // envelope ([-0.2, 0.2]) both bound it, and the clamp is what this checks, so the cap is widened.
+    writeFileSync(persona, FIX.replace("identity:", "improvement_policy: { mode: suggesting }\ngovernance: { max_step_delta: 1 }\nidentity:"));
     const r = await callJson("adjust_persona_state", { persona, field: "mood.tone", delta: 5, reason: "test" });
     expect(r.to).toBe(0.2);
     expect(r.clamped).toBe(true);
+  });
+
+  /**
+   * E125: a persona that declares no mode is `locked` by the spec, and the living loop already
+   * treated it as stopped. This door was the one that moved it anyway, signed as the persona.
+   */
+  it("adjust_persona_state does not move a stopped persona", async () => {
+    const r = await callJson("adjust_persona_state", { persona, field: "mood.tone", delta: 0.1, reason: "test" });
+    expect(r.to).toBe(0);
+    expect(r.blocked).toBe(true);
   });
 
   it("scan_text catches an injection", async () => {

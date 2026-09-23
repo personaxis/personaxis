@@ -38,6 +38,9 @@ import {
   verifyMemoryChain,
   detectMemoryAnomalies,
   readMode,
+  governMutations,
+  readMaxStepDelta,
+  DEFAULT_GOVERNANCE,
   proposeSelfEdit,
   applySelfEdit,
   rejectSelfEdit,
@@ -205,9 +208,38 @@ export class Persona {
    * inside the state file, which was quick and was also the second chain over the same
    * history that this migration exists to remove.
    */
-  async adjust(field: string, delta: number, reason: string): Promise<record.AdjustResult> {
+  async adjust(
+    field: string,
+    delta: number,
+    reason: string,
+    /**
+     * Who makes the move. `persona` by default, because this is `adjust_persona_state`, the tool a
+     * persona calls on itself. `person` is a human editing the value by hand (the Command Center):
+     * it passes the mode and the per-step cap the way `state mutate --actor human-operator` does,
+     * because under `locked` a person is exactly who may still move it, and the record says a
+     * person did.
+     */
+    opts: { readonly by?: "persona" | "person" } = {},
+  ): Promise<record.AdjustResult> {
     const env = extractEnvelopes(this.handle.frontmatter);
     const resolved = resolveField(field, env.envelopes);
+    const byPerson = opts.by === "person";
+
+    // E125: through the same gate as the living loop. Until 2026-09-23 this moved the state without
+    // looking at the mode, signed as the persona itself, so a persona stopped for an incident with
+    // `locked`, which the engine's own comment calls the master kill-switch, could be moved by any
+    // program connected over MCP. The persona authors this move, so it is judged as the persona's
+    // own proposal: stopped under `locked`, bounded per step otherwise. A refusal is written to the
+    // record as blocked, with the gate's reason, never skipped in silence.
+    const fm = this.fm();
+    const verdict = governMutations([{ field: resolved, delta, reason }], env, {
+      ...DEFAULT_GOVERNANCE,
+      mode: readMode(fm, this.personaPath),
+      maxStepDelta: readMaxStepDelta(fm),
+      humanDirected: byPerson,
+    });
+    const admitted = verdict.admitted.find((m) => m.field === resolved);
+    const refused = verdict.verdicts.find((v) => v.field === resolved && !v.admitted);
 
     return record.adjust(
       this.personaPath,
@@ -216,8 +248,10 @@ export class Persona {
       // The persona itself is the author: this is `adjust_persona_state`, which is the
       // tool a persona calls on itself. An author that said "the SDK" would put the
       // library in the record where the persona belongs.
-      { kind: "persona", id: personaName(this.fm()) } as never,
-      { field: resolved, delta, reason },
+      byPerson ? record.authorOf("human-operator") : ({ kind: "persona", id: personaName(fm) } as never),
+      admitted
+        ? { field: resolved, delta: admitted.delta, reason: admitted.reason }
+        : { field: resolved, delta: 0, reason: `${reason} (refused: ${refused?.reason ?? "not admitted by governance"})`, blocked: true },
     );
   }
 
