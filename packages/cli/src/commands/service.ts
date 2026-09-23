@@ -280,7 +280,19 @@ function localPorts(root: string, costs: StepCost[], meter: Meter, person: Perso
 				return { outcome: "failed", summary: null, reason: waiting, waitingOnPerson: true, question };
 			}
 			const ended = stepOutcomeOf(outcome.stopReason, outcome.answer);
-			if (ended.outcome === "failed") return { outcome: "failed", summary: null, reason: ended.reason };
+			// E117: what the step was like, from the runtime's own facts. Observed on BOTH paths: until
+			// 2026-09-23 the tick below sat after this return, so a step that failed was never observed at
+			// all, and the experience that should count most was the one the persona never had.
+			const lived = run.experienceOf(outcome);
+			const feel = async (): Promise<void> => {
+				if (lived === undefined) return;
+				const felt = await runObserve(pp, lived, "internal");
+				if (!felt.ok) person.say(chalk.yellow(`    tick failed: ${felt.error}`));
+			};
+			if (ended.outcome === "failed") {
+				await feel();
+				return { outcome: "failed", summary: null, reason: ended.reason };
+			}
 
 			// The governed tick, on what the step put in front of the persona. Not on its own
 			// answer: the REPL observes the person's line and not the reply, for the same reason.
@@ -293,8 +305,9 @@ function localPorts(root: string, costs: StepCost[], meter: Meter, person: Perso
 			t = Date.now();
 			u = await meter.settled();
 			const tick = await runObserve(pp, prompt, "internal");
-			cost.tick = await since(t, u);
 			if (!tick.ok) person.say(chalk.yellow(`    tick failed: ${tick.error}`));
+			await feel();
+			cost.tick = await since(t, u);
 
 			// E89: the step, as two turns of this persona's session for this run.
 			sessions.note({ personaPath: assembled.personaPath, personaRef, prompt, answer: outcome.answer, frontmatter });
