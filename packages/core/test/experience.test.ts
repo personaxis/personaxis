@@ -65,9 +65,19 @@ describe("what a turn was like (E117)", () => {
 			}),
 		);
 		expect(text).toContain("ran out of room");
-		expect(text).toContain("notes.md");
 		expect(text).toContain("stopped to ask");
 		expect(text).toContain("refused 1 of its calls");
+	});
+
+	it("leaves out what nobody could check, which is the absence of a check and not an outcome", () => {
+		// Measured with a real model on 2026-09-23: left in, "a document nobody could check" was the only
+		// thing that ever moved a persona, always downward, and a document is never something the runtime
+		// checks. It stays in the record (E85); it is not how the work went.
+		const onlyUnchecked = run.experienceOf(outcome({ delivered: { checks: [], unverified: ["GAME.md"] } }));
+		expect(onlyUnchecked).toBeUndefined();
+		const withACheck = run.experienceOf(outcome({ delivered: { checks: [check(true, "game.html")], unverified: ["GAME.md"] } }));
+		expect(withACheck).toContain("works");
+		expect(withACheck).not.toContain("GAME.md");
 	});
 });
 

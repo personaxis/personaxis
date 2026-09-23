@@ -55,8 +55,12 @@ export function experienceOf(outcome: TurnOutcome): string | undefined {
 			lines.push(`What it delivered was checked and failed ${failed.length} of ${checks.length} checks: ${why}.`);
 		}
 	}
-	const unverified = outcome.delivered?.unverified ?? [];
-	if (unverified.length > 0) lines.push(`It left ${unverified.length} thing(s) nobody could check: ${unverified.join(", ")}.`);
+	// What nobody could check stays in the record, where E85 requires it to be visible, and stays OUT
+	// of the experience. Measured on 2026-09-23 with a real model across 24 runs: the only thing that
+	// ever moved a persona was "a document nobody could check", every time downward (-0.10 valence, 3
+	// of 3), and a document is not something the runtime ever checks. It is the absence of a check,
+	// not an outcome, and left in it would have worn down every persona that writes documents for a
+	// reason that says nothing about how its work went.
 
 	const calls = outcome.calls ?? [];
 	if (calls.some((call) => ASKED.has(call.tool))) lines.push("It stopped to ask the person for something it did not have.");
