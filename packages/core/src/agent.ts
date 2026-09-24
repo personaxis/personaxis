@@ -607,16 +607,14 @@ export class PersonaAgent {
    */
   private scopeOfTheMoment(): string {
     const now = this.howYouAreNow();
-    // E126: the reasons a turn is regulated are NOT told to the model. Measured on 2026-09-23, same day,
-    // same regulation, Qwen, six runs each: `fix-crash` with "0 of your last 4 checked deliveries passed"
-    // in this message went 6/6 to 0/6 and from 4 tool calls to about 20, an edit-and-recheck loop that
-    // never closed; with the same regulation and without that text it stayed 6/6 in 4 calls. Telling a
-    // small model it has been failing is what broke it, as the induced-anxiety study predicts, while the
-    // levers themselves did no harm. The reasons go to the person instead (`regulated` event, run()).
+    const regulated = this.opts.regulation?.because ?? [];
     return [
       "# Right now",
       `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
       "This is the scope of this turn, not a description of who you are. Act within it.",
+      // E126: what was tightened and why, from the persona's own record. Said, because a posture that
+      // changes without a reason reads as a mood; with the reason it reads as care.
+      ...(regulated.length > 0 ? ["", "# Why this turn is stricter", ...regulated.map((reason) => `- ${reason}.`)] : []),
       ...(now ? ["", now] : []),
     ].join("\n");
   }
@@ -936,8 +934,6 @@ export class PersonaAgent {
       { role: "user", content: task },
     ];
     this.lastMessages = messages; // reference; reflects the final state after the run
-    // E126: why this turn is stricter, for the person watching and never for the model (see scopeOfTheMoment).
-    for (const reason of this.opts.regulation?.because ?? []) bus.emit({ type: "agent-think", text: `[regulated] ${reason}` });
 
     // E83: decide before acting, when this model's scaffold asks for it. One call with no tools and one
     // attempt: a model that cannot write the object the first time rarely writes it the second, and the turn

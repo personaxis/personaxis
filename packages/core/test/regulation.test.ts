@@ -153,31 +153,4 @@ describe("a regulated turn hands a broken delivery back twice (E126)", () => {
 		expect(handed).toHaveLength(2);
 		expect(readFileSync(join(dir, "game.html"), "utf8")).toContain("y: 1");
 	});
-
-	/**
-	 * Measured on 2026-09-23: with "0 of your last 4 checked deliveries passed" in the message of the
-	 * moment, `fix-crash` went 6/6 to 0/6 on the same day and the same regulation that, without the
-	 * text, stayed 6/6. The levers act; telling a small model it has been failing is what broke it.
-	 */
-	it("never tells the model it has been failing, and tells the person instead", async () => {
-		dir = mkdtempSync(join(tmpdir(), "pxs-e126c-"));
-		const sent: string[] = [];
-		const fetchImpl = (async (url: string, init?: { body?: string }) => {
-			if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
-			if (init?.body) sent.push(init.body);
-			return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "", tool_calls: [{ id: "c1", type: "function", function: { name: "finish", arguments: "{\"summary\":\"done\"}" } }] } }] }) };
-		}) as unknown as typeof fetch;
-		const heard: string[] = [];
-		const { EventBus } = await import("../src/index.js");
-		const bus = new EventBus();
-		bus.on((e: { type: string; text?: string }) => {
-			if (e.type === "agent-think" && e.text) heard.push(e.text);
-		});
-		const reason = "0 of your last 4 checked deliveries passed, below the 0.3 you declared";
-		const policy: Policy = { ...DEFAULT_POLICY, workspaceRoot: dir, approval: "untrusted", sandbox: "workspace-write" };
-		await new PersonaAgent({ llm: { endpoint: "http://x/v1", model: "m", fetchImpl }, policy, capability: capability(), bus, regulation: { handBacks: 2, because: [reason] } }).run("fix it");
-
-		expect(sent.join("\n")).not.toContain("checked deliveries passed");
-		expect(heard.join("\n")).toContain(reason);
-	});
 });
