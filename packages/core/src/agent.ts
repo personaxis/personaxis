@@ -222,12 +222,6 @@ export interface AgentOptions {
   toolNames?: readonly string[];
   /** Persona identity document (system-prompt slot #1). */
   personaBody?: string;
-  /**
-   * E126: what the persona's declared metacognition decided for this turn, from its own record. How
-   * many times a broken delivery comes back before the turn may close, and why anything was
-   * tightened, said in the message of the moment. Absent means nothing was regulated.
-   */
-  regulation?: { readonly handBacks: number; readonly because: readonly string[] };
   /** Structural self-awareness (role root/sub, own address, sub-tree, resource inventory). */
   awareness?: string;
   /** Optional standing goal injected into the task context. */
@@ -607,14 +601,10 @@ export class PersonaAgent {
    */
   private scopeOfTheMoment(): string {
     const now = this.howYouAreNow();
-    const regulated = this.opts.regulation?.because ?? [];
     return [
       "# Right now",
       `sandbox: ${this.policy.sandbox} · approval: ${this.policy.approval}`,
       "This is the scope of this turn, not a description of who you are. Act within it.",
-      // E126: what was tightened and why, from the persona's own record. Said, because a posture that
-      // changes without a reason reads as a mood; with the reason it reads as care.
-      ...(regulated.length > 0 ? ["", "# Why this turn is stricter", ...regulated.map((reason) => `- ${reason}.`)] : []),
       ...(now ? ["", now] : []),
     ].join("\n");
   }
@@ -824,9 +814,7 @@ export class PersonaAgent {
      * Its own flag and not `retriesLeft`, which belongs to the persona's declared gates: sharing them would
      * make a persona that declares gates spend on this the one retry those gates were given.
      */
-    // E126: once by default; a persona whose recent deliveries keep failing, and which enabled
-    // request_more_evidence, gets its broken delivery back more than once.
-    let handBacksLeft = this.opts.regulation?.handBacks ?? 1;
+    let handedBackOnce = false;
     let stepProgress = 1;
     let lastText = "";
     // K.04: how injection-tainted the context is so far (max verdict of prior tool outputs). A
@@ -1184,8 +1172,8 @@ export class PersonaAgent {
         // not decide FOR the persona either: it hands over the observation and the persona chooses, and a
         // second finish without a fix closes the turn with the check written down as before.
         const broken = result.checks.filter((check) => !check.passed);
-        if (broken.length > 0 && handBacksLeft > 0) {
-          handBacksLeft -= 1;
+        if (broken.length > 0 && !handedBackOnce) {
+          handedBackOnce = true;
           messages.push({
             role: "user",
             content:

@@ -56,8 +56,7 @@ import { existsSync } from "node:fs";
 
 import { PersonaAgent, type AgentOptions } from "../agent.js";
 import { resolveModel } from "../model-config.js";
-import { DEFAULT_POLICY, stricterApproval } from "../sandbox.js";
-import { regulationFor } from "./regulation.js";
+import { DEFAULT_POLICY } from "../sandbox.js";
 import { assemble, identityOf } from "./assembled.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { wordlessReport } from "./wordless.js";
@@ -181,28 +180,11 @@ export function agentOptionsFor(
 		// the same intent a second time as a list of permissions. A read-only persona
 		// stops being handed a file writer it would only be refused for using.
 		permissions: permissionsFor(compiled.policy.sandbox),
-		// E126: what the persona's declared metacognition decides, read against its own record. Only
-		// ever tightens the caller's posture, and says why in the message of the moment.
-		...regulated(persona, rest.policy),
 		// Web search, when this machine has a provider for it (2026-09-11). Added to whatever
 		// the caller contributes rather than in place of it, and only with a key, so a persona
 		// is never offered a search that fails on its first call. Not offered to a read-only
 		// persona, whose posture refuses the network: the same rule as the file writer above.
 		...webTools(rest.extraTools, compiled.policy.sandbox),
-	};
-}
-
-/**
- * E126: the turn's options, tightened by what the persona's own record says about its recent work.
- * Nothing when there is nothing to regulate, so an ordinary turn is built exactly as before.
- */
-function regulated(persona: PersonaFacts, policy: AgentOptions["policy"]): Pick<AgentOptions, "policy" | "regulation"> {
-	const regulation = regulationFor(persona.personaPath, persona.frontmatter as Record<string, unknown>);
-	if (regulation.because.length === 0) return {};
-	const base = policy ?? DEFAULT_POLICY;
-	return {
-		...(regulation.approval === undefined ? {} : { policy: { ...base, approval: stricterApproval(base.approval, regulation.approval) } }),
-		regulation: { handBacks: regulation.handBacks, because: regulation.because },
 	};
 }
 
