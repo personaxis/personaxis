@@ -78,11 +78,7 @@ import type { Ledger } from "./budget.js";
 import type { Conversation } from "./conversation.js";
 import { ledgerForChild, type DelegatedScope } from "./delegation.js";
 import { localSkillsOf } from "./local-skills.js";
-import { renderWorkMap, workMapFor } from "./work-map.js";
-import { inspectSelfTool } from "../tools/inspect-self.js";
-import { howYouAreNow } from "../moment.js";
-import { loadPersona, readState } from "../persona.js";
-import { activeOverlay, applyOverlay } from "../self-evolution.js";
+import { workMapFor } from "./work-map.js";
 import { defaultLoop } from "./default-provider.js";
 import { TurnRunner, type TurnObserver } from "./service.js";
 
@@ -201,22 +197,6 @@ export function agentOptionsFor(
 		// persona, whose posture refuses the network: the same rule as the file writer above.
 		...webTools(rest.extraTools, compiled.policy.sandbox),
 	};
-}
-
-/**
- * E119: how the persona is right now, the bands that differ from its identity, read from the state on disk the way the
- * loop's own moment reads it. Empty on any failure: this is something to look at, never something that breaks a turn.
- */
-function nowOf(personaPath: string, identity: string | undefined): string {
-	if (!identity) return "";
-	try {
-		const handle = loadPersona(personaPath);
-		if (!existsSync(handle.statePath)) return "";
-		const current = applyOverlay(handle.frontmatter as Record<string, unknown>, activeOverlay(personaPath));
-		return howYouAreNow(identity, current, readState(handle.statePath).values);
-	} catch {
-		return "";
-	}
 }
 
 /** The caller's contributed tools, plus `web_search` when a provider resolves and the posture allows the network. */
@@ -464,27 +444,6 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 			requires: [TOOL_PERMISSIONS.writeFiles],
 			activate: (context) => {
 				context.contribute(TOOL_POINT, runServiceTool({ services: delivered, run: runService }));
-			},
-		});
-	}
-
-	// E119: the persona looks at itself when it is about to say what it can do. The same map as its index,
-	// from the same function, and how it is right now, both read when the tool is CALLED. Only when there is
-	// something to show, for the same reason `use_skill` is: a tool that can only answer "nothing" is noise.
-	const mapNow = () => workMapFor(persona.personaPath, { workspaceRoot, frontmatter: persona.frontmatter });
-	const shown = mapNow();
-	if (shown.skills.length + shown.services.length + shown.references.length > 0) {
-		kernel.mount({
-			name: "tool.inspect-self",
-			requires: [TOOL_PERMISSIONS.readFiles],
-			activate: (context) => {
-				context.contribute(
-					TOOL_POINT,
-					inspectSelfTool({
-						has: () => renderWorkMap(mapNow(), { canRunServices: runService !== undefined }),
-						now: () => nowOf(persona.personaPath, rest.personaBody),
-					}),
-				);
 			},
 		});
 	}

@@ -37,7 +37,6 @@ import { UPDATE_TASKS_TOOL } from "../src/tools/update-tasks.js";
 import { USE_SKILL_TOOL } from "../src/tools/use-skill.js";
 import { ASK_PERSON_TOOL } from "../src/tools/ask-person.js";
 import { RUN_SERVICE_TOOL } from "../src/tools/run-service.js";
-import { inspectSelfTool } from "../src/tools/inspect-self.js";
 import { readMemoryKnobs } from "../src/memory/knobs.js";
 
 /**
@@ -69,13 +68,11 @@ function everythingWeShip(): string[] {
 		ASK_PERSON_TOOL,
 		// E73: mounted by `runnerFor` for a persona that delivers a service, when the host lends a way to run one.
 		RUN_SERVICE_TOOL,
-		// E119: mounted by `runnerFor` for a persona that has something to look at.
-		inspectSelfTool({ has: () => "", now: () => "" }).name,
 	];
 }
 
 describe("how many tools a persona can be shown", () => {
-	it("is seventeen, and one more is a decision rather than a file somebody added", () => {
+	it("is sixteen, and one more is a decision rather than a file somebody added", () => {
 		// Raise this number in the same commit as the tool, with the reason in the
 		// commit message. That is the whole mechanism: it costs one line and it makes
 		// the next tool something a person chose.
@@ -96,12 +93,7 @@ describe("how many tools a persona can be shown", () => {
 		// Sixteen, 2026-09-15: `check_page` (E98) was counted by neither number, because it was written in E71,
 		// imported by the built-in barrel and left out of its list. This is not a tool being added; it is one that
 		// was shipped to nobody for four days being counted for the first time.
-		//
-		// Seventeen, 2026-09-24: `inspect_self` (E119), because a persona asked what it can do named its skills and never
-		// the service it delivers, 0 runs in 6, with the service in its index; four attempts by wording changed nothing,
-		// and data in a tool's result is what has moved behaviour. It overlaps nothing: `use_skill` loads one method's
-		// instructions, `memory_search` finds what happened, and this says what the persona has and how it is now.
-		expect(everythingWeShip()).toHaveLength(17);
+		expect(everythingWeShip()).toHaveLength(16);
 	});
 
 	it("counts eight built-ins, which is the half a plugin cannot change", () => {
