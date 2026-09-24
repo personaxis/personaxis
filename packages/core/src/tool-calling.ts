@@ -365,6 +365,32 @@ function parseArgs(raw: string): { args: Record<string, unknown>; truncated: boo
  * provider that does not know the field would reject it, which is why this only runs
  * when the caller asked for it.
  */
+/**
+ * E136: the conversation with ONE system message, at the start, for a chat template that accepts no other shape.
+ *
+ * Measured 2026-09-24 with `Qwen/Qwen3.5-9B` on HuggingFace's router: every request answered 400 "Input validation
+ * error", the loop fell back to prose, and no reply carried a native tool call. Not the context, no tool, no field:
+ * the loop sends the identity, the turn's scope and the map as three system messages, and more mid-conversation
+ * (the task list, the loop check), and that model's template takes one system message, first. The same request with
+ * one answered 200. The leading system messages are joined into one; a later one becomes a user message, whose content
+ * already names who put it there (`[runtime:...]`), so nothing reads as the person's words that were not.
+ */
+function withOneSystem(messages: readonly ChatMessage[]): ChatMessage[] {
+	let lead = 0;
+	while (lead < messages.length && messages[lead]!.role === "system") lead += 1;
+	const head = messages.slice(0, lead).map((message) => message.content).join("\n\n");
+	const rest = messages.slice(lead).map((message) => (message.role === "system" ? { ...message, role: "user" as const } : message));
+	return lead === 0 ? rest : [{ role: "system", content: head }, ...rest];
+}
+
+/**
+ * E136: the endpoints and models that have refused several system messages, so their next requests are shaped once
+ * instead of refused once per call. Per process, like the context window the loop discovers: nothing is written down,
+ * because a provider can change its template tomorrow and a stale note would reshape requests that no longer need it.
+ */
+const oneSystemOnly = new Set<string>();
+const shapeKey = (cfg: { endpoint: string; model: string }): string => `${cfg.endpoint}|${cfg.model}`;
+
 function markedForCache(messages: ChatMessage[]): unknown[] {
 	let last = -1;
 	for (let index = 0; index < messages.length; index += 1) {
@@ -417,9 +443,12 @@ export async function requestToolCall(
   }
 
   if (!preferFallback) {
+    // E136: shaped for a template that takes one system message, when this endpoint and model already refused several.
+    const oneSystem = oneSystemOnly.has(shapeKey(cfg));
+    const sent = oneSystem ? withOneSystem(messages) : messages;
     const body = {
       model: cfg.model,
-      messages: cfg.cachePrefix ? markedForCache(messages) : messages,
+      messages: cfg.cachePrefix ? markedForCache(sent) : sent,
       // E83: a call that offers no tools (the decision step, the planning call) sends no `tools` and no
       // `tool_choice`. Measured 2026-09-15: HuggingFace's router answers HTTP 400 to an empty list with a
       // choice, and a 400 here is read as "this endpoint has no tool calling", which sent both calls into the
@@ -447,7 +476,19 @@ export async function requestToolCall(
       // morning never receives a field it would reject.
       ...(effort ? { reasoning_effort: effort } : {}),
     };
-    const res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
+    let res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
+    // E136: a 400 over several system messages is retried ONCE with one, and remembered when that is what it was.
+    // Only when reshaping changes something: otherwise the retry would be the same request twice.
+    const reshaped = res.status === 400 && !oneSystem ? withOneSystem(messages) : undefined;
+    if (reshaped !== undefined && reshaped.some((message, index) => message.role !== messages[index]?.role || reshaped.length !== messages.length)) {
+      const again = await fetchImpl(url(cfg), {
+        method: "POST",
+        headers: headers(cfg),
+        body: JSON.stringify({ ...body, messages: cfg.cachePrefix ? markedForCache(reshaped) : reshaped }),
+      });
+      if (again.ok) oneSystemOnly.add(shapeKey(cfg));
+      res = again;
+    }
     if (res.ok) {
       const reply = await readReply(res, cfg.onDelta);
       const toolCalls = reply.toolCalls.map((tc) => {
