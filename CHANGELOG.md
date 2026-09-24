@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Genesis starts a persona from a profile, and every new persona is alive
+
+- `personaxis create --profile regulated|standard|research`, and the same choice in the full interview,
+  set the starting range, the per-layer approval policy and the half-lives. Standard is exactly what
+  Genesis wrote before. The interview no longer offers `locked` when creating a persona.
+- `personaxis init` now writes `mode: suggesting`. Every persona it made before was born `locked`, twice
+  (inline and in its `policy.yaml`), and never evolved.
+- `policy.yaml` requires `approved_by` and `last_approval_at` only for `autonomous` (spec 1.1.0).
+
 ### Breaking: a turn is now a thing the runtime owns, and the old state engine is gone
 
 The next release is a **minor** bump, not a patch. Nine names left the public surface of

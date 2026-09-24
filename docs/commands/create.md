@@ -22,6 +22,7 @@ report). `[slug]` names the persona (default: under `.personaxis/personas/<slug>
 | Flag | Effect |
 |---|---|
 | `--deep` | ask the FULL question bank (20) instead of the 12 core questions |
+| `--profile <name>` | starting profile, `regulated`, `standard` (default) or `research`: see below |
 | `--yes` | non-interactive: accept labeled defaults, overwrite existing |
 | `--json` | emit spec + gates + provenance as JSON (dry-run unless `--yes`) |
 | `--provider <p>` | override the provider for LLM extraction (`local\|byok\|agent\|remote`) |
@@ -35,7 +36,7 @@ which is what scripts and agents do.
 | Interview | Questions | Asks about |
 |---|---|---|
 | default | **12** | identity, the five trait axes, values, voice, what it must never do |
-| `--deep` | **20** | the above plus envelope width, mood half-life, refusal detail, uncertainty thresholds, memory policy, improvement posture, a voice exemplar |
+| `--deep` | **20** | the above plus envelope width, mood half-life, refusal detail, uncertainty thresholds, memory policy, starting profile, a voice exemplar |
 
 Whatever is not asked falls back to a **labeled default**, and `creation-report.md` keeps
 saying which numbers you decided and which the tool assumed, so a short interview is a
@@ -76,3 +77,19 @@ with [`personaxis jacobian`](./jacobian.md). Exit codes follow the validator con
 See: `docs/architecture/genesis.md` (design), `creation-report.md` (what to review;
 its "Defaults" section lists every number NOT earned from evidence, and its provenance
 table now distinguishes earned / synthesized / default per coordinate).
+
+## Starting profiles
+
+Every persona Genesis creates is alive: its state moves inside its ranges as it works, and it returns to
+its baseline by itself. A profile only sets the starting values of the three things its owner controls,
+and anything the interview or the extraction states wins over it.
+
+| Profile | How far it can move | How fast it returns | Lasting changes to how it works |
+|---|---|---|---|
+| `regulated` | half the standard range | twice as fast (half-life 2 turns for affect, 12 for traits) | a person approves them |
+| `standard` | ±0.2 on traits, the affect ranges as before | half-life 4 for affect, 24 for traits | a person approves them |
+| `research` | half again the standard range | twice as slow (8 and 48) | applied by the persona itself |
+
+In all three, changes to who the persona is (identity, character, values) need a person, and the
+protected floor (the universals, hard limits, governance, permissions) never opens. None of them is
+`locked`: that mode is the kill-switch, for an incident or an audit, and `personaxis improve locked` sets it.
