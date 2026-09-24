@@ -63,8 +63,8 @@ describe("one system message, first, when the template takes no other shape (E13
 		expect(shaped[3]!.content).toBe("[runtime:task-list] 1. read the game");
 	});
 
-	it("streamed, a refusal comes back 200 with no frame at all, and is retried the same way", async () => {
-		// Measured 2026-09-24: over a stream, the same refusal is a 200 whose body is only `data: [DONE]`.
+	it("streamed, a refusal comes back 200 with the error inside the stream, and is retried the same way", async () => {
+		// Read on 2026-09-24 from the raw body with its headers (provider deepinfra, via HuggingFace's router).
 		const received: ChatMessage[][] = [];
 		const stream = (text: string) => ({
 			ok: true,
@@ -80,11 +80,26 @@ describe("one system message, first, when the template takes no other shape (E13
 			const messages = (JSON.parse(init?.body ?? "{}") as { messages: ChatMessage[] }).messages;
 			received.push(messages);
 			const refused = messages.some((message, index) => message.role === "system" && index > 0);
-			return stream(refused ? "data: [DONE]\n\n" : `data: ${call}\n\ndata: ${done}\n\ndata: [DONE]\n\n`);
+			const refusal = 'data: {"error":{"message":"System message must be at the beginning.","type":"invalid_request_error","param":null,"code":400}}\n\ndata: [DONE]\n\n';
+			return stream(refused ? refusal : `data: ${call}\n\ndata: ${done}\n\ndata: [DONE]\n\n`);
 		}) as unknown as typeof fetch;
 		const reply = await requestToolCall({ endpoint: "http://stream-refusal.invalid/v1", model: "qwen3.5-9b", fetchImpl, onDelta: () => {} }, CONVERSATION, [tool]);
 		expect(reply.toolCalls.map((c) => c.name)).toEqual(["read_file"]);
 		expect(received).toHaveLength(2);
+	});
+
+	it("a refusal that stays one is the provider's error with its reason, not the model going silent", async () => {
+		const fetchImpl = (async () => ({
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name.toLowerCase() === "content-type" ? "text/event-stream" : null) },
+			body: (async function* () {
+				yield new TextEncoder().encode('data: {"error":{"message":"Model is overloaded.","code":503}}\n\ndata: [DONE]\n\n');
+			})(),
+		})) as unknown as typeof fetch;
+		await expect(
+			requestToolCall({ endpoint: "http://stream-error.invalid/v1", model: "m", fetchImpl, onDelta: () => {} }, CONVERSATION, [tool]),
+		).rejects.toThrow("tool-calling stream error: Model is overloaded.");
 	});
 
 	it("a model that really says nothing still sends its frames, and is not retried", async () => {
