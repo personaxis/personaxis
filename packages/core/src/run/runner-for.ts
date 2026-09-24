@@ -70,6 +70,7 @@ import { useSkillTool } from "../tools/use-skill.js";
 import { runServiceTool, type RunServiceInput } from "../tools/run-service.js";
 import { permissionsFor, TOOL_PERMISSIONS, TOOL_POINT } from "../tools/mounted.js";
 import { policyFromPersona } from "../enforcement/policy-from-persona.js";
+import { regulationFor } from "./regulation.js";
 import { readAgentBudget } from "../governance.js";
 import { readVerification } from "../verification.js";
 import { resolveWebSearch, webSearchTool } from "../web/search.js";
@@ -148,8 +149,18 @@ export function agentOptionsFor(
 	// Compiled once and read twice: the gate needs the executable form, and the
 	// catalogue needs the posture it was compiled from. Two calls would be two
 	// compilations of one document that could disagree.
+	//
+	// E126: the posture the gate holds is at least what the persona's own record calls for, when its declared
+	// self-regulation says a person should step in. Only the compiled gate: the session's policy is the one the
+	// scope line prints to the model, and telling a model it has been failing was measured to break it.
+	const regulation = regulationFor(persona.personaPath, persona.frontmatter as Record<string, unknown>);
 	const compiled = compile(
-		policyFromPersona(persona.frontmatter, { personaVersionId: persona.personaPath }),
+		policyFromPersona(persona.frontmatter, {
+			personaVersionId: persona.personaPath,
+			...(regulation.approval === undefined
+				? {}
+				: { approvalAtLeast: { approval: regulation.approval, because: regulation.because.join("; and ") } }),
+		}),
 	);
 
 	return {

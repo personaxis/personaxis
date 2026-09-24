@@ -18,6 +18,7 @@
 
 import { hashPolicy, type ApprovalPosture, type CompiledPolicy, type GateRule } from "./policy-compile.js";
 import type { SandboxPosture } from "../security/consent.js";
+import { stricterApproval } from "../sandbox.js";
 
 /** The parts of a persona this reads. Everything else is none of its business. */
 export interface PersonaPolicySource {
@@ -43,6 +44,14 @@ export interface PolicyFromPersonaOptions {
 	personaVersionId: string;
 	/** Gates are a workspace concept: a persona file cannot name approvers. */
 	gateRules?: GateRule[];
+	/**
+	 * E126: a posture the approval must at least hold, and why, from the persona's own record.
+	 *
+	 * From the caller for the same reason as the egress list: it is not in the document, it is what the
+	 * runtime established about this persona's recent work. It can only make the posture stricter, and it
+	 * is applied before hashing, so the hash says which policy actually judged each call.
+	 */
+	approvalAtLeast?: { readonly approval: ApprovalPosture; readonly because: string };
 	ttlSeconds?: number;
 	now?: Date;
 }
@@ -69,6 +78,9 @@ export function policyFromPersona(
 	options: PolicyFromPersonaOptions,
 ): CompiledPolicy {
 	const permissions = persona.permissions ?? {};
+	const declared = oneOf(permissions.approval, APPROVAL_VALUES, DEFAULT_APPROVAL);
+	const floor = options.approvalAtLeast;
+	const approval = floor === undefined ? declared : stricterApproval(declared, floor.approval);
 
 	const draft: Omit<CompiledPolicy, "hash"> = {
 		persona_version_id: options.personaVersionId,
@@ -87,7 +99,10 @@ export function policyFromPersona(
 		// through. A persona that said `sandbox: "full"` (not a spec value) must
 		// not end up with more freedom than one that said nothing.
 		sandbox: oneOf(permissions.sandbox, SANDBOX_VALUES, DEFAULT_SANDBOX),
-		approval: oneOf(permissions.approval, APPROVAL_VALUES, DEFAULT_APPROVAL),
+		approval,
+		// Only when the floor actually moved it: a persona already that strict is not "tightened", and a
+		// reason for a change that did not happen would tell the person something false.
+		...(floor !== undefined && approval !== declared ? { approval_because: floor.because } : {}),
 		gate_rules: options.gateRules ?? [],
 	};
 

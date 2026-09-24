@@ -62,6 +62,14 @@ export interface CompiledPolicy {
 	egress_allowlist: string[];
 	sandbox: SandboxPosture;
 	approval: ApprovalPosture;
+	/**
+	 * E126: why `approval` is stricter than the persona declares, when its own record tightened it.
+	 *
+	 * Absent for a posture read straight from the document, which is every policy a workspace compiles.
+	 * Written into the gate's reason, which is what the person who approves reads, and never into anything
+	 * the model reads: telling a model it has been failing was measured to break it.
+	 */
+	approval_because?: string;
 	gate_rules: GateRule[];
 }
 
@@ -470,7 +478,7 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 			return {
 				verdict: "gate",
 				rule: `approval:${policy.approval}`,
-				reason: `this persona's approval posture is ${policy.approval}, so a person approves any call that is not a known read inside the workspace`,
+				reason: `this persona's approval posture is ${policy.approval}${policy.approval_because ? ` because ${policy.approval_because}` : ""}, so a person approves any call that is not a known read inside the workspace`,
 				// Invented, because the persona asked for a person and no rule said who.
 				// So it invents as little as possible.
 				//
