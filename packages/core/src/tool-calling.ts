@@ -214,6 +214,13 @@ interface Reply {
   finish?: string;
   /** E94: see `ToolCallResponse.reasoned`. */
   reasoned?: boolean;
+  /**
+   * E136: how many frames a STREAMED reply carried, absent for one that was not streamed. Zero is not an empty
+   * answer: a model that says nothing still sends the frame with its role and the one with its finish. Measured
+   * 2026-09-24 with `Qwen/Qwen3.5-9B`: a request whose shape the template refused came back 200 with a stream of
+   * nothing but `data: [DONE]`, which read as the model going silent, twice, and the turn ended as failed.
+   */
+  frames?: number;
 }
 
 /**
@@ -254,6 +261,7 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
   let usage: Partial<TokenUsage> | undefined;
   let finish: string | undefined;
   let reasoned = false;
+  let frames = 0;
   let pending = "";
 
   const decoder = new TextDecoder();
@@ -289,6 +297,7 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
           // everything that came before it.
           continue;
         }
+        frames += 1;
         if (frame.usage) usage = frame.usage;
         const choice = frame.choices?.[0];
         // E94: kept, not shown. An empty reply means one thing after thinking to the ceiling and
@@ -320,6 +329,7 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
     ...(usage ? { usage } : {}),
     ...(finish ? { finish } : {}),
     ...(reasoned ? { reasoned } : {}),
+    frames,
   };
 }
 
@@ -477,20 +487,32 @@ export async function requestToolCall(
       ...(effort ? { reasoning_effort: effort } : {}),
     };
     let res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
-    // E136: a 400 over several system messages is retried ONCE with one, and remembered when that is what it was.
-    // Only when reshaping changes something: otherwise the retry would be the same request twice.
-    const reshaped = res.status === 400 && !oneSystem ? withOneSystem(messages) : undefined;
-    if (reshaped !== undefined && reshaped.some((message, index) => message.role !== messages[index]?.role || reshaped.length !== messages.length)) {
+    // E136: a request refused over several system messages is retried ONCE with one, and remembered when that is
+    // what it was. Refused means a 400, or, when streamed, a 200 whose stream carried no frame at all (see
+    // `Reply.frames`). Only when reshaping changes something: otherwise the retry would be the same request twice.
+    const reshaped = !oneSystem ? withOneSystem(messages) : undefined;
+    const canReshape = reshaped !== undefined && (reshaped.length !== messages.length || reshaped.some((message, index) => message.role !== messages[index]?.role));
+    const retryReshaped = async (): Promise<Response> => {
       const again = await fetchImpl(url(cfg), {
         method: "POST",
         headers: headers(cfg),
-        body: JSON.stringify({ ...body, messages: cfg.cachePrefix ? markedForCache(reshaped) : reshaped }),
+        body: JSON.stringify({ ...body, messages: cfg.cachePrefix ? markedForCache(reshaped!) : reshaped }),
       });
-      if (again.ok) oneSystemOnly.add(shapeKey(cfg));
-      res = again;
+      return again;
+    };
+    if (res.status === 400 && canReshape) {
+      res = await retryReshaped();
+      if (res.ok) oneSystemOnly.add(shapeKey(cfg));
     }
     if (res.ok) {
-      const reply = await readReply(res, cfg.onDelta);
+      let reply = await readReply(res, cfg.onDelta);
+      if (reply.frames === 0 && canReshape) {
+        const again = await retryReshaped();
+        if (again.ok) {
+          reply = await readReply(again, cfg.onDelta);
+          if (reply.frames !== 0) oneSystemOnly.add(shapeKey(cfg));
+        }
+      }
       const toolCalls = reply.toolCalls.map((tc) => {
         const parsed = parseArgs(tc.function.arguments);
         return {

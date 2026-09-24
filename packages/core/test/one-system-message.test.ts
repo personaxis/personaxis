@@ -63,6 +63,49 @@ describe("one system message, first, when the template takes no other shape (E13
 		expect(shaped[3]!.content).toBe("[runtime:task-list] 1. read the game");
 	});
 
+	it("streamed, a refusal comes back 200 with no frame at all, and is retried the same way", async () => {
+		// Measured 2026-09-24: over a stream, the same refusal is a 200 whose body is only `data: [DONE]`.
+		const received: ChatMessage[][] = [];
+		const stream = (text: string) => ({
+			ok: true,
+			status: 200,
+			headers: { get: (name: string) => (name.toLowerCase() === "content-type" ? "text/event-stream" : null) },
+			body: (async function* () {
+				yield new TextEncoder().encode(text);
+			})(),
+		});
+		const call = JSON.stringify({ choices: [{ delta: { role: "assistant", tool_calls: [{ index: 0, id: "c1", function: { name: "read_file", arguments: '{"path":"game.html"}' } }] } }] });
+		const done = JSON.stringify({ choices: [{ delta: {}, finish_reason: "tool_calls" }] });
+		const fetchImpl = (async (_url: string, init?: { body?: string }) => {
+			const messages = (JSON.parse(init?.body ?? "{}") as { messages: ChatMessage[] }).messages;
+			received.push(messages);
+			const refused = messages.some((message, index) => message.role === "system" && index > 0);
+			return stream(refused ? "data: [DONE]\n\n" : `data: ${call}\n\ndata: ${done}\n\ndata: [DONE]\n\n`);
+		}) as unknown as typeof fetch;
+		const reply = await requestToolCall({ endpoint: "http://stream-refusal.invalid/v1", model: "qwen3.5-9b", fetchImpl, onDelta: () => {} }, CONVERSATION, [tool]);
+		expect(reply.toolCalls.map((c) => c.name)).toEqual(["read_file"]);
+		expect(received).toHaveLength(2);
+	});
+
+	it("a model that really says nothing still sends its frames, and is not retried", async () => {
+		const received: ChatMessage[][] = [];
+		const fetchImpl = (async (_url: string, init?: { body?: string }) => {
+			received.push((JSON.parse(init?.body ?? "{}") as { messages: ChatMessage[] }).messages);
+			const role = JSON.stringify({ choices: [{ delta: { role: "assistant", content: "" } }] });
+			const stop = JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] });
+			return {
+				ok: true,
+				status: 200,
+				headers: { get: (name: string) => (name.toLowerCase() === "content-type" ? "text/event-stream" : null) },
+				body: (async function* () {
+					yield new TextEncoder().encode(`data: ${role}\n\ndata: ${stop}\n\ndata: [DONE]\n\n`);
+				})(),
+			};
+		}) as unknown as typeof fetch;
+		await requestToolCall({ endpoint: "http://really-silent.invalid/v1", model: "m", fetchImpl, onDelta: () => {} }, CONVERSATION, [tool]);
+		expect(received).toHaveLength(1);
+	});
+
 	it("a provider that takes several system messages receives them untouched", async () => {
 		const { fetchImpl, received } = provider(false);
 		await requestToolCall({ endpoint: "http://several-system.invalid/v1", model: "command-a", fetchImpl }, CONVERSATION, [tool]);
