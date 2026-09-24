@@ -806,6 +806,17 @@ export class PersonaAgent {
     // end. `delivered` is filled once, when a completion is accepted, because that is when the files are final.
     const deliveredHere: Delivered[] = [];
     let delivered: DeliveredVerification | undefined;
+    /**
+     * E133: what an ACCEPTED close teaches the persona, from what the engine just checked and not from the
+     * persona's own words. After the one hand-back of E106 a second close is accepted even when the delivery
+     * still fails, and until 2026-09-24 that close was remembered as a success: episodic memory said
+     * `[success]`, procedural memory kept the summary of a broken delivery as a how-to, and the success
+     * post-mortem could propose a skill from it. Measured in `e132co`: a persona closed saying "I have fixed
+     * the syntax error" with its check failing twice, and recalled that turn as a success on the next one.
+     * The close itself is unchanged; only what is learned from it.
+     */
+    const learnedAs = (): AgentOutcome =>
+      delivered?.checks.some((check) => !check.passed) ? "verification_failed" : "success";
     let errorCount = 0;
     let retriesLeft = verification.maxRetries;
     /**
@@ -1386,8 +1397,9 @@ export class PersonaAgent {
           const decision = await verifyCompletion(res.text || "(no action)");
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
-            this.persist(task, "success", res.text || "", step);
-            await maybePostmortem("success", step);
+            const learned = learnedAs();
+            this.persist(task, learned, res.text || "", step);
+            if (learned === "success") await maybePostmortem("success", step);
             return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, ...(delivered === undefined ? {} : { delivered }), cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), ...(questions.length === 0 ? {} : { questions }), trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
@@ -1819,8 +1831,9 @@ export class PersonaAgent {
           const decision = await verifyCompletion(finishedThisStep.summary);
           if (decision === "accept") {
             bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
-            this.persist(task, "success", finishedThisStep.summary, step);
-            await maybePostmortem("success", step);
+            const learned = learnedAs();
+            this.persist(task, learned, finishedThisStep.summary, step);
+            if (learned === "success") await maybePostmortem("success", step);
             return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, ...(delivered === undefined ? {} : { delivered }), cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), ...(questions.length === 0 ? {} : { questions }), trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
