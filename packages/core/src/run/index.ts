@@ -97,4 +97,3 @@ export {
 
 export { renderWorkMap, workMapFor, type MapItem, type MapService, type WorkMap } from "./work-map.js";
 export { experienceOf, livedThrough } from "./experience.js";
-export { regulationFor, type Regulation } from "./regulation.js";
