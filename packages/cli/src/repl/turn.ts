@@ -95,7 +95,7 @@ import type { Ctx } from "./types.js";
 import { compactConversation } from "./compact.js";
 import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
-import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError } from "./render.js";
+import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError, engineVerdictLines } from "./render.js";
 import { expandFileMentions } from "./mentions.js";
 import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf } from "./session.js";
 
@@ -250,6 +250,8 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
         : friendlyProviderError(outcome.failure.message);
   if (spoke) ctx.out(replyLine(ctx, reply), "persona");
   else ctx.out(outcome.failure === undefined ? chalk.dim(`  ${reply}`) : chalk.yellow(`  ${reply}`), "activity");
+  // E134: right under the reply, what the engine found broken in what the turn delivered, whatever the reply said.
+  for (const l of engineVerdictLines(outcome.delivered, process.cwd())) ctx.out(l);
   // Cumulative session accounting (F3.D16: /cost, /usage). Steps are always known; a
   // price is only known when the loop talked to something that charges, and a provider
   // that reported none adds nothing rather than adding a zero somebody reads as free.
