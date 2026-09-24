@@ -96,6 +96,7 @@ import { runGuards } from "./gate/waterfall.js";
 import { breakerGuard, nudgeFor } from "./run/breaker-guard.js";
 import { LatencyMeter, type LatencyReport } from "./run/latency.js";
 import { materialUsed } from "./run/material-use.js";
+import { localSkillsOf } from "./run/local-skills.js";
 import { deliveredBy, deliveredIn, type Delivered } from "./run/delivered.js";
 import { runDerivedChecks, type DeliveredVerification } from "./run/derived-checks.js";
 import type { TurnCall } from "./run/vocabulary.js";
@@ -805,6 +806,8 @@ export class PersonaAgent {
     // E85: the files this run left, in the order they were written, and what the runtime made of them at the
     // end. `delivered` is filled once, when a completion is accepted, because that is when the files are final.
     const deliveredHere: Delivered[] = [];
+    // E135: what the skills loaded this turn declare they deliver (`metadata.personaxis.delivers`), by skill.
+    const promised = new Map<string, readonly string[]>();
     let delivered: DeliveredVerification | undefined;
     /**
      * E133: what an ACCEPTED close teaches the persona, from what the engine just checked and not from the
@@ -1166,6 +1169,22 @@ export class PersonaAgent {
       // `verification:` today, so hanging this on that switch would ship a row that is off everywhere.
       // Saying "it runs" is exactly as much as running it proves.
       const left = deliveredIn(deliveredHere);
+      // E135: a skill that declares a delivery was loaded and the turn is closing with no file at all. Measured on
+      // `build-game` (e132): the persona loaded `playable-prototype`, wrote the design into the chat and closed,
+      // three runs in six. The same single hand-back as a broken delivery below, sharing its budget, so a turn is
+      // handed back once at most. Only a DECLARED delivery counts: reading `allowed-tools` instead turned a
+      // request for advice into a hand-back that cost the answer its content (e135b, feel-numbers 0/3).
+      if (left.length === 0 && promised.size > 0 && !handedBackOnce) {
+        handedBackOnce = true;
+        const said = [...promised].map(([name, files]) => `\`${name}\` delivers ${files.join(", ")}`).join("; ");
+        messages.push({
+          role: "user",
+          content:
+            `This turn you loaded a skill that delivers a file (${said}), and the turn wrote no file. ` +
+            `If what was asked needs it, write it now and finish again; if it did not, finish again with your full answer and one line on why no file was needed.`,
+        });
+        return "retry";
+      }
       if (left.length > 0) {
         const result = runDerivedChecks(left.map((file) => file.path));
         delivered = result;
@@ -1440,6 +1459,10 @@ export class PersonaAgent {
           if (ok) {
             const left = deliveredBy({ tool: call.name, args: call.args ?? {}, policy: this.policy, at: Date.now() });
             if (left !== undefined) deliveredHere.push(left);
+          }
+          if (used?.kind === "skill" && this.opts.personaPath !== undefined) {
+            const skill = localSkillsOf(this.opts.personaPath).skills.find((entry) => entry.name === used.name);
+            if (skill && skill.delivers.length > 0) promised.set(skill.name, skill.delivers);
           }
           return {
             callId: call.id,

@@ -25,6 +25,25 @@ export interface LocalSkill {
 	readonly dir: string;
 	/** Its `SKILL.md`. */
 	readonly file: string;
+	/**
+	 * E135: the files the skill says it delivers, from `metadata.personaxis.delivers` in its own frontmatter.
+	 * Empty when it declares none, which is most skills: advice, a checklist, a way of looking at something.
+	 *
+	 * Declared and never inferred. The first version read `allowed-tools`, and a skill that MAY write (so it can
+	 * edit a game when asked to) was taken for one that must deliver a file, which turned a request for advice
+	 * into a hand-back and cost the answer its numbers (plan, E135). Under `metadata`, the free block the skill
+	 * format already has, so a skill that declares it is still a valid `SKILL.md` for any other agent.
+	 */
+	readonly delivers: readonly string[];
+}
+
+/** `metadata.personaxis.delivers` as a list of file names, whatever shape it came in. */
+function declaredDeliveries(data: Record<string, unknown>): string[] {
+	const metadata = data.metadata;
+	const ours = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>).personaxis : undefined;
+	const raw = ours && typeof ours === "object" ? (ours as Record<string, unknown>).delivers : undefined;
+	const items = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+	return items.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim());
 }
 
 function frontmatterOf(file: string): Record<string, unknown> {
@@ -56,12 +75,14 @@ export function localSkillsOf(personaPath: string, frontmatter?: Record<string, 
 			missing.add(name);
 			continue;
 		}
-		const description = frontmatterOf(file).description;
+		const data = frontmatterOf(file);
+		const description = data.description;
 		skills.set(name, {
 			name,
 			description: typeof description === "string" ? description.replace(/\s+/g, " ").trim() : "",
 			dir,
 			file,
+			delivers: declaredDeliveries(data),
 		});
 	}
 	return {
