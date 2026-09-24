@@ -25,19 +25,6 @@ export interface LocalSkill {
 	readonly dir: string;
 	/** Its `SKILL.md`. */
 	readonly file: string;
-	/**
-	 * E135: the skill makes files, by its own `allowed-tools` (it may call `write_file` or `edit_file`). Read from
-	 * what the skill declares rather than guessed from its prose, so the loop can tell a turn that loaded a skill
-	 * for making something and delivered nothing from one that loaded a skill to answer a question.
-	 */
-	readonly writesFiles: boolean;
-}
-
-/** `allowed-tools` as the skill spec writes it: a comma or space separated string, or a list. */
-function allowedToolsOf(data: Record<string, unknown>): string[] {
-	const raw = data["allowed-tools"];
-	const items = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[\s,]+/) : [];
-	return items.filter((item): item is string => typeof item === "string" && item.length > 0).map((item) => item.trim());
 }
 
 function frontmatterOf(file: string): Record<string, unknown> {
@@ -69,15 +56,12 @@ export function localSkillsOf(personaPath: string, frontmatter?: Record<string, 
 			missing.add(name);
 			continue;
 		}
-		const data = frontmatterOf(file);
-		const description = data.description;
-		const tools = allowedToolsOf(data);
+		const description = frontmatterOf(file).description;
 		skills.set(name, {
 			name,
 			description: typeof description === "string" ? description.replace(/\s+/g, " ").trim() : "",
 			dir,
 			file,
-			writesFiles: tools.includes("write_file") || tools.includes("edit_file"),
 		});
 	}
 	return {
