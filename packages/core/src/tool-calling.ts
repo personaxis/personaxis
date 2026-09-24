@@ -221,6 +221,12 @@ interface Reply {
    * nothing but `data: [DONE]`, which read as the model going silent, twice, and the turn ended as failed.
    */
   frames?: number;
+  /**
+   * E136: an error the provider sent INSIDE a stream that had already answered 200. Read on 2026-09-24 from the raw
+   * body, headers included: `data: {"error":{"message":"System message must be at the beginning.","code":400}}` and
+   * then `data: [DONE]`. Without reading it the loop took a refusal with its reason for the model going silent.
+   */
+  error?: string;
 }
 
 /**
@@ -262,6 +268,7 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
   let finish: string | undefined;
   let reasoned = false;
   let frames = 0;
+  let error: string | undefined;
   let pending = "";
 
   const decoder = new TextDecoder();
@@ -297,6 +304,11 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
           // everything that came before it.
           continue;
         }
+        const refused = (frame as { error?: { message?: unknown } }).error;
+        if (refused) {
+          error = typeof refused.message === "string" ? refused.message : JSON.stringify(refused);
+          continue;
+        }
         frames += 1;
         if (frame.usage) usage = frame.usage;
         const choice = frame.choices?.[0];
@@ -330,6 +342,7 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
     ...(finish ? { finish } : {}),
     ...(reasoned ? { reasoned } : {}),
     frames,
+    ...(error ? { error } : {}),
   };
 }
 
@@ -506,13 +519,16 @@ export async function requestToolCall(
     }
     if (res.ok) {
       let reply = await readReply(res, cfg.onDelta);
-      if (reply.frames === 0 && canReshape) {
+      const refusedInStream = (r: Reply): boolean => r.error !== undefined || r.frames === 0;
+      if (refusedInStream(reply) && canReshape) {
         const again = await retryReshaped();
         if (again.ok) {
           reply = await readReply(again, cfg.onDelta);
-          if (reply.frames !== 0) oneSystemOnly.add(shapeKey(cfg));
+          if (!refusedInStream(reply)) oneSystemOnly.add(shapeKey(cfg));
         }
       }
+      // A refusal that stays one is the provider's, with its reason, never the model going silent.
+      if (reply.error !== undefined) throw new Error(`tool-calling stream error: ${reply.error}`);
       const toolCalls = reply.toolCalls.map((tc) => {
         const parsed = parseArgs(tc.function.arguments);
         return {
