@@ -96,7 +96,6 @@ import { runGuards } from "./gate/waterfall.js";
 import { breakerGuard, nudgeFor } from "./run/breaker-guard.js";
 import { LatencyMeter, type LatencyReport } from "./run/latency.js";
 import { materialUsed } from "./run/material-use.js";
-import { localSkillsOf } from "./run/local-skills.js";
 import { deliveredBy, deliveredIn, type Delivered } from "./run/delivered.js";
 import { runDerivedChecks, type DeliveredVerification } from "./run/derived-checks.js";
 import type { TurnCall } from "./run/vocabulary.js";
@@ -806,8 +805,6 @@ export class PersonaAgent {
     // E85: the files this run left, in the order they were written, and what the runtime made of them at the
     // end. `delivered` is filled once, when a completion is accepted, because that is when the files are final.
     const deliveredHere: Delivered[] = [];
-    // E135: the skills loaded this turn that make files, by their own `allowed-tools`.
-    const makersLoaded = new Set<string>();
     let delivered: DeliveredVerification | undefined;
     /**
      * E133: what an ACCEPTED close teaches the persona, from what the engine just checked and not from the
@@ -1169,21 +1166,6 @@ export class PersonaAgent {
       // `verification:` today, so hanging this on that switch would ship a row that is off everywhere.
       // Saying "it runs" is exactly as much as running it proves.
       const left = deliveredIn(deliveredHere);
-      // E135: a skill that makes files was loaded and the turn is closing with none. Measured on `build-game`
-      // (e132): the persona loaded `playable-prototype`, read its reference, wrote the design into the chat and
-      // closed, three runs in six. The same single hand-back as a broken delivery below, sharing its budget, so
-      // this can never become the edit-and-retry loop of E103; it states the fact and the persona decides.
-      if (left.length === 0 && makersLoaded.size > 0 && !handedBackOnce) {
-        handedBackOnce = true;
-        const names = [...makersLoaded].map((name) => `\`${name}\``).join(" and ");
-        messages.push({
-          role: "user",
-          content:
-            `This turn you loaded ${names}, which ${makersLoaded.size === 1 ? "makes" : "make"} files, and it wrote none. ` +
-            `If what was asked needs them, write them now and finish again; if it did not, finish and say in one line why no file was needed.`,
-        });
-        return "retry";
-      }
       if (left.length > 0) {
         const result = runDerivedChecks(left.map((file) => file.path));
         delivered = result;
@@ -1458,10 +1440,6 @@ export class PersonaAgent {
           if (ok) {
             const left = deliveredBy({ tool: call.name, args: call.args ?? {}, policy: this.policy, at: Date.now() });
             if (left !== undefined) deliveredHere.push(left);
-          }
-          if (used?.kind === "skill" && this.opts.personaPath !== undefined) {
-            const skill = localSkillsOf(this.opts.personaPath).skills.find((entry) => entry.name === used.name);
-            if (skill?.writesFiles) makersLoaded.add(skill.name);
           }
           return {
             callId: call.id,
