@@ -395,7 +395,7 @@ governance:
 # policy.yaml may only restrict it). Change with
 # \`personaxis improve <mode>\` or the REPL /improve.
 improvement_policy:
-  mode: locked                          # locked | suggesting | autonomous
+  mode: suggesting                      # locked (kill-switch) | suggesting | autonomous
 
 # v1.0: persona-prompting source material lives INSIDE layer 10 \`persona\` (not a
 # separate block). All optional; see docs/PERSONA_PROMPTING.md. Add under persona:
@@ -746,7 +746,7 @@ governance:
 # policy.yaml may only restrict it). Change with
 # \`personaxis improve <mode>\` or the REPL /improve.
 improvement_policy:
-  mode: locked                          # locked | suggesting | autonomous
+  mode: suggesting                      # locked (kill-switch) | suggesting | autonomous
 
 # v1.0: persona-prompting source material lives INSIDE layer 10 \`persona\` (not a
 # separate block). All optional; see docs/PERSONA_PROMPTING.md. Add under persona:
@@ -1086,7 +1086,7 @@ governance:
 # policy.yaml may only restrict it). Change with
 # \`personaxis improve <mode>\` or the REPL /improve.
 improvement_policy:
-  mode: locked                          # locked | suggesting | autonomous
+  mode: suggesting                      # locked (kill-switch) | suggesting | autonomous
 
 # v1.0: persona-prompting source material lives INSIDE layer 10 \`persona\` (not a
 # separate block). All optional; see docs/PERSONA_PROMPTING.md. Add under persona:
@@ -1155,16 +1155,17 @@ spec_version: "1.0.0"
 applies_to:
   persona_name: "${metaSlug}"
 
-# Mutation governance. Recommended default for production: "locked".
-#   locked      the spec is immutable at runtime; state still moves inside
-#               its declared envelopes, and drift only raises an alert.
-#   suggesting  the persona may PROPOSE a spec edit; a person approves it,
-#               and approval mints a new version.
-#   autonomous  the persona may apply one directly, bounded by the
+# Mutation governance.
+#   locked      the kill-switch, for an incident or an audit: nothing the
+#               persona proposes applies, its state included.
+#   suggesting  the persona is alive: its state moves inside its declared
+#               envelopes, and it may PROPOSE a spec edit that a person
+#               approves, minting a new version.
+#   autonomous  it may also apply a spec edit directly, bounded by the
 #               universals, the per-layer edit policy and the hard limits.
-# Non-locked modes require approved_by and last_approval_at.
+#               Requires approved_by and last_approval_at.
 improvement_policy:
-  mode: locked
+  mode: suggesting
 
 runtime:
   min_consistency: 0.7
