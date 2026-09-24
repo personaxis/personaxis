@@ -29,7 +29,7 @@
  * script gets a wall-clock limit on load.
  */
 
-import { createContext, runInContext } from "node:vm";
+import { createContext, runInContext, Script } from "node:vm";
 
 export interface PageRun {
 	/** It ran every frame asked for without throwing. */
@@ -335,6 +335,37 @@ export function runPage(html: string, opts: { frames?: number } = {}): PageRun {
 	}
 
 	return { ok: true, error: null, frames, drew: drew(), listens: listens() };
+}
+
+/**
+ * E132: whether a file's own scripts still compile, WITHOUT running them, said the way `check_page` says it.
+ *
+ * `write_file` and `edit_file` call this on the file as it now stands, so an edit that breaks the syntax says
+ * so in its own result, in the step that broke it. Measured on 2026-09-24 (`e121c`): in the two long sessions
+ * that ended with a broken game, the persona saw its check fail three steps later, named the missing comma
+ * correctly, and closed the turn explaining it instead of fixing it.
+ *
+ * The same compiler as `runPage` (`node:vm`) and the same way of citing the line, so the two can never disagree
+ * about whether a page compiles. A script that uses `import` or `export` is not judged: this compiler reads
+ * classic scripts, and calling a module broken because of its first `import` would teach the persona to
+ * ignore the warning. Null means nothing to report: it compiles, or it was not judged.
+ */
+export function syntaxFault(path: string, content: string): string | null {
+	const lower = path.toLowerCase();
+	const scripts: OwnScript[] = lower.endsWith(".html") || lower.endsWith(".htm")
+		? ownScripts(content)
+		: lower.endsWith(".js")
+			? [{ body: content, linesBefore: 0 }]
+			: [];
+	for (const [index, script] of scripts.entries()) {
+		if (/^\s*(import|export)\b/m.test(script.body)) continue;
+		try {
+			new Script(script.body, { filename: scriptName(index) });
+		} catch (e) {
+			return withSite(`${path} does not compile now`, e, scripts);
+		}
+	}
+	return null;
 }
 
 /** The result as the model reads it: the verdict, then what it does not cover. */
