@@ -2,7 +2,8 @@
 import { defineTool } from "../define.js";
 import { evaluateFileWrite } from "../../sandbox.js";
 import { executeFileEdit } from "../exec.js";
-import { openSync, readSync, closeSync } from "node:fs";
+import { openSync, readSync, closeSync, readFileSync, statSync } from "node:fs";
+import { syntaxFault } from "../../web/run-page.js";
 
 import { formatMismatch } from "../file-format.js";
 
@@ -25,6 +26,17 @@ function headOf(path: string): string {
     return "";
   } finally {
     if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** The whole file as text, or an empty string when it is too big to be worth compiling or cannot be read. */
+function wholeOf(path: string): string {
+  try {
+    // A page a person plays is kilobytes; past two megabytes this is not a hand-written script.
+    if (statSync(path).size > 2 * 1024 * 1024) return "";
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
   }
 }
 
@@ -57,6 +69,9 @@ export const editFileTool = defineTool({
     // made an untouched PDF warn, which is the worst thing a warning can do: teach people to skip it.
     const wrong = formatMismatch(r.path, headOf(r.path));
     const said = `edited ${r.path}\n${r.content ?? ""}`.trimEnd();
-    return wrong === null ? said : `${said}\n${wrong}`;
+    // E132: judged on the whole file as it now stands, like the format above, because the piece that was
+    // pasted can be fine and still leave a brace unclosed somewhere else.
+    const broken = syntaxFault(r.path, wholeOf(r.path));
+    return [said, wrong, broken].filter((line): line is string => line !== null && line !== "").join("\n");
   },
 });
