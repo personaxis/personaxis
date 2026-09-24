@@ -21,6 +21,7 @@ export * from "./report.js";
 export * from "./research.js";
 export * from "./expression-synth.js";
 export * from "./draft.js";
+export * from "./profiles.js";
 
 export interface SeedContribution {
   label: string;

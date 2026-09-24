@@ -22,6 +22,8 @@ import { join, resolve, relative, basename } from "node:path";
 import chalk from "chalk";
 import {
   genesis,
+  isGenesisProfile,
+  GENESIS_PROFILES,
   mergeSeed,
   buildSpecDocument,
   pendingItems,
@@ -86,6 +88,8 @@ interface CreateOpts {
   deep?: boolean;
   /** E65: research the field on the web and leave what it found behind the persona. */
   research?: boolean;
+  /** E128: the starting profile, the defaults of the three controls (range, per-layer policy, half-life). */
+  profile?: string;
 }
 
 /** Provider adapter → core's StructuredCaller. Null when no model is usable. */
@@ -267,6 +271,10 @@ async function chooseSource(opts: CreateOpts): Promise<boolean> {
 }
 
 export async function runCreate(slugArg: string | undefined, opts: CreateOpts): Promise<void> {
+  // E128: refused before anything is asked or written, so a typo never becomes a Standard persona in silence.
+  if (opts.profile !== undefined && !isGenesisProfile(opts.profile)) {
+    throw new Error(`--profile must be one of ${GENESIS_PROFILES.join(", ")}; got '${opts.profile}'.`);
+  }
   // No source flag and a terminal to ask in: show the sources instead of assuming one.
   const noSource = !opts.fromPrompt && opts.fromProject === undefined && !opts.fromImport && !opts.fromTranscript;
   if (noSource && process.stdin.isTTY && process.stdout.isTTY && !opts.yes && !opts.json && !opts.deep) {
@@ -352,6 +360,22 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
 
   if (slugArg) {
     contributions.push({ label: "cli-arg", seed: { slug: slugArg }, evidence: [] });
+  }
+  // E128: last, so a profile named on the command line wins over one the interview answered.
+  if (opts.profile !== undefined) {
+    contributions.push({
+      label: "cli-arg",
+      seed: { profile: opts.profile as (typeof GENESIS_PROFILES)[number] },
+      evidence: [
+        {
+          id: "profile",
+          kind: "answer",
+          source: "user",
+          excerpt: `--profile ${opts.profile}`,
+          mappedFields: [{ path: "governance.per_layer_edit_policy", value: opts.profile, rule: "choice-to-profile" }],
+        },
+      ],
+    });
   }
 
   // ── E65: the web research, only when asked for ─────────────────────────────
@@ -576,6 +600,7 @@ export const createCommand = new Command("create")
   .option("--provider <name>", "Override the configured provider (local | byok | agent | remote)")
   .option("--no-polish", "Skip the automatic LLM polish after creation (offline template, marked pending)")
   .option("--deep", "Ask the FULL question bank (envelope width, mood half-life, refusals, uncertainty, memory, improvement, a voice exemplar) instead of the twelve core questions")
+  .option("--profile <name>", "Starting profile: regulated | standard | research (the defaults of each layer's range, who approves lasting changes, and how fast it returns to baseline). Default: standard")
   .option("--research", "Search the web for the field, and leave what it found in references/ with each source and its date (needs a web provider key)")
   .action(async (slug: string | undefined, opts: CreateOpts) => {
     try {

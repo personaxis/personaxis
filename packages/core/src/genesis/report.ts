@@ -11,6 +11,7 @@
 import type { EvidenceLedger, GenesisResult } from "./types.js";
 import { ITEM_BANK_VERSION } from "./item-bank.js";
 import { describeImprovementMode } from "../governance.js";
+import { profileControls } from "./profiles.js";
 
 export interface ProvenanceSummary {
   /** Quantitative spec fields present in the built spec. */
@@ -154,6 +155,12 @@ export function renderCreationReport(result: GenesisResult, gates: Array<{ name:
     result.seed.improvementMode === undefined
       ? "This is the Genesis default, not something the answers chose. Change it with `personaxis improve <mode>`."
       : "Chosen when the persona was created. Change it with `personaxis improve <mode>`.",
+    "",
+    // E128: the starting values of the three controls (range, who approves what lasts, half-life).
+    profileControls(result.seed.profile).says,
+    result.seed.profile === undefined
+      ? "Standard is the default, not something the answers chose; `personaxis create --profile regulated|standard|research` picks another."
+      : "Chosen when the persona was created; every value is in the spec and can be edited there.",
   );
   lines.push("");
   return lines.join("\n");
