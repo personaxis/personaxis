@@ -7,6 +7,8 @@
  * quantitative field has the value it has, C6, "every number earned").
  */
 
+import type { GenesisProfile } from "./profiles.js";
+
 export type EvidenceKind =
   | "answer"
   | "document"
@@ -46,7 +48,8 @@ export type SeedExpression = string | Partial<Record<"low" | "moderate" | "high"
 
 export interface SeedTrait {
   mean: number;
-  range: [number, number];
+  /** Absent means the builder's default width, which comes from the starting profile (E128). */
+  range?: [number, number];
   expression?: SeedExpression;
   bands?: { low_max?: number; moderate_max?: number };
   halfLife?: number;
@@ -92,6 +95,9 @@ export interface PersonaSeed {
   behavioralAnchors?: { do?: string[]; dont?: string[]; examples?: string[] };
 
   improvementMode?: "locked" | "suggesting" | "autonomous";
+  /** E128: the starting profile, which sets the defaults of the three controls (range, per-layer policy,
+   *  half_life). Absent is Standard, what Genesis always wrote. Anything else the seed says wins over it. */
+  profile?: GenesisProfile;
   /** V5.P2.5: metacognition knob → cognition.uncertainty_policy thresholds
    *  (cautious 0.25/0.60 · balanced 0.35/0.75 · confident 0.45/0.85; always
    *  abstain > disclose, universal #12). */
