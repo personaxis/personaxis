@@ -6,6 +6,7 @@
  * beyond building strings.
  */
 
+import { relative } from "node:path";
 import chalk from "chalk";
 import { eventLine } from "@personaxis/tui/visual";
 import { lineFor, type PersonaTheme } from "@personaxis/core";
@@ -145,6 +146,28 @@ export function renderMarkdown(src: string): string {
     out.push(renderInlineMarkdown(raw));
   }
   return out.join("\n");
+}
+
+/**
+ * E134: what the engine found broken in what the turn delivered, said by Personaxis under the persona's reply.
+ *
+ * A persona can close a turn saying it fixed something the engine has just run and seen fail: measured in
+ * `e132co`, a reply said "I have fixed the syntax error [...] The game should now run" over a page that did not
+ * compile, and the only thing contradicting it was a dim activity line above. The reply is the model's and is
+ * shown as it is; this is the product's own account, in the same words `check_page` uses, and only when a check
+ * failed, because a line under every good delivery would be noise nobody reads. Paths are shown relative to the
+ * project, like the rest of the transcript's paths a person reads.
+ */
+export function engineVerdictLines(
+  delivered: { readonly checks: ReadonlyArray<{ readonly what: string; readonly how: string; readonly passed: boolean; readonly reason?: string }> } | undefined,
+  cwd: string,
+): string[] {
+  const failed = (delivered?.checks ?? []).filter((check) => !check.passed);
+  return failed.map((check) => {
+    const shown = relative(cwd, check.what) || check.what;
+    const said = (check.reason ?? `${check.what}: ${check.how}, and it failed`).split(check.what).join(shown);
+    return `  ${chalk.yellow("⚠ Checked by Personaxis:")} ${said.startsWith(shown) ? said : `${shown}: ${said}`}`;
+  });
 }
 
 export function replyLine(ctx: Ctx, text: string): string {
