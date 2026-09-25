@@ -15,6 +15,7 @@
 import type { TokenUsage } from "./tool-calling.js";
 import type { ChatMessage } from "./tool-calling.js";
 import { compactionPlan } from "./compaction/units.js";
+import { thinkingOffFor } from "./run/destinations.js";
 import type { CompactionPlan } from "./compaction/service.js";
 
 export interface ModelEndpoint {
@@ -336,6 +337,8 @@ async function summarize(cfg: ModelEndpoint, transcript: string): Promise<string
       ],
       temperature: 0,
       max_tokens: 900,
+      // E140: see `thinkingOffFor`; nothing is added for a destination that declared no switch.
+      ...thinkingOffFor(cfg.endpoint, cfg.model),
     }),
   });
   if (!res.ok) throw new Error(`summarizer HTTP ${res.status}`);
