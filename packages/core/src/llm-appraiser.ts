@@ -20,6 +20,7 @@ import {
   type Appraiser,
 } from "./appraisal.js";
 import { renderEvolutionView } from "./evolution-view.js";
+import { thinkingOffFor } from "./run/destinations.js";
 
 export interface LlmAppraiserConfig {
   /** OpenAI-compatible base URL, e.g. http://localhost:11434/v1 (Ollama). */
@@ -106,6 +107,9 @@ export class LlmAppraiser implements Appraiser {
       // 512 predates models that think before they answer, and it is now a budget that a
       // whole family of open models cannot finish inside.
       max_tokens: this.cfg.maxTokens ?? 2048,
+      // E140: measured 2026-09-24, Qwen3.5-9B spent all 2048 thinking (8 000 characters) on every appraisal of the
+      // bench and the persona never learned from a turn. A destination that declared a switch is told not to think.
+      ...thinkingOffFor(this.cfg.endpoint, this.cfg.model),
     };
 
     // Constrained decoding, most-constrained first. Endpoints accept different

@@ -65,6 +65,22 @@ interface Entry {
  */
 const TABLE: readonly Entry[] = [
 	{
+		// E140: Qwen 3.5 is hybrid and thinks by default. Read raw on 2026-09-24 through HuggingFace's router: the title
+		// call at 16 tokens came back `finish: length` with an empty answer from both providers it routes to (together
+		// and deepinfra), and with `chat_template_kwargs.enable_thinking: false` it answered in 6 tokens from both.
+		// `reasoning_effort` is no switch here: together refused `none` with a 400. The optional `:provider` suffix is
+		// the router's own spelling for pinning a provider.
+		model: /^Qwen\/Qwen3\.5-[^:]*(:[a-z-]+)?$/i,
+		capabilities: {
+			id: "qwen3.5-hybrid",
+			effort: [],
+			foreignReasoning: false,
+			cacheSeconds: 0,
+			rejects: [],
+			thinkingOff: { chat_template_kwargs: { enable_thinking: false } },
+		},
+	},
+	{
 		// OpenAI's reasoning models take a named effort. `minimal` exists on the newer
 		// ones and not on the o-series, and the ladder handles that by stepping down.
 		model: /^(o[1-9]|gpt-5)/i,
@@ -116,6 +132,15 @@ export function capabilitiesFor(endpoint: string, model: string): DestinationCap
 		}
 	}
 	return { ...UNKNOWN, id: `unknown:${model}` };
+}
+
+/**
+ * E140: the fields that tell this destination not to think, or nothing when it declared no switch.
+ *
+ * For the calls after a turn only. Spread into a request body, so an undeclared destination gets the body it always got.
+ */
+export function thinkingOffFor(endpoint: string, model: string): Readonly<Record<string, unknown>> {
+	return capabilitiesFor(endpoint, model).thinkingOff ?? {};
 }
 
 /**

@@ -61,6 +61,14 @@ export interface DestinationCapabilities {
 	 * `small` here only after the bench measured that the decision step helps it.
 	 */
 	readonly scaffold?: Scaffold;
+	/**
+	 * E140: what goes in a request body to tell this destination not to think, when it has a switch for that.
+	 *
+	 * Sent only on the calls after a turn (the title, the appraisal, the summary), which want a short answer and have
+	 * a small ceiling: a hybrid model thinks until the ceiling and answers nothing. Absent means the destination has
+	 * no switch anybody measured, and then nothing is sent, because a field an endpoint does not know is a 400.
+	 */
+	readonly thinkingOff?: Readonly<Record<string, unknown>>;
 }
 
 /**

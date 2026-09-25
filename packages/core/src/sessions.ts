@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, append
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { ChatMessage } from "./tool-calling.js";
+import { thinkingOffFor } from "./run/destinations.js";
 
 /**
  * Where a session came from.
@@ -271,6 +272,8 @@ export async function nameSession(
       ],
       temperature: 0,
       max_tokens: 16,
+      // E140: a model that thinks spends 16 tokens thinking; a destination that declared a switch is told not to.
+      ...thinkingOffFor(llm.endpoint, llm.model),
     }),
   });
   if (!res.ok) throw new Error(`namer HTTP ${res.status}`);
