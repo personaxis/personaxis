@@ -254,6 +254,21 @@ describe("session distillation (V2-F1.3)", () => {
     expect(brief).toContain("roadmap");
     expect(sessionBrief(personaPath, "old")).toBe(""); // nothing besides the excluded one
   });
+
+  // E138: the first message is where people put their conditions. This one is the bench's, word for word, and its
+  // condition starts at character 110, which is where both memories used to cut it.
+  const CONDITION_LATE =
+    "I am making a small browser game for a jam. Two things about my players before anything else: a good number of them are colour blind, red and green especially, and they play on old laptops with integrated graphics. With that in mind, what would you change first about a platformer that feels floaty?";
+
+  it("a condition stated late in the first message crosses into the next session, in both memories (E138)", () => {
+    const event = distillTurns([{ type: "turn", role: "user", content: CONDITION_LATE, ts: "t1" }] as never, "jam").find((x) => x.kind === "event");
+    expect(event?.content).toContain("colour blind, red and green");
+    writeFileSync(personaPath, fixture());
+    ensureSession(personaPath, { id: "jam", kind: "root", participants: ["(root)"], name: "jam", created: "2026-09-24", persona: "" });
+    appendTurn(personaPath, "jam", { role: "user", content: CONDITION_LATE });
+    appendTurn(personaPath, "jam", { role: "assistant", content: "Raise gravity first." });
+    expect(sessionBrief(personaPath, "next")).toContain("colour blind, red and green");
+  });
 });
 
 describe("retention pruning (V2-F1.6)", () => {
