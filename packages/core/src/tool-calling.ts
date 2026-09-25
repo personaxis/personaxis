@@ -529,13 +529,22 @@ export async function requestToolCall(
       }
       // A refusal that stays one is the provider's, with its reason, never the model going silent.
       if (reply.error !== undefined) throw new Error(`tool-calling stream error: ${reply.error}`);
-      const toolCalls = reply.toolCalls.map((tc) => {
+      // E137: a reply that used its whole ceiling was cut, whatever the provider says. Read raw on 2026-09-24 with
+      // Qwen3.5-9B on HuggingFace's router, a write_file cut at the cap came back as VALID JSON with `finish:
+      // tool_calls` from both providers: together dropped the cut argument (`{"path": "game.html"}`) and deepinfra
+      // closed the string itself, half a stylesheet in `content`. Neither fails to parse, so `parseArgs` never saw a
+      // cut, and the model heard "missing content" seventeen times or would have been told half a file was written.
+      // Only the last call can be the one cut: the ones before it were finished before the ceiling arrived.
+      const completion = extractUsage({ usage: reply.usage })?.completion_tokens;
+      const cutAtCap = reply.finish === "length" || (completion !== undefined && completion >= body.max_tokens);
+      const toolCalls = reply.toolCalls.map((tc, index) => {
         const parsed = parseArgs(tc.function.arguments);
+        const cut = parsed.truncated || (cutAtCap && index === reply.toolCalls.length - 1);
         return {
           id: tc.id,
           name: tc.function.name,
           args: parsed.args,
-          ...(parsed.truncated ? { truncated: true } : {}),
+          ...(cut ? { truncated: true } : {}),
         };
       });
       // E7: a call the endpoint did not parse, still written in the model's own
