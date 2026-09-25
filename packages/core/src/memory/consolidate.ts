@@ -26,6 +26,17 @@ const GOAL_RE = /\b(mi meta|mi objetivo|el objetivo es|quiero lograr|my goal is|
 const trim1 = (s: string, n: number): string => s.replace(/\s+/g, " ").trim().slice(0, n);
 
 /**
+ * E138: how much of the person's FIRST message crosses into the next session.
+ *
+ * It was 110 here and 120 in the recap, and the first message is where people put their conditions. Measured
+ * 2026-09-24 with Qwen3.5-9B: "a good number of them are colour blind, red and green especially" starts at character
+ * 110, so both memories kept "…a good number of" and the next session handed red health and red hazards to a player
+ * who had said red and green. A model that took more than one step was saved by `agent run [...]`, which keeps the
+ * whole task; one that answers in a single step has only this.
+ */
+const FIRST_MESSAGE_CHARS = 600;
+
+/**
  * V5.FIX.3: infrastructure failures (provider 401s, unreachable endpoints, agent
  * stops) are NOT the persona's lived experience: they must never distill into
  * episodic memory or recaps. The session transcript keeps them (honest history);
@@ -54,7 +65,7 @@ export function distillTurns(turns: SessionTurn[], sessionName: string): Distill
     else if (GOAL_RE.test(t.content)) push({ content: `goal: ${trim1(t.content, 200)}`, kind: "decision", source: "user" });
   }
   if (user.length) {
-    const first = trim1(user[0].content, 110);
+    const first = trim1(user[0].content, FIRST_MESSAGE_CHARS);
     const last = assistant.length ? trim1(assistant[assistant.length - 1].content, 110) : "";
     push({ content: `session "${sessionName}": started with "${first}"${last ? `; ended: "${last}"` : ""}`, kind: "event", source: "synthesis" });
   }
@@ -99,7 +110,7 @@ export function sessionBrief(personaPath: string, excludeId?: string): string {
   const user = turns.filter((t) => t.role === "user");
   const assistant = turns.filter((t) => t.role === "assistant" && !isInfraErrorReply(t.content));
   if (!user.length) return "";
-  const first = trim1(user[0].content, 120);
+  const first = trim1(user[0].content, FIRST_MESSAGE_CHARS);
   const last = assistant.length ? trim1(assistant[assistant.length - 1].content, 120) : "";
   return `"${prior.name}" (${prior.updated.slice(0, 10)}): started with "${first}"${last ? `; last reply: "${last}"` : ""}`;
 }
