@@ -1,7 +1,7 @@
 /** `write_file` (J.1): create or overwrite a text file relative to the workspace root. */
 import { defineTool } from "../define.js";
 import { evaluateFileWrite } from "../../sandbox.js";
-import { formatMismatch } from "../file-format.js";
+import { formatMismatch, pageStartsMidway } from "../file-format.js";
 import { syntaxFault } from "../../web/run-page.js";
 
 
@@ -36,9 +36,11 @@ export const writeFileTool = defineTool({
     const wrong = formatMismatch(args.path, onDisk);
     // E132: a script that no longer compiles, said in the step that wrote it (see `syntaxFault`).
     const broken = syntaxFault(r.path, onDisk);
+    // E139 v2: a page that now begins in its middle, said by the write that did it.
+    const midway = pageStartsMidway(r.path, onDisk, !appending);
     const done = appending
       ? `appended ${r.bytes} bytes to ${r.path} (now ${Buffer.byteLength(onDisk)} bytes)`
       : `wrote ${r.bytes} bytes to ${r.path}`;
-    return [done, wrong, broken].filter((line): line is string => line !== null).join("\n");
+    return [done, wrong, midway, broken].filter((line): line is string => line !== null).join("\n");
   },
 });
