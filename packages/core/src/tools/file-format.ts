@@ -57,3 +57,29 @@ export function formatMismatch(path: string, content: string): string | null {
     `will not read it. Name it .md or .txt if it is text, or produce a real ${ext.slice(1)} file.`
   );
 }
+
+/**
+ * `E139`: a page whose file now begins in the middle of one.
+ *
+ * Measured on 2026-09-26 (`e139q35`, `named-game` r1). A page too long for one reply was cut, the persona
+ * wrote it again whole, and two steps later sent the second half with a plain write: the file became
+ * `const canvas = ...` with no page around it, and nothing in the result said so. The cut message was two
+ * steps behind by then, so this reads what is on disk at the moment of the write that broke it.
+ *
+ * Only pages, because a page has a start that can be recognised: a tag, and not a `<script>` or a closing
+ * tag, which is how the second half of a page begins. It warns and does not block, like `formatMismatch`.
+ */
+export function pageStartsMidway(path: string, whole: string, replaced: boolean): string | null {
+  const ext = extensionOf(path);
+  if (ext !== ".html" && ext !== ".htm") return null;
+  const start = whole.replace(/^﻿/, "").trimStart();
+  if (start === "") return null;
+  if (start.startsWith("<") && !/^<(script|\/)/i.test(start)) return null;
+  const opening = start.split("\n")[0]!.slice(0, 40);
+  const name = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+  return (
+    `warning: ${name} now begins with \`${opening}\`, which is the middle of a page, not its start.` +
+    (replaced ? " This write replaced everything that was in the file." : "") +
+    " If this was a later part of the page, write the first part again, then this part with write_file and append: true."
+  );
+}

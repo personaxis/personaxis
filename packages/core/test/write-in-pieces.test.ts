@@ -74,6 +74,45 @@ describe("a file sent in pieces (E139)", () => {
 	});
 });
 
+describe("a page that now begins in its middle says so (E139 v2)", () => {
+	it("the second half put on top with a plain write: named-game r1 of e139q35", async () => {
+		const policy = workspace();
+		await writeFileTool.execute({ path: "game.html", content: FIRST }, policy, execution);
+		const said = await writeFileTool.execute({ path: "game.html", content: "const canvas = document.getElementById('c');\n" }, policy, execution);
+		expect(said).toMatch(/^wrote /);
+		expect(said).toContain("game.html now begins with `const canvas");
+		expect(said).toContain("middle of a page");
+		expect(said).toContain("replaced everything");
+		expect(said).toContain("append: true");
+	});
+
+	it("a half that begins with its script, and one appended onto nothing", async () => {
+		const policy = workspace();
+		const script = await writeFileTool.execute({ path: "game.html", content: "<script>\nconst a = 1;\n</script>\n" }, policy, execution);
+		expect(script).toContain("middle of a page");
+		const onto = await writeFileTool.execute({ path: "other.html", content: "let x = 1;\n", append: true }, policy, execution);
+		expect(onto).toContain("middle of a page");
+		expect(onto).not.toContain("replaced everything");
+	});
+
+	it("says nothing about a page that starts as a page, about the first part, or about a correct append", async () => {
+		const policy = workspace();
+		expect(await writeFileTool.execute({ path: "a.html", content: "<!doctype html>\n<p>hi</p>\n" }, policy, execution)).not.toContain("warning");
+		expect(await writeFileTool.execute({ path: "b.html", content: "\n\n<html><body></body></html>" }, policy, execution)).not.toContain("warning");
+		expect(await writeFileTool.execute({ path: "c.htm", content: "<canvas id=c></canvas>" }, policy, execution)).not.toContain("warning");
+		const first = await writeFileTool.execute({ path: "game.html", content: FIRST }, policy, execution);
+		expect(first).not.toContain("middle of a page");
+		const joined = await writeFileTool.execute({ path: "game.html", content: REST, append: true }, policy, execution);
+		expect(joined).not.toContain("middle of a page");
+	});
+
+	it("only pages: a script or a document that begins with code is not judged", async () => {
+		const policy = workspace();
+		expect(await writeFileTool.execute({ path: "game.js", content: "const canvas = 1;\n" }, policy, execution)).not.toContain("middle of a page");
+		expect(await writeFileTool.execute({ path: "notes.md", content: "const canvas = 1;\n" }, policy, execution)).not.toContain("middle of a page");
+	});
+});
+
 const allow = { decision: "allow" as const, reason: "", class: { writesFiles: false, network: false, destructive: false, escapesWorkspace: false } };
 const CUT = '{"path":"game.html","content":"<!doctype html>\\n<style>body{margin:0;pad';
 
