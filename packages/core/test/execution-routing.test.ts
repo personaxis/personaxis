@@ -56,6 +56,10 @@ function recordingPort(): ExecutionPort & { calls: string[] } {
 			calls.push(`write:${path}`);
 			return file(path);
 		},
+		async appendFile(path) {
+			calls.push(`append:${path}`);
+			return file(path);
+		},
 		async editFile(path) {
 			calls.push(`edit:${path}`);
 			return file(path);

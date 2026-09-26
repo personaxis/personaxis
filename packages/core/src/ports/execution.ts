@@ -25,6 +25,7 @@
 import type { ExecResult, FileResult } from "../tools/exec.js";
 import {
 	executeCommand,
+	executeFileAppend,
 	executeFileEdit,
 	executeFileWrite,
 	listDirSafe,
@@ -47,6 +48,8 @@ export interface ExecutionPort {
 
 	runCommand(cmd: string, policy: Policy, opts?: { timeoutMs?: number }): Promise<ExecResult>;
 	writeFile(path: string, content: string, policy: Policy): Promise<FileResult>;
+	/** Adds to the end, creating the file if missing; `content` in the result is the whole file (E139). */
+	appendFile(path: string, content: string, policy: Policy): Promise<FileResult>;
 	editFile(path: string, find: string, replace: string, policy: Policy): Promise<FileResult>;
 	readFile(path: string, policy: Policy): Promise<FileResult>;
 	listDir(path: string, policy: Policy): Promise<FileResult>;
@@ -70,6 +73,9 @@ export function localExecution(): ExecutionPort {
 		},
 		async writeFile(path, content, policy) {
 			return executeFileWrite(path, content, policy);
+		},
+		async appendFile(path, content, policy) {
+			return executeFileAppend(path, content, policy);
 		},
 		async editFile(path, find, replace, policy) {
 			return executeFileEdit(path, find, replace, policy);
@@ -106,6 +112,9 @@ export function noExecution(reason: string): ExecutionPort {
 			return { ok: false, code: null, stdout: "", stderr: why, truncated: false, timedOut: false };
 		},
 		async writeFile(path) {
+			return refusedFile(path);
+		},
+		async appendFile(path) {
 			return refusedFile(path);
 		},
 		async editFile(path) {
