@@ -10,6 +10,7 @@
 
 import { spawn } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -200,6 +201,28 @@ export function executeFileWrite(path: string, content: string, policy: Policy):
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, content, "utf-8");
     return { ok: true, path: p, bytes: Buffer.byteLength(content) };
+  } catch (e) {
+    return { ok: false, path, error: (e as Error).message };
+  }
+}
+
+/**
+ * Add `content` to the end of a text file, creating it if it is missing (E139).
+ *
+ * A write too long for one reply arrives cut, and the only way to send it is in pieces. With
+ * nothing but `executeFileWrite`, the second piece replaced the first: measured 2026-09-26, four
+ * of fourteen `long-job` runs with Qwen3.5-9B delivered a `game.html` that began halfway through
+ * its script. Reading the file back to rewrite it is not a way round it either, because
+ * `readFileSafe` stops at `MAX_OUTPUT`. The whole file comes back in `content` so the caller can
+ * check what is now on disk, not only the piece it sent.
+ */
+export function executeFileAppend(path: string, content: string, policy: Policy): FileResult {
+  try {
+    const p = abs(path, policy);
+    mkdirSync(dirname(p), { recursive: true });
+    appendFileSync(p, content, "utf-8");
+    const whole = readFileSync(p, "utf-8");
+    return { ok: true, path: p, bytes: Buffer.byteLength(content), content: whole };
   } catch (e) {
     return { ok: false, path, error: (e as Error).message };
   }

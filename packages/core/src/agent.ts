@@ -1585,7 +1585,15 @@ export class PersonaAgent {
           if (call.truncated) {
             errorCount++;
             noteFail(call);
-            const cut = `error: this call arrived cut off, so it was not run: the arguments for ${call.name} ended in the middle. Your reply hit its length limit. Send it again in smaller pieces: write a first part, then append the rest with another call.`;
+            // E139: the pieces are named by the argument that joins them. This said "append the
+            // rest with another call" when no tool could append, and the second piece of a file
+            // replaced the first (four of fourteen `long-job` runs, 2026-09-26). A tool with no
+            // way to join pieces is only told to send less at once.
+            const pieces =
+              call.name === "write_file"
+                ? "Send the file in smaller pieces, in order: write_file with the first part, then write_file with append: true for each part after it."
+                : "Send it again with less in one call.";
+            const cut = `error: this call arrived cut off, so it was not run: the arguments for ${call.name} ended in the middle. Your reply hit its length limit. ${pieces}`;
             bus.emit({ type: "tool-result", tool: call.name, ok: false, output: cut });
             messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: cut });
             continue;

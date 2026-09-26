@@ -69,6 +69,7 @@ describe.each(PORTS)("$name meets the execution contract", ({ make }) => {
 		const port = make();
 		for (const result of [
 			await port.writeFile("out.txt", "x", policy()),
+			await port.appendFile("out.txt", "y", policy()),
 			await port.readFile("out.txt", policy()),
 			await port.editFile("out.txt", "x", "y", policy()),
 			await port.listDir(".", policy()),
@@ -85,6 +86,7 @@ describe.each(PORTS)("$name meets the execution contract", ({ make }) => {
 		for (const path of ["", "../../etc/passwd", "a".repeat(5000)]) {
 			await expect(port.readFile(path, policy())).resolves.toBeDefined();
 			await expect(port.writeFile(path, "x", policy())).resolves.toBeDefined();
+			await expect(port.appendFile(path, "x", policy())).resolves.toBeDefined();
 		}
 		await expect(port.runCommand("", policy())).resolves.toBeDefined();
 	});
@@ -112,6 +114,15 @@ describe("the local port actually acts", () => {
 		expect((await port.readFile("notes/out.txt", policy())).content).toBe("written");
 	});
 
+	it("appends to the end, and hands back the whole file (E139)", async () => {
+		const port = localExecution();
+		await port.writeFile("piece.txt", "first ", policy());
+		const result = await port.appendFile("piece.txt", "second", policy());
+
+		expect(readFileSync(join(root, "piece.txt"), "utf-8")).toBe("first second");
+		expect(result.content).toBe("first second");
+	});
+
 	it("edits in place", async () => {
 		const port = localExecution();
 		writeFileSync(join(root, "edit.txt"), "before");
@@ -130,6 +141,7 @@ describe("the port that has nowhere to run", () => {
 
 		expect((await port.runCommand("echo leaked", policy())).ok).toBe(false);
 		expect((await port.writeFile("should-not-exist.txt", "x", policy())).ok).toBe(false);
+		expect((await port.appendFile("should-not-exist.txt", "x", policy())).ok).toBe(false);
 
 		// And nothing reached the filesystem.
 		expect(() => readFileSync(join(root, "should-not-exist.txt"), "utf-8")).toThrow();
