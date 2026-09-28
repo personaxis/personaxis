@@ -2,9 +2,6 @@
 name: game-design-document
 description: Write the design document for a game, from a request of any size, so that somebody else could build the game from it. Use when asked to design a game, spec a game, or write a GDD.
 allowed-tools: read_file, write_file, edit_file, list_dir, check_page, finish
-metadata:
-  personaxis:
-    delivers: [GAME.md]
 ---
 
 # The design document
