@@ -829,17 +829,6 @@ export class PersonaAgent {
      * make a persona that declares gates spend on this the one retry those gates were given.
      */
     let handedBackOnce = false;
-    /**
-     * E145: the answer E135 handed back for having written no file. If the turn still ends with no file, that answer is
-     * what the person asked for and it stays the reply, with the model's line on why no file was needed after it.
-     * Measured on Cohere (e141co): asked to "finish again with your full answer", the model closed with the one line
-     * alone, and that line became the reply; the colours it had already given were gone (remembered-kept 1/3 against 3/3).
-     */
-    let answerHandedBack: string | undefined;
-    const replyOf = (text: string): string => {
-      if (answerHandedBack === undefined || deliveredIn(deliveredHere).length > 0) return text;
-      return text.trim() && text !== "(no action)" ? `${answerHandedBack}\n\n${text}` : answerHandedBack;
-    };
     let stepProgress = 1;
     let lastText = "";
     // K.04: how injection-tainted the context is so far (max verdict of prior tool outputs). A
@@ -1187,16 +1176,12 @@ export class PersonaAgent {
       // request for advice into a hand-back that cost the answer its content (e135b, feel-numbers 0/3).
       if (left.length === 0 && promised.size > 0 && !handedBackOnce) {
         handedBackOnce = true;
-        if (summary.trim() && summary !== "(no action)") answerHandedBack = summary;
         const said = [...promised].map(([name, files]) => `\`${name}\` delivers ${files.join(", ")}`).join("; ");
         messages.push({
           role: "user",
           content:
             `This turn you loaded a skill that delivers a file (${said}), and the turn wrote no file. ` +
-            (answerHandedBack === undefined
-              ? `If what was asked needs it, write it now and finish again; if it did not, finish again with your full answer and one line on why no file was needed.`
-              : `If what was asked needs it, write it now and finish again; if it did not, finish again with one line on why no file was needed. ` +
-                `Your answer above stays as it is and the person will see it, so do not repeat it.`),
+            `If what was asked needs it, write it now and finish again; if it did not, finish again with your full answer and one line on why no file was needed.`,
         });
         return "retry";
       }
@@ -1430,12 +1415,11 @@ export class PersonaAgent {
           messages.push({ role: "assistant", content: res.text || "" });
           const decision = await verifyCompletion(res.text || "(no action)");
           if (decision === "accept") {
-            const reply = replyOf(res.text || "");
-            bus.emit({ type: "agent-finish", summary: reply, steps: step });
+            bus.emit({ type: "agent-finish", summary: res.text || "", steps: step });
             const learned = learnedAs();
-            this.persist(task, learned, reply, step);
+            this.persist(task, learned, res.text || "", step);
             if (learned === "success") await maybePostmortem("success", step);
-            return { summary: reply, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, ...(delivered === undefined ? {} : { delivered }), cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), ...(questions.length === 0 ? {} : { questions }), trace: buildTrace(intents, traceNodes) };
+            return { summary: res.text || "", steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, ...(delivered === undefined ? {} : { delivered }), cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), ...(questions.length === 0 ? {} : { questions }), trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
@@ -1877,12 +1861,11 @@ export class PersonaAgent {
         if (finishedThisStep) {
           const decision = await verifyCompletion(finishedThisStep.summary);
           if (decision === "accept") {
-            const reply = replyOf(finishedThisStep.summary);
-            bus.emit({ type: "agent-finish", summary: reply, steps: step });
+            bus.emit({ type: "agent-finish", summary: finishedThisStep.summary, steps: step });
             const learned = learnedAs();
-            this.persist(task, learned, reply, step);
+            this.persist(task, learned, finishedThisStep.summary, step);
             if (learned === "success") await maybePostmortem("success", step);
-            return { summary: reply, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, ...(delivered === undefined ? {} : { delivered }), cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), ...(questions.length === 0 ? {} : { questions }), trace: buildTrace(intents, traceNodes) };
+            return { summary: finishedThisStep.summary, steps: step, finished: true, budget: report(step, "goal_met"), verification: this.lastVerification, ...(delivered === undefined ? {} : { delivered }), cache: meter.cacheReport(), latency: clock.report(), compactions, calls, tasks: taskState.snapshot().subTasks, ...(turnDecision === undefined ? {} : { decision: turnDecision }), ...(questions.length === 0 ? {} : { questions }), trace: buildTrace(intents, traceNodes) };
           }
           if (decision === "stop") {
             bus.emit({ type: "agent-finish", summary: "verification failed", steps: step });
