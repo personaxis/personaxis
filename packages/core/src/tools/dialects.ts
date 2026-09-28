@@ -113,6 +113,30 @@ function delimited(text: string, pattern: RegExp): ReadCall[] {
  */
 export const DIALECTS: readonly Dialect[] = [
 	{
+		// Qwen 3.5 and Qwen3-Coder: the call is XML-like inside `<tool_call>`, one element per argument, NOT the JSON that
+		// `hermes` below expects. Read raw on 2026-09-28 (E144) from `Qwen/Qwen3.5-9B` through HuggingFace's router: the
+		// provider `together` left the call inside the REASONING, verbatim
+		// `<tool_call>\n<function=read_file>\n<parameter=path>\ngame.html\n</parameter>\n</function>\n</tool_call>`, and
+		// answered with no text and no calls. First because `<function=` is its own marker and `hermes` would claim the
+		// `<tool_call>` around it and find no JSON.
+		//
+		// A value is the text between its tags with the ONE newline the template puts on each side removed, and nothing
+		// more: a file's content keeps its own leading and trailing whitespace. Values stay text, as in `xml` below.
+		name: "qwen-xml",
+		looksLike: /<function=[^>\s]+>/,
+		read: (text) => {
+			const found: ReadCall[] = [];
+			for (const call of text.matchAll(/(?:<tool_call>\s*)?<function=([^>\s]+)>([\s\S]*?)<\/function>(?:\s*<\/tool_call>)?/g)) {
+				const args: Record<string, unknown> = {};
+				for (const param of (call[2] ?? "").matchAll(/<parameter=([^>\s]+)>([\s\S]*?)<\/parameter>/g)) {
+					args[param[1]!] = (param[2] ?? "").replace(/^\r?\n/, "").replace(/\r?\n$/, "");
+				}
+				found.push({ name: call[1]!, args, span: call[0] });
+			}
+			return found;
+		},
+	},
+	{
 		// Hermes, Qwen, NousResearch, and the default of several vLLM deployments.
 		name: "hermes",
 		looksLike: /<tool_call>/i,

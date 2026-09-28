@@ -214,6 +214,8 @@ interface Reply {
   finish?: string;
   /** E94: see `ToolCallResponse.reasoned`. */
   reasoned?: boolean;
+  /** E144: the reasoning's text, read only for a call the provider left inside it (`callLeftInReasoning`). */
+  reasoning?: string;
   /**
    * E136: how many frames a STREAMED reply carried, absent for one that was not streamed. Zero is not an empty
    * answer: a model that says nothing still sends the frame with its role and the one with its finish. Measured
@@ -250,12 +252,13 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
     };
     const choice = json.choices?.[0];
     const msg = choice?.message ?? {};
+    const thought = msg.reasoning_content || msg.reasoning;
     return {
       content: msg.content ?? "",
       toolCalls: msg.tool_calls ?? [],
       usage: json.usage,
       ...(choice?.finish_reason ? { finish: choice.finish_reason } : {}),
-      ...(msg.reasoning_content || msg.reasoning ? { reasoned: true } : {}),
+      ...(thought ? { reasoned: true, reasoning: thought } : {}),
     };
   }
 
@@ -267,6 +270,7 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
   let usage: Partial<TokenUsage> | undefined;
   let finish: string | undefined;
   let reasoned = false;
+  let reasoning = "";
   let frames = 0;
   let error: string | undefined;
   let pending = "";
@@ -316,7 +320,11 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
         // another after saying nothing, and only these two say which.
         if (choice?.finish_reason) finish = choice.finish_reason;
         const delta = choice?.delta;
-        if (delta?.reasoning_content || delta?.reasoning) reasoned = true;
+        const thought = delta?.reasoning_content || delta?.reasoning;
+        if (thought) {
+          reasoned = true;
+          reasoning += thought;
+        }
         if (delta?.content) {
           content += delta.content;
           onDelta?.(delta.content);
@@ -340,10 +348,24 @@ async function readReply(res: Response, onDelta?: (text: string) => void): Promi
     toolCalls: [...parts.entries()].sort(([one], [other]) => one - other).map(([, call]) => call),
     ...(usage ? { usage } : {}),
     ...(finish ? { finish } : {}),
-    ...(reasoned ? { reasoned } : {}),
+    ...(reasoned ? { reasoned, reasoning } : {}),
     frames,
     ...(error ? { error } : {}),
   };
+}
+
+/**
+ * E144: the calls a reasoning ENDS with, and nothing when it ends with anything else.
+ *
+ * Only the tail, and only whole `<tool_call>...</tool_call>` blocks with nothing after them but whitespace. A call the
+ * model considered halfway through its thinking and then moved past is not a call it made; the one it stopped on is.
+ */
+function callLeftInReasoning(reasoning: string | undefined): string | undefined {
+  if (!reasoning) return undefined;
+  // A block may not contain another opening tag, so a match cannot stretch from an early call across prose to a late
+  // one: between the blocks at the end there is whitespace and nothing else.
+  const tail = /((?:\s*<tool_call>(?:(?!<tool_call>)[\s\S])*?<\/tool_call>)+)\s*$/.exec(reasoning);
+  return tail ? tail[1]!.trim() : undefined;
 }
 
 function url(cfg: ToolCallConfig): string {
@@ -575,6 +597,28 @@ export async function requestToolCall(
             dialect: reading.dialect,
             unknownTools: reading.unknown,
           };
+        }
+        // E144: a reply with no text and no calls whose reasoning ENDS in a complete call. Read raw on 2026-09-28:
+        // Qwen 3.5 through the provider `together` wrote its call inside the reasoning and got back `finish: stop`
+        // with nothing, on every request that followed a tool result in a real turn; the same request to `deepinfra`
+        // came back with the call. The loop then nudged (E94) and paid one more request per step, a third of them.
+        // Only the calls at the very end count, only when nothing else came back, and only tools offered this turn,
+        // through the same gate: the model did make the call, and the provider lost it on the way.
+        const left = reply.content.trim() === "" ? callLeftInReasoning(reply.reasoning) : undefined;
+        if (left) {
+          const found = readDialect(left, tools.map((tool) => tool.name));
+          if (found && found.calls.length > 0) {
+            return {
+              text: "",
+              toolCalls: [...found.calls],
+              usedFallback: false,
+              usage: extractUsage({ usage: reply.usage }),
+              dialect: `${found.dialect} (in reasoning)`,
+              ...(found.unknown.length > 0 ? { unknownTools: found.unknown } : {}),
+              ...(reply.finish ? { finish: reply.finish } : {}),
+              reasoned: true,
+            };
+          }
         }
       }
 

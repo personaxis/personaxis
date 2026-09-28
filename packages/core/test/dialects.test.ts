@@ -100,10 +100,30 @@ describe("the families, one sample each", () => {
 		expect(reading?.calls[0]).toMatchObject({ name: "get_charge", args: { id: "ch_42" } });
 	});
 
+	it("reads Qwen 3.5, whose call is one element per argument and not JSON (E144)", () => {
+		// The shape read raw on 2026-09-28 from Qwen/Qwen3.5-9B through together, where it arrived inside the reasoning.
+		const reading = readDialect(
+			"<tool_call>\n<function=read_file>\n<parameter=path>\ngame.html\n</parameter>\n</function>\n</tool_call>",
+			OFFERED,
+		);
+
+		expect(reading?.dialect).toBe("qwen-xml");
+		expect(reading?.calls).toEqual([{ id: "dialect_0", name: "read_file", args: { path: "game.html" } }]);
+	});
+
+	it("keeps a value's own whitespace, taking off only the template's newline on each side", () => {
+		const reading = readDialect(
+			"<tool_call>\n<function=write_file>\n<parameter=path>\na.txt\n</parameter>\n<parameter=content>\n  two spaces\nand a line\n\n</parameter>\n</function>\n</tool_call>",
+			OFFERED,
+		);
+
+		expect(reading?.calls[0]?.args).toEqual({ path: "a.txt", content: "  two spaces\nand a line\n" });
+	});
+
 	it("has a sample for every dialect it ships, so none goes untested", () => {
 		// The gate on this file. A dialect added without a sample is a parser nobody
 		// has run against real output, which is the thing this test exists to prevent.
-		const tested = new Set(["hermes", "mistral", "llama", "deepseek", "xml", "improvised"]);
+		const tested = new Set(["qwen-xml", "hermes", "mistral", "llama", "deepseek", "xml", "improvised"]);
 		expect(DIALECTS.map((dialect) => dialect.name).filter((name) => !tested.has(name))).toEqual([]);
 	});
 });
@@ -282,6 +302,65 @@ describe("the silent failure this exists to end", () => {
 
 		expect(res.text).toBe("Here is the answer.");
 		expect(res.dialect).toBeUndefined();
+	});
+});
+
+describe("a call the provider left inside the reasoning (E144)", () => {
+	/** A streamed reply as `together` sent it: reasoning frames, no content, `finish: stop`. */
+	function streamed(reasoning: string, content = ""): typeof fetch {
+		const frames = [
+			...reasoning.match(/[\s\S]{1,40}/g)!.map((piece) => ({ choices: [{ delta: { reasoning_content: piece } }] })),
+			...(content ? [{ choices: [{ delta: { content } }] }] : []),
+			{ choices: [{ delta: {}, finish_reason: "stop" }] },
+		];
+		const body = frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("") + "data: [DONE]\n\n";
+		return (async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } })) as unknown as typeof fetch;
+	}
+	const tools = [
+		{
+			name: "read_file",
+			description: "reads a file",
+			category: "fs" as const,
+			parameters: { type: "object" as const, properties: {} },
+			isReadOnly: true,
+			isConcurrencySafe: true,
+			gate: () => ({ decision: "allow" as const, reason: "", class: { writesFiles: false, network: false, destructive: false, escapesWorkspace: false } }),
+			execute: async () => "",
+		},
+	];
+	const ask = (fetchImpl: typeof fetch) =>
+		requestToolCall({ endpoint: "http://x/v1", model: "m", fetchImpl, onDelta: () => {} }, [], tools);
+	const CALL = "<tool_call>\n<function=read_file>\n<parameter=path>\ngame.html\n</parameter>\n</function>\n</tool_call>";
+
+	it("the together reply: reasoning that ends in the call becomes the call", async () => {
+		const res = await ask(streamed(`I need to read the game file first to see why it stops.\n${CALL}\n`));
+		expect(res.toolCalls).toHaveLength(1);
+		expect(res.toolCalls[0]).toMatchObject({ name: "read_file", args: { path: "game.html" } });
+		expect(res.dialect).toBe("qwen-xml (in reasoning)");
+		expect(res.text).toBe("");
+	});
+
+	it("a call considered midway and then moved past is not read", async () => {
+		const res = await ask(streamed(`Maybe ${CALL} but no, I should answer directly instead.`));
+		expect(res.toolCalls).toEqual([]);
+		expect(res.dialect).toBeUndefined();
+	});
+
+	it("a reply that said something is never re-read from its reasoning", async () => {
+		const res = await ask(streamed(`Thinking. ${CALL}`, "Here is my answer."));
+		expect(res.toolCalls).toEqual([]);
+		expect(res.text).toBe("Here is my answer.");
+	});
+
+	it("a tool that was not offered is not run, and is reported", async () => {
+		const res = await ask(streamed(`<tool_call>\n<function=run_command>\n<parameter=cmd>\nrm -rf .\n</parameter>\n</function>\n</tool_call>`));
+		expect(res.toolCalls).toEqual([]);
+	});
+
+	it("reasoning with no call stays an empty reply, for E94 to handle as before", async () => {
+		const res = await ask(streamed("I am not sure what to do next."));
+		expect(res.toolCalls).toEqual([]);
+		expect(res.reasoned).toBe(true);
 	});
 });
 
