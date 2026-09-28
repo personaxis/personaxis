@@ -22,6 +22,14 @@ skills-lock.json
 # from, and one did: `packages/cli/.personaxis/mcp-approvals.json` reached a commit.
 **/.personaxis/*
 !.personaxis/personaxis.md
+# The gamewright demo persona is versioned: the benchmark measures changes to its
+# definition, and a change nobody can commit is a change nobody can trace. What it
+# writes while it runs (state, record) stays out.
+!.personaxis/personas/
+.personaxis/personas/*
+!.personaxis/personas/gamewright/
+.personaxis/personas/gamewright/state.json
+.personaxis/personas/gamewright/record.jsonl
 .recompile-pending.json
 # F3.2, ephemeral derived compiler output (hot/cold consumer slices)
 **/.dist/
