@@ -53,7 +53,7 @@ function persona(): string {
 }
 
 type Step = { tool: string; args: object } | { text: string };
-async function turn(steps: Step[]): Promise<{ handedBack: string[]; sent: number }> {
+async function turn(steps: Step[]): Promise<{ handedBack: string[]; sent: number; reply: string }> {
 	const bodies: Array<Array<{ role: string; content: string }>> = [];
 	let i = 0;
 	const fetchImpl = (async (url: string, init?: { body?: string }) => {
@@ -68,7 +68,7 @@ async function turn(steps: Step[]): Promise<{ handedBack: string[]; sent: number
 	}) as unknown as typeof fetch;
 	const personaPath = persona();
 	// `use_skill` is contributed by `runnerFor`, not built in; lent here the way the product lends it.
-	await new PersonaAgent({
+	const result = await new PersonaAgent({
 		llm: { endpoint: "http://x/v1", model: "m", fetchImpl },
 		policy: policy(),
 		capability: capability(),
@@ -79,7 +79,7 @@ async function turn(steps: Step[]): Promise<{ handedBack: string[]; sent: number
 	const handedBack = last
 		.filter((m) => m.role === "user" && typeof m.content === "string" && (m.content.includes("delivers a file") || m.content.includes("does not work")))
 		.map((m) => m.content);
-	return { handedBack, sent: bodies.length };
+	return { handedBack, sent: bodies.length, reply: result.summary };
 }
 
 const USE = (name: string): Step => ({ tool: "use_skill", args: { name } });
@@ -90,7 +90,9 @@ describe("a skill that declares a delivery, loaded, and no file delivered is han
 		const { handedBack } = await turn([USE("playable-prototype"), DESIGN_IN_CHAT, DESIGN_IN_CHAT]);
 		expect(handedBack).toHaveLength(1);
 		expect(handedBack[0]).toContain("`playable-prototype` delivers game.html");
-		expect(handedBack[0]).toContain("with your full answer");
+		// E145: the answer handed back stays, so the model is asked for the file or one line, not to repeat it.
+		expect(handedBack[0]).toContain("Your answer above stays");
+		expect(handedBack[0]).not.toContain("with your full answer");
 	});
 
 	it("and a persona that then writes the file closes with it", async () => {
@@ -102,6 +104,42 @@ describe("a skill that declares a delivery, loaded, and no file delivered is han
 		]);
 		expect(handedBack).toHaveLength(1);
 		expect(sent).toBe(4);
+	});
+});
+
+describe("the answer handed back is not lost (E145)", () => {
+	const COLOURS = "Health bar #2E7D32, coins #F9A825, hazards #C62828 with a stripe pattern for colour-blind players.";
+	const WHY = "No file was needed, the request was for colour choices. I will finish with the previous answer.";
+
+	it("the remembered-kept failure: a prose close after the hand-back keeps the colours, with the line after them", async () => {
+		const { handedBack, reply } = await turn([USE("playable-prototype"), { text: COLOURS }, { text: WHY }]);
+		expect(handedBack).toHaveLength(1);
+		expect(reply).toBe(`${COLOURS}\n\n${WHY}`);
+	});
+
+	it("and the same through the finish tool", async () => {
+		const { reply } = await turn([USE("playable-prototype"), { text: COLOURS }, { tool: "finish", args: { summary: WHY } }]);
+		expect(reply).toBe(`${COLOURS}\n\n${WHY}`);
+	});
+
+	it("a close with no words after the hand-back leaves the answer alone", async () => {
+		const { reply } = await turn([USE("playable-prototype"), { text: COLOURS }, { tool: "finish", args: { summary: "" } }]);
+		expect(reply).toBe(COLOURS);
+	});
+
+	it("a turn that writes the file after the hand-back replies with its own close, not the old answer", async () => {
+		const { reply } = await turn([
+			USE("playable-prototype"),
+			DESIGN_IN_CHAT,
+			{ tool: "write_file", args: { path: "game.html", content: FIXED } },
+			{ tool: "finish", args: { summary: "game.html is ready" } },
+		]);
+		expect(reply).toBe("game.html is ready");
+	});
+
+	it("a turn never handed back keeps its reply as it was", async () => {
+		const { reply } = await turn([USE("game-feel"), { text: "Cut the rise time to 0.3 s." }]);
+		expect(reply).toBe("Cut the rise time to 0.3 s.");
 	});
 });
 
