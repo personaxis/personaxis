@@ -24,6 +24,7 @@
 // meaning would be the duplicate this repository keeps finding: compatible today, divergent the first time
 // somebody adds a field to one of them.
 import type { Lesson } from "../postmortem.js";
+import { repairToolArgs } from "../tool-repair.js";
 
 export type { Lesson };
 
@@ -44,7 +45,10 @@ const LIMITS = { name: 60, description: 200, body: 4000, list: 12 } as const;
 export const LESSON_INSTRUCTION = [
 	"That worked, and it was not trivial. Before you finish, decide whether the METHOD you used is worth keeping for next time.",
 	"Reply with ONLY one JSON object, no prose and no code fence:",
-	'{"reusable": true|false, "name": "<short-name>", "description": "<one line, when it applies>", "capabilities": ["<what it is for>"], "allowed_tools": ["<tool>"], "body": "<the method, in steps>"}',
+	// E148: the body as a LIST of steps. It was `"body": "<the method, in steps>"`, quoted like a text while asking for
+	// steps, and Qwen 3.5 wrote the list anyway and closed it `]"}`, with the template's quote left over: 8 replies in
+	// 20 could not be read (2026-09-29).
+	'{"reusable": true|false, "name": "<short-name>", "description": "<one line, when it applies>", "capabilities": ["<what it is for>"], "allowed_tools": ["<tool>"], "body": ["<step>", "<step>"]}',
 	"Say false when the only lesson is this task done again: a method that fits one job is a note about that job, not a skill.",
 	"The body is instructions to your future self, in steps, with the numbers and names that mattered. Do not retell what happened.",
 ].join("\n");
@@ -90,14 +94,21 @@ export function parseLesson(raw: string): LessonRead {
 	if (!text) return { ok: false, error: "the reply was empty" };
 
 	const start = text.indexOf("{");
+	if (start === -1) return { ok: false, error: "the reply held no JSON object" };
 	const end = text.lastIndexOf("}");
-	if (start === -1 || end <= start) return { ok: false, error: "the reply held no JSON object" };
 
+	// E148: an object the model left open (the last brace forgotten) is read through the repair the tool calls
+	// already use (`FR.10`), which closes what is open and invents nothing. Packaging, like the fence above.
 	let parsed: unknown;
 	try {
+		if (end <= start) throw new Error("open");
 		parsed = JSON.parse(text.slice(start, end + 1));
 	} catch {
-		return { ok: false, error: "the JSON object could not be read" };
+		const repaired = repairToolArgs(text.slice(start));
+		if (!repaired.ok || !repaired.value) {
+			return { ok: false, error: end <= start ? "the reply held no JSON object" : "the JSON object could not be read" };
+		}
+		parsed = repaired.value;
 	}
 
 	const record = (parsed ?? {}) as Record<string, unknown>;
