@@ -197,6 +197,38 @@ export const DIALECTS: readonly Dialect[] = [
 		},
 	},
 	{
+		// Cohere's Command A: its action template is a JSON list of `{"tool_call_id", "tool_name", "parameters"}`, and
+		// the compatibility endpoint sometimes hands the whole list back as CONTENT with `finish: stop` and no native
+		// call. Seen on 2026-09-29 (E150) in `long-session` with `command-a-03-2025`, in about one session in five, after
+		// several native calls in the same turn: `[{"tool_call_id": "5", "tool_name": "edit_file", "parameters": {...}}]`.
+		// `tool_name` with `parameters` is its own marker; no other family spells a call that way.
+		name: "cohere",
+		looksLike: /"tool_name"\s*:/,
+		read: (text) => {
+			const start = text.search(/[[{]/);
+			if (start === -1) return [];
+			const close = text[start] === "[" ? "]" : "}";
+			const end = text.lastIndexOf(close);
+			const span = end > start ? text.slice(start, end + 1) : text.slice(start);
+			let parsed: unknown;
+			try {
+				parsed = JSON.parse(span);
+			} catch {
+				const repaired = repairToolArgs(span);
+				if (!repaired.ok) return [];
+				parsed = repaired.value;
+			}
+			const found: ReadCall[] = [];
+			for (const item of Array.isArray(parsed) ? parsed : [parsed]) {
+				if (!item || typeof item !== "object") continue;
+				const record = item as Record<string, unknown>;
+				if (typeof record.tool_name !== "string" || !record.tool_name) continue;
+				found.push({ name: record.tool_name, args: argsOf(record.parameters ?? {}), span });
+			}
+			return found;
+		},
+	},
+	{
 		// IMPROVISED, and read LAST because it has no marker at all.
 		//
 		// The five above are what a model emits when the server applied its chat template
