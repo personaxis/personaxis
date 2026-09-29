@@ -68,6 +68,24 @@ describe("reading the lesson back (E88)", () => {
 		expect(parseLesson(JSON.stringify({ reusable: true, name: "x" })).ok).toBe(false);
 	});
 
+	it("reads a method written as the list of steps the question asks for, numbered (E147)", () => {
+		// Verbatim shape from Qwen 3.5 on 2026-09-29, which the reader threw away as "no method in it".
+		const read = parseLesson(
+			JSON.stringify({
+				reusable: true,
+				name: "Variable Scope Fix",
+				body: ["Run check_page to observe the crash.", "  Read the file to locate the line.  ", "", 7, "Run check_page again."],
+			}),
+		);
+
+		expect(read.ok && read.lesson.body).toBe("1. Run check_page to observe the crash.\n2. Read the file to locate the line.\n3. Run check_page again.");
+	});
+
+	it("still refuses a list with no step in it, which is no method", () => {
+		expect(parseLesson(JSON.stringify({ reusable: true, name: "x", body: [] })).ok).toBe(false);
+		expect(parseLesson(JSON.stringify({ reusable: true, name: "x", body: ["", "  ", 3] })).ok).toBe(false);
+	});
+
 	it("says what went wrong instead of guessing, for silence and for a reply with no object in it", () => {
 		expect(parseLesson("   ")).toMatchObject({ ok: false, error: "the reply was empty" });
 		expect(parseLesson("I think we learned a lot today")).toMatchObject({ ok: false, error: "the reply held no JSON object" });

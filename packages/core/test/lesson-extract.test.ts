@@ -50,6 +50,21 @@ describe("asking the persona what it learned (E88)", () => {
 		expect(JSON.stringify(model.sent[0]?.messages)).toContain("fix the game");
 	});
 
+	it("asks a hybrid model not to think, through the switch its destination declares (E147)", async () => {
+		// Qwen 3.5 thought 1.650 to 4.096 tokens on this question and ran to the ceiling 3 times in 17 (2026-09-29).
+		const model = scripted(lesson);
+		await lessonFrom({ ...(model.llm as object), endpoint: "https://router.huggingface.co/v1", model: "Qwen/Qwen3.5-9B" } as never)(input);
+
+		expect((model.sent[0] as Record<string, unknown>).chat_template_kwargs).toEqual({ enable_thinking: false });
+	});
+
+	it("and sends nothing extra to a destination that declared no switch", async () => {
+		const model = scripted(lesson);
+		await lessonFrom(model.llm)(input);
+
+		expect((model.sent[0] as Record<string, unknown>).chat_template_kwargs).toBeUndefined();
+	});
+
 	it("returns nothing when the persona says the method is not worth keeping", async () => {
 		const model = scripted(JSON.stringify({ reusable: false, name: "x", body: "y" }));
 
