@@ -81,6 +81,23 @@ describe("reading the lesson back (E88)", () => {
 		expect(read.ok && read.lesson.body).toBe("1. Run check_page to observe the crash.\n2. Read the file to locate the line.\n3. Run check_page again.");
 	});
 
+	it("asks for the method as a list of steps, not as a quoted text (E148)", () => {
+		expect(LESSON_INSTRUCTION).toContain('"body": ["<step>", "<step>"]');
+		expect(LESSON_INSTRUCTION).not.toContain('"body": "<');
+	});
+
+	it("reads an object the model left open, closing it and inventing nothing (E148)", () => {
+		// The shape read raw on 2026-09-29: everything there, and the last brace forgotten.
+		const read = parseLesson('{"reusable": true, "name": "verify-html-game", "body": ["Call check_page.", "Read GAME.md and game.html."]');
+
+		expect(read.ok && read.lesson).toMatchObject({ name: "verify-html-game", body: "1. Call check_page.\n2. Read GAME.md and game.html." });
+	});
+
+	it("still refuses what no repair can read", () => {
+		expect(parseLesson("{ not json at all")).toMatchObject({ ok: false });
+		expect(parseLesson('{"reusable": true, "name": "x", "body": ["a"]"}')).toMatchObject({ ok: false, error: "the JSON object could not be read" });
+	});
+
 	it("still refuses a list with no step in it, which is no method", () => {
 		expect(parseLesson(JSON.stringify({ reusable: true, name: "x", body: [] })).ok).toBe(false);
 		expect(parseLesson(JSON.stringify({ reusable: true, name: "x", body: ["", "  ", 3] })).ok).toBe(false);
