@@ -37,6 +37,7 @@ import type { AcpServedAgent, AcpServedClient } from "@personaxis/protocol";
 import { servedStopReason } from "@personaxis/protocol";
 import type { WireEmission } from "@personaxis/core";
 
+import { VERDICT_LABEL, verdictSentences, type DeliveredChecks } from "../engine-verdict.js";
 import { permissionGranted, permissionRequest, servedUpdate } from "./persona-updates.js";
 
 /** What a persona needs told, mid-turn, and what it needs asked. */
@@ -56,8 +57,11 @@ export interface TurnHooks {
 
 /** One persona, opened against a directory, ready to take turns. */
 export interface PersonaSession {
-	/** Runs one turn. Returns OUR stop reason; the caller translates. */
-	run(prompt: string, hooks: TurnHooks): Promise<{ stopReason: string }>;
+	/**
+	 * Runs one turn. Returns OUR stop reason, which the caller translates, and what the engine checked in what the
+	 * turn delivered (E149), which the editor is told when a check failed.
+	 */
+	run(prompt: string, hooks: TurnHooks): Promise<{ stopReason: string; delivered?: DeliveredChecks }>;
 	/** Ends the turn in flight. */
 	cancel(): void;
 }
@@ -92,6 +96,8 @@ export function personaAgent(
 	options: PersonaAgentOptions,
 ): AcpServedAgent {
 	const sessions = new Map<string, PersonaSession>();
+	// The project each session works in, so a path in what the engine says reads the way the editor shows it.
+	const roots = new Map<string, string>();
 	let counter = 0;
 
 	return {
@@ -116,6 +122,7 @@ export function personaAgent(
 			counter += 1;
 			const sessionId = `px-${counter}`;
 			sessions.set(sessionId, session);
+			roots.set(sessionId, params.cwd);
 			return { sessionId };
 		},
 
@@ -153,6 +160,19 @@ export function personaAgent(
 					return permissionGranted(response);
 				},
 			});
+
+			// E149: what the engine found broken in what the turn delivered, under the persona's reply, in the words the
+			// terminal uses (E134). Its own chunk after the reply and awaited, so it arrives before the turn is over and
+			// never inside the persona's sentence; nothing at all when every check passed.
+			const verdict = verdictSentences(outcome.delivered, roots.get(params.sessionId) ?? "");
+			if (verdict.length > 0) {
+				const text = `\n\n${verdict.map((said) => `${VERDICT_LABEL} ${said}`).join("\n")}`;
+				await client
+					.sessionUpdate({ sessionId: params.sessionId, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } } })
+					.catch(() => {
+						// The same rule as the updates above: a client that stopped listening does not fail the turn.
+					});
+			}
 
 			return { stopReason: servedStopReason(outcome.stopReason) };
 		},

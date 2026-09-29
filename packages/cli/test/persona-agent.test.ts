@@ -37,6 +37,8 @@ interface Script {
 	readonly denies?: boolean;
 	/** The client cannot answer at all: it threw, or it is gone. */
 	readonly unreachable?: boolean;
+	/** What the engine checked in what the turn delivered (E149). */
+	readonly delivered?: { checks: { what: string; how: string; passed: boolean; reason?: string }[] };
 }
 
 /**
@@ -79,7 +81,7 @@ function connect(script: Script) {
 				});
 				hooks.emit({ kind: "tool.call.completed", call_id: call.id, ok: call.ok !== false });
 			}
-			return { stopReason: script.stopReason ?? "answered" };
+			return { stopReason: script.stopReason ?? "answered", ...(script.delivered ? { delivered: script.delivered } : {}) };
 		},
 	};
 
@@ -236,6 +238,34 @@ describe("a turn", () => {
 		await expect(
 			wired.client.prompt({ sessionId: "never", prompt: [{ type: "text", text: "x" }] } as never),
 		).rejects.toThrow();
+	});
+});
+
+describe("what the engine found broken, said under the reply in the editor too (E149)", () => {
+	const page = "C:/work/game.html";
+	const said = "I have fixed the syntax error. The game should now run.";
+
+	it("tells the editor, after the reply and before the turn is over, in the words the terminal uses", async () => {
+		const wired = await opened({
+			says: [said],
+			delivered: {
+				checks: [{ what: page, how: "ran it", passed: false, reason: `${page} does NOT run: on load, at line 6 of the file: SyntaxError: Unexpected identifier` }],
+			},
+		});
+		await wired.client.prompt({ sessionId: wired.sessionId, prompt: [{ type: "text", text: "fix it" }] } as never);
+
+		const texts = wired.updates.map((update) => String((update["content"] as { text?: unknown } | undefined)?.text ?? ""));
+		expect(texts[0]).toBe(said);
+		expect(texts[1]).toBe("\n\n⚠ Checked by Personaxis: game.html does NOT run: on load, at line 6 of the file: SyntaxError: Unexpected identifier");
+		expect(wired.updates[1]).toMatchObject({ sessionUpdate: "agent_message_chunk" });
+	});
+
+	it("says nothing when every check passed, because a line under every good delivery is noise", async () => {
+		const wired = await opened({ says: ["Done."], delivered: { checks: [{ what: page, how: "ran it", passed: true }] } });
+		await wired.client.prompt({ sessionId: wired.sessionId, prompt: [{ type: "text", text: "go" }] } as never);
+
+		expect(JSON.stringify(wired.updates)).not.toContain("Checked by Personaxis");
+		expect(wired.updates).toHaveLength(1);
 	});
 });
 

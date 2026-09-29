@@ -148,7 +148,8 @@ async function openPersona(cwd: string): Promise<PersonaSession> {
 			// approval hook above already names that person as the one who said yes or no.
 			await run.livedThrough(evolver, { request: prompt, outcome });
 
-			return { stopReason: outcome.stopReason };
+			// E149: and what the engine checked in the delivery, which `personaAgent` tells the editor when it failed.
+			return { stopReason: outcome.stopReason, ...(outcome.delivered === undefined ? {} : { delivered: outcome.delivered }) };
 		},
 	};
 }

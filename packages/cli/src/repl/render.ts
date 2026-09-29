@@ -6,11 +6,11 @@
  * beyond building strings.
  */
 
-import { relative } from "node:path";
 import chalk from "chalk";
 import { eventLine } from "@personaxis/tui/visual";
 import { lineFor, type PersonaTheme } from "@personaxis/core";
 import type { Ctx, LoopEvent } from "./types.js";
+import { VERDICT_LABEL, verdictSentences, type DeliveredChecks } from "../engine-verdict.js";
 
 export function phaseFor(e: LoopEvent): string {
   switch (e.type) {
@@ -158,16 +158,9 @@ export function renderMarkdown(src: string): string {
  * failed, because a line under every good delivery would be noise nobody reads. Paths are shown relative to the
  * project, like the rest of the transcript's paths a person reads.
  */
-export function engineVerdictLines(
-  delivered: { readonly checks: ReadonlyArray<{ readonly what: string; readonly how: string; readonly passed: boolean; readonly reason?: string }> } | undefined,
-  cwd: string,
-): string[] {
-  const failed = (delivered?.checks ?? []).filter((check) => !check.passed);
-  return failed.map((check) => {
-    const shown = relative(cwd, check.what) || check.what;
-    const said = (check.reason ?? `${check.what}: ${check.how}, and it failed`).split(check.what).join(shown);
-    return `  ${chalk.yellow("⚠ Checked by Personaxis:")} ${said.startsWith(shown) ? said : `${shown}: ${said}`}`;
-  });
+export function engineVerdictLines(delivered: DeliveredChecks, cwd: string): string[] {
+  // E149: the sentence comes from `engine-verdict.ts`, which an editor over ACP says too; this only colours it.
+  return verdictSentences(delivered, cwd).map((said) => `  ${chalk.yellow(VERDICT_LABEL)} ${said}`);
 }
 
 export function replyLine(ctx: Ctx, text: string): string {
