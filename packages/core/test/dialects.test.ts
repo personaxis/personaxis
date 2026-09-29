@@ -120,10 +120,34 @@ describe("the families, one sample each", () => {
 		expect(reading?.calls[0]?.args).toEqual({ path: "a.txt", content: "  two spaces\nand a line\n" });
 	});
 
+	it("reads Cohere's Command A action list, handed back as text (E150)", () => {
+		// The shape seen on 2026-09-29 in `long-session` with command-a-03-2025, as its action template writes it.
+		const reading = readDialect(
+			'[\n    {"tool_call_id": "5", "tool_name": "edit_file", "parameters": {"path": "game.html", "find": "function draw() { /* paint */ }", "replace": "function draw() {\\n  ctx.clearRect(0, 0, 480, 320);\\n}"}}\n]',
+			[...OFFERED, "edit_file"],
+		);
+
+		expect(reading?.dialect).toBe("cohere");
+		expect(reading?.calls).toEqual([
+			{ id: "dialect_0", name: "edit_file", args: { path: "game.html", find: "function draw() { /* paint */ }", replace: "function draw() {\n  ctx.clearRect(0, 0, 480, 320);\n}" } },
+		]);
+		expect(reading?.text).toBe("");
+	});
+
+	it("reads every call in a Cohere list, and drops one that was not offered", () => {
+		const reading = readDialect(
+			'[{"tool_call_id": "1", "tool_name": "read_file", "parameters": {"path": "a"}}, {"tool_call_id": "2", "tool_name": "exfiltrate", "parameters": {}}]',
+			OFFERED,
+		);
+
+		expect(reading?.calls.map((call) => call.name)).toEqual(["read_file"]);
+		expect(reading?.unknown).toEqual(["exfiltrate"]);
+	});
+
 	it("has a sample for every dialect it ships, so none goes untested", () => {
 		// The gate on this file. A dialect added without a sample is a parser nobody
 		// has run against real output, which is the thing this test exists to prevent.
-		const tested = new Set(["qwen-xml", "hermes", "mistral", "llama", "deepseek", "xml", "improvised"]);
+		const tested = new Set(["qwen-xml", "hermes", "mistral", "llama", "deepseek", "xml", "cohere", "improvised"]);
 		expect(DIALECTS.map((dialect) => dialect.name).filter((name) => !tested.has(name))).toEqual([]);
 	});
 });
