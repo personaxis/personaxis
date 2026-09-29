@@ -2,7 +2,7 @@
   "spec_version": "1.1.0",
   "compiledPath": ".personaxis/personas/gamewright/PERSONA.md",
   "personaxisMdHash": "78319a79bbb9e62ede831ddc6b3cd3c64bc214d94838fb7c945f6bb81422c1da",
-  "compiledMdHash": "05f45e580e668c8d2e84291c0303b39f2c2d1d7dd48e3455ea19c36ce0653e05",
+  "compiledMdHash": "d02fadb37fd1d59312dd8c7dcedc9a3c8b7d7b554c46a2ab8428a0218a68ae7d",
   "lastOp": "compile",
   "model": "Qwen/Qwen3-4B-Instruct-2507",
   "source": "cli-local",
