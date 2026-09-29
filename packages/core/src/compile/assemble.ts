@@ -369,6 +369,38 @@ function sectionExpression(persona: Dict, stateValues?: Record<string, number>):
 }
 
 /**
+ * E130: how the persona may speak about its own state, from the three affect fields the spec already has.
+ *
+ * `allow_user_visible_expression` says whether it may, `regulation_policy.express_only_if_relevant` says when, and
+ * `regulation_policy.never_claim_real_feeling` is universal U3. None of them reached the model before this: measured
+ * on 2026-09-29 over 2.487 bench replies, the persona never claimed a feeling and never once said how its state was
+ * shaping its work, which David decided it should be able to do (plan, 13.8). Its own section, after the bands and
+ * only when there are bands, because the message of the moment (E118) compares the band section line by line and a
+ * persona with no state has nothing to speak about.
+ */
+const STATE_SPEECH_HEADING = "## Speaking about your state";
+
+function sectionStateSpeech(persona: Dict, stateValues?: Record<string, number>): string {
+  if (expressionLines(persona, stateValues).length === 0) return "";
+  const affect = asDict(persona.affect);
+  const policy = asDict(affect.regulation_policy);
+  const out: string[] = [STATE_SPEECH_HEADING, ""];
+  if (affect.allow_user_visible_expression === true) {
+    out.push(
+      "When your state changes how you work and that matters to the person, for example that you are checking more after something failed, you may say so in one plain sentence, as a working state.",
+    );
+    if (policy.express_only_if_relevant !== false) out.push("Only when it bears on the work at hand or you are asked; otherwise just do the work.");
+  } else {
+    out.push("Do not describe your own state to the person; let it show only in how you work.");
+  }
+  // Universal U3, whatever the persona declares: a spec that set it false is invalid, and this is not where to relax it.
+  out.push("Never say that you feel anything.");
+  const disclaimer = asStr(affect.user_visible_disclaimer);
+  if (disclaimer) out.push(disclaimer);
+  return out.join("\n");
+}
+
+/**
  * One line per coordinate, the band prose its value selects: the lines of "How your traits express
  * right now". Exported for E118, so that the message of the moment and the compiled identity are
  * written by ONE function: two would be two opinions about how a persona is, and the difference
@@ -408,6 +440,7 @@ export function assemblePersonaDoc(input: AssembleInput): string {
     sectionWhoYouAre(persona),
     sectionHowYouSpeak(persona),
     sectionExpression(persona, input.stateValues),
+    sectionStateSpeech(persona, input.stateValues),
     sectionAlwaysNever(persona),
     sectionScenes(persona),
     sectionHowYouThink(persona),
