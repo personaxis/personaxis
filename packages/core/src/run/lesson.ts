@@ -60,6 +60,25 @@ function listOf(value: unknown): string[] {
 }
 
 /**
+ * E147: the method, as text or as the list of steps the instruction asks for.
+ *
+ * The instruction says "the method, in steps", and a model that takes that literally answers with a list. Read raw
+ * on 2026-09-29 from Qwen 3.5: `"body": ["Run check_page to observe the crash...", "Read the file to locate the
+ * line...", "Edit the file to replace the undefined variable name with the correct state.property reference.", ...]`,
+ * and this read only text, so a good method was thrown away as "no method in it". A list is written as numbered
+ * steps; a list with no text in it is still no method.
+ */
+function methodOf(value: unknown): string {
+	if (typeof value === "string") return value.trim().slice(0, LIMITS.body);
+	if (!Array.isArray(value)) return "";
+	const steps = value
+		.filter((step): step is string => typeof step === "string")
+		.map((step) => step.trim())
+		.filter(Boolean);
+	return steps.map((step, index) => `${index + 1}. ${step}`).join("\n").slice(0, LIMITS.body);
+}
+
+/**
  * The lesson out of whatever the model said.
  *
  * Tolerant about packaging, because a fence or a sentence around the object is a formatting slip and not a
@@ -88,7 +107,7 @@ export function parseLesson(raw: string): LessonRead {
 	if (record.reusable !== true) return { ok: false, error: "the persona said the method was not worth keeping" };
 
 	const name = typeof record.name === "string" ? record.name.trim().slice(0, LIMITS.name) : "";
-	const body = typeof record.body === "string" ? record.body.trim().slice(0, LIMITS.body) : "";
+	const body = methodOf(record.body);
 	if (!name) return { ok: false, error: "the lesson had no name" };
 	if (!body) return { ok: false, error: "the lesson had no method in it" };
 

@@ -190,6 +190,12 @@ export interface ToolCallConfig {
    * the field entirely.
    */
   effort?: Effort;
+  /**
+   * E147: `off` asks a hybrid model not to think, through the switch its destination declares (`thinkingOff`, the
+   * same one E140 sends on the calls after a turn). For a question with one short structured answer, where thinking
+   * buys nothing and can run to the ceiling. Absent, the request is unchanged.
+   */
+  thinking?: "off";
   /** Told when the asked-for effort had to be stepped down, so it can be recorded. */
   onEffortDowngrade?: (from: Effort, to: Effort | undefined, destination: string) => void;
   /**
@@ -514,6 +520,8 @@ export async function requestToolCall(
       // a token budget: streaming that quietly cost the budget its numbers would turn
       // a hard stop into a run that never stops.
       ...(cfg.onDelta ? { stream: true, stream_options: { include_usage: true } } : {}),
+      // E147: a call that asked not to think sends the switch this destination declared, and nothing where none is.
+      ...(cfg.thinking === "off" ? (capabilitiesFor(cfg.endpoint, cfg.model).thinkingOff ?? {}) : {}),
       // E8: the effort this destination declared it accepts, or nothing at all.
       //
       // Absent is the ordinary case and the safe one. Only a destination in the table

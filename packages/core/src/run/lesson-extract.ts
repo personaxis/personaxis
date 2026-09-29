@@ -40,7 +40,10 @@ export function lessonFrom(llm: AgentOptions["llm"]): (input: PostmortemInput) =
 		];
 		// No tools: this is one short question about method, and a catalogue here would invite the model to go
 		// and do more work instead of answering it.
-		const said = await requestToolCall(llm, asked, []);
+		// E147: and without thinking, where the destination has a switch. Read raw on 2026-09-29 with Qwen 3.5: this
+		// question thought for 1.650 to 4.096 tokens and ran to the ceiling with no answer 3 times in 17; without
+		// thinking it answered every time in about 160. It is one short JSON object about a method already used.
+		const said = await requestToolCall({ ...llm, thinking: "off" }, asked, []);
 		const read = parseLesson(said.text);
 		return read.ok ? read.lesson : null;
 	};
