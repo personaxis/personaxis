@@ -21,13 +21,19 @@ export type PaxReply = { readonly ok: true; readonly engine: string; readonly [k
 
 /** A running Pax process. */
 export interface PaxProcess {
-	request(message: Readonly<Record<string, unknown>>): Promise<PaxReply>;
+	/**
+	 * `hold: false` for a request nothing waits on, such as `warm`: it must not keep this process alive by itself, or a
+	 * one-shot run would sit until the models finished loading for nobody.
+	 */
+	request(message: Readonly<Record<string, unknown>>, options?: { readonly hold?: boolean }): Promise<PaxReply>;
 }
 
 function start(dir: string): PaxProcess {
 	const child: ChildProcessWithoutNullStreams = spawn(process.execPath, [join(dir, "serve.mjs")], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 	const waiting = new Map<number, (reply: PaxReply) => void>();
 	let next = 1;
+	// Answers awaited by somebody, which are the ones that keep this process alive.
+	let held = 0;
 	let gone: string | undefined;
 	const fail = (why: string): void => {
 		gone ??= why;
@@ -61,13 +67,13 @@ function start(dir: string): PaxProcess {
 	};
 	hold(false);
 	return {
-		request(message) {
+		request(message, { hold: holds = true } = {}) {
 			if (gone !== undefined) return Promise.resolve({ ok: false, error: gone });
 			const id = next++;
 			return new Promise<PaxReply>((resolve) => {
-				if (waiting.size === 0) hold(true);
+				if (holds && held++ === 0) hold(true);
 				waiting.set(id, (reply) => {
-					if (waiting.size === 0) hold(false);
+					if (holds && --held === 0) hold(false);
 					resolve(reply);
 				});
 				child.stdin.write(`${JSON.stringify({ ...message, id })}\n`);
@@ -87,4 +93,14 @@ export function paxProcess(): PaxProcess | undefined {
 	if (!dir || !existsSync(join(dir, "serve.mjs"))) return undefined;
 	if (running?.dir !== dir) running = { dir, process: start(dir) };
 	return running.process;
+}
+
+/**
+ * E161: starts Pax's process and has it load its models now, without waiting for them. Called when a turn is built,
+ * which is before its first model call, so the loading runs while that call is in flight instead of in front of the
+ * first tool output (measured cold on 2026-10-01: the first output waited 6,381 ms behind both loads). Does nothing
+ * without `PERSONAXIS_PAX_DIR`; Wolf is left unloaded when `PERSONAXIS_WOLF` is `off`.
+ */
+export function warmPax(): void {
+	void paxProcess()?.request({ op: "warm", wolf: process.env.PERSONAXIS_WOLF !== "off" }, { hold: false });
 }
