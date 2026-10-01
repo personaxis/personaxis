@@ -10,7 +10,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { compile, DEFAULT_POLICY, PersonaAgent, policyFromPersona } from "../src/index.js";
-import { MALICIOUS_AT, SUSPICIOUS_AT, taintOf, type OutputClassifier } from "../src/judge/output-scan.js";
+import type { OutputClassifier } from "../src/judge/output-scan.js";
+import { GUIDE_PREAMBLE, renderGuides } from "../src/skill-guide.js";
+import type { ToolSpec } from "../src/tools/registry.js";
+import { useSkillTool } from "../src/tools/use-skill.js";
 import { Journal } from "../src/record/journal.js";
 import { defaultLoop } from "../src/run/default-provider.js";
 import { recordTurns } from "../src/run/recording.js";
@@ -78,10 +81,11 @@ async function turn(classifier?: OutputClassifier, asked = false) {
 }
 
 describe("what a score means (E159)", () => {
-	it("is clean up to the measured threshold, suspicious above it, malicious from one half", () => {
-		expect(taintOf(SUSPICIOUS_AT)).toBe("clean");
-		expect(taintOf(SUSPICIOUS_AT * 1.01)).toBe("suspicious");
-		expect(taintOf(MALICIOUS_AT)).toBe("malicious");
+	it("changes nothing just under the measured threshold, 8.377e-4, and makes the next call ask just over it", async () => {
+		const under = await turn(slowClassifier(8.3e-4, 5).classifier);
+		const over = await turn(slowClassifier(8.5e-4, 5).classifier);
+		expect(under.outcome.calls?.find((call) => call.tool === "write_file")?.verdict).toBe("allowed");
+		expect(over.outcome.calls?.find((call) => call.tool === "write_file")?.verdict).toBe("denied");
 	});
 });
 
@@ -135,5 +139,61 @@ describe("a classifier on tool outputs, through a real turn (E159)", () => {
 		const plain = await turn();
 		expect(failed.entries.some((entry) => entry.body.type === "judgement")).toBe(false);
 		expect(failed.outcome.calls?.map((call) => call.verdict)).toEqual(plain.outcome.calls?.map((call) => call.verdict));
+	});
+});
+
+describe("what the classifier is given to read (E160)", () => {
+	it("is exactly the guide when a skill is loaded, without the engine's preamble, heading or file list", () => {
+		// A guide with a fence of its own, so the closing fence that counts is the last one.
+		const guide = "Step one: draw the frog.\n```js\nfrog.jump();\n```\nStep two: test it.";
+		const rendered = renderGuides([{ name: "frog", guide, source: "your skill, version sha256:abc" }])!;
+		const output = `${rendered}\nFiles that come with it, in skills/frog: notes.md.`;
+		expect(output).toContain(GUIDE_PREAMBLE);
+		expect(useSkillTool({ skills: () => [] }).outside!(output)).toBe(guide);
+	});
+
+	it("is the part a tool says came from outside, and the wait for it is timed as the judge's", async () => {
+		const read: string[] = [];
+		const classifier: OutputClassifier = {
+			engine: "fake-wolf@0000000",
+			async classify(text) {
+				read.push(text);
+				await sleep(150);
+				return { p: 0 };
+			},
+		};
+		const fetchDoc: ToolSpec = {
+			name: "fetch_doc",
+			description: "Fetch a document.",
+			parameters: { type: "object", properties: {} },
+			isReadOnly: true,
+			isConcurrencySafe: true,
+			gate: () => ({ decision: "allow", reason: "test", class: { readOnly: true, writesFiles: false, network: false, destructive: false, escapesWorkspace: false } as never }),
+			execute: async () => "ENGINE WORDS\nTHE DOCUMENT",
+			outside: (output) => output.replace("ENGINE WORDS\n", ""),
+		};
+		const script = [
+			{ name: "fetch_doc", args: {} },
+			{ name: "read_file", args: { path: "notes.txt" } },
+			{ name: "finish", args: { summary: "Done." } },
+		];
+		let at = 0;
+		const fetchImpl = (async (url: string) => {
+			if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+			const next = script[Math.min(at++, script.length - 1)]!;
+			const tool_calls = [{ id: `c${at}`, type: "function", function: { name: next.name, arguments: JSON.stringify(next.args) } }];
+			return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "", tool_calls }, finish_reason: "tool_calls" }] }) };
+		}) as unknown as typeof fetch;
+		const agent = new PersonaAgent({
+			llm: { endpoint: "http://x/v1", model: "m", fetchImpl },
+			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" },
+			capability: compile(policyFromPersona({ permissions: { sandbox: "workspace-write", approval: "never" } }, { personaVersionId: "pv_scan" })),
+			extraTools: [fetchDoc],
+			outputClassifier: async () => classifier,
+		});
+		const result = await agent.run("Fetch the document, then read my notes.");
+		expect(read[0]).toBe("THE DOCUMENT");
+		// The model answers at once here, so the read's decision waited for nearly all of the 150 ms scan.
+		expect(result.latency.judgeMs).toBeGreaterThanOrEqual(100);
 	});
 });

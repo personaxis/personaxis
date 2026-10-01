@@ -17,8 +17,8 @@
  * ## Why nothing here is loaded unless asked for
  *
  * The judge runs on ONNX Runtime and a model of about 1.7 GB. Neither belongs in the engine's dependencies, so the
- * model and its runtime are loaded from Pax's own repository, named by `PERSONAXIS_PAX_DIR`. Without that variable
- * there is no judge, no entry is written, and every turn runs exactly as before.
+ * model runs in Pax's own process (`pax-process.ts`), from the repository named by `PERSONAXIS_PAX_DIR`. Without that
+ * variable there is no judge, no entry is written, and every turn runs exactly as before.
  *
  * ## What a judge never sees
  *
@@ -26,9 +26,7 @@
  * classifier of Claude Code strips them: content that arrived from outside must not be able to talk to the judge.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { paxProcess, type PaxProcess } from "./pax-process.js";
 
 /** A question with a typed answer: a probability of yes, or a choice among named options. */
 export type JudgeQuestion =
@@ -81,7 +79,7 @@ export function scopeOf(identity: string): string {
  * those are the names whose right answer the bench knows; the persona's decision step names routes differently and
  * is a separate fact in the record.
  */
-export const TURN_START_QUESTIONS: Readonly<Record<string, JudgeQuestion>> = {
+const TURN_START_QUESTIONS: Readonly<Record<string, JudgeQuestion>> = {
 	in_role: { type: "noul", instructions: "Is the request part of the work this assistant says it does?" },
 	route: {
 		type: "choice",
@@ -122,24 +120,24 @@ interface PaxAnswer {
 }
 
 /**
- * Loads Pax from its repository: the ONNX export under `models/laya-en/onnx` and the TypeScript runtime under
- * `upstream/laya/laya-ts/dist`, both built there and not here. The engine name carries the weights' revision from
- * Pax's `UPSTREAM.md`, so a judgement can always be traced to the exact model that gave it.
+ * Pax as a judge, through its own process (`pax-process.ts`). The engine name is the one that process reports, which
+ * carries the weights' revision from Pax's `UPSTREAM.md`, so a judgement can always be traced to the exact model that
+ * gave it; before the first answer it is plain `pax`, and no judgement is written before an answer.
  */
-export async function loadPax(dir: string): Promise<Judge> {
-	const runtime = (await import(pathToFileURL(join(dir, "upstream", "laya", "laya-ts", "dist", "index.js")).href)) as {
-		Agent: { load(path: string, opts: { device: string }): Promise<{ predict(state: unknown, questions: unknown): Promise<{ answers: Record<string, PaxAnswer> }> }> };
-	};
-	const agent = await runtime.Agent.load(join(dir, "models", "laya-en", "onnx"), { device: "cpu" });
-	const upstream = readFileSync(join(dir, "UPSTREAM.md"), "utf8");
-	const revision = /revision `([0-9a-f]{7})/.exec(upstream)?.[1] ?? "unknown";
+function paxJudge(pax: PaxProcess): Judge {
+	let engine = "pax";
 	return {
-		engine: `pax-en@${revision}`,
+		get engine() {
+			return engine;
+		},
 		async ask(state, questions) {
-			const result = await agent.predict(state, questions);
+			const reply = await pax.request({ op: "judge", state, questions });
+			if (!reply.ok) throw new Error(reply.error);
+			engine = reply.engine;
+			const answers = (reply.answers ?? {}) as Record<string, PaxAnswer>;
 			const out: Record<string, JudgeAnswer> = {};
 			for (const [name, question] of Object.entries(questions)) {
-				const got = result.answers[name];
+				const got = answers[name];
 				if (got === undefined) continue;
 				if (question.type === "noul" && typeof got.noul === "number") out[name] = { kind: "noul", p: got.noul };
 				else if (question.type === "choice" && typeof got.choice === "string") out[name] = { kind: "choice", choice: got.choice, p: got.probabilities?.[got.choice] ?? Number.NaN };
@@ -149,18 +147,12 @@ export async function loadPax(dir: string): Promise<Judge> {
 	};
 }
 
-let fromEnv: Promise<Judge | undefined> | undefined;
-
 /**
- * The judge named by `PERSONAXIS_PAX_DIR`, loaded once per process. Undefined when the variable is not set, and
- * undefined with one line on stderr when it is set and loading fails, so a broken judge never stops a turn.
+ * The judge named by `PERSONAXIS_PAX_DIR`, undefined when the variable is not set. A Pax that fails to load fails at
+ * its first answer, which `judgeTurnStart` turns into a line on stderr and no judgement: a broken judge never stops a
+ * turn.
  */
 export function judgeFromEnv(): Promise<Judge | undefined> {
-	const dir = process.env.PERSONAXIS_PAX_DIR;
-	if (!dir) return Promise.resolve(undefined);
-	fromEnv ??= loadPax(dir).catch((error: unknown) => {
-		process.stderr.write(`[judge] could not load Pax from ${dir}: ${error instanceof Error ? error.message : String(error)}\n`);
-		return undefined;
-	});
-	return fromEnv;
+	const pax = paxProcess();
+	return Promise.resolve(pax === undefined ? undefined : paxJudge(pax));
 }

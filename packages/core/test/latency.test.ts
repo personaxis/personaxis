@@ -41,7 +41,7 @@ describe("LatencyMeter splits a turn into parts (E17)", () => {
     const r = m.report();
     expect(r.modelMs).toBeGreaterThanOrEqual(25);
     expect(r.toolMs).toBeGreaterThanOrEqual(15);
-    expect(r.calls).toEqual({ model: 1, gate: 1, tool: 1 });
+    expect(r.calls).toEqual({ model: 1, gate: 1, tool: 1, judge: 0 });
   });
 
   it("time nobody measured is reported as unmeasured, never folded into a part", async () => {

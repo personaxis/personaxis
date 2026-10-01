@@ -29,7 +29,7 @@ import matter from "gray-matter";
 import type { ExecutionPort } from "../ports/execution.js";
 import { skillFingerprint, skillNamed, type LocalSkill } from "../run/local-skills.js";
 import type { CommandVerdict, Policy } from "../sandbox.js";
-import { renderGuides } from "../skill-guide.js";
+import { GUIDE_PREAMBLE, renderGuides } from "../skill-guide.js";
 import { READ_CLASS, readGate } from "./gates.js";
 import type { ToolSpec } from "./registry.js";
 
@@ -64,6 +64,15 @@ export function useSkillTool(options: UseSkillToolOptions): ToolSpec {
 	return {
 		name: USE_SKILL_TOOL,
 		category: "fs",
+		// E160: what came from whoever published the skill is what `renderGuides` fenced, and nothing around it: the
+		// preamble, the heading with its version and the list of files are the engine's. Measured on Gamewright's
+		// `game-design-document`: the guide alone scores 1.55e-4, the guide with the engine's heading and file list
+		// 0.124, and the preamble alone 0.63. The closing fence is the LAST one, since a guide can hold fences of its own.
+		outside: (output: string) => {
+			const open = output.indexOf("```text\n");
+			const close = output.lastIndexOf("\n```");
+			return open >= 0 && close > open ? output.slice(open + "```text\n".length, close) : output.replace(GUIDE_PREAMBLE, "");
+		},
 		description:
 			"Load one of your skills by name: its full instructions and the files that come with it. " +
 			"When a task fits a skill in your index, load it before doing the work, then follow it within your own limits.",

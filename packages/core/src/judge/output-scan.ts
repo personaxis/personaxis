@@ -21,10 +21,10 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import type { ContextTaint } from "../security/consent.js";
 import type { Judgement } from "./judge.js";
+import { paxProcess, type PaxProcess } from "./pax-process.js";
 
 /** A model that scores how likely a text is to carry an injected instruction. */
 export interface OutputClassifier {
@@ -38,12 +38,12 @@ export interface OutputClassifier {
  * (`research/experiments/decision-models/wolf-node.mjs`). At it, 345 of 510 attacks are above, and 20 of 3,706 clean
  * bench outputs. Belongs to that engine: a different model or variant needs its own measurement.
  */
-export const SUSPICIOUS_AT = 8.377e-4;
+const SUSPICIOUS_AT = 8.377e-4;
 /** At 0.5, 219 of 510 attacks and none of the 510 clean texts, nor any of the 3,706 bench outputs. */
-export const MALICIOUS_AT = 0.5;
+const MALICIOUS_AT = 0.5;
 
 /** The taint one score implies. */
-export function taintOf(p: number): ContextTaint {
+function taintOf(p: number): ContextTaint {
 	if (p >= MALICIOUS_AT) return "malicious";
 	if (p > SUSPICIOUS_AT) return "suspicious";
 	return "clean";
@@ -103,27 +103,34 @@ export class OutputScans {
 	}
 }
 
-/** Loads Wolf Defender fp16 from Pax's repository, through `wolf/wolf.mjs` there. */
-export async function loadWolf(dir: string): Promise<OutputClassifier> {
-	const runtime = (await import(pathToFileURL(join(dir, "wolf", "wolf.mjs")).href)) as {
-		loadWolf(dir: string, opts: { variant: string }): Promise<{ engine: string; classify(text: string): Promise<{ p: number }> }>;
+/**
+ * Wolf Defender fp16 in Pax's own process (`pax-process.ts`). The engine name is the one that process reports; before
+ * the first score it is plain `wolf-defender`, and no judgement is written before a score.
+ */
+function paxWolf(pax: PaxProcess): OutputClassifier {
+	let engine = "wolf-defender";
+	return {
+		get engine() {
+			return engine;
+		},
+		async classify(text) {
+			const reply = await pax.request({ op: "classify", text });
+			if (!reply.ok) throw new Error(reply.error);
+			engine = reply.engine;
+			if (typeof reply.p !== "number") throw new Error("Pax's process answered without a score");
+			return { p: reply.p };
+		},
 	};
-	return runtime.loadWolf(join(dir, "models", "wolf"), { variant: "fp16" });
 }
 
-let fromEnv: Promise<OutputClassifier | undefined> | undefined;
-
 /**
- * Wolf from `PERSONAXIS_PAX_DIR`, loaded once per process, when the fp16 model is there and `PERSONAXIS_WOLF` is not
- * `off`. The switch exists so a measurement can keep the turn-start judge of `E157` on in both arms and compare only
- * this. Undefined, with one line on stderr, when loading fails: a broken classifier never stops a turn.
+ * Wolf from `PERSONAXIS_PAX_DIR`, when the fp16 model is there and `PERSONAXIS_WOLF` is not `off`. The switch exists so
+ * a measurement can keep the turn-start judge of `E157` on in both arms and compare only this. A Wolf that fails to
+ * load fails at its first score, which `OutputScans` turns into a line on stderr and no judgement.
  */
 export function wolfFromEnv(): Promise<OutputClassifier | undefined> {
 	const dir = process.env.PERSONAXIS_PAX_DIR;
 	if (!dir || process.env.PERSONAXIS_WOLF === "off" || !existsSync(join(dir, "models", "wolf", "model-fp16.onnx"))) return Promise.resolve(undefined);
-	fromEnv ??= loadWolf(dir).catch((error: unknown) => {
-		process.stderr.write(`[judge] could not load Wolf from ${dir}: ${error instanceof Error ? error.message : String(error)}\n`);
-		return undefined;
-	});
-	return fromEnv;
+	const pax = paxProcess();
+	return Promise.resolve(pax === undefined ? undefined : paxWolf(pax));
 }
