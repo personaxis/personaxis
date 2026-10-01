@@ -60,6 +60,7 @@ import { DEFAULT_POLICY } from "../sandbox.js";
 import { assemble, identityOf } from "./assembled.js";
 import { judgeFromEnv, scopeOf } from "../judge/judge.js";
 import { wolfFromEnv } from "../judge/output-scan.js";
+import { warmPax } from "../judge/pax-process.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { wordlessReport } from "./wordless.js";
 import { lessonFrom } from "./lesson-extract.js";
@@ -454,6 +455,10 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 			},
 		});
 	}
+
+	// E161: Pax's models start loading now, while the turn's first model call is in flight, and not in front of the
+	// first tool output. Only for the turn somebody asked for: its rounds and colleagues share the same process.
+	if ((delegationDepth ?? 0) === 0) warmPax();
 
 	return new TurnRunner({
 		// E157: the judge watches the turn somebody asked for, like the reflection of E88, and not the rounds or

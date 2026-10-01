@@ -52,3 +52,35 @@ describe("Pax's own process", () => {
 		await expect(judge.ask({ request: "a" }, { in_role: { type: "noul", instructions: "In role?" } })).rejects.toThrow(/ended/);
 	});
 });
+
+describe("warming Pax when a turn is built (E161)", () => {
+	/** Runs `code` in a fresh Node process that imports pax-process.ts, and returns how long it took to exit by itself. */
+	async function exitsIn(code: string, dir: string): Promise<number> {
+		const { spawn } = await import("node:child_process");
+		const module = join(import.meta.dirname, "..", "src", "judge", "pax-process.ts").replace(/\\/g, "/");
+		const started = Date.now();
+		const child = spawn(process.execPath, ["--input-type=module", "-e", `const m = await import("file:///${module.replace(/^\//, "")}"); ${code}`], { env: { ...process.env, PERSONAXIS_PAX_DIR: dir }, stdio: "ignore" });
+		const exited = await new Promise<boolean>((resolve) => {
+			const timer = setTimeout(() => resolve(false), 8000);
+			child.on("exit", () => {
+				clearTimeout(timer);
+				resolve(true);
+			});
+		});
+		if (!exited) child.kill();
+		return exited ? Date.now() - started : Number.POSITIVE_INFINITY;
+	}
+
+	// A Pax that never answers, so only what the request holds can keep the process alive.
+	const SILENT = `process.stdin.resume();`;
+
+	it("does not keep a one-shot process alive while the models load for nobody", async () => {
+		const dir = fakePax(SILENT);
+		expect(await exitsIn("m.warmPax();", dir)).toBeLessThan(5000);
+	});
+
+	it("while a question that somebody awaits does keep it alive", async () => {
+		const dir = fakePax(SILENT);
+		expect(await exitsIn(`await m.paxProcess().request({ op: "judge" });`, dir)).toBe(Number.POSITIVE_INFINITY);
+	}, 15000);
+});
