@@ -52,7 +52,8 @@ export interface Judgement {
 	readonly engine: string;
 	readonly answer: JudgeAnswer;
 	readonly ms: number;
-	readonly mode: "shadow";
+	/** `act` only where a row measured that the judge may change what happens (E159, tool outputs). */
+	readonly mode: "shadow" | "act";
 }
 
 /**

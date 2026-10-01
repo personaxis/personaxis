@@ -286,8 +286,9 @@ export function defaultLoop(agent: PersonaAgent, conversation?: Conversation, ju
 				const judged = judging ? judging.judge().then((judge) => (judge ? judgeTurnStart(judge, judging.scope, context.request.prompt) : [])) : undefined;
 				const result = await agent.run(context.request.prompt);
 				const product = productOf(result);
-				const judgements = judged ? await judged : undefined;
-				return judgements === undefined || judgements.length === 0 ? product : { ...product, judgements };
+				// E159: the loop's own judgements, one per tool output its classifier read, after the turn-start ones.
+				const judgements = [...(judged ? await judged : []), ...(result.judgements ?? [])];
+				return judgements.length === 0 ? product : { ...product, judgements };
 			} finally {
 				if (conversation && agent.lastMessages) conversation.write(agent.lastMessages);
 			}

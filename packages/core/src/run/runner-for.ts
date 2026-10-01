@@ -59,6 +59,7 @@ import { resolveModel } from "../model-config.js";
 import { DEFAULT_POLICY } from "../sandbox.js";
 import { assemble, identityOf } from "./assembled.js";
 import { judgeFromEnv, scopeOf } from "../judge/judge.js";
+import { wolfFromEnv } from "../judge/output-scan.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { wordlessReport } from "./wordless.js";
 import { lessonFrom } from "./lesson-extract.js";
@@ -334,10 +335,15 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 	//
 	// Nothing changes for a persona that declared no `improvement_policy`: `readMode` answers `locked` and the
 	// draft is never written.
-	const options =
-		(delegationDepth ?? 0) > 0
+	//
+	// E159: the output classifier is on the options of every run, rounds and colleagues included, because a colleague
+	// reads files too and an instruction hidden in one is the same attack at any depth.
+	const options = {
+		...((delegationDepth ?? 0) > 0
 			? agentOptionsFor(persona, { ...rest, kernel })
-			: agentOptionsFor(persona, { ...rest, kernel, postmortem: { extract: lessonFrom(persona.llm) } });
+			: agentOptionsFor(persona, { ...rest, kernel, postmortem: { extract: lessonFrom(persona.llm) } })),
+		outputClassifier: wolfFromEnv,
+	};
 
 	kernel.mount({
 		name: "tool.delegate",
