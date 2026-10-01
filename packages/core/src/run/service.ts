@@ -121,6 +121,8 @@ export interface TurnProduct {
 	readonly decision?: TurnOutcome["decision"];
 	/** E84: the questions put to a person, with their answers when given. Passed through untouched. */
 	readonly questions?: TurnOutcome["questions"];
+	/** E157: what the judge said about the turn, in shadow. Passed through untouched. */
+	readonly judgements?: TurnOutcome["judgements"];
 }
 
 /**
@@ -262,6 +264,8 @@ export class TurnRunner {
 			...(product.tasks === undefined ? {} : { tasks: product.tasks }),
 			...(product.decision === undefined ? {} : { decision: product.decision }),
 			...(product.questions === undefined ? {} : { questions: product.questions }),
+			// E157: named here for the reason E85 gives below: a field the runner does not copy is lost in silence.
+			...(product.judgements === undefined ? {} : { judgements: product.judgements }),
 			// E85: what the runtime checked about what the turn left. Copied here like the rest: this is the
 			// one place where a field a loop reported is lost by not being named, which is how `E84` lost its
 			// questions for an afternoon.

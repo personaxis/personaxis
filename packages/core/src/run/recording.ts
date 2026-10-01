@@ -151,6 +151,9 @@ function idOf(request: TurnRequest): string {
  */
 const GATE: Author = { kind: "runtime", mechanism: "gate", reason: "the gate decided on a call the persona made" };
 
+/** Who a judgement entry is attributed to: the judge component, by the name the bench reads it under. */
+const JUDGE: Author = { kind: "component", name: "pax" };
+
 /** One call as the record writes it. Absent fields stay absent: an allowed call has no refusal to give. */
 function callEntry(turn: string, call: TurnCall): RecordBody {
 	return {
@@ -185,6 +188,24 @@ function closing(outcome: TurnOutcome, asker?: Author): readonly Written[] {
 	// where a provider that counts no steps would have had to take it.
 	// E83: the decision before anything else the turn did, because it was taken before the first step. The
 	// persona's, like its answer: the route and the reason are what its model said.
+	// E157: the judge's answers before everything else, because they were asked when the turn opened. The
+	// component's, never the persona's: the persona did not say them, and in shadow it never even saw them.
+	for (const judged of outcome.judgements ?? []) {
+		entries.push({
+			author: JUDGE,
+			body: {
+				type: "judgement",
+				turn: outcome.turn,
+				site: judged.site,
+				question: judged.question,
+				engine: judged.engine,
+				answer: judged.answer,
+				ms: judged.ms,
+				mode: judged.mode,
+			},
+		});
+	}
+
 	if (outcome.decision !== undefined) {
 		entries.push({
 			author: answererOf(),
