@@ -58,6 +58,7 @@ import { PersonaAgent, type AgentOptions } from "../agent.js";
 import { resolveModel } from "../model-config.js";
 import { DEFAULT_POLICY } from "../sandbox.js";
 import { assemble, identityOf } from "./assembled.js";
+import { judgeFromEnv, scopeOf } from "../judge/judge.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { wordlessReport } from "./wordless.js";
 import { lessonFrom } from "./lesson-extract.js";
@@ -449,7 +450,13 @@ export function runnerFor(persona: PersonaFacts, session: SessionOptions = {}): 
 	}
 
 	return new TurnRunner({
-		provider: defaultLoop(new PersonaAgent(options), rest.conversation),
+		// E157: the judge watches the turn somebody asked for, like the reflection of E88, and not the rounds or
+		// colleagues it hands work to; it is asked about the persona's own statement of its job.
+		provider: defaultLoop(
+			new PersonaAgent(options),
+			rest.conversation,
+			(delegationDepth ?? 0) > 0 ? undefined : { judge: judgeFromEnv, scope: scopeOf(options.personaBody ?? "") },
+		),
 		...(ledger === undefined ? {} : { ledger }),
 		...(observer === undefined ? {} : { observer }),
 	});

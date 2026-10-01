@@ -60,6 +60,7 @@ export type StopReason =
 import type { CompactionPlan } from "../compaction/service.js";
 import type { RecordBody } from "../record/entry.js";
 import type { DelegatedScope } from "./delegation.js";
+import type { Judgement } from "../judge/judge.js";
 
 /**
  * One compaction, on its way from the loop to the record.
@@ -168,6 +169,11 @@ export interface TurnOutcome {
 		readonly route: Extract<RecordBody, { readonly type: "decision" }>["route"];
 		readonly why: string;
 	};
+	/**
+	 * E157: what a judge model said about this turn, in shadow, with where it was asked. Absent when no judge is
+	 * configured, which is different from a judge that was asked and answered nothing.
+	 */
+	readonly judgements?: readonly Judgement[];
 	/**
 	 * E84: the questions the persona put to a person in this turn, in order, each with its answer when
 	 * somebody gave one. One without an answer is the question the turn stopped at, because nobody could

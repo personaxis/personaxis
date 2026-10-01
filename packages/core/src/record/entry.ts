@@ -476,6 +476,36 @@ export type RecordBody =
 			/** The work it was asked about, so the silence can be read against the job that prompted it. */
 			readonly from: string;
 	  }
+	/**
+	 * E157: what a judge model said about one moment of the work, and whether it was allowed to act on it.
+	 *
+	 * A judge (Pax, a small encoder that answers typed questions in one pass) is asked at fixed places in the loop:
+	 * whether a request belongs to the persona's role, which route it takes, whether a tool output carries an
+	 * instruction. In `shadow` mode it changes nothing the persona does, and this entry is the only trace of what it
+	 * thought, which is the point: whether a judge earns the right to act is read later by comparing these entries
+	 * with what the bench's own checker knows was true, never with the judge itself (a cheap verifier read through its
+	 * own verdicts reports a fraction of the errors it lets through).
+	 *
+	 * The component is the author: the judge said it, not the persona and not a person. `engine` names the model and
+	 * its revision, so two judgements by different models are never read as one series.
+	 */
+	| {
+			readonly type: "judgement";
+			readonly turn: string;
+			/** Where in the work the question was asked, e.g. `turn-start`. */
+			readonly site: string;
+			/** The question's name, e.g. `in_role` or `route`. */
+			readonly question: string;
+			/** Model and revision that answered, e.g. `pax-en@55cf4c4`. */
+			readonly engine: string;
+			/** What it answered: a probability of yes, or the option it chose and that option's probability. */
+			readonly answer:
+				| { readonly kind: "noul"; readonly p: number }
+				| { readonly kind: "choice"; readonly choice: string; readonly p: number };
+			readonly ms: number;
+			/** `shadow`: recorded, nothing changed. `act`: the loop used it. */
+			readonly mode: "shadow" | "act";
+	  }
 	| { readonly type: "checkpoint"; readonly state: DerivedState };
 
 /**

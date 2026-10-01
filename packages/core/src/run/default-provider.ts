@@ -71,6 +71,16 @@
 import { PersonaAgent, type AgentResult } from "../agent.js";
 import type { Conversation } from "./conversation.js";
 import type { LoopProvider, TurnContext, TurnProduct } from "./service.js";
+import { judgeTurnStart, type Judge } from "../judge/judge.js";
+
+/**
+ * E157: a judge to ask in shadow when a turn opens, and the persona's statement of its job to ask it about. The judge
+ * is a function so that loading it (a model of about 1.7 GB) happens once, on the first turn that needs it.
+ */
+export interface Judging {
+	readonly judge: () => Promise<Judge | undefined>;
+	readonly scope: string;
+}
 
 /** Stops that mean there was no room left, and the turn closed with what it had. */
 const RAN_OUT_OF_ROOM = new Set([
@@ -265,13 +275,19 @@ export function productOf(result: AgentResult): TurnProduct {
  * and dropping them would make the next turn re-ask a question this one already put to
  * the model.
  */
-export function defaultLoop(agent: PersonaAgent, conversation?: Conversation): LoopProvider {
+export function defaultLoop(agent: PersonaAgent, conversation?: Conversation, judging?: Judging): LoopProvider {
 	return {
 		name: "personaxis",
 		run: async (context: TurnContext): Promise<TurnProduct> => {
 			try {
+				// E157: the judge starts with the turn and runs beside it, so it costs the turn nothing it waits on
+				// until the end. It is awaited before the product leaves, because a judgement that is still running
+				// when the record is written is a judgement lost, and losing one is the condition that retires this.
+				const judged = judging ? judging.judge().then((judge) => (judge ? judgeTurnStart(judge, judging.scope, context.request.prompt) : [])) : undefined;
 				const result = await agent.run(context.request.prompt);
-				return productOf(result);
+				const product = productOf(result);
+				const judgements = judged ? await judged : undefined;
+				return judgements === undefined || judgements.length === 0 ? product : { ...product, judgements };
 			} finally {
 				if (conversation && agent.lastMessages) conversation.write(agent.lastMessages);
 			}

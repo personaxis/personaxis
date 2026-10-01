@@ -294,6 +294,8 @@ function fold(start: DerivedState, entries: readonly RecordEntry[]): DerivedStat
 			// E84: what was asked and answered is history of a turn too.
 			case "question":
 			case "answer":
+			// E157: what a judge thought about a moment of the work is a fact about that moment, not a position.
+			case "judgement":
 				// Facts worth keeping and not part of the persona's current position.
 				break;
 			case "delegation":
