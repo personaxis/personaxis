@@ -71,9 +71,10 @@ function resultOf(
 			modelMs: 0,
 			gateMs: 0,
 			toolMs: 0,
+			judgeMs: 0,
 			totalMs: 0,
 			unattributedMs: 0,
-			calls: { model: 0, gate: 0, tool: 0 },
+			calls: { model: 0, gate: 0, tool: 0, judge: 0 },
 		},
 	};
 }

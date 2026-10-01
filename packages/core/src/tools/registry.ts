@@ -59,6 +59,12 @@ export interface ToolSpec {
    * hosted job is the wrong one and fails silently by working.
    */
   execute(args: Record<string, unknown>, policy: Policy, execution: ExecutionPort): Promise<string>;
+  /**
+   * E160: the part of this tool's output that came from outside, for an injection classifier to read. Absent, the
+   * whole output is. A tool that wraps outside text in words of the engine's own says which part is which, because the
+   * engine's words, read alone, can look like the attack they warn about.
+   */
+  outside?(output: string): string;
 }
 
 /**

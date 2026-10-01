@@ -162,7 +162,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // eight words would look like a session that had stopped.
   let speaking = "";
   /** E17: the last per-step latency breakdown seen this turn. */
-  let lastLatency: { modelMs: number; gateMs: number; toolMs: number; unattributedMs: number; overBudgetMs?: number } | undefined;
+  let lastLatency: { modelMs: number; gateMs: number; toolMs: number; judgeMs?: number; unattributedMs: number; overBudgetMs?: number } | undefined;
   bus.on((e) => {
     if (e.type === "agent-delta") {
       speaking = (speaking + e.text).replace(/\s+/g, " ");
@@ -342,12 +342,14 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   // turn's breakdown from being read on the day it matters.
   if (lastLatency) {
     const l = lastLatency;
-    const totalMs = l.modelMs + l.gateMs + l.toolMs + l.unattributedMs;
+    const totalMs = l.modelMs + l.gateMs + l.toolMs + (l.judgeMs ?? 0) + l.unattributedMs;
     if (l.overBudgetMs !== undefined || totalMs >= 2000) {
       const s = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
       rows.push([
         "latency",
         `model ${s(l.modelMs)} · gate ${s(l.gateMs)} · tools ${s(l.toolMs)} · other ${s(l.unattributedMs)}` +
+          // E160: what the turn waited for a judge, only when it waited at all.
+          ((l.judgeMs ?? 0) > 0 ? ` · judge ${s(l.judgeMs ?? 0)}` : "") +
           (l.overBudgetMs !== undefined ? chalk.yellow(`  ⚠ slowest turn ${s(l.overBudgetMs)}, past the declared ceiling`) : ""),
       ]);
     }

@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { compile, DEFAULT_POLICY, PersonaAgent, policyFromPersona } from "../src/index.js";
-import { judgeTurnStart, scopeOf, TURN_START_QUESTIONS, type Judge } from "../src/judge/judge.js";
+import { judgeTurnStart, scopeOf, type Judge } from "../src/judge/judge.js";
 import { Journal } from "../src/record/journal.js";
 import { defaultLoop } from "../src/run/default-provider.js";
 import { recordTurns } from "../src/run/recording.js";
@@ -102,7 +102,8 @@ describe("a judge in shadow, through a real turn (E157)", () => {
 		]);
 
 		const judgements = watched.entries.filter((entry) => entry.body.type === "judgement");
-		expect(judgements).toHaveLength(Object.keys(TURN_START_QUESTIONS).length);
+		// The two turn-start questions, rol and route.
+		expect(judgements).toHaveLength(2);
 		for (const entry of judgements) expect(entry.author).toEqual({ kind: "component", name: "pax" });
 		expect(judgements[0]?.body).toMatchObject({ turn: "t1", site: "turn-start", question: "in_role", engine: "fake@0000000", answer: { kind: "noul", p: 0.91 }, mode: "shadow" });
 		expect(judgements[1]?.body).toMatchObject({ question: "route", answer: { kind: "choice", choice: "build", p: 0.6 } });

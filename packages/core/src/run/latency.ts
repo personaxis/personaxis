@@ -16,12 +16,18 @@
  */
 
 /** The parts of a turn that move for different reasons, so they are timed apart. */
-export type LatencyPart = "model" | "gate" | "tool";
+export type LatencyPart = "model" | "gate" | "tool" | "judge";
 
 export interface LatencyReport {
 	readonly modelMs: number;
 	readonly gateMs: number;
 	readonly toolMs: number;
+	/**
+	 * E160: what the turn waited for a judge, which is only the part a judge did not finish while the model was
+	 * thinking. Its own part because a judge's cost has to be read apart from a provider's mood: the wall time of the
+	 * same turn with Cohere moved from 123 to 157 s between two identical runs.
+	 */
+	readonly judgeMs: number;
 	readonly totalMs: number;
 	/**
 	 * Wall time inside the run that none of the three parts claimed.
@@ -46,8 +52,8 @@ export interface LatencyReport {
  * wrapper too, and this exists to be believed.
  */
 export class LatencyMeter {
-	private readonly totals: Record<LatencyPart, number> = { model: 0, gate: 0, tool: 0 };
-	private readonly counts: Record<LatencyPart, number> = { model: 0, gate: 0, tool: 0 };
+	private readonly totals: Record<LatencyPart, number> = { model: 0, gate: 0, tool: 0, judge: 0 };
+	private readonly counts: Record<LatencyPart, number> = { model: 0, gate: 0, tool: 0, judge: 0 };
 	private turnStart = 0;
 	private worstTurn = 0;
 
@@ -102,7 +108,7 @@ export class LatencyMeter {
 	report(): LatencyReport {
 		this.turnEnded();
 		const totalMs = Date.now() - this.startedAt;
-		const attributed = this.totals.model + this.totals.gate + this.totals.tool;
+		const attributed = this.totals.model + this.totals.gate + this.totals.tool + this.totals.judge;
 		const over =
 			this.turnBudgetMs !== undefined && this.worstTurn > this.turnBudgetMs
 				? { turnMs: this.turnBudgetMs, worstTurnMs: this.worstTurn }
@@ -111,6 +117,7 @@ export class LatencyMeter {
 			modelMs: this.totals.model,
 			gateMs: this.totals.gate,
 			toolMs: this.totals.tool,
+			judgeMs: this.totals.judge,
 			totalMs,
 			unattributedMs: Math.max(0, totalMs - attributed),
 			calls: { ...this.counts },

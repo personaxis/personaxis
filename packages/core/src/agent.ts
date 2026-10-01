@@ -1284,6 +1284,7 @@ export class PersonaAgent {
             modelMs: timing.modelMs,
             gateMs: timing.gateMs,
             toolMs: timing.toolMs,
+            judgeMs: timing.judgeMs,
             unattributedMs: timing.unattributedMs,
             ...(timing.overBudget ? { overBudgetMs: timing.overBudget.worstTurnMs } : {}),
           },
@@ -1717,7 +1718,7 @@ export class PersonaAgent {
           // while the context is malicious-tainted is denied even if the gate would allow it.
           // E159: the scans of earlier outputs, started while the model was thinking, are awaited here and only here,
           // because this is the one place the taint is read.
-          contextTaint = maxTaint(contextTaint, await scans.taint());
+          contextTaint = maxTaint(contextTaint, await clock.time("judge", () => scans.taint()));
           const consented = tightenVerdict(decided.verdict, {
             klass: verdict.class,
             sandbox: this.policy.sandbox as SandboxPosture,
@@ -1775,7 +1776,7 @@ export class PersonaAgent {
               const accepted: Accepted<string> = accept(r.output, contextTaint);
               output = accepted.value;
               contextTaint = accepted.taint;
-              scans.start(output);
+              scans.start(tool.outside ? tool.outside(output) : output);
               if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
               else { errorCount++; noteFail(call); }
               calls.push(allowed(call, r.ok, "approved when asked"));
@@ -1785,7 +1786,7 @@ export class PersonaAgent {
             const accepted: Accepted<string> = accept(r.output, contextTaint);
             output = accepted.value;
             contextTaint = accepted.taint;
-            scans.start(output);
+            scans.start(tool.outside ? tool.outside(output) : output);
             if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
             else { errorCount++; noteFail(call); }
             calls.push(allowed(call, r.ok));

@@ -68,7 +68,7 @@ export type LoopEvent =
       tokens: number;
       costUsd: number;
       wallSeconds: number;
-      latency?: { modelMs: number; gateMs: number; toolMs: number; unattributedMs: number; overBudgetMs?: number };
+      latency?: { modelMs: number; gateMs: number; toolMs: number; judgeMs?: number; unattributedMs: number; overBudgetMs?: number };
     }
   | { type: "agent-stop-condition"; reason: string; step: number }
   // Objective verification (v0.9)
