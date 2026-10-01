@@ -110,6 +110,18 @@ export class ToolInterceptor {
    * seal a forensic record. Never called for a denied call, so "executed" in the log always
    * means an approved action actually ran.
    */
+  /**
+   * E154: whether a file is already there, asked of the same execution port the tools write through, so the answer
+   * is about the machine the work happens on and not about this one.
+   */
+  async exists(path: string): Promise<boolean> {
+    try {
+      return (await this.execution.readFile(path, this.policy)).ok;
+    } catch {
+      return false;
+    }
+  }
+
   async run(tool: ToolSpec, call: ToolCall): Promise<InterceptOutcome> {
     let output: string;
     let ok = true;
