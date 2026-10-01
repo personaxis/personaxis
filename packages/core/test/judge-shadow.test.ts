@@ -76,6 +76,10 @@ describe("the persona's statement of its job (E157)", () => {
 		);
 	});
 
+	it("takes the document's own opening, not the line the terminal puts above it", () => {
+		expect(scopeOf(`You are Gamewright. Stay in character.\n\n${DOC}`)).toBe(scopeOf(DOC));
+	});
+
 	it("is empty for an empty document, and then the role is not judged at all", async () => {
 		expect(scopeOf("")).toBe("");
 		const { judge, shown } = fakeJudge();

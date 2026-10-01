@@ -63,7 +63,13 @@ export interface Judgement {
  */
 export function scopeOf(identity: string): string {
 	const lines = identity.split(/\r?\n/).map((line) => line.trim());
-	const opening = lines.find((line) => /^You are\b/.test(line)) ?? lines.find((line) => /^# You are\b/.test(line))?.replace(/^#\s*/, "");
+	// The terminal puts its own "You are X. Stay in character." above the document, so the document's opening is the
+	// first "You are" line after its "# You are" heading; without that heading, the first "You are" line there is.
+	const heading = lines.findIndex((line) => /^# You are\b/.test(line));
+	const opening =
+		(heading >= 0 ? lines.slice(heading + 1).find((line) => /^You are\b/.test(line)) : undefined) ??
+		lines.find((line) => /^You are\b/.test(line)) ??
+		lines[heading]?.replace(/^#\s*/, "");
 	const works = lines.find((line) => /^You work on:/.test(line));
 	const not = lines.find((line) => /^You do NOT work on:/.test(line));
 	return [opening, works, not].filter((line): line is string => Boolean(line)).join(" ");
