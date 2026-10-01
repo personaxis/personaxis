@@ -87,6 +87,8 @@ import {
 } from "./causal-trace.js";
 import { tightenVerdict, maxTaint, type ContextTaint, type SandboxPosture } from "./security/consent.js";
 import { accept, type Accepted } from "./security/taint.js";
+import { OutputScans, type OutputClassifier } from "./judge/output-scan.js";
+import type { Judgement } from "./judge/judge.js";
 import { actionClassesFor } from "./enforcement/action-classes.js";
 import type { ExecutablePolicy } from "./enforcement/policy-compile.js";
 import { freezeCall } from "./gate/call.js";
@@ -285,6 +287,11 @@ export interface AgentOptions {
    */
   extraTools?: ToolSpec[];
   /**
+   * E159: a classifier that reads every tool output while the model thinks, and raises the context's taint before the
+   * next tool call is decided. Absent, nothing is scanned beyond the heuristic, as before.
+   */
+  outputClassifier?: () => Promise<OutputClassifier | undefined>;
+  /**
    * J.3: opt-in post-mortem. When present, a hard-won run reflects and may abstract its
    * method into a governed skill (skill-writer.ts: security floor → governance). The
    * caller injects `extract` (a structured LLM call), so the loop stays free of a second
@@ -392,6 +399,8 @@ export interface AgentResult {
    * gave one. The last one without an answer is the question the run stopped at.
    */
   questions?: readonly (PersonQuestion & { readonly answer?: string })[];
+  /** E159: what the output classifier said about each tool output, present only when one ran. */
+  judgements?: readonly Judgement[];
   /**
    * E18: what the prompt cache did this run, as reported by the provider.
    *
@@ -751,6 +760,15 @@ export class PersonaAgent {
 
   /** Run the loop until verified completion, a budget/stop condition, or an error. */
   async run(task: string): Promise<AgentResult> {
+    // E159: every scan started in the run is awaited before the result leaves, whichever of the loop's exits it took,
+    // so no judgement is lost and none outlives the turn it belongs to.
+    const scans = new OutputScans(this.opts.outputClassifier);
+    const result = await this.runLoop(task, scans);
+    const judgements = await scans.settle();
+    return judgements.length === 0 ? result : { ...result, judgements };
+  }
+
+  private async runLoop(task: string, scans: OutputScans): Promise<AgentResult> {
     const bus = this.bus;
     const budget: AgentBudgetConfig = { ...DEFAULT_AGENT_BUDGET, ...(this.opts.budget ?? {}) };
     if (typeof this.opts.maxSteps === "number") budget.maxSteps = this.opts.maxSteps;
@@ -1697,6 +1715,9 @@ export class PersonaAgent {
           // K.04: tighten the cascade's verdict with the HITL risk matrix (posture × taint ×
           // reversibility × sensitivity). Consent can only make it STRICTER: a destructive action
           // while the context is malicious-tainted is denied even if the gate would allow it.
+          // E159: the scans of earlier outputs, started while the model was thinking, are awaited here and only here,
+          // because this is the one place the taint is read.
+          contextTaint = maxTaint(contextTaint, await scans.taint());
           const consented = tightenVerdict(decided.verdict, {
             klass: verdict.class,
             sandbox: this.policy.sandbox as SandboxPosture,
@@ -1754,6 +1775,7 @@ export class PersonaAgent {
               const accepted: Accepted<string> = accept(r.output, contextTaint);
               output = accepted.value;
               contextTaint = accepted.taint;
+              scans.start(output);
               if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
               else { errorCount++; noteFail(call); }
               calls.push(allowed(call, r.ok, "approved when asked"));
@@ -1763,6 +1785,7 @@ export class PersonaAgent {
             const accepted: Accepted<string> = accept(r.output, contextTaint);
             output = accepted.value;
             contextTaint = accepted.taint;
+            scans.start(output);
             if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
             else { errorCount++; noteFail(call); }
             calls.push(allowed(call, r.ok));
