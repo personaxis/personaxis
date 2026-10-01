@@ -65,6 +65,16 @@ export interface ToolSpec {
    * engine's words, read alone, can look like the attack they warn about.
    */
   outside?(output: string): string;
+  /**
+   * E154: when a call the model made is really a request for what this tool does as a whole, the arguments to call
+   * this tool with instead, the file the call would have created, and why. The loop takes over only if that file does
+   * not exist yet, and runs this tool through the same gate and approval as any call; the model's own call is never
+   * rewritten, it is answered with what ran in its place.
+   */
+  takesOver?(
+    call: { readonly name: string; readonly args: Record<string, unknown> },
+    request: string,
+  ): { readonly args: Record<string, unknown>; readonly creates: string; readonly why: string } | undefined;
 }
 
 /**

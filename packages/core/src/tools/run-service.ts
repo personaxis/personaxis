@@ -79,6 +79,24 @@ export function runServiceTool(options: RunServiceToolOptions): ToolSpec {
 				brief: { type: "string", description: "What the client asked for, in their own words." },
 			},
 		},
+		// E154: a model that starts writing, by itself, a file one of its services only produces after earlier steps is
+		// building what the service builds, without the steps that make it good (measured in E110: the service's game was
+		// winnable 4 of 4 times, the free build 3 of 8). Only a NEW file and only a write: the loop checks the file is
+		// not there yet, and an edit is fixing or extending what exists. The first step's files never trigger it, since
+		// a design document alone can be the whole request. Exactly one service, or none: two would be a guess.
+		takesOver: (call, request) => {
+			if (call.name !== "write_file" || call.args.append === true) return undefined;
+			const path = typeof call.args.path === "string" ? call.args.path.replace(/\\/g, "/").replace(/^\.\//, "").trim() : "";
+			if (!path || !request.trim()) return undefined;
+			const matches = options.services().filter((service) => service.afterFirstStep.includes(path));
+			if (matches.length !== 1) return undefined;
+			const service = matches[0]!;
+			return {
+				args: { service: service.address, brief: request.trim() },
+				creates: path,
+				why: `${path} is what the service "${service.name}" builds after its earlier steps, so the service ran instead of writing it directly`,
+			};
+		},
 		isReadOnly: false,
 		isConcurrencySafe: false,
 		// The tool itself touches nothing: every file is written by a step, and every call a step makes is gated on its own.

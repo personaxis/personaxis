@@ -88,6 +88,7 @@ import {
 import { tightenVerdict, maxTaint, type ContextTaint, type SandboxPosture } from "./security/consent.js";
 import { accept, type Accepted } from "./security/taint.js";
 import { OutputScans, type OutputClassifier } from "./judge/output-scan.js";
+import { RUN_SERVICE_TOOL } from "./tools/run-service.js";
 import type { Judgement } from "./judge/judge.js";
 import { actionClassesFor } from "./enforcement/action-classes.js";
 import type { ExecutablePolicy } from "./enforcement/policy-compile.js";
@@ -853,6 +854,8 @@ export class PersonaAgent {
     // destructive/network action proposed while the context is tainted is exactly the indirect-
     // injection attack, so consent escalates or blocks it. Only ever accumulates within a run.
     let contextTaint: ContextTaint = "clean";
+    // E154: the services this run has run, by the model or by the runtime in its place, so neither happens twice.
+    const servicesRun = new Set<string>();
     // J.4: stops a runaway repetition/stall (threat T11). Additive: only acts on abnormal
     // loops, so healthy runs never trip it.
     const breaker = new LoopBreaker();
@@ -1492,7 +1495,11 @@ export class PersonaAgent {
             ...(used === undefined ? {} : { used }),
           };
         };
-        for (const call of res.toolCalls) {
+        for (const asked of res.toolCalls) {
+          // E154: the call this iteration runs. The model's own unless the runtime took the work over (below), and
+          // the model's call is then answered, never rewritten: its id and its name stay on the result it reads.
+          let call = asked;
+          let tookOver: string | undefined;
           // Whether THIS call did real work, which is what the breaker now records.
           //  stays as the step-level answer the budget reads.
           let callProduced = false;
@@ -1581,7 +1588,7 @@ export class PersonaAgent {
             };
           }
 
-          const tool = activeTools.find((t) => t.name === call.name) ?? toolByName(call.name);
+          let tool = activeTools.find((t) => t.name === call.name) ?? toolByName(call.name);
           if (!tool) {
             errorCount++;
             noteFail(call);
@@ -1632,6 +1639,24 @@ export class PersonaAgent {
             continue;
           }
 
+          // E154: a call that is really a request for one of the persona's services as a whole runs the service
+          // instead, through the same gate, consent and approval below. Only when the file it would create is not
+          // there yet, and only once per service in a run: a service the model already ran, or one that was taken
+          // over and refused, leaves the model free to write the file itself.
+          if (call.name === RUN_SERVICE_TOOL && typeof call.args?.service === "string") servicesRun.add(call.args.service);
+          for (const other of activeTools) {
+            const plan = other.takesOver?.({ name: call.name, args: call.args ?? {} }, task);
+            if (!plan) continue;
+            const service = String(plan.args.service ?? other.name);
+            if (servicesRun.has(service) || (await interceptor.exists(plan.creates))) break;
+            servicesRun.add(service);
+            tookOver = plan.why;
+            bus.emit({ type: "agent-think", text: `[runtime] ${plan.why}` });
+            call = { ...call, name: other.name, args: plan.args };
+            tool = other;
+            break;
+          }
+
           bus.emit({ type: "tool-propose", tool: call.name, args: call.args });
 
           // FR.4 PreToolUse hooks (blocking-capable): a user hook may veto the
@@ -1649,7 +1674,7 @@ export class PersonaAgent {
               interceptor.recordBlocked(call.name, "deny", "blocked by PreToolUse hook");
               bus.emit({ type: "tool-verdict", tool: call.name, decision: "deny", reason: "blocked by PreToolUse hook" });
               calls.push({ callId: call.id, tool: call.name, verdict: "denied", reason: "blocked by PreToolUse hook", step });
-              messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: "denied by PreToolUse hook" });
+              messages.push({ role: "tool", tool_call_id: asked.id, name: asked.name, content: "denied by PreToolUse hook" });
               continue;
             }
           }
@@ -1779,7 +1804,7 @@ export class PersonaAgent {
               scans.start(tool.outside ? tool.outside(output) : output);
               if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
               else { errorCount++; noteFail(call); }
-              calls.push(allowed(call, r.ok, "approved when asked"));
+              calls.push(allowed(call, r.ok, tookOver ? `approved when asked; run by the runtime in place of ${asked.name}: ${tookOver}` : "approved when asked"));
             }
           } else {
             const r = await clock.time("tool", () => interceptor.run(tool, call));
@@ -1789,7 +1814,7 @@ export class PersonaAgent {
             scans.start(tool.outside ? tool.outside(output) : output);
             if (r.ok) { producedWork = true; callProduced = true; workedThisRun = true; succeeded.push(call.id); }
             else { errorCount++; noteFail(call); }
-            calls.push(allowed(call, r.ok));
+            calls.push(allowed(call, r.ok, tookOver ? `run by the runtime in place of ${asked.name}: ${tookOver}` : undefined));
           }
 
           // E9: the call as a trace node, with the plan step that named its tool when
@@ -1809,7 +1834,12 @@ export class PersonaAgent {
           if (typeof call.args.path === "string") taskState.noteFile(call.args.path);
           if (output.startsWith("error") || output.startsWith("denied")) taskState.noteError(`${call.name}: ${output.slice(0, 120)}`);
           const shown = outputStore.offload(call.name, output).text;
-          messages.push({ role: "tool", tool_call_id: call.id, name: call.name, content: shown });
+          messages.push({
+            role: "tool",
+            tool_call_id: asked.id,
+            name: asked.name,
+            content: tookOver ? `Not run as you wrote it: ${tookOver}. What the service reports:\n${shown}` : shown,
+          });
 
           // E22: recorded per CALL, which is what makes the stop reachable.
           //
