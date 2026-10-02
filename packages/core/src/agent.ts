@@ -856,6 +856,8 @@ export class PersonaAgent {
     let contextTaint: ContextTaint = "clean";
     // E154: the services this run has run, by the model or by the runtime in its place, so neither happens twice.
     const servicesRun = new Set<string>();
+    // E163: the files the model created in this run, by a write that ran, so a service taken over can start after them.
+    const created: string[] = [];
     // J.4: stops a runaway repetition/stall (threat T11). Additive: only acts on abnormal
     // loops, so healthy runs never trip it.
     const breaker = new LoopBreaker();
@@ -1645,7 +1647,7 @@ export class PersonaAgent {
           // over and refused, leaves the model free to write the file itself.
           if (call.name === RUN_SERVICE_TOOL && typeof call.args?.service === "string") servicesRun.add(call.args.service);
           for (const other of activeTools) {
-            const plan = other.takesOver?.({ name: call.name, args: call.args ?? {} }, task);
+            const plan = other.takesOver?.({ name: call.name, args: call.args ?? {} }, task, created);
             if (!plan) continue;
             const service = String(plan.args.service ?? other.name);
             if (servicesRun.has(service) || (await interceptor.exists(plan.creates))) break;
@@ -1832,6 +1834,10 @@ export class PersonaAgent {
           // J.6: track the run's task state (survives compaction) and offload a large output
           // to a handle instead of pushing 100k of it into the context.
           if (typeof call.args.path === "string") taskState.noteFile(call.args.path);
+          // E163: a write of the model's own that ran, named as it named it.
+          if (!tookOver && call.name === "write_file" && typeof call.args.path === "string" && !output.startsWith("error") && !output.startsWith("denied")) {
+            created.push(call.args.path.replace(/\\/g, "/").replace(/^\.\//, "").trim());
+          }
           if (output.startsWith("error") || output.startsWith("denied")) taskState.noteError(`${call.name}: ${output.slice(0, 120)}`);
           const shown = outputStore.offload(call.name, output).text;
           messages.push({

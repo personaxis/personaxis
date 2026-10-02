@@ -203,6 +203,11 @@ interface RunContext {
 	 * step saw its own instruction and nothing of the job it was part of.
 	 */
 	brief: string | null;
+	/**
+	 * E163: files already delivered before this run started, in the same turn that started it. The opening steps that
+	 * only produce these, and are there, are recorded as done and not run again. Never a step in the middle.
+	 */
+	delivered?: readonly string[];
 }
 
 /**
@@ -356,7 +361,12 @@ async function checkedAgainstProduces(step: ServiceStepDef, result: StepExecutio
 
 /** Run a service to the end, or to the first thing that needs a person who is not there. */
 export async function runService(def: ServiceDef, ports: ServicePorts, ctx: Partial<RunContext> = {}): Promise<ServiceRunResult> {
-	return runLine(def, ports, { stack: ctx.stack ?? [], depth: ctx.depth ?? 0, workingDir: ctx.workingDir ?? null, brief: ctx.brief ?? null }, null);
+	return runLine(
+		def,
+		ports,
+		{ stack: ctx.stack ?? [], depth: ctx.depth ?? 0, workingDir: ctx.workingDir ?? null, brief: ctx.brief ?? null, ...(ctx.delivered ? { delivered: ctx.delivered } : {}) },
+		null,
+	);
 }
 
 /**
@@ -523,6 +533,39 @@ async function runLine(def: ServiceDef, ports: ServicePorts, context: RunContext
 			pickup = { position: waiting.position, since: waiting.since, withAnswer: answeredText(waiting.question, resume.reply.answer), inner: null };
 		} else {
 			return cannot(`this run is waiting for ${waiting.kind === "approval" ? "an approval" : "an answer"}, and was given something else`);
+		}
+	}
+
+	// E163: the opening steps whose declared files the turn already delivered. Only on a fresh run, only from the first
+	// step on, only a persona step with files that needs no approval, and only when every file is really there.
+	if (resume === null && (context.delivered ?? []).length > 0 && ports.checkProduced) {
+		const delivered = context.delivered ?? [];
+		while (decision.kind === "start") {
+			const position = decision.position;
+			const step = def.steps.find((s) => s.position === position);
+			const files = step?.produces ?? [];
+			if (!step || step.serviceRef || step.requiresApproval || files.length === 0 || !files.every((f) => delivered.includes(f))) break;
+			const found = await ports.checkProduced({ paths: files, since: 0 }).catch(() => ({ produced: [] as ProducedFile[], missing: [...files] }));
+			if (found.missing.length > 0) break;
+			run.status = "running";
+			run.currentPosition = position;
+			const note = `${files.join(", ")} ${files.length === 1 ? "was" : "were"} already written in the same turn, before this run started; the next step reads ${files.length === 1 ? "it" : "them"} as ${files.length === 1 ? "it is" : "they are"}.`;
+			const record: StepRecord = {
+				path,
+				serviceName: def.name,
+				position,
+				who: { persona: step.personaRef as string },
+				outcome: "completed",
+				summary: note,
+				reason: "already delivered in the same turn, before this run started",
+				produced: found.produced,
+			};
+			records.push(record);
+			ports.onStep?.(record);
+			previous.push({ position, name: step.name ?? step.personaRef ?? `step ${position}`, personaName: step.personaRef ?? "", entries: [{ kind: "agent.turn.ended", payload: { summary: note } }] });
+			lastSummary = note;
+			lastSummaryFrom = { path, position };
+			decision = advance(run, shapes, "completed");
 		}
 	}
 

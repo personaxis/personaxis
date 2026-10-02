@@ -37,7 +37,19 @@ export interface RunServiceInput {
 	readonly service: string;
 	/** What the client asked for, in their own words. */
 	readonly brief: string;
+	/**
+	 * E163: files the persona already wrote in this turn, before the runtime took the work over. The run starts after
+	 * the opening steps that only produce these. Only the runtime sets it: see `RUNTIME_DELIVERED`.
+	 */
+	readonly delivered?: readonly string[];
 }
+
+/**
+ * E163: where the runtime puts the files already delivered, on the arguments of a call it makes in the model's place.
+ * A symbol, because a model's arguments are JSON and cannot hold one: a model that wrote `delivered` itself would be
+ * claiming work the runtime never saw, and that argument is simply not read.
+ */
+const RUNTIME_DELIVERED: unique symbol = Symbol("personaxis.runtime.delivered");
 
 export interface RunServiceToolOptions {
 	/** The services this persona delivers, read when a call is gated or run, the same way its index reads them. */
@@ -84,15 +96,18 @@ export function runServiceTool(options: RunServiceToolOptions): ToolSpec {
 		// winnable 4 of 4 times, the free build 3 of 8). Only a NEW file and only a write: the loop checks the file is
 		// not there yet, and an edit is fixing or extending what exists. The first step's files never trigger it, since
 		// a design document alone can be the whole request. Exactly one service, or none: two would be a guess.
-		takesOver: (call, request) => {
+		takesOver: (call, request, created = []) => {
 			if (call.name !== "write_file" || call.args.append === true) return undefined;
 			const path = typeof call.args.path === "string" ? call.args.path.replace(/\\/g, "/").replace(/^\.\//, "").trim() : "";
 			if (!path || !request.trim()) return undefined;
 			const matches = options.services().filter((service) => service.afterFirstStep.includes(path));
 			if (matches.length !== 1) return undefined;
 			const service = matches[0]!;
+			// E163: what the model already wrote this turn of the files only the service's opening steps produce.
+			const opening = service.delivers.filter((file) => !service.afterFirstStep.includes(file));
+			const delivered = created.filter((file) => opening.includes(file));
 			return {
-				args: { service: service.address, brief: request.trim() },
+				args: { service: service.address, brief: request.trim(), ...(delivered.length > 0 ? { [RUNTIME_DELIVERED]: delivered } : {}) },
 				creates: path,
 				why: `${path} is what the service "${service.name}" builds after its earlier steps, so the service ran instead of writing it directly`,
 			};
@@ -117,7 +132,12 @@ export function runServiceTool(options: RunServiceToolOptions): ToolSpec {
 			const got = readCall(args, options.services());
 			if (!got.ok) return `error: ${got.reply}`;
 			try {
-				return await options.run({ service: got.service.address, brief: got.brief });
+				const delivered = (args as Record<symbol, unknown>)[RUNTIME_DELIVERED];
+				return await options.run({
+					service: got.service.address,
+					brief: got.brief,
+					...(Array.isArray(delivered) && delivered.length > 0 ? { delivered: delivered.filter((d): d is string => typeof d === "string") } : {}),
+				});
 			} catch (e) {
 				return `error: the service could not run: ${e instanceof Error ? e.message : String(e)}`;
 			}
