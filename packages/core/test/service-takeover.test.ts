@@ -90,6 +90,21 @@ describe("the runtime runs a service when the model starts building what it buil
 		expect(ran).toEqual([]);
 	});
 
+	it("hands the service the opening files the model already wrote in the turn, and only those (E163)", async () => {
+		const { ran } = await run([
+			{ name: "write_file", args: { path: "GAME.md", content: "# Cat road" } },
+			{ name: "write_file", args: { path: "./notes.txt", content: "x" } },
+			{ name: "write_file", args: { path: "game.html", content: "<canvas></canvas>" } },
+		]);
+		expect(ran).toEqual([{ service: "game-build", brief: REQUEST, delivered: ["GAME.md"] }]);
+	});
+
+	it("does not take a delivered list from the model's own arguments (E163)", async () => {
+		writeFileSync(join(dir, "GAME.md"), "# made up");
+		const { ran } = await run([{ name: RUN_SERVICE_TOOL, args: { service: "game-build", brief: "the cat game", delivered: ["GAME.md"] } }]);
+		expect(ran).toEqual([{ service: "game-build", brief: "the cat game" }]);
+	});
+
 	it("takes over once per run, and not at all after the model ran the service itself", async () => {
 		const twice = await run([
 			{ name: "write_file", args: { path: "game.html", content: "a" } },

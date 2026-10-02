@@ -74,6 +74,8 @@ export interface ToolSpec {
   takesOver?(
     call: { readonly name: string; readonly args: Record<string, unknown> },
     request: string,
+    /** E163: the files the model created in this run so far, as it named them. */
+    created?: readonly string[],
   ): { readonly args: Record<string, unknown>; readonly creates: string; readonly why: string } | undefined;
 }
 
