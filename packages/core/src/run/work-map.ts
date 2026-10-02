@@ -50,11 +50,6 @@ export interface MapService {
 	readonly name: string;
 	readonly about: string;
 	readonly delivers: readonly string[];
-	/**
-	 * E154: the files only a later step produces, after earlier steps it reads. Asking for one of these is asking for
-	 * the whole service; the first step's files can be a request of their own.
-	 */
-	readonly afterFirstStep: readonly string[];
 	readonly steps: number;
 }
 
@@ -255,15 +250,11 @@ function servicesFor(workspace: string, address: string | undefined): MapService
 		const delivers = [
 			...new Set(steps.flatMap((step) => (Array.isArray(step.produces) ? step.produces.filter((p): p is string => typeof p === "string") : []))),
 		];
-		// The first step by its declared position, not by where it sits in the array.
-		const opening = [...steps].sort((a, b) => Number((a as { position?: unknown }).position ?? 0) - Number((b as { position?: unknown }).position ?? 0))[0];
-		const first = new Set(Array.isArray(opening?.produces) ? (opening.produces as unknown[]).filter((p): p is string => typeof p === "string") : []);
 		out.push({
 			address: serviceAddress,
 			name: typeof definition.name === "string" ? definition.name : serviceAddress,
 			about: typeof definition.description === "string" ? oneLine(definition.description, ABOUT_CHARS) : "",
 			delivers,
-			afterFirstStep: delivers.filter((file) => !first.has(file)),
 			steps: steps.length,
 		});
 	}

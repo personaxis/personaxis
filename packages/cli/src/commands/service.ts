@@ -608,7 +608,7 @@ export function describeRun(address: string, result: service.ServiceRunResult, j
  * journal written where `service run` writes it. The person already approved this run: the tool's gate asked
  * before this was called. What comes back is what the persona is told.
  */
-export async function runServiceFromTurn(root: string, input: { service: string; brief: string; delivered?: readonly string[] }, person: PersonAt): Promise<string> {
+export async function runServiceFromTurn(root: string, input: { service: string; brief: string }, person: PersonAt): Promise<string> {
 	const def = loadService(root, input.service);
 	if (!def) return `error: no service ${input.service} at ${servicePath(root, input.service)}`;
 	const problems = service.checkComposition(def, (a) => loadService(root, a));
@@ -620,7 +620,7 @@ export async function runServiceFromTurn(root: string, input: { service: string;
 	const meter = meterModelCalls();
 	let result: service.ServiceRunResult;
 	try {
-		result = await service.runService(def, localPorts(root, costs, meter, person), { workingDir: root, brief, ...(input.delivered ? { delivered: input.delivered } : {}) });
+		result = await service.runService(def, localPorts(root, costs, meter, person), { workingDir: root, brief });
 	} finally {
 		meter.stop();
 	}
