@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/sdk",
   "version": "0.17.0-dev.0",
-  "description": "Ergonomic SDK for embedding a living, governed persona in a Node/TypeScript backend (Mode 2 self-host). A thin wrapper over @personaxis/core.",
+  "description": "Run a governed Personaxis persona inside your own Node or TypeScript backend: a small typed API over @personaxis/core, with your model, your state and your data.",
   "license": "MIT",
   "type": "module",
   "exports": {

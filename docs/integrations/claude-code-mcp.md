@@ -5,20 +5,22 @@ Personaxis brings **living identity + memory + awareness** through the `personax
 
 ## 1. Register the server
 
-`personaxis-mcp` is a stdio MCP server. Register it in Claude Code (the project's `.mcp.json` or
-`claude mcp add`):
+`personaxis-mcp` is a stdio MCP server in its own npm package, `@personaxis/mcp` (installing the
+`personaxis` CLI does not add it). Register it in Claude Code (the project's `.mcp.json` or
+`claude mcp add`), and the host fetches it on first use:
 
 ```json
 {
   "mcpServers": {
     "personaxis": {
-      "command": "personaxis-mcp"
+      "command": "npx",
+      "args": ["-y", "@personaxis/mcp"]
     }
   }
 }
 ```
 
-Not published yet (from the repo):
+With `npm i -g @personaxis/mcp` the command is `personaxis-mcp` directly. From a source checkout:
 
 ```json
 {
@@ -31,7 +33,7 @@ Not published yet (from the repo):
 }
 ```
 
-> CLI equivalent: `claude mcp add personaxis -- personaxis-mcp`
+> CLI equivalent: `claude mcp add personaxis -- npx -y @personaxis/mcp`
 
 ## 2. Tools it exposes (16)
 

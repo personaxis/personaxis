@@ -137,8 +137,11 @@ personaxis dash                                                          # live 
 
 ```bash
 personaxis compile dev-buddy --platform claude-code   # writes .claude/agents/dev-buddy.md
-personaxis-mcp                                        # or run the MCP server (20 persona tools)
+npx -y @personaxis/mcp                                # or run the MCP server (16 persona tools)
 ```
+
+The MCP server is its own package, `@personaxis/mcp`; installing `personaxis` does not add it.
+Registering it with a host is in [`docs/integrations/claude-code-mcp.md`](docs/integrations/claude-code-mcp.md).
 
 Where to next: [`docs/guides/getting-started.md`](docs/guides/getting-started.md) (by audience) ·
 [`docs/guides/creating-personas.md`](docs/guides/creating-personas.md) (every `create` door and
