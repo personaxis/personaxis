@@ -309,8 +309,8 @@ describe("what a step is told about its own earlier attempts", () => {
 	});
 
 	it("points at the folder, which is where the work actually is", () => {
-		expect(retakeText([[turn("did some")]], "/home/ana/acme")).toContain(
-			"That work is in /home/ana/acme, which is where you are.",
+		expect(retakeText([[turn("did some")]], "/home/mara/acme")).toContain(
+			"That work is in /home/mara/acme, which is where you are.",
 		);
 		// A workspace with no folder set still gets a true sentence.
 		expect(retakeText([[turn("did some")]], null)).toContain("the folder you are in");
