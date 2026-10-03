@@ -255,6 +255,9 @@ export async function extractSeed(
     if (usableExtraction(first.seed)) return first;
     failure = "the response parsed but carried no displayName, traits, or values";
   } catch (e) {
+    // E175: the caller handed the prompt to a coding agent and is waiting for its answer.
+    // Retrying with a repair prompt would write a second prompt nobody asked for.
+    if ((e as { requiresAgent?: boolean }).requiresAgent) throw e;
     failure = (e as Error).message.slice(0, 300);
   }
   const repairPrompt =
