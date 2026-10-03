@@ -21,6 +21,7 @@ import {
 } from "./appraisal.js";
 import { renderEvolutionView } from "./evolution-view.js";
 import { thinkingOffFor } from "./run/destinations.js";
+import { withModelClock } from "./run/model-clock.js";
 
 export interface LlmAppraiserConfig {
   /** OpenAI-compatible base URL, e.g. http://localhost:11434/v1 (Ollama). */
@@ -139,7 +140,7 @@ export class LlmAppraiser implements Appraiser {
       const timer = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs ?? 30_000);
       let res: Response;
       try {
-        res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
+        res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, withModelClock({
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -147,7 +148,7 @@ export class LlmAppraiser implements Appraiser {
           },
           body: JSON.stringify(body),
           signal: ctrl.signal,
-        });
+        }));
       } finally {
         clearTimeout(timer);
       }

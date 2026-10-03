@@ -14,6 +14,7 @@ import { forDestination, type Effort, type Scaffold } from "./run/model-seam.js"
 import { repairToolArgs } from "./tool-repair.js";
 import { readDialect } from "./tools/dialects.js";
 import type { ToolSpec } from "./tools/registry.js";
+import { withModelClock } from "./run/model-clock.js";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -529,18 +530,18 @@ export async function requestToolCall(
       // morning never receives a field it would reject.
       ...(effort ? { reasoning_effort: effort } : {}),
     };
-    let res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
+    let res = await fetchImpl(url(cfg), withModelClock({ method: "POST", headers: headers(cfg), body: JSON.stringify(body) }));
     // E136: a request refused over several system messages is retried ONCE with one, and remembered when that is
     // what it was. Refused means a 400, or, when streamed, a 200 whose stream carried no frame at all (see
     // `Reply.frames`). Only when reshaping changes something: otherwise the retry would be the same request twice.
     const reshaped = !oneSystem ? withOneSystem(messages) : undefined;
     const canReshape = reshaped !== undefined && (reshaped.length !== messages.length || reshaped.some((message, index) => message.role !== messages[index]?.role));
     const retryReshaped = async (): Promise<Response> => {
-      const again = await fetchImpl(url(cfg), {
+      const again = await fetchImpl(url(cfg), withModelClock({
         method: "POST",
         headers: headers(cfg),
         body: JSON.stringify({ ...body, messages: cfg.cachePrefix ? markedForCache(reshaped!) : reshaped }),
-      });
+      }));
       return again;
     };
     if (res.status === 400 && canReshape) {
@@ -713,7 +714,7 @@ async function reactFallback(
       temperature: 0.3,
       max_tokens: cfg.maxTokens ?? DEFAULT_MAX_TOKENS,
     };
-    const res = await fetchImpl(url(cfg), { method: "POST", headers: headers(cfg), body: JSON.stringify(body) });
+    const res = await fetchImpl(url(cfg), withModelClock({ method: "POST", headers: headers(cfg), body: JSON.stringify(body) }));
     if (res.ok) {
       const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: Partial<TokenUsage> };
       const usage = extractUsage(json);
