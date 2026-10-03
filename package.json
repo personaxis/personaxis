@@ -12,7 +12,7 @@
 	"type": "module",
 	"packageManager": "pnpm@10.34.5",
 	"engines": {
-		"node": ">=20.0.0"
+		"node": ">=20.18.1"
 	},
 	"scripts": {
 		"build": "pnpm -r run build",

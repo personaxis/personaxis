@@ -12,6 +12,8 @@
  * gives an honest persona-flavored acknowledgement and points to enabling a model.
  */
 
+import { withModelClock } from "./run/model-clock.js";
+
 export interface RespondInput {
   message: string;
   /** Compiled identity (PERSONA.md body), system-prompt slot #1. */
@@ -69,7 +71,7 @@ export class LlmResponder implements Responder {
       input.memory.length ? "\n# Memory (stable facts first)\n" + input.memory.join("\n") : "",
     ].join("\n");
 
-    const res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
+    const res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, withModelClock({
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -87,7 +89,7 @@ export class LlmResponder implements Responder {
         max_tokens: this.cfg.maxTokens ?? 2048,
         ...(input.onToken ? { stream: true } : {}),
       }),
-    });
+    }));
     if (!res.ok) throw new Error(`responder HTTP ${res.status}`);
     if (input.onToken && res.body) {
       return this.readStream(res.body as ReadableStream<Uint8Array>, input.onToken);
