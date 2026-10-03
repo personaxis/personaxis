@@ -73,7 +73,7 @@ function legacy(
 }
 
 const authors = fc.oneof(
-	fc.record({ kind: fc.constant("human" as const), id: fc.constantFrom("david", "ana") }),
+	fc.record({ kind: fc.constant("human" as const), id: fc.constantFrom("mara", "ana") }),
 	fc.record({ kind: fc.constant("persona" as const), id: fc.constantFrom("clio", "cmo") }),
 	fc.record({ kind: fc.constant("component" as const), name: fc.constantFrom("loop", "gate") }),
 	fc.record({

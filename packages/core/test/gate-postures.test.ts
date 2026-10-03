@@ -1,7 +1,7 @@
 /**
  * What the compiled gate decides under every posture, written down BEFORE the gate was changed.
  *
- * E59, decided by David on 2026-09-11: the postures mean what `docs/architecture/sandbox.md`
+ * E59: the postures mean what `docs/architecture/sandbox.md`
  * documents and what Codex means by the same words, where the values come from. Before this, the
  * compiled policy refused every file write under `workspace-write`, because it classed each one as
  * reaching outside, and sent every read to a person under `on-request`. Both contradicted the

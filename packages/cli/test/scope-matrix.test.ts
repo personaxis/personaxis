@@ -131,7 +131,7 @@ describe("settings resolve per persona, with their origin (V7.C2, V7.C3)", () =>
     expect(legalMode.value).toBe("suggesting");
     expect(legalMode.own).toBe(true);
     expect(legalMode.origin).toBe("spec");
-    // The two personas genuinely differ: this is the jerarquía the design chose.
+    // The two personas genuinely differ: this is the hierarchy the design chose.
     expect(mainMode.value).not.toBe("suggesting");
   });
 
@@ -205,7 +205,7 @@ describe("host reach (V7.C5)", () => {
    * A baseline host reaches the MAIN persona INDIRECTLY: CLAUDE.md / AGENTS.md must carry
    * the managed block that points at the compiled document. The first version of this
    * check accepted any CLAUDE.md at all, which reported reach for a project that merely
-   * happened to have one — a false claim about an integration.
+   * happened to have one: a false claim about an integration.
    */
   it("does NOT claim reach from a baseline file that does not reference the persona", () => {
     const ctx = projectWithSubs();

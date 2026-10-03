@@ -2,7 +2,7 @@
  * K.02: isolation resolution is availability-aware. The key property is HONESTY: a native
  * primitive that is not installed degrades to `none` with a note, never to a command that would
  * ENOENT, and never silently to full access. The OS and the PATH check are injected so this is
- * deterministic on any machine (David's is Windows).
+ * deterministic on any machine, Windows included.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync } from "node:fs";
@@ -66,7 +66,7 @@ describe("OS isolation (K.02)", () => {
   });
 
   // Real enforcement: only meaningful on a POSIX box that actually has the primitive. Skipped on
-  // Windows (David's machine) and anywhere the binary is absent, rather than faking a pass.
+  // Windows and anywhere the binary is absent, rather than faking a pass.
   const bwrap = process.platform === "linux" && existsSync("/usr/bin/bwrap");
   it.skipIf(!bwrap)("[linux+bwrap] a real bubblewrap wrap is produced and points at the workspace", () => {
     const r = resolveIsolation("echo hi", policy({ workspaceRoot: process.cwd() }), {});

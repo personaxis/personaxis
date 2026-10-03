@@ -133,7 +133,7 @@ const PLATFORM_WORDS = ["tenant", "subscription", "billing", "seat_count", "dash
  * It is not removed here because removing it is BREAKING and that is not a decision a
  * test makes: `metadata` declares `additionalProperties: false`, so every persona ever
  * created from our template, which ships the key, would stop validating the day it
- * disappears. What that costs is a spec version and a codemod, which is David's call.
+ * disappears. What that costs is a spec version and a codemod, which is a decision for the spec, not for a test.
  *
  * The exemption exists so the rule is enforced everywhere else in the meantime, and so
  * the day somebody adds a second one, this list is where they have to write why.

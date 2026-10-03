@@ -30,7 +30,7 @@ import type { TurnRequest } from "../src/run/vocabulary.js";
 
 const ENVELOPES: Record<string, Envelope> = { "mood.tone": { mean: 0, min: -1, max: 1 } as Envelope };
 
-const ASKED: TurnRequest = { turn: "t1", prompt: "how is the branch", asker: { kind: "human", id: "david" } };
+const ASKED: TurnRequest = { turn: "t1", prompt: "how is the branch", asker: { kind: "human", id: "mara" } };
 
 let dir: string;
 let personaPath: string;
@@ -100,7 +100,7 @@ describe("a turn written to a real record", () => {
 		withHistory(0);
 		const observer = recordingTurns({ personaPath, statePath, onProblem: (e) => problems.push(e) });
 
-		await observer.opened!({ turn: "t1", prompt: "ask", asker: { kind: "human", id: "david" } });
+		await observer.opened!({ turn: "t1", prompt: "ask", asker: { kind: "human", id: "mara" } });
 		await adjust(personaPath, statePath, ENVELOPES, authorOf("actor-llm"), {
 			field: "mood.tone",
 			delta: 0.2,

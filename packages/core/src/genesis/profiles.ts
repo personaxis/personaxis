@@ -3,7 +3,7 @@
  *
  * ## What a profile is, and what it is not
  *
- * David decided the model on 2026-09-23 (plan, section 13.9): there are no modes a persona is sold in.
+ * There are no modes a persona is sold in.
  * Every persona is alive, and what its owner controls are three things per layer, all of which already
  * exist in the spec and in the runtime:
  *

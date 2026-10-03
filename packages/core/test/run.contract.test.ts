@@ -82,7 +82,7 @@ function resultOf(
 const asked: TurnRequest = {
 	turn: "t1",
 	prompt: "anything",
-	asker: { kind: "human", id: "david" },
+	asker: { kind: "human", id: "mara" },
 };
 
 /** Behaves. Reports its steps as it goes and stops when told there is no room. */

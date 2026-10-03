@@ -156,16 +156,16 @@ describe("who the record says asked", () => {
 	it("says who an embedder names, when it names one", async () => {
 		// An embedder knows its own user and the record is where that belongs. It is never
 		// inferred: nothing here guesses a person from an absent field.
-		const { outcome } = await ran("done", { asker: { kind: "human", id: "david" } });
+		const { outcome } = await ran("done", { asker: { kind: "human", id: "mara" } });
 		const [opened] = written(outcome.turn);
 
-		expect(opened!.author).toEqual({ kind: "human", id: "david" });
+		expect(opened!.author).toEqual({ kind: "human", id: "mara" });
 	});
 
 	it("still credits the answer to the persona, whoever asked", async () => {
 		// An answer credited to whoever asked for it is the forgery the author invariant
 		// exists to prevent, and a caller-supplied asker is exactly where it would creep in.
-		const { outcome } = await ran("done", { asker: { kind: "human", id: "david" } });
+		const { outcome } = await ran("done", { asker: { kind: "human", id: "mara" } });
 		const [, said] = written(outcome.turn);
 
 		expect(said!.author).toEqual({ kind: "persona", id: "self" });

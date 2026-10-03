@@ -120,7 +120,7 @@ describe("the handover block", () => {
 	});
 
 	it("does not repeat the name when the step is called after its persona", () => {
-		// It read "Step 1 — The Watcher (The Watcher)" the first time, which is
+		// It read "Step 1: The Watcher (The Watcher)" the first time, which is
 		// what one field doing two jobs looks like on a screen.
 		const same: PreviousStep = {
 			position: 1,
@@ -128,7 +128,7 @@ describe("the handover block", () => {
 			personaName: "The Watcher",
 			entries: [turn("done")],
 		};
-		expect(handoverText([same], null)).toContain("Step 1 — The Watcher\n");
+		expect(handoverText([same], null)).toContain("Step 1: The Watcher\n");
 		expect(handoverText([same], null)).not.toContain("(The Watcher)");
 	});
 
@@ -139,7 +139,7 @@ describe("the handover block", () => {
 			personaName: "The Watcher",
 			entries: [turn("done")],
 		};
-		expect(handoverText([named], null)).toContain("Step 1 — Read the diffs (The Watcher)");
+		expect(handoverText([named], null)).toContain("Step 1: Read the diffs (The Watcher)");
 	});
 
 	it("keeps the newest steps when it has to cut, and says how many it dropped", () => {
@@ -153,7 +153,7 @@ describe("the handover block", () => {
 		expect(text).toContain("earlier step(s) omitted");
 		// The most recent survives; the oldest is the one dropped.
 		expect(text).toContain("Step 6");
-		expect(text).not.toContain("Step 1 —");
+		expect(text).not.toContain("Step 1:");
 		// And the whole thing stays a few pages rather than a transcript.
 		expect(text.length).toBeLessThan(15_000);
 	});

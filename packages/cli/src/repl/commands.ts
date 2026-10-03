@@ -532,7 +532,7 @@ export const COMMANDS: CommandDef[] = [
       // prefix that never gets read back is a prefix being rebuilt every turn.
       const cache = m.cacheReport();
       if (!cache.reported) {
-        lines.push(chalk.dim(`  ⛁ Prompt cache      ${"—".padStart(7)}  not reported by this provider`));
+        lines.push(chalk.dim(`  ⛁ Prompt cache      ${"n/a".padStart(7)}  not reported by this provider`));
       } else {
         const pct = `${Math.round((cache.hitRate ?? 0) * 100)}%`;
         const detail = `${fmtK(cache.readTokens)} of ${fmtK(cache.promptTokens)} prompt tokens served from cache · ${fmtK(cache.writeTokens)} written`;

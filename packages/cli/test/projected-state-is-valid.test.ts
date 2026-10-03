@@ -104,7 +104,7 @@ describe("the file the record prints", () => {
 		// checking. `started_at` is declared `format: date-time`, and the record's answer
 		// for it is an entry's own moment.
 		const journal = new record.Journal({});
-		journal.append({ kind: "human", id: "david" }, {
+		journal.append({ kind: "human", id: "mara" }, {
 			type: "turn-open",
 			turn: "t1",
 			prompt: "rewrite the ledger",

@@ -67,12 +67,12 @@ machine (this host)
 
 ### What it reuses (no reinvention)
 
-- `packages/cli/src/repl/scope.ts` — `settingFor`/`EffectiveSetting` (value + origin, owned vs
+- `packages/cli/src/repl/scope.ts`: `settingFor`/`EffectiveSetting` (value + origin, owned vs
   inherited), `hostsFor`, `projectRootOf`. The effective-config resolution the settings facets need.
-- `@personaxis/core` — `loadRegistry` (projects), `livePresence`/`describePresence` (R5),
+- `@personaxis/core`: `loadRegistry` (projects), `livePresence`/`describePresence` (R5),
   `extractEnvelopes` (the layer→field coordinates + `protectedFields`), `readState`, `proposals`,
   `displayName`.
-- `packages/cli/src/repl/views/tabbed.tsx` — the drill-with-breadcrumbs host, the navigator pattern.
+- `packages/cli/src/repl/views/tabbed.tsx`: the drill-with-breadcrumbs host, the navigator pattern.
 
 ## Permissions model (G.3, next)
 

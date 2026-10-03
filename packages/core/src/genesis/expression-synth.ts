@@ -70,7 +70,7 @@ const TRAIT_TABLE: Record<string, BandProse> = {
  * Affect and mood coordinates (always emitted by the builder).
  *
  * E128, rewritten on 2026-09-23: each band is a WAY OF WORKING first and a shade of tone after it,
- * because David decided the persona's evolution is to calibrate how it works and to say so, and a
+ * because the persona's evolution is there to calibrate how it works and to say so, and a
  * line like "a negative undertone colors your read of things" describes a mood nobody can sell or
  * measure. The directions follow what E-STEER measured on agents (arXiv 2604.00005): lower valence
  * checks more before calling something done, lower arousal works step by step and replans less,

@@ -4,8 +4,8 @@
  * Until 2026-09-24 every scaffold wrote `mode: locked` inline AND in its sibling policy.yaml, and the runtime
  * takes the stricter of the two, so every persona `init` made never evolved: its state did not move on
  * anything it lived through. The spec required a sign-off (`approved_by`, `last_approval_at`) for any other
- * mode, so the only way to make one alive was to invent who approved it. David decided (2026-09-24) that the
- * sign-off belongs to `autonomous` only, where a persona may apply edits to its own spec. These tests read
+ * mode, so the only way to make one alive was to invent who approved it. The sign-off now belongs to
+ * `autonomous` only, where a persona may apply edits to its own spec. These tests read
  * what the RUNTIME resolves from the files `init` writes, not what the files say about themselves.
  */
 import { afterEach, describe, expect, it } from "vitest";

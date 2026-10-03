@@ -175,7 +175,7 @@ export function describeBlocked(assessment: PlanAssessment): string {
 export function describeAnchor(steps: readonly PlanStep[], assessment: PlanAssessment): string {
 	const needsConsent = new Set(assessment.needsConsent.map((r) => r.index));
 	const lines = steps.map((step, index) => {
-		const note = step.note ? ` — ${step.note}` : "";
+		const note = step.note ? `: ${step.note}` : "";
 		return `${index + 1}. ${step.tool}${note}${needsConsent.has(index) ? " (will ask for approval)" : ""}`;
 	});
 

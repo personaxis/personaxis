@@ -18,7 +18,7 @@ const skill = (over: Partial<SkillEntry> = {}): SkillEntry => ({
 	name: "deploy",
 	tier: "profile",
 	scan: "clean",
-	provenance: { by: "person", id: "david" },
+	provenance: { by: "person", id: "mara" },
 	...over,
 });
 
@@ -115,7 +115,7 @@ describe("only what the persona wrote may the persona rewrite", () => {
 
 	it("refuses another persona's, a person's, and a vendor's", () => {
 		expect(mayRewrite(skill({ provenance: { by: "persona", id: "cmo" } }), "clio")).toBe(false);
-		expect(mayRewrite(skill({ provenance: { by: "person", id: "david" } }), "clio")).toBe(false);
+		expect(mayRewrite(skill({ provenance: { by: "person", id: "mara" } }), "clio")).toBe(false);
 		expect(mayRewrite(skill({ provenance: { by: "vendor" } }), "clio")).toBe(false);
 	});
 

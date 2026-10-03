@@ -326,8 +326,8 @@ export function handoverText(
 		// its working.
 		const heading =
 			step.name === step.personaName
-				? `Step ${step.position} — ${step.name}`
-				: `Step ${step.position} — ${step.name} (${step.personaName})`;
+				? `Step ${step.position}: ${step.name}`
+				: `Step ${step.position}: ${step.name} (${step.personaName})`;
 
 		return {
 			position: step.position,

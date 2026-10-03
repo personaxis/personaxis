@@ -53,7 +53,7 @@ async function turn(calls: readonly Call[]) {
 	await new TurnRunner({ provider: defaultLoop(agent), observer: recordTurns({ journal }) }).run({
 		turn: "t1",
 		prompt: "make a design and a pitch",
-		asker: { kind: "human", id: "david" },
+		asker: { kind: "human", id: "mara" },
 	});
 	return { sent: model.sent, events, bodies: journal.all().map((entry) => entry.body) };
 }

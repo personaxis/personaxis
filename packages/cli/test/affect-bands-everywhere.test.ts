@@ -2,9 +2,8 @@
  * E128: every path that creates a persona writes affect bands as a way of working and a shade of tone.
  *
  * Genesis is one path; `init`'s scaffolds and the starter persona are others, and on 2026-09-23 they
- * carried copies of the old prose, "a negative undertone colors your read of things" among it. David
- * decided the persona's evolution is to calibrate how it works and to say so (plan, section 13.8), so
- * the property is checked on what each path actually writes, not on one table: a behaviour part and a
+ * carried copies of the old prose, "a negative undertone colors your read of things" among it. The
+ * persona's evolution is there to calibrate how it works and to say so, so the property is checked on what each path actually writes, not on one table: a behaviour part and a
  * tone part in every line, three distinct lines per coordinate, and no line describing a feeling.
  */
 import { readFileSync } from "node:fs";

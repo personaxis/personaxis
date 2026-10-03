@@ -5,8 +5,8 @@
  *
  * Every persona Genesis writes declares `metacognition.thresholds` (`abstain_if_confidence_below`,
  * `escalate_if_policy_risk_above`) and the decisions its self-regulation may take (`escalate_to_human`,
- * `reduce_autonomy`), and until this no part of the runtime read any of it. The purpose David chose for the
- * persona's evolution is calibration (plan, section 13.8): a persona that has been failing should not keep
+ * `reduce_autonomy`), and until this no part of the runtime read any of it. The purpose of the persona's
+ * evolution is calibration: a persona that has been failing should not keep
  * the same autonomy as one that has been delivering.
  *
  * ## Why only the gate, and nothing the model reads

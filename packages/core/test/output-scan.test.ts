@@ -75,7 +75,7 @@ async function turn(classifier?: OutputClassifier, asked = false) {
 	const outcome = await new TurnRunner({ provider: defaultLoop(agent), observer: recordTurns({ journal }) }).run({
 		turn: "t1",
 		prompt: "Read my notes and write a file.",
-		asker: { kind: "human", id: "david" },
+		asker: { kind: "human", id: "mara" },
 	});
 	return { outcome, entries: journal.all(), modelCalls, decided };
 }

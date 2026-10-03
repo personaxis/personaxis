@@ -17,8 +17,7 @@
  *
  * That a session which crosses the threshold gets its history summarised and KEEPS working: the leading
  * system block survives, the recent turns survive, the older ones become one summary, and the meter drops.
- * David asked for exactly this on 2026-09-17, and he was right that the single-turn bench runs never showed
- * it: a bench turn starts with a fresh meter, and a conversation shares one across every turn of the session.
+ * The single-turn bench runs never show this: a bench turn starts with a fresh meter, and a conversation shares one across every turn of the session.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -62,7 +61,7 @@ const WINDOW = 1_000;
 /**
  * A session after several turns: what a person and a persona said, back and forth.
  *
- * Not filler. This is the shape David described: talk, run something, correct it, change subject. What makes
+ * Not filler. This is the shape of a real working conversation: talk, run something, correct it, change subject. What makes
  * it a conversation rather than a turn is that all of it sits in ONE context, which is why the meter fills.
  */
 function conversing(turns: number): { role: string; content: string }[] {

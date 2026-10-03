@@ -91,7 +91,7 @@ async function turn(work: readonly Call[]) {
 			llm: { endpoint: "http://x/v1", model: "m", fetchImpl: scripted(work) } as never,
 		},
 		{ policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" } },
-	).run({ turn: "t1", prompt: "sort out the build", asker: { kind: "human", id: "david" } });
+	).run({ turn: "t1", prompt: "sort out the build", asker: { kind: "human", id: "mara" } });
 }
 
 /** The drafts on disk, which is what "a person still has to approve it" means in files. */

@@ -242,7 +242,7 @@ export interface AgentOptions {
   /**
    * E84: how a question the persona asks reaches a person, and the answer they give. Absent means nobody
    * can answer here (a service step, a delegated sub-task, a headless run), and the turn stops at the
-   * question with it written down, which is David's decision P10 of E77.
+   * question with it written down: guessing an answer only a person can give is worse than stopping.
    */
   onQuestion?: (question: PersonQuestion) => Promise<string>;
   /** Hard cap on agent steps (overrides budget.maxSteps when set). */

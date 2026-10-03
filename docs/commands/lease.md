@@ -62,6 +62,6 @@ otherwise strand the persona. Forcing is recorded, and the output names the hold
 
 ## Related
 
-- `personaxis ps` — who is awake in this project
-- `personaxis sync` — what each device contributed after a merge
-- [multi-device.md](../architecture/multi-device.md) — why the lease is optional
+- `personaxis ps`: who is awake in this project
+- `personaxis sync`: what each device contributed after a merge
+- [multi-device.md](../architecture/multi-device.md): why the lease is optional

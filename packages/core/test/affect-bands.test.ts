@@ -1,8 +1,8 @@
 /**
  * E128: the affect bands Genesis writes are a way of working and a shade of tone, never a feeling.
  *
- * David decided on 2026-09-23 that a persona's evolution is to calibrate how it works and to say so
- * (plan, section 13.8), with bands that mix behaviour and tone. The line it replaced, "a negative
+ * A persona's evolution is there to calibrate how it works and to say so, with bands that mix behaviour
+ * and tone. The line it replaced, "a negative
  * undertone colors your read of things", described a mood nobody could sell or measure. What has to
  * hold, and is checked here, is structural: three distinct lines per coordinate, because that is
  * what keeps value, band and behaviour connected (the compile Jacobian reads a coordinate whose lines

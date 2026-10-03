@@ -54,7 +54,7 @@ async function turn(batches: readonly (readonly Call[])[]) {
 	const outcome = await new TurnRunner({ provider: defaultLoop(agent), observer: recordTurns({ journal }) }).run({
 		turn: "t1",
 		prompt: "Build me the page.",
-		asker: { kind: "human", id: "david" },
+		asker: { kind: "human", id: "mara" },
 	});
 	return { outcome, entries: journal.all() };
 }

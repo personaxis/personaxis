@@ -7,8 +7,8 @@
  * The agent gets better by accumulating METHODOLOGY, not just episodic memory, and the
  * next similar task activates the skill (closing the loop with J.2).
  *
- * Two pure seams keep this testable and cheap: `shouldRunPostmortem` decides — with no
- * LLM — whether a run even merits reflection (so we never spend a turn on a trivial
+ * Two pure seams keep this testable and cheap: `shouldRunPostmortem` decides, with no
+ * LLM, whether a run even merits reflection (so we never spend a turn on a trivial
  * chat), and the LLM `extract` + the `write` gate are both injected.
  */
 

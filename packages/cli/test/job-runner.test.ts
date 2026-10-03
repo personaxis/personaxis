@@ -166,11 +166,11 @@ describe("something a person writes to a job already running", () => {
 			job_id: "job_1",
 			intervention_id: "i1",
 			body: "use the other tone",
-			user_id: "u_david",
+			user_id: "u_mara",
 		} as never);
 
 		expect(delivered).toEqual([
-			{ id: "i1", userId: "u_david", body: "use the other tone" },
+			{ id: "i1", userId: "u_mara", body: "use the other tone" },
 		]);
 	});
 

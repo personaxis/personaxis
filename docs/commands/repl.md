@@ -64,7 +64,7 @@ Where the notable ones live now:
 | `/rewind` `/replay` | `/audit` | `personaxis state rewind` |
 | `/serve` `/watch` `/hooks` | `/status` → Daemons | `personaxis serve` / `watch` / `hooks` |
 | `/overseer` | `/menu` → all projects | `personaxis overseer show` |
-| `/sessions` | `/resume` | — |
+| `/sessions` | `/resume` | none |
 | `/mode` | `/sandbox` | `personaxis config` |
 | `/init` | `/create` | `personaxis create` |
 

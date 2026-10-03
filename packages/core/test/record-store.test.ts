@@ -23,7 +23,7 @@ import { RecordDamaged, openRecord, readRecord, recordPathFor } from "../src/rec
 
 const ENVELOPE: Envelope = { mean: 0, min: -1, max: 1 } as Envelope;
 const ENVELOPES = { "mood.tone": ENVELOPE };
-const WHO = { kind: "human", id: "david" } as never;
+const WHO = { kind: "human", id: "mara" } as never;
 
 let dir: string;
 let personaPath: string;

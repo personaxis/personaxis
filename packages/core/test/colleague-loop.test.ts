@@ -102,7 +102,7 @@ async function turn(script: readonly Call[]) {
 			llm: { endpoint: "http://x/v1", model: "m", fetchImpl: model.fetchImpl } as never,
 		},
 		{ policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" } },
-	).run({ turn: "t1", prompt: "get the contract checked", asker: { kind: "human", id: "david" } });
+	).run({ turn: "t1", prompt: "get the contract checked", asker: { kind: "human", id: "mara" } });
 
 	return { outcome, parentSent: model.parentSent, colleagueSent: model.colleagueSent };
 }

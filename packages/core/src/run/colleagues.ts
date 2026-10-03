@@ -11,7 +11,7 @@
  * called it, and picking a worker by token similarity is precisely what this row rejected: the model names the
  * colleague it means, from the addresses in front of it.
  *
- * ## O22, decided by David on 2026-09-15: the lower ceiling of the two
+ * ## O22: the lower ceiling of the two
  *
  * A colleague acts under the lower of its own ceiling and the asker's, which is least privilege and the only
  * answer that cannot be gamed from either side. It is measured that this has to cover BOTH axes the gate reads,

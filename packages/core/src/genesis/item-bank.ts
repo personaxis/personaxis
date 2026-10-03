@@ -146,8 +146,8 @@ export const ITEM_BANK: InterviewItem[] = [
   // ── Governance (E128: the starting profile; replaced the mode question on 2026-09-24) ──
   //
   // It used to ask for improvement_policy.mode, and its first answer made the persona `locked`, which is
-  // the kill-switch: a persona that never evolves. David decided (plan, section 13.9) that every persona is
-  // alive and what the owner chooses are the three controls, so this asks for their starting values.
+  // the kill-switch: a persona that never evolves. Every persona is alive, and what the
+  // owner chooses are the three controls, so this asks for their starting values.
   {
     id: "g-profile", depth: "deep",
     kind: "choice",

@@ -46,7 +46,7 @@ import type { TurnCompaction, TurnRequest } from "../src/run/vocabulary.js";
 const ASKED: TurnRequest = {
 	turn: "t1",
 	prompt: "summarise the branch",
-	asker: { kind: "human", id: "david" },
+	asker: { kind: "human", id: "mara" },
 };
 
 /** A summariser that answers, so a compaction actually happens. */

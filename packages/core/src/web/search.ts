@@ -1,7 +1,7 @@
 /**
  * Web search, as one provider behind one interface.
  *
- * Added on 2026-09-11 because David asked for the CLI to be able to search the web, with Tavily
+ * Added on 2026-09-11 so the CLI can search the web, with Tavily
  * first and more providers later. A provider is a name and a `search`; the rest of the engine
  * never learns which one answered, so adding the next one is one function and one line in
  * `PROVIDERS`.

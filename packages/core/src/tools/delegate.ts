@@ -20,7 +20,7 @@
  * The rule above still holds, and this does not bend it. A scope argument would be the model deciding its own
  * limits one indirection away; an address is the model saying WHO does the work, and the answer to "what may
  * they do" is decided nowhere near here: the colleague runs under the lower of its own ceiling and the
- * asker's (`O22`, David, 2026-09-15), so naming one can narrow the work or leave it as it was, and can never
+ * asker's (`O22`), so naming one can narrow the work or leave it as it was, and can never
  * widen it. The addresses are the ones the persona's own map already shows it, and one that is not on that
  * list is refused by name rather than resolved.
  *

@@ -77,7 +77,7 @@ async function handOver(args: Record<string, unknown>) {
 			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" },
 			observer: recordTurns({ journal }),
 		},
-	).run({ turn: "t1", prompt: "get it checked", asker: { kind: "human", id: "david" } });
+	).run({ turn: "t1", prompt: "get it checked", asker: { kind: "human", id: "mara" } });
 
 	return journal.all().map((entry) => entry.body);
 }

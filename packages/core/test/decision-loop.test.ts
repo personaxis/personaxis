@@ -68,7 +68,7 @@ async function turn(texts: Parameters<typeof scripted>[0], scaffold?: Scaffold, 
 	await new TurnRunner({ provider: defaultLoop(agent), observer: recordTurns({ journal }) }).run({
 		turn: "t1",
 		prompt: "Which sources is your advice based on?",
-		asker: { kind: "human", id: "david" },
+		asker: { kind: "human", id: "mara" },
 	});
 	return { sent: model.sent, events, entries: journal.all() };
 }

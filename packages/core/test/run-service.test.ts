@@ -193,7 +193,7 @@ describe("inside a turn (E73)", () => {
 						return answer;
 					},
 				},
-			).run({ turn: "t1", prompt: "Make me a small arcade game about a cat crossing a busy road.", asker: { kind: "human", id: "david" } });
+			).run({ turn: "t1", prompt: "Make me a small arcade game about a cat crossing a busy road.", asker: { kind: "human", id: "mara" } });
 			expect(asked).toEqual([`${RUN_SERVICE_TOOL}:ask`]);
 			expect(runs).toHaveLength(answer === "approve" ? 1 : 0);
 		}

@@ -171,7 +171,7 @@ function context(options: { room?: () => boolean; signal?: AbortSignal } = {}): 
 			request: {
 				turn: "t1",
 				prompt: "do the thing",
-				asker: { kind: "human", id: "david" },
+				asker: { kind: "human", id: "mara" },
 			},
 			hasRoom: options.room ?? (() => true),
 			stepDone: () => {
