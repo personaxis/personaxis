@@ -78,7 +78,7 @@ personaxis proof --quick     # 60 s, offline: watch the guarantees hold before t
 > call `personaxis.cmd ...` (or `npx personaxis ...`) instead.
 
 **Developers (from source).** For hacking on personaxis, or the newest code before it is
-published (Node 18+, pnpm):
+published (Node 20.18.1+, pnpm):
 
 ```bash
 git clone https://github.com/personaxis/personaxis && cd personaxis
