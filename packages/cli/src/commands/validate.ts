@@ -80,7 +80,7 @@ function checkSyncStatus(loaded: LoadResult, result: ValidationResult): void {
   // The compile halves are absent on a manifest an install wrote, and comparing a
   // hash against `undefined` would report a change nobody made.
   if (manifest.personaxisMdHash !== undefined && hashContent(loaded.raw) !== manifest.personaxisMdHash) {
-    warn(`personaxis.md changed since the last ${manifest.lastOp}. Run 'personaxis compile' or 'personaxis push' to refresh ${compiledRel}.`);
+    warn(`personaxis.md changed since the last ${manifest.lastOp}. Run 'personaxis compile' to refresh ${compiledRel}.`);
   }
 
   if (manifest.compiledMdHash === undefined) {
@@ -92,7 +92,7 @@ function checkSyncStatus(loaded: LoadResult, result: ValidationResult): void {
   } else if (!existsSync(compiledPath)) {
     warn(`${compiledRel} not found. Run 'personaxis compile'.`);
   } else if (hashContent(readFileSync(compiledPath, "utf-8")) !== manifest.compiledMdHash) {
-    warn(`${compiledRel} was hand-edited since the last ${manifest.lastOp}. Run 'personaxis push' (decompiles) or 'personaxis compile' (overwrites it from personaxis.md).`);
+    warn(`${compiledRel} was hand-edited since the last ${manifest.lastOp}. Run 'personaxis decompile' (keeps the edits) or 'personaxis compile' (overwrites it from personaxis.md).`);
   }
 }
 

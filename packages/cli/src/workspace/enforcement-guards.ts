@@ -61,7 +61,7 @@ export function scopeGuard(consented: readonly string[], cwd: string): gate.Guar
 				? undefined
 				: gate.deny(
 						"out_of_scope",
-						`${cwd} is not one of the directories this machine exposed. Add it with \`personaxis connect --dir\`.`,
+						`${cwd} is not one of the directories this machine exposed. Add it with \`personaxis guard --dir\`.`,
 					),
 	};
 }

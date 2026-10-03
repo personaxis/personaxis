@@ -5,6 +5,7 @@ import { createLocalProvider } from "./local.js";
 import { createByokProvider } from "./byok.js";
 import { createAgentProvider } from "./agent.js";
 import { createRemoteProvider } from "./remote.js";
+import { GATED_PROVIDERS } from "../saas-gating.js";
 
 export * from "./types.js";
 
@@ -45,6 +46,10 @@ export function resolveProvider(override?: ProviderName, opts: { personaPath?: s
     case "byok":
       return createByokProvider(config);
     case "remote":
+      // L14: a config written by an earlier version can still name it; say so rather than fail on a missing token.
+      if (GATED_PROVIDERS.includes("remote")) {
+        throw new Error("The \"remote\" provider (Personaxis-hosted models) is not part of this version. Choose another with `personaxis config`.");
+      }
       return createRemoteProvider(config);
     case "agent":
     default:

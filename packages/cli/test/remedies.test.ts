@@ -24,6 +24,7 @@ import { lint } from "../src/linter/index.js";
 import { validatePolicy } from "../src/policy.js";
 import { writeStarterPersona } from "../src/starter.js";
 import { doctorChecksOffline } from "../src/repl/doctor-checks.js";
+import { offered } from "../src/saas-gating.js";
 
 /**
  * A structurally VALID persona (the starter, which passes validate out of the
@@ -175,11 +176,20 @@ describe("every lint finding carries an actionable remedy (V7.B4)", () => {
  * mine did exactly that (`personaxis inspect memory`, `personaxis inspect audit`),
  * and only a dogfood caught it. Now the suite does.
  */
+/**
+ * The commands this version registers: the `COMMANDS` list of src/index.ts, less what the gating table keeps out
+ * (L14). Read from the source rather than imported, because index.ts parses argv on import.
+ */
+function registeredCommands(src: string): string[] {
+  const list = /const COMMANDS = \[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
+  return [...list.matchAll(/(\w+)Command,/g)].map((m) => m[1]!).filter((name) => offered(name));
+}
+
 describe("every command a remedy names actually exists (V7.B4)", () => {
   // Read from the registration site rather than importing index.ts, which parses
   // argv on import. Same source the docs-parity suite uses.
   const indexSrc = readFileSync(join(__dirname, "..", "src", "index.ts"), "utf-8");
-  const known = new Set([...indexSrc.matchAll(/addCommand\((\w+)Command/g)].map((m) => m[1]));
+  const known = new Set(registeredCommands(indexSrc));
 
   function commandsCitedIn(text: string): string[] {
     // `personaxis <verb>` inside backticks or prose, first word only.
