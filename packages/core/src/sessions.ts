@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { ChatMessage } from "./tool-calling.js";
 import { thinkingOffFor } from "./run/destinations.js";
+import { withModelClock } from "./run/model-clock.js";
 
 /**
  * Where a session came from.
@@ -261,7 +262,7 @@ export async function nameSession(
   firstMessage: string,
 ): Promise<string> {
   const fetchImpl = llm.fetchImpl ?? fetch;
-  const res = await fetchImpl(`${llm.endpoint.replace(/\/$/, "")}/chat/completions`, {
+  const res = await fetchImpl(`${llm.endpoint.replace(/\/$/, "")}/chat/completions`, withModelClock({
     method: "POST",
     headers: { "content-type": "application/json", ...(llm.apiKey ? { authorization: `Bearer ${llm.apiKey}` } : {}) },
     body: JSON.stringify({
@@ -275,7 +276,7 @@ export async function nameSession(
       // E140: a model that thinks spends 16 tokens thinking; a destination that declared a switch is told not to.
       ...thinkingOffFor(llm.endpoint, llm.model),
     }),
-  });
+  }));
   if (!res.ok) throw new Error(`namer HTTP ${res.status}`);
   const json = (await res.json()) as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
   // E95: a reply cut at the cap is not a title. Measured 2026-09-15 with Cohere's command-a-plus, which thinks first: all

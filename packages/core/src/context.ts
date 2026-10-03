@@ -17,6 +17,7 @@ import type { ChatMessage } from "./tool-calling.js";
 import { compactionPlan } from "./compaction/units.js";
 import { thinkingOffFor } from "./run/destinations.js";
 import type { CompactionPlan } from "./compaction/service.js";
+import { withModelClock } from "./run/model-clock.js";
 
 export interface ModelEndpoint {
   endpoint: string;
@@ -320,7 +321,7 @@ export async function compactMessages(
 
 async function summarize(cfg: ModelEndpoint, transcript: string): Promise<string> {
   const fetchImpl = cfg.fetchImpl ?? fetch;
-  const res = await fetchImpl(`${cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
+  const res = await fetchImpl(`${cfg.endpoint.replace(/\/$/, "")}/chat/completions`, withModelClock({
     method: "POST",
     headers: { "content-type": "application/json", ...(cfg.apiKey ? { authorization: `Bearer ${cfg.apiKey}` } : {}) },
     body: JSON.stringify({
@@ -340,7 +341,7 @@ async function summarize(cfg: ModelEndpoint, transcript: string): Promise<string
       // E140: see `thinkingOffFor`; nothing is added for a destination that declared no switch.
       ...thinkingOffFor(cfg.endpoint, cfg.model),
     }),
-  });
+  }));
   if (!res.ok) throw new Error(`summarizer HTTP ${res.status}`);
   const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const out = (json.choices?.[0]?.message?.content ?? "").trim();
