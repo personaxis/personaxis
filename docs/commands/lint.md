@@ -5,8 +5,12 @@ Semantic, tier-aware findings against the layer/field contract, beyond schema va
 
 ## Usage
 ```bash
+personaxis lint            # lints ./.personaxis/personaxis.md
 personaxis lint <file>
 ```
+
+With no file it lints `.personaxis/personaxis.md`, the same file `validate` reads; a repository from before spec
+v1, whose only persona file is a `PERSONA.md` with frontmatter, is linted from there.
 
 ## What it checks (selection)
 - Required top-level fields + supported `spec_version` (0.3 … 0.10, 1.0). The linter is
