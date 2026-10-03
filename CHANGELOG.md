@@ -18,6 +18,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   account and no network. A call the policy says needs a person is asked in its terminal, and refused when nobody can
   answer.
 - The persona template tells its reader to `compile` and `decompile`, not to `push`.
+- `@personaxis/mcp` no longer mounts `personas_search`, `personas_fetch`, `personas_apply`, `runtime_evaluate` and the
+  `personaxis://personas/{slug}` resource: they call the hosted registry. A default server offers 16 tools.
+
+### `state` works on the persona in scope, and two retired REPL verbs have their shell door
+
+- `state show | drift | mutate | rebuild | init` with no `-f` read `./PERSONA.md`, which since spec v1 is the compiled
+  prose, and reported an empty `persona@0.0.0` without an error. They now find the persona the way `status`, `lint` and
+  `goal` do; `-f` takes a path or a slug.
+- `personaxis state rewind <n> [--dry-run]` undoes the last `n` moves with new recorded moves, as `/audit → Timeline`
+  does in the app. `personaxis goal <text>` sets the standing goal and `goal --clear` removes it. Typing `/rewind` or
+  `/goal` in the app pointed at these two commands before they existed.
+
+### `create` says what it worked around
+
+- A missing model, an extractor that failed or a web search that returned nothing is printed as a warning when
+  `create` finishes, listed under **Worked around** in `creation-report.md`, and returned as `notes` with `--json`.
+  The report used to list each one as a passed gate.
+- The report counts lint warnings, not every non-error finding, so it agrees with the terminal.
+- The default tone of a persona whose brief names none compiles as "professional and direct".
+
+### Every package on npm has a README and its license
+
+- Seven of the eight packages had no README, so their npm pages were empty, and none shipped the MIT license text.
+- The MCP server is its own package: the README and the Claude Code and Codex guides now say how to register it
+  (`npx -y @personaxis/mcp`), and the Codex guide uses Codex's `config.toml`.
 
 ### A slow local model is waited for, up to fifteen minutes, instead of five
 

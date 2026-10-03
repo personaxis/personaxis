@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/core",
   "version": "0.17.0-dev.0",
-  "description": "Personaxis engine: governed Living Loop, bounded memory, state/envelope mutation, persona sigil. Spec-faithful, framework-agnostic.",
+  "description": "The Personaxis engine: state clamped to declared envelopes, the governed living loop and agent loop, the gate on every tool call, hash-chained record, memory, injection scanning and compilation. Framework-agnostic, no UI.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

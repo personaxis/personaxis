@@ -82,19 +82,21 @@ for the tools actually invoked.
 
 ### Register the server
 
-`.mcp.json` in the project (published binary):
+`.mcp.json` in the project. The server is its own npm package, `@personaxis/mcp`, which installing
+the `personaxis` CLI does not add; `npx` fetches it on first use:
 
 ```json
 {
   "mcpServers": {
     "personaxis": {
-      "command": "personaxis-mcp"
+      "command": "npx",
+      "args": ["-y", "@personaxis/mcp"]
     }
   }
 }
 ```
 
-Or, running from this repo without publishing:
+Or, running from a source checkout:
 
 ```json
 {
@@ -107,7 +109,7 @@ Or, running from this repo without publishing:
 }
 ```
 
-CLI equivalent: `claude mcp add personaxis -- personaxis-mcp`.
+CLI equivalent: `claude mcp add personaxis -- npx -y @personaxis/mcp`.
 
 ### The tools it exposes
 

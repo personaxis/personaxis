@@ -1,7 +1,7 @@
 {
   "name": "personaxis",
   "version": "0.17.0-dev.0",
-  "description": "The living, governed AI persona toolchain (personaxis.md spec v1.1.0). Run `personaxis` for an interactive REPL where your persona talks, evolves (clamped + audited), and remembers; plus create (Genesis), validate, lint, compile/decompile, state, drift, jacobian, proof, push/pull, skills, overseer, team, orchestrate, sigil, sync, serve, and migrate (up to 0.10-to-1.0). Three-artifact model: personaxis.md (10-layer spec), PERSONA.md (compiled), state.json (runtime).",
+  "description": "Define an AI persona once in versionable files and run it as a working agent whose limits are enforced outside the model: values clamped to declared envelopes, tool calls gated, every change in a hash-chained record. The personaxis.md spec v1.1 toolchain: create, validate, lint, compile, the interactive app, guard, and more.",
   "keywords": [
     "ai",
     "agents",

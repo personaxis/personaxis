@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/tui",
   "version": "0.17.0-dev.0",
-  "description": "Personaxis TUI, Ink 7 components (living dashboard, streaming transcript with commit queue, brand sigil/aura) + the pre-Ink REPL line editor (until F3.6).",
+  "description": "Terminal UI for Personaxis: the Ink components the personaxis app is built from, and personaxis-dash, a live dashboard of a persona's sigil, envelopes and memory-chain integrity.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

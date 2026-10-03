@@ -37,9 +37,11 @@ Codex adopts the sub-persona as a custom agent (`developer_instructions` from th
 Codex speaks MCP. Register the server so Codex can read/adjust the persona and run a governed tick when
 it chooses to (not every turn):
 
-```jsonc
-// .codex or Codex MCP config
-{ "mcpServers": { "personaxis": { "command": "personaxis-mcp" } } }
+```toml
+# ~/.codex/config.toml
+[mcp_servers.personaxis]
+command = "npx"
+args = ["-y", "@personaxis/mcp"]
 ```
 
 Tool list + trace: [claude-code.md](./claude-code.md) §2 (the same server serves any MCP host).

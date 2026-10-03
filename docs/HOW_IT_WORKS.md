@@ -81,8 +81,10 @@ task → [ the model proposes a tool → sandbox GATE (allow | ask | deny)
 
 The built-in catalogue is `run_command`, `read_file`, `list_dir`, `find_in_files`, `write_file`,
 `edit_file`, `check_page` and `finish`, in that order, because the order it is shown in is part of
-the prompt prefix. Two more groups are added per persona: the memory tools, and `use_skill` when the
-persona has local skills.
+the prompt prefix. The rest are added per persona, each only when the persona has what it reaches: the
+memory tools; `use_skill` for its local skills; `run_service` for the services it delivers; `delegate`
+for its sub-personas and colleagues; `ask_person` when somebody is there to answer; and `web_search`
+when a search provider key is configured.
 
 The model **only proposes** the tool call; the **sandbox decides** (a `deny` never runs), risky
 actions **ask for approval** (`shift+tab` cycles the posture: `read-only → workspace-write →
@@ -106,9 +108,13 @@ runs into:
   returns the compacted conversation rather than the bloat.
 
 The evolution mode is decided by the spec's `improvement_policy.mode`:
-- `locked` (default): the loop appraises and remembers, but envelope mutations are human-directed only.
-- `suggesting`: the actor proposes self-edits that enter a human approval queue.
-- `autonomous` (sandbox only): applies directly, bounded by invariants + verifiers.
+- `locked`: the kill-switch. The loop appraises and remembers, but nothing it lives through moves the
+  persona. A persona that declares no mode resolves to it, the safe direction for a file nobody wrote a
+  mode into.
+- `suggesting`: what `create` and `init` write. Numeric changes the model proposes apply inside the
+  envelopes; edits to the spec itself enter a human approval queue.
+- `autonomous` (sandbox only): applies directly, bounded by invariants + verifiers, and requires a
+  recorded sign-off (`approved_by`, `last_approval_at`).
 
 ## 4. Governance and security (the *moat*)
 
@@ -142,12 +148,11 @@ The evolution mode is decided by the spec's `improvement_policy.mode`:
 **The live one:**
 - `personaxis` opens the **REPL** (a live session). In a TTY it is a **full-screen app**
   (alternate-screen, no frame history left behind): a live `/` palette and `shift+tab` to cycle
-  the sandbox posture. Commands: `/persona`, `/state`, `/improve`, `/review`, `/compile`,
-  `/audit`, `/memory`, `/sessions`, `/resume`, `/compact`, `/goal`, `/loop` (runs governed
-  ticks), `/mode`, `/model`, `/drift` (u/band/T3-cost report), `/arbitrate` (value conflicts),
-  `/replay` (animated history + T4 verdict), `/dash`, `/proof`, `/create`, `/overseer`, `/help`,
-  `/exit` (the sigil is inside `/persona`; there is no `/do` or `/evolve`: talking already uses
-  tools and evolves every turn). In a pipe/CI it degrades to a plain reader.
+  the sandbox posture. Fourteen commands: `/resume`, `/compact`, `/context`, `/persona`, `/status`,
+  `/drift`, `/audit`, `/memory`, `/create`, `/compile`, `/skill`, `/model`, `/menu`, `/doctor`, plus
+  `/sandbox`, `/bg`, `/help` and `/exit`. Older verbs were absorbed into those: typing one says where
+  its capability lives now, and `/help moved` prints the whole map. There is no `/do` or `/evolve`:
+  talking already uses tools and evolves every turn. In a pipe/CI it degrades to a plain reader.
 - `personaxis sigil [--persona <path>]`: the persona's unique ASCII sigil + envelope panel.
 - `personaxis-dash [--persona <path>]`: a live TUI that breathes with the state.
 
@@ -217,14 +222,18 @@ static fallback. Two different personas → visibly different sigil, palette, gl
 ## 8. Architecture (monorepo)
 
 ```
-personaxis/                      ← one repo
+personaxis/                      ← one repo, eight packages that release together
 └── packages/
-    ├── core/  @personaxis/core        → engine: envelopes, record, governance, memory,
-    │                                     Living Loop, appraisers, sigil, blackboard, sync,
-    │                                     live-sync, skills, injection, sandbox, registry
-    ├── cli/   personaxis  → REPL + commands (over core)
-    ├── mcp/   @personaxis/mcp         → MCP server (over core)
-    └── tui/   @personaxis/tui         → ASCII dashboard (over core)
+    ├── spec/      @personaxis/spec      → schemas, validator, universal invariants
+    ├── core/      @personaxis/core      → engine: envelopes, record, governance, memory,
+    │                                       Living Loop, agent loop, gate, appraisers,
+    │                                       skills, injection, sandbox, registry
+    ├── protocol/  @personaxis/protocol  → the op/event transport (and ACP)
+    ├── cli/       personaxis            → REPL + commands (over core)
+    ├── mcp/       @personaxis/mcp       → MCP server (over core)
+    ├── sdk/       @personaxis/sdk       → in-process facade for embedding
+    ├── tui/       @personaxis/tui       → terminal UI components and the ASCII dashboard
+    └── evals/     @personaxis/evals     → the conformance harness
 ```
 
 The **engine never prints**: it emits events; the UIs (REPL/TUI/MCP/HTTP) render them. This lets
