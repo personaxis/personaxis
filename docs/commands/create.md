@@ -25,7 +25,7 @@ report). `[slug]` names the persona (default: under `.personaxis/personas/<slug>
 | `--profile <name>` | starting profile, `regulated`, `standard` (default) or `research`: see below |
 | `--yes` | non-interactive: accept labeled defaults, overwrite existing |
 | `--json` | emit spec + gates + provenance as JSON (dry-run unless `--yes`) |
-| `--provider <p>` | override the provider for LLM extraction (`local\|byok\|agent\|remote`) |
+| `--provider <p>` | override the provider for LLM extraction (`local\|byok\|agent`) |
 
 ## Two interviews, one bank
 

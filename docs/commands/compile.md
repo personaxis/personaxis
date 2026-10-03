@@ -17,7 +17,7 @@ personaxis compile [slug] [options]
 | Flag | Meaning |
 |---|---|
 | `--root` | Compile the root persona (default when no slug). |
-| `--provider <name>` | Override the provider (`local \| byok \| agent \| remote`). |
+| `--provider <name>` | Override the provider (`local \| byok \| agent`). |
 | `--from-file <path>` | Use a file's contents as the compiled output instead of calling the LLM. |
 | `-o, --out <path>` | Override the canonical output path. |
 | `--stdout` | Print to stdout instead of writing. |

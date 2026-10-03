@@ -144,7 +144,7 @@ export const decompileCommand = new Command("decompile")
   .description("Propose .personaxis/[personas/<slug>/]personaxis.md updates from a hand-edited PERSONA.md / <slug>.md")
   .argument("[slug]", "Subagent slug to decompile (defaults to the root persona)")
   .option("--root", "Decompile the root persona (PERSONA.md -> .personaxis/personaxis.md). Default when [slug] is omitted.")
-  .option("--provider <name>", "Override the configured provider (local | byok | agent | remote)")
+  .option("--provider <name>", "Override the configured provider (local | byok | agent)")
   .option("--from-file <path>", "Use this file's contents as the proposed personaxis.md instead of calling the provider")
   .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string }) => {
     await runDecompile({

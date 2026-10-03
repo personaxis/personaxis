@@ -61,8 +61,11 @@ describe.skipIf(!built)("what this version offers (L14)", () => {
 	it("the hosted provider is neither offered nor accepted", () => {
 		const dir = mkdtempSync(join(tmpdir(), "pxs-gating-"));
 		try {
-			for (const help of [cli(["config", "--help"], dir).stdout, cli(["config", "set", "--help"], dir).stdout]) {
-				for (const provider of GATED_PROVIDERS) expect(help).not.toContain(provider);
+			// Every offered command that takes a provider, not only `config`: the first sweep missed compile, create,
+			// decompile, migrate and onboard, whose `--provider` help still listed it.
+			const helps = [["config"], ["config", "set"], ["compile"], ["create"], ["decompile"], ["migrate"], ["onboard"]].map((args) => cli([...args, "--help"], dir).stdout);
+			for (const help of helps) {
+				for (const provider of GATED_PROVIDERS) expect(help).not.toMatch(new RegExp(`\\b${provider}\\b`));
 			}
 			for (const provider of GATED_PROVIDERS) {
 				const run = cli(["config", "set", "provider", provider], dir);
@@ -89,6 +92,17 @@ describe("what the public text announces (L14)", () => {
 			const text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
 			expect(text, file).not.toMatch(RUN);
 			if (/README\.md$/.test(file)) expect(text, file).not.toMatch(ROW);
+		}
+	});
+
+	it("no public doc offers the hosted provider", () => {
+		const docs = (dir: string): string[] =>
+			readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? docs(join(dir, e.name)) : e.name.endsWith(".md") ? [join(dir, e.name)] : []));
+		for (const file of [join(REPO, "README.md"), ...docs(join(REPO, "docs"))]) {
+			const text = readFileSync(file, "utf8");
+			for (const provider of GATED_PROVIDERS) {
+				expect(text, file).not.toMatch(new RegExp(`provider ${provider}\\b|\\|\\s*\`?${provider}\`?\\s*(\\||\`)|agent \\\\?\\| ${provider}\\b`));
+			}
 		}
 	});
 

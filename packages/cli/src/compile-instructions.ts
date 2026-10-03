@@ -9,7 +9,7 @@
  * of `memory/`, `references/`, `examples/`, `skills/`, or `assets/`.
  *
  * These templates are consumed by the providers in `src/providers/` and are
- * intentionally provider-agnostic: any of `local | byok | agent | remote` can
+ * intentionally provider-agnostic: any of `local | byok | agent` can
  * pass the resulting string to a chat-completion call.
  */
 

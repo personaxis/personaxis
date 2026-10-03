@@ -82,7 +82,7 @@ The common way is a static `.md` per agent that every contributor edits by hand 
 silently drifts. personaxis makes the persona a **typed, validated, versioned, governed
 artifact** with a compile step, you get diffable identity, auditable evolution, reusable
 sub-personas, and a single definition that targets every host. The CLI is the toolchain that
-keeps all of that honest (validate / lint / compile / decompile / push / pull).
+keeps all of that honest (validate / lint / compile / decompile).
 
 ## Verify it yourself
 
