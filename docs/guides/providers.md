@@ -16,7 +16,6 @@ defaults to **`agent`** (no network, no setup).
 | `agent` (default) | the **active coding agent** (Claude Code / Codex), no network call | none | Inside a coding-agent session; zero config |
 | `local` | any **OpenAI-compatible** `/chat/completions` endpoint | optional bearer | Ollama / llama.cpp / LM Studio, or a hosted OpenAI-compatible API (Groq/OpenRouter/Cohere) |
 | `byok` | your own **Anthropic or OpenAI** account | env var | You have an Anthropic/OpenAI key and want their models directly |
-| `remote` | **Personaxis-hosted** models (paid) | env token | You want managed inference, no local server |
 
 ## `agent`, the default, no network
 
@@ -50,16 +49,11 @@ personaxis config set byok.apiProvider anthropic   # or openai
 personaxis config set byok.model claude-sonnet-4-6
 ```
 
-## `remote`, Personaxis-hosted (paid)
+## Not in this version: Personaxis-hosted models
 
-Config keys under `remote`: `apiBase` (default `https://api.personaxis.com`) and `model`. The auth
-token is read from `PERSONAXIS_API_TOKEN` (sign in at personaxis.com to get one); it is never stored
-in a config file. The request goes to `<apiBase>/api/v1/spec/run`.
-
-```bash
-personaxis config set provider remote
-personaxis config set remote.apiBase https://api.personaxis.com
-```
+The hosted provider needs the Personaxis service, which is not live, so this version does not offer it.
+A config written by an earlier version that still names it is refused with that reason; choose one of
+the providers above with `personaxis config`.
 
 ## See also
 

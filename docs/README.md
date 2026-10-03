@@ -28,7 +28,7 @@ docs/
     getting-started.md   by audience: developers / teams & enterprises / creators
     creating-personas.md which `create` door for which input, provenance review, iteration
     configuration.md     model/endpoint/API-key config (global+project+per-persona, dev & prod)
-    providers.md         the local | byok | agent | remote providers for compile/decompile
+    providers.md         the local | byok | agent providers for compile/decompile
     production.md        MCP / SDK / serve, the four production controls, troubleshooting
     recipes.md           8 vertical starting points (NPC, brand voice, legal, fintech, tutor, …)
   architecture/        how the system works, end to end

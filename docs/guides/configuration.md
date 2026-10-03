@@ -109,7 +109,6 @@ compile and the live REPL reasoning:
 | OpenAI | `byok` openai | yes | yes (`api.openai.com/v1`) |
 | Anthropic | `byok` anthropic | yes | yes (Anthropic's OpenAI-compatibility endpoint) |
 | HuggingFace | `local` | yes | yes (HF Inference router, `router.huggingface.co/v1`) |
-| Personaxis hosted | `remote` | yes | when the hosted OpenAI-compatible endpoint is set |
 | Coding agent | `agent` | yes | n/a (no model; hands off to Claude Code / Codex) |
 
 The friendliest path is interactive:
@@ -158,7 +157,7 @@ runtime:
 ```
 
 Unset per-persona settings fall back to the project/global default. See
-[providers.md](./providers.md) for the `local | byok | agent | remote` providers used by
+[providers.md](./providers.md) for the `local | byok | agent` providers used by
 compile/decompile, and [architecture/deployment.md](./architecture/deployment.md) for how config
 feeds each deployment mode.
 

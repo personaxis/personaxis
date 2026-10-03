@@ -6,7 +6,7 @@ Source: `packages/cli/src/commands/{compile,decompile}.ts`,
 
 ## Compile (`personaxis.md` → compiled doc)
 
-LLM-based, provider-agnostic (`local | byok | agent | remote`). Input: the full
+LLM-based, provider-agnostic (`local | byok | agent`). Input: the full
 `personaxis.md` (+ `policy.yaml`/`state.json` as reference + a capped resource manifest).
 Output: the persona-prompting document (`PERSONA.md`).
 

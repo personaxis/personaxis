@@ -7,6 +7,10 @@ status: built, not yet exercised against a deployed gateway
 
 # Running a job
 
+> **Not in this version.** A job comes from a Personaxis workspace through `connect`, and this version
+> works without the Personaxis service and does not offer `connect`. The enforcement half described
+> below runs on its own with [`personaxis guard`](../commands/guard.md).
+
 The daemon has two halves. One refuses a tool call before it runs, and it works the same
 whether the call came from a person typing in their terminal or from a job. The other starts
 the agent in the first place, and until now it did not exist: `job.assign` was defined in the
