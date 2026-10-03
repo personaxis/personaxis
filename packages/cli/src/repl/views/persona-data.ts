@@ -79,7 +79,7 @@ const row = (label: string, value: string): string => `  ${chalk.cyan(label.padE
  * Milliseconds per aura frame. The host is told to redraw at exactly this rate, so one
  * redraw equals one frame: any slower and the figure stutters, any faster and the host
  * repaints frames that are identical. 250 ms means the fastest of the five motions (a
- * 2-frame rhythm) completes in half a second, which is what "se nota que se mueve" needs.
+ * 2-frame rhythm) completes in half a second, which is what reads as visibly moving.
  */
 export const AURA_FRAME_MS = 250;
 

@@ -1,8 +1,8 @@
 /**
  * V7.C: persona scopes and the configuration matrix.
  *
- * These tests exist because of Design note: "todas estas opciones la mayoria
- * funcionan sobre el ai persona main, no sobre los ai sub personas". A test that only ever
+ * These tests exist because of a design note: most of these options worked on the main
+ * AI persona and not on its sub-personas. A test that only ever
  * exercises the main persona would let that regress silently, so every case here builds a
  * project with SUB-personas and asserts they are reachable and answered for individually.
  */
