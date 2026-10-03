@@ -38,6 +38,19 @@ describe("the calls after a turn and a model that thinks (E140)", () => {
 		expect(bodies[0]!.chat_template_kwargs).toEqual({ enable_thinking: false });
 	});
 
+	it("the title and the appraisal tell Nemotron 3.5 Lightning not to think (E167)", async () => {
+		const NVIDIA = "https://integrate.api.nvidia.com/v1";
+		const model = "nvidia/nemotron-3.5-lightning-30b-a3b";
+		const title = recording("Flight Status Request");
+		await nameSession({ endpoint: NVIDIA, model, fetchImpl: title.fetchImpl }, "Can you check the status of flight UA 512?");
+		expect(title.bodies[0]!.chat_template_kwargs).toEqual({ enable_thinking: false });
+		const appraisal = recording("{}");
+		await new LlmAppraiser({ endpoint: NVIDIA, model, fetchImpl: appraisal.fetchImpl }).appraise({ observation: "o", source: "user", personaBody: "id", mutableFields: [] });
+		expect(appraisal.bodies[0]!.chat_template_kwargs).toEqual({ enable_thinking: false });
+		// Only the measured model: another Nemotron on the same host is not declared by resembling it.
+		expect(capabilitiesFor(NVIDIA, "nvidia/nemotron-3-super-120b-a12b").thinkingOff).toBeUndefined();
+	});
+
 	it("a destination that declared nothing receives no new field at all", async () => {
 		for (const [endpoint, model] of [
 			[HF, "Qwen/Qwen3-4B-Instruct-2507"],
