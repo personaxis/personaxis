@@ -20,6 +20,45 @@ export interface PostJsonOptions {
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * E48: an OpenAI-compatible stream (`data:` frames of `choices[0].delta`) as the completion it adds up to.
+ *
+ * Text, reasoning, the finish reason, the model and the usage, which is everything a caller of a whole completion
+ * reads. A frame that does not parse is skipped rather than fatal, as the rest of the stream still carries the answer.
+ */
+function assembleStream(text: string): unknown {
+  let content = "";
+  let reasoning = "";
+  let finish: string | undefined;
+  let model: string | undefined;
+  let usage: unknown;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const frame = JSON.parse(data) as {
+        model?: string;
+        usage?: unknown;
+        choices?: { finish_reason?: string | null; delta?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null } }[];
+      };
+      model ??= frame.model;
+      if (frame.usage) usage = frame.usage;
+      const choice = frame.choices?.[0];
+      if (choice?.finish_reason) finish = choice.finish_reason;
+      content += choice?.delta?.content ?? "";
+      reasoning += choice?.delta?.reasoning_content ?? choice?.delta?.reasoning ?? "";
+    } catch {
+      // A frame that does not parse is not the answer; the others still are.
+    }
+  }
+  return {
+    ...(model ? { model } : {}),
+    ...(usage ? { usage } : {}),
+    choices: [{ ...(finish ? { finish_reason: finish } : {}), message: { content, ...(reasoning ? { reasoning_content: reasoning } : {}) } }],
+  };
+}
+
 /** True for statuses worth retrying: rate limits and transient server errors. */
 const retryable = (status: number): boolean => status === 429 || status >= 500;
 
@@ -67,6 +106,9 @@ export async function postJson(
         }
         throw err;
       }
+      // E48: a streamed answer is put back together into the shape of a whole one, so the caller reads both the same.
+      // Decided by what the server sent, not by what was asked: a server that ignores `stream` still answers whole.
+      if ((res.headers?.get?.("content-type") ?? "").includes("text/event-stream")) return assembleStream(await res.text());
       return (await res.json()) as unknown;
     } catch (e) {
       const err = e as Error;
