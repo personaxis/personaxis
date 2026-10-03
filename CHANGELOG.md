@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
+
+A minor release with breaking changes: see the sections marked **Breaking** below.
+
+### Known issues
+
+- `personaxis create` builds what it cannot extract from labeled defaults, and the creation report lists
+  each one. Without a working model that is most of the persona; with one, the affect baseline, the
+  ranges and the bands are still defaults, and a persona whose source names no virtue gets the
+  default one. Review `creation-report.md` before using a persona for real work.
+- `personaxis create --yes` over a persona that already exists keeps that persona's record and state, so
+  the new one starts from the old values. Delete `record.jsonl` and `state.json` beside it first.
+
 ### Breaking: this version works without the Personaxis service, and `guard` enforces on its own
 
 - `connect` (and `login`), `pull`, `push` and `runtime` are not registered: they need the Personaxis service, which is
@@ -37,6 +50,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   The report used to list each one as a passed gate.
 - The report counts lint warnings, not every non-error finding, so it agrees with the terminal.
 - The default tone of a persona whose brief names none compiles as "professional and direct".
+- `create --provider agent` hands the extraction to the coding agent running it, as `compile` does: it
+  writes the prompt, stops, and continues from the agent's answer on the next run. It used to fall
+  back to labeled defaults.
 
 ### Every package on npm has a README and its license
 

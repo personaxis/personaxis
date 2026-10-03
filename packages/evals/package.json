@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/evals",
-  "version": "0.17.0-dev.0",
+  "version": "0.17.0",
   "description": "Conformance suite for the Personaxis engine: the clamp holds, the gate blocks, memory stays tamper-evident, budgets stop, verification catches. Deterministic, no API key needed.",
   "license": "MIT",
   "type": "module",
