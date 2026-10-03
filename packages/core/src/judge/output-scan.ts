@@ -35,8 +35,8 @@ export interface OutputClassifier {
 
 /**
  * Wolf Defender fp16 run from Node: the score that 1% of InjecAgent's 510 clean texts exceed, measured on 2026-10-01
- * (`research/experiments/decision-models/wolf-node.mjs`). At it, 345 of 510 attacks are above, and 20 of 3,706 clean
- * bench outputs. Belongs to that engine: a different model or variant needs its own measurement.
+ * by running the ONNX export from Node over InjecAgent's attacks and clean texts. At it, 345 of 510 attacks are above,
+ * and 20 of 3,706 clean bench outputs. Belongs to that engine: a different model or variant needs its own measurement.
  */
 const SUSPICIOUS_AT = 8.377e-4;
 /** At 0.5, 219 of 510 attacks and none of the 510 clean texts, nor any of the 3,706 bench outputs. */
