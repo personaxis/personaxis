@@ -31,10 +31,11 @@ export function timeoutFor(maxTokens: number): number {
  * with the model still working. Asking a hosted endpoint for more than its gateway will wait
  * for does not get a longer answer, it gets no answer.
  *
- * Streaming is the real fix for long hosted generations and is not done here: one
- * observation on 2026-09-10 suggested a streamed 8192 request avoids the gateway, but it
- * returned suspiciously fast and may have been served from cache, so it is written down as
- * something to verify rather than something to rely on.
+ * Streaming is the real fix for long hosted generations, and since E48 (2026-10-03) the calls
+ * below are streamed. The budget stays where it was until the streamed call has been measured
+ * against that same router, which has had no credits since 2026-09-25: NVIDIA's API, the
+ * hosted endpoint at hand, does not cut a whole 8192-token answer (5,383 tokens in 35 s), so
+ * it cannot show the gateway's limit either way.
  */
 export function budgetFor(endpoint: string, configured?: number): number {
   if (configured !== undefined) return configured;
@@ -94,7 +95,9 @@ export function createLocalProvider(config: PersonaxisConfig, personaPath?: stri
       json = (await postJson(
         url,
         headers,
-        { model, temperature: 0.2, max_tokens: maxTokens, ...body },
+        // E48: streamed, so a hosted gateway sees the answer start instead of a long silence. Measured 2026-09-10 on
+        // the HuggingFace router: a whole 8192-token completion came back 504 with the model still working.
+        { model, temperature: 0.2, max_tokens: maxTokens, stream: true, ...body },
         // The clock has to fit the budget, or the two disagree and the budget always loses.
         // Measured 2026-09-10: gemma-3-4b-it sustains 24 to 28 tokens/second on the
         // HuggingFace router, so 8192 tokens is about five and a half minutes. A 120-second
