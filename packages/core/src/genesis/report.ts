@@ -100,7 +100,16 @@ export function provenanceSummary(spec: Record<string, unknown>, ledger: Evidenc
 }
 
 /** Render the human-readable creation report (markdown). */
-export function renderCreationReport(result: GenesisResult, gates: Array<{ name: string; pass: boolean; detail: string }>): string {
+export function renderCreationReport(
+  result: GenesisResult,
+  gates: Array<{ name: string; pass: boolean; detail: string }>,
+  /**
+   * What did not go as asked and was worked around: no model, a failed web search. These were
+   * pushed into `gates` as passes until 2026-10-03, so a 401 from the provider printed under a ✅.
+   * They are not gates (nothing was checked), so they get their own section and a warning mark.
+   */
+  notes: readonly string[] = [],
+): string {
   const { spec, ledger } = result;
   const meta = spec.metadata as { name: string; created: string };
   const summary = provenanceSummary(spec, ledger);
@@ -116,6 +125,7 @@ export function renderCreationReport(result: GenesisResult, gates: Array<{ name:
     "",
     ...gates.map((g) => `- ${g.pass ? "✅" : "❌"} **${g.name}**, ${g.detail}`),
     "",
+    ...(notes.length ? ["## Worked around", "", ...notes.map((n) => `- ⚠️ ${n}`), ""] : []),
     "## Provenance",
     "",
     `- Quantitative fields: ${summary.quantitativeFields.length}`,

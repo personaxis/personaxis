@@ -174,7 +174,7 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
 
   const persona: Record<string, unknown> = {
     voice: {
-      tone: nonEmpty(seed.tone, "professional_direct").toLowerCase().replace(/\s+/g, "_"),
+      tone: nonEmpty(seed.tone, "professional_and_direct").toLowerCase().replace(/\s+/g, "_"),
       formality: clamp01(seed.formality, 0.5),
       warmth: clamp01(seed.warmth, 0.5),
       // FASE 7 P3 (caught by the valid-by-construction gate on a REAL model run):
