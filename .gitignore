@@ -13,23 +13,15 @@ packages/spec/src/generated/
 .codex/
 .agents/
 .cursor/
-# El manifiesto que escribe `npx skills add`. Vive en la raiz, junto a las carpetas de
-# arriba, y es del mismo tipo: herramientas de quien desarrolla, no del motor que se
-# publica. Esta repo es publica, asi que lo que entra aqui lo lee cualquiera.
+# The manifest `npx skills add` writes. It lives at the root beside the folders above and is
+# the same kind of thing: a developer's tooling, not part of the engine that is published.
 skills-lock.json
 # Anchored to the root as `.personaxis/*`, which does not cover a package. A test
 # whose path resolves from the working directory writes into whichever one it ran
 # from, and one did: `packages/cli/.personaxis/mcp-approvals.json` reached a commit.
 **/.personaxis/*
 !.personaxis/personaxis.md
-# The gamewright demo persona is versioned: the benchmark measures changes to its
-# definition, and a change nobody can commit is a change nobody can trace. What it
-# writes while it runs (state, record) stays out.
-!.personaxis/personas/
-.personaxis/personas/*
-!.personaxis/personas/gamewright/
-.personaxis/personas/gamewright/state.json
-.personaxis/personas/gamewright/record.jsonl
+# Sub-personas stay local: the benchmark's persona lives here but is not a public example.
 .recompile-pending.json
 # F3.2, ephemeral derived compiler output (hot/cold consumer slices)
 **/.dist/

@@ -37,7 +37,7 @@ const APPRAISE_INPUT = {
 	mutableFields: [],
 } as never;
 
-/** El responder compone el sistema con el estado modelado, asi que no puede faltar. */
+/** The responder builds the system prompt from the modeled state, so it cannot be missing. */
 const RESPOND_INPUT = { message: "anything", personaBody: "", state: {}, memory: [] } as never;
 
 describe("an exhausted reasoning budget is an error, not a neutral appraisal", () => {

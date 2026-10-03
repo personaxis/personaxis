@@ -24,7 +24,7 @@ import { readPreferences, type PreferenceValue } from "../memory-kinds.js";
 /**
  * A captured name: the first word in any case (people type lowercase), but
  * CONTINUATION words only when Capitalized (surnames), so "me llamo Mara y
- * trabajo en esto" captures "Mara", never "Mara y trabajo".
+ * trabajo en esto" (Spanish input) captures "Mara", never "Mara y trabajo".
  */
 const NAME = "([\\p{L}][\\p{L}'’-]{0,29}(?:\\s+[\\p{Lu}][\\p{L}'’-]{0,29}){0,3})";
 
