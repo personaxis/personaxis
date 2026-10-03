@@ -71,6 +71,7 @@ import { validatePersona, exitCodeFor } from "../schema.js";
 import { runRules } from "../linter/rules.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
+import { ProviderRequiresAgentError } from "../providers/types.js";
 
 interface CreateOpts {
   fromPrompt?: string;
@@ -96,12 +97,19 @@ interface CreateOpts {
 function structuredCaller(name?: ProviderName): StructuredCaller | null {
   try {
     const provider = resolveProvider(name);
-    if (provider.name === "agent") return null; // no network on our side; heuristic path
+    // E175: `agent` used to return null here, which sent `create --provider agent` down the
+    // no-model path and built the persona from labeled defaults. It goes through the text path
+    // like any provider without structured output; the agent provider writes the prompt for the
+    // coding agent and `create` stops until the answer exists (see the action's catch).
+    // Only when asked for by name: `agent` is also the default when no model is configured, and
+    // there `create` keeps its promise of working offline, from labeled defaults it reports.
+    if (provider.name === "agent" && name !== "agent") return null;
     if (provider.runStructured) {
       return (prompt, schema, schemaName) => provider.runStructured!(prompt, schema, schemaName).then((r) => r.json);
     }
-    return async (prompt) => {
-      const r = await provider.run(prompt + "\n\nReturn ONLY a JSON object, no prose, no fences.");
+    return async (prompt, schema) => {
+      const shape = schema ? `\n\nThe object must satisfy this JSON Schema:\n${JSON.stringify(schema)}` : "";
+      const r = await provider.run(prompt + shape + "\n\nReturn ONLY a JSON object, no prose, no fences.");
       return JSON.parse(r.text.trim().replace(/^```[a-zA-Z]*\s*\n?|\n?```$/g, "")) as unknown;
     };
   } catch {
@@ -294,6 +302,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
         const { seed, evidence } = await extractSeed(material, label, call);
         return { label, seed, evidence };
       } catch (e) {
+        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
         llmNotes.push(`extractor failed for ${label} (${(e as Error).message}); heuristic baseline used`);
       }
     } else {
@@ -334,6 +343,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
         const { seed, evidence } = await extractSeed(material.prose, `import-prose:${material.format}`, call);
         contributions.push({ label: `import-prose:${material.format}`, seed, evidence });
       } catch (e) {
+        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
         llmNotes.push(`extractor failed for import prose (${(e as Error).message}); card fields kept as-is`);
       }
     } else if (material.prose.trim()) {
@@ -399,6 +409,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
           const said = (await call(`${RESEARCH_QUERIES_INSTRUCTION}\n\nBRIEF:\n${brief}`, RESEARCH_QUERIES_SCHEMA, "research_queries")) as { queries?: string[] };
           queries = parseQueries((said?.queries ?? []).join("\n"));
         } catch (e) {
+          if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
           llmNotes.push(`the model could not write the research queries (${(e as Error).message}); the brief was searched as given`);
         }
       }
@@ -610,6 +621,11 @@ export const createCommand = new Command("create")
     try {
       await runCreate(slug, opts);
     } catch (err) {
+      // E175: the prompt is waiting for the coding agent, as with `compile`: say where, exit 0.
+      if (err instanceof ProviderRequiresAgentError) {
+        console.log(err.message.replace("Then re-run this command with --from-file " + err.resultFile + " to apply the result.", "Then re-run this same command: it reads the answer and continues."));
+        process.exit(0);
+      }
       console.error(chalk.red("Error:"), (err as Error).message);
       process.exit(1);
     }

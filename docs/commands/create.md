@@ -74,6 +74,14 @@ load-bearing fails the gate (a bug, not a user error). The result: `create` in a
 mode, with or without a model, produces zero decorative numbers, which you can confirm
 with [`personaxis jacobian`](./jacobian.md). Exit codes follow the validator convention.
 
+**The coding agent as the model.** With `--provider agent`, `create` does not fall back to
+defaults: it writes the extraction prompt to `.personaxis/.tmp/<hash>.prompt.md` and stops
+(exit 0). The agent running the command (Claude Code, Codex) answers it in
+`.personaxis/.tmp/<hash>.out.md`, and re-running the same command continues from that answer.
+A step that needs another prompt stops again the same way. Without the flag, `agent` is only
+the fallback when no model is configured, and `create` keeps working offline from labeled
+defaults.
+
 What Genesis had to work around (no model configured, an extractor that failed, a web search
 that returned nothing) is printed as a warning when `create` finishes and listed under
 **Worked around** in `creation-report.md`. These are not gates: nothing was checked, something
