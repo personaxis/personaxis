@@ -291,6 +291,10 @@ export function mapLoopEvent(event: LoopEvent, context: MappingContext = {}): Ma
 		case "task-list":
 			return { drop: "local-only" };
 
+		// E36: a note for the operator on this machine about the server, not something the persona did.
+		case "dialect-read":
+			return { drop: "local-only" };
+
 		default: {
 			// Unreachable while the switch stays exhaustive. If a LoopEvent kind
 			// is added without a case, this line stops compiling, which is the

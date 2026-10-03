@@ -69,6 +69,9 @@ export function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
       return null; // surfaced in the concise per-turn summary (not inline noise) / status bar
     case "context-compacted":
       return chalk.dim(`  · context compacted (${e.removed} msgs freed)`);
+    // E36: visible on purpose; a call read out of the text means the server is probably missing the model's parser.
+    case "dialect-read":
+      return chalk.yellow(`  ⚠ the model server returned a tool call as text; read with the ${e.dialect} dialect (the server is probably missing this model's tool parser)`);
     // E81: the persona's own task list, each time it writes it, on one line.
     case "task-list":
       return chalk.dim(`  ☰ tasks ${e.tasks.map((task) => lineFor(task)).join(" · ").slice(0, 200)}`);

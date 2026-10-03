@@ -811,6 +811,8 @@ export class PersonaAgent {
     let deniedCount = 0;
     // E94: replies in a row with no text and no call, and whether any call did real work in this run.
     let emptyReplies = 0;
+    // E36: the dialects already reported in this run, so each is said once.
+    const dialectsReported = new Set<string>();
     let workedThisRun = false;
     // E81: every call that succeeded in this run, in order, which is what can mark a step of the persona's
     // list done; and the one message that puts the list back in front of the model, replaced rather than added.
@@ -1378,6 +1380,13 @@ export class PersonaAgent {
           ),
         );
         if (res.usedFallback) this.preferFallback = true;
+        // E36: `requestToolCall` says when it read a call out of the text, and nothing used to say it on. Seen on
+        // 2026-10-03 with qwen3:4b behind a server without its parser: every call arrived as text, the hermes dialect
+        // read them all, and nothing on screen, in the log or in the record said that the server lacked the parser.
+        if (res.dialect && !dialectsReported.has(res.dialect)) {
+          dialectsReported.add(res.dialect);
+          bus.emit({ type: "dialect-read", dialect: res.dialect });
+        }
         tokens += res.usage?.total_tokens ?? 0;
         if (res.usage) priced = true;
         meter.observe(res.usage);
