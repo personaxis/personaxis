@@ -47,7 +47,7 @@ describe("command surface (V7.B)", () => {
   });
 
   it("absorbed verbs are not commands any more, in any listing", () => {
-    // V8.A (David): "no quiero que solo esté oculto y que aun pueda usarlos". A hidden
+    // V8.A: hiding a command that still runs is not removing it. A hidden
     // command that still works is the clutter this consolidation exists to remove, and
     // two ways to do one thing is how the implementations drifted in the first place.
     const names = listCommands().map((c) => c.name);
@@ -137,7 +137,7 @@ describe("the `/` palette shows the consolidated surface (V7.B, regression)", ()
  * delegated, while `/lint` and `/validate` kept a SECOND implementation. They drifted exactly
  * as you would expect: "every finding carries its remedy" reached `doctor` and the `lint`
  * subcommand, and never reached the `/lint` slash command, so the same question answered
- * differently depending on where it was typed. David spotted it from the outside.
+ * differently depending on where it was typed, and it was visible from the outside.
  */
 describe("absorbed verbs delegate, they do not re-implement (V8.A)", () => {
   /**

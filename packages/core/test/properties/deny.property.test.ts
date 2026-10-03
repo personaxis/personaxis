@@ -1,5 +1,5 @@
 /**
- * "Deny regex imbatible" — the DONE condition of phase 2, made checkable.
+ * An unbeatable deny regex: the DONE condition of phase 2, made checkable.
  *
  * The plan names the failure mode this rules out: **the input nobody enumerated that lets a
  * forbidden call through.** Example-based tests cannot rule that out, because the examples

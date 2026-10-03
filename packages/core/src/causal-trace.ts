@@ -105,7 +105,7 @@ export function describeTrace(trace: CausalTrace): string {
 	const lines: string[] = [];
 
 	for (const step of trace.steps) {
-		lines.push(`${step.planStep}. ${step.intent} — ${step.ok ? "ok" : "did not complete"}`);
+		lines.push(`${step.planStep}. ${step.intent}: ${step.ok ? "ok" : "did not complete"}`);
 
 		if (step.calls.length === 0) {
 			lines.push("     nothing ran for this step");

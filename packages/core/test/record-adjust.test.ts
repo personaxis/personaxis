@@ -25,7 +25,7 @@ const ENVELOPES = {
 	"mood.tone": { mean: 0, min: -1, max: 1 } as Envelope,
 	"personality.traits.honesty": { mean: 0.9, min: 0.8, max: 1 } as Envelope,
 };
-const WHO = { kind: "human", id: "david" } as never;
+const WHO = { kind: "human", id: "mara" } as never;
 
 let dir: string;
 let personaPath: string;

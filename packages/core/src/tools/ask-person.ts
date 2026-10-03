@@ -12,7 +12,7 @@
  *
  * The loop handles the call, because only the run knows whether anybody is there. With somebody in front
  * of it (the TUI), the answer comes back as this call's result. With nobody (a service step, a delegated
- * sub-task, the daemon, a headless run), David decided on 2026-09-15 (P10 of E77) that the step stops and
+ * sub-task, the daemon, a headless run), the step stops and
  * leaves the question written for whoever picks it up: the turn ends at the question, the question is its
  * written result, and nothing is guessed in its place.
  */

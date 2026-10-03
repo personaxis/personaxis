@@ -71,7 +71,7 @@ async function turn(batches: readonly (readonly Call[])[], onQuestion?: (questio
 	const outcome = await new TurnRunner({ provider: defaultLoop(agent), observer: recordTurns({ journal }) }).run({
 		turn: "t1",
 		prompt: "Make me a prototype of the frog game.",
-		asker: { kind: "human", id: "david" },
+		asker: { kind: "human", id: "mara" },
 	});
 	return { outcome, entries: journal.all(), messages: agent.lastMessages ?? [], requests: model.state.requests, offered: model.state.offered };
 }
@@ -93,7 +93,7 @@ describe("asking a person inside a turn (E84)", () => {
 		const answer = entries.find((entry) => entry.body.type === "answer");
 		expect(question?.author.kind).toBe("persona");
 		expect(question?.body).toMatchObject({ question: QUESTION.question, recommended: "Plain canvas" });
-		expect(answer?.author).toEqual({ kind: "human", id: "david" });
+		expect(answer?.author).toEqual({ kind: "human", id: "mara" });
 		expect(answer?.body).toMatchObject({ question: QUESTION.question, answer: "Plain canvas" });
 	});
 

@@ -24,7 +24,7 @@ import { runGuards, freezeCall } from "../src/gate/index.js";
 const asked: TurnRequest = {
 	turn: "t1",
 	prompt: "what is the state of the branch",
-	asker: { kind: "human", id: "david" },
+	asker: { kind: "human", id: "mara" },
 };
 
 function provider(run: LoopProvider["run"], name = "test"): LoopProvider {

@@ -48,7 +48,7 @@ describe("renderSkill", () => {
   });
 });
 
-describe("writeSelfSkill — governance", () => {
+describe("writeSelfSkill: governance", () => {
   it("autonomous writes to skills/ and registers in the ledger", () => {
     const r = writeSelfSkill(cleanDraft, { personaPath, mode: "autonomous" });
     expect(r.outcome).toBe("written");
@@ -77,7 +77,7 @@ describe("writeSelfSkill — governance", () => {
   });
 });
 
-describe("writeSelfSkill — security floor (before governance, every mode)", () => {
+describe("writeSelfSkill: security floor (before governance, every mode)", () => {
   it("blocks a body carrying prompt injection, even in autonomous", () => {
     const poisoned: SkillDraft = {
       ...cleanDraft,
@@ -110,7 +110,7 @@ describe("writeSelfSkill — security floor (before governance, every mode)", ()
   });
 });
 
-describe("writeSelfSkill — content integrity", () => {
+describe("writeSelfSkill: content integrity", () => {
   it("written file matches the rendered content and the returned hash", () => {
     const r = writeSelfSkill(cleanDraft, { personaPath, mode: "autonomous" });
     const onDisk = readFileSync(r.path!, "utf-8");

@@ -108,7 +108,7 @@ function readSpec(personaPath: string): CachedSpec | undefined {
     const entry: CachedSpec = {
       // `loaded.data` IS the parsed frontmatter, not a wrapper around it. Reading
       // `loaded.data.frontmatter` yielded undefined, which the `?? {}` downstream turned
-      // into "this persona declares nothing" — every setting silently reported its
+      // into "this persona declares nothing", and every setting silently reported its
       // default. Silent defaults are the worst failure mode for a view whose entire job
       // is to say where a value came from, so the type assertion is explicit here.
       mtimeMs,
@@ -227,8 +227,8 @@ function modelOrigin(personaPath: string, frontmatter: Record<string, unknown>):
  * this answers the second, for every host the compiler supports.
  *
  * The host list is NOT duplicated here. It is derived from the compile-target registry in
- * `@personaxis/core`, and each host's file location comes from that target's own `place()`
- * — the same function `compile` uses to write it. A hand-kept second list is how this
+ * `@personaxis/core`, and each host's file location comes from that target's own `place()`,
+ * the same function `compile` uses to write it. A hand-kept second list is how this
  * function first shipped claiming only two hosts existed while the compiler had supported
  * four (claude-code, codex, openclaw, hermes) all along; deriving it means registering a
  * new target is enough for it to appear here too.

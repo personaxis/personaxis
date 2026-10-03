@@ -73,7 +73,7 @@ async function turn(said: string) {
 			llm: { endpoint: "http://x/v1", model: "m", fetchImpl: scripted(said) } as never,
 		},
 		{ policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" } },
-	).run({ turn: "t1", prompt: "sort out the build", asker: { kind: "human", id: "david" } });
+	).run({ turn: "t1", prompt: "sort out the build", asker: { kind: "human", id: "mara" } });
 }
 
 const bodies = (): RecordBody[] => openRecord(personaPath).all().map((entry) => entry.body);

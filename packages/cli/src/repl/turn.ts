@@ -199,8 +199,8 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       // E84: a question the persona asks reaches the person at this keyboard, when there is one. Without a
       // terminal `ask` is absent, and the turn stops at the question instead, as P10 of E77 decided.
       ...(ask ? { onQuestion: async (question: PersonQuestion) => answerFrom(question, await ask(questionPrompt(question))) } : {}),
-      // E73: the persona runs a service it delivers on this project, and the person approves every run, which is
-      // P3 of E77 as David answered it: the tool's gate asks before this is ever called.
+      // E73: the persona runs a service it delivers on this project, and the person approves every run, and the
+      // tool's gate asks before this is ever called, whatever the posture.
       runService: (input) => runServiceFromTurn(process.cwd(), input, keyboardPerson(ctx, ask)),
       sessionId: ctx.sessionId,
       meter: ctx.meter,

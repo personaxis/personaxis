@@ -21,15 +21,15 @@ describe("parsePersonaRef", () => {
 	it("reads a namespaced reference as two segments", () => {
 		// Two segments and not one encoded string: an encoded slash depends on
 		// every proxy in between leaving it alone.
-		expect(parsePersonaRef("@david/maven")).toEqual(["@david", "maven"]);
+		expect(parsePersonaRef("@mara/maven")).toEqual(["@mara", "maven"]);
 	});
 
 	it.each([
 		["an empty reference", ""],
-		["a namespace with no persona", "@david"],
-		["a namespace with an empty persona", "@david/"],
+		["a namespace with no persona", "@mara"],
+		["a namespace with an empty persona", "@mara/"],
 		["a persona with an empty namespace", "@/maven"],
-		["a third segment", "@david/maven/extra"],
+		["a third segment", "@mara/maven/extra"],
 		["an uppercase slug", "Maven"],
 		["a slug starting with a dash", "-maven"],
 		["a path traversal", "../../etc/passwd"],
@@ -42,6 +42,6 @@ describe("parsePersonaRef", () => {
 	it("refuses a bare reference that only looks namespaced", () => {
 		// A slash with no leading @ is not a namespace, it is a path, and a path
 		// is what an attacker sends when they are hoping the server joins strings.
-		expect(parsePersonaRef("david/maven")).toBeNull();
+		expect(parsePersonaRef("mara/maven")).toBeNull();
 	});
 });

@@ -19,7 +19,7 @@ function isValidName(value: string): boolean {
 }
 
 /**
- * `maven` is the official catalogue; `@david/maven` is somebody's own.
+ * `maven` is the official catalogue; `@mara/maven` is somebody's own.
  *
  * The bare form keeps meaning what it has always meant. A `personaxis pull
  * maven` already exists in installs out there, and quietly resolving it
@@ -60,7 +60,7 @@ export const pullCommand = new Command("pull")
 			process.exit(1);
 		}
 
-		// Segment by segment, not one encoded string. `@david%2Fmaven` would depend
+		// Segment by segment, not one encoded string. `@mara%2Fmaven` would depend
 		// on every proxy in between leaving the encoded slash alone, and one that
 		// normalised it would turn a working pull into a 404 nobody can reproduce.
 		const url = `${REGISTRY_BASE_URL}/${segments.map(encodeURIComponent).join("/")}`;

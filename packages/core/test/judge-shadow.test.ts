@@ -64,7 +64,7 @@ async function turn(judging?: Parameters<typeof defaultLoop>[2]) {
 	const outcome = await new TurnRunner({ provider: defaultLoop(agent, undefined, judging), observer: recordTurns({ journal }) }).run({
 		turn: "t1",
 		prompt: "Make me a small game about a frog.",
-		asker: { kind: "human", id: "david" },
+		asker: { kind: "human", id: "mara" },
 	});
 	return { outcome, entries: journal.all() };
 }

@@ -5,13 +5,13 @@
  *
  * E73. A service only ran outside the conversation, with `personaxis service run`, so a person who asked a
  * persona in plain words for what one of its services delivers got the persona improvising the steps instead.
- * The direction is David's (2026-09-13), the same one `use_skill` follows: a persona is spoken to in plain
+ * It follows the same direction as `use_skill`: a persona is spoken to in plain
  * language and decides what to use, and a command is not the way in.
  *
  * ## Asked every time
  *
- * A service writes several files and spends several model calls, so the person is asked before every run:
- * David's answer to P3 of E77, 2026-09-15. The gate asks whatever the posture. A posture that lets an ordinary
+ * A service writes several files and spends several model calls, so the person is asked before every run.
+ * The gate asks whatever the posture. A posture that lets an ordinary
  * write through without asking does not let a service through, because the loop's verdict is the strictest of
  * its guards and consent only tightens it. What the person approves is written in the reason: which service,
  * how many steps, what it leaves, and the request it runs on.

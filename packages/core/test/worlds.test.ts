@@ -32,7 +32,7 @@ const backend: BackendReport = { name: "bwrap", completeness: "complete", gaps: 
 
 const world = (over: Partial<World> = {}): World => ({
 	kind: "machine",
-	label: "davids-laptop",
+	label: "maras-laptop",
 	seams: { files: "local", processes: "local" },
 	backend,
 	...over,
@@ -164,7 +164,7 @@ describe("work does not silently move between machines", () => {
 
 		expect(
 			!("refusal" in result) ? "" : describeRefusal(result.refusal),
-		).toContain("davids-laptop");
+		).toContain("maras-laptop");
 	});
 
 	it("allows it once a transport exists, without anything else changing", () => {

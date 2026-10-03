@@ -57,7 +57,7 @@ matches the provided schema:
 - "preferences": optional STABLE facts/preferences you inferred (key + value). A fact is about an
   ENTITY, not just "the user": use a dotted "<subject>.<attribute>" key where subject is the party
   you are talking to ("interlocutor.name", "interlocutor.role"), a NAMED person/agent/app
-  ("person:david.timezone", "agent:reviewer.owner", "app:frontend.stack"), or the project
+  ("person:mara.timezone", "agent:reviewer.owner", "app:frontend.stack"), or the project
   ("project.deadline"). Plain (dot-free) keys are loose preferences ("format.tone" has a dot so it
   is a fact about "format"; use "tone" alone for a pure preference). Record a self-introduction
   EVERY time so recall addresses the party by name across sessions;

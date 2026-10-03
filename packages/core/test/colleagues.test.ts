@@ -1,7 +1,7 @@
 /**
  * E87: who a colleague is, and what it may do when work reaches it.
  *
- * O22, decided by David on 2026-09-15: the lower ceiling of the two. These pin both axes the gate reads,
+ * O22: the lower ceiling of the two. These pin both axes the gate reads,
  * because crossing only the sandbox would be decorative: `evaluateCommand` answers `allow` to a risky
  * operation under `never` or `on-failure`, so a looser colleague would turn into silent permission exactly
  * what the asker would have put in front of a person.

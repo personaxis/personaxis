@@ -380,7 +380,7 @@ export function evaluate(executable: ExecutablePolicy, call: PolicyCall): Policy
 
 	// 5. Sandbox posture.
 	//
-	// E59, decided by David on 2026-09-11: the postures mean what
+	// E59: the postures mean what
 	// `docs/architecture/sandbox.md` documents, which is what Codex means by the same
 	// words. Pinned posture by posture in `test/gate-postures.test.ts`.
 	if (policy.sandbox === "read-only") {

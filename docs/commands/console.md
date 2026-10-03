@@ -44,5 +44,5 @@ Every action carries an effect the tree resolved from governance (see the Comman
 
 ## Related
 
-- `personaxis menu` — the same tree, interactive (the navigator is the default view).
-- [command-center.md](../architecture/command-center.md) — the model and the authority rules.
+- `personaxis menu`: the same tree, interactive (the navigator is the default view).
+- [command-center.md](../architecture/command-center.md): the model and the authority rules.

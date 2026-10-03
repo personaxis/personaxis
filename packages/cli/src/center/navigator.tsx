@@ -198,7 +198,7 @@ export function ScopeNavigator(props: NavigatorProps): React.JSX.Element {
           {(() => {
             const act = primaryAction(focused);
             return act && act.kind !== "navigate" ? (
-              <Text dimColor>{`  ${act.label}: ${act.effect}${act.authority ? ` — ${act.authority}` : ""}`}</Text>
+              <Text dimColor>{`  ${act.label}: ${act.effect}${act.authority ? ` · ${act.authority}` : ""}`}</Text>
             ) : null;
           })()}
         </Box>

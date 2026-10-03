@@ -109,8 +109,8 @@ const A_RULE_STOPPED_IT = new Set([
 	"execution_error",
 	"low_confidence",
 	"no_progress",
-	// E84: the persona asked something only a person can answer and nobody could. The rule is David's
-	// (P10 of E77): stop at the question and leave it written, rather than guess.
+	// E84: the persona asked something only a person can answer and nobody could. The rule: stop at
+	// the question and leave it written, rather than guess.
 	"question",
 ]);
 

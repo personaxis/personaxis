@@ -26,7 +26,7 @@ import { Kernel, serviceKey } from "../src/kernel/index.js";
 import type { Envelope } from "../src/envelopes.js";
 import type { StateFile } from "../src/persona.js";
 
-const PERSON: Author = { kind: "human", id: "david" };
+const PERSON: Author = { kind: "human", id: "mara" };
 const SELF: Author = { kind: "persona", id: "clio" };
 
 /** A journal with fixed timestamps, so a hash is reproducible across runs. */
@@ -229,7 +229,7 @@ describe("an altered entry breaks the chain", () => {
 		const straight = chain({ at: "t", author: PERSON, body }, 0, "");
 		const shuffled = chain(
 			{
-				author: { id: "david", kind: "human" } as Author,
+				author: { id: "mara", kind: "human" } as Author,
 				body: { subject: "s", message: "m", code: "boom", type: "failure" } as never,
 				at: "t",
 			},

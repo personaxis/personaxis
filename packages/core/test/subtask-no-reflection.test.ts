@@ -75,7 +75,7 @@ async function turn(depth?: number) {
 			policy: { ...DEFAULT_POLICY, workspaceRoot: dir, sandbox: "workspace-write", approval: "never" },
 			...(depth === undefined ? {} : { delegationDepth: depth }),
 		},
-	).run({ turn: "t1", prompt: "sort out the build", asker: { kind: "human", id: "david" } });
+	).run({ turn: "t1", prompt: "sort out the build", asker: { kind: "human", id: "mara" } });
 }
 
 const drafts = (): string[] => {

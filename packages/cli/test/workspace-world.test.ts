@@ -44,7 +44,7 @@ describe("what this machine can actually confine with", () => {
 
 describe("the daemon declares itself as a world", () => {
 	it("says which machine, by a name somebody can walk to", () => {
-		expect(thisMachine({ label: "davids-laptop" }).label).toBe("davids-laptop");
+		expect(thisMachine({ label: "maras-laptop" }).label).toBe("maras-laptop");
 		expect(thisMachine().kind).toBe("machine");
 	});
 
@@ -82,17 +82,17 @@ describe("whether this machine will run a step", () => {
 			seams: { files: "local", processes: "local" },
 		};
 
-		const result = willRun(policy(), elsewhere, { os: "linux", label: "davids-laptop" });
+		const result = willRun(policy(), elsewhere, { os: "linux", label: "maras-laptop" });
 
 		expect(result.ok).toBe(false);
 		expect(!result.ok && result.reason).toContain("anas-laptop");
-		expect(!result.ok && result.reason).toContain("davids-laptop");
+		expect(!result.ok && result.reason).toContain("maras-laptop");
 	});
 
 	it("carries on when the previous step ran here", () => {
-		const same = thisMachine({ os: "linux", label: "davids-laptop" });
+		const same = thisMachine({ os: "linux", label: "maras-laptop" });
 
-		expect(willRun(policy(), same, { os: "linux", label: "davids-laptop" }).ok).toBe(true);
+		expect(willRun(policy(), same, { os: "linux", label: "maras-laptop" }).ok).toBe(true);
 	});
 
 	it("stops refusing the day a transport exists, with nothing else changing", () => {
@@ -104,7 +104,7 @@ describe("whether this machine will run a step", () => {
 
 		const result = willRun(policy(), elsewhere, {
 			os: "linux",
-			label: "davids-laptop",
+			label: "maras-laptop",
 			transport: {},
 		});
 

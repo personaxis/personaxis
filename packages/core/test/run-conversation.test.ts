@@ -51,7 +51,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function asked(prompt: string): TurnRequest {
-	return { turn: prompt, prompt, asker: { kind: "human", id: "david" } };
+	return { turn: prompt, prompt, asker: { kind: "human", id: "mara" } };
 }
 
 function facts(reply: string) {

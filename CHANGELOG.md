@@ -110,7 +110,7 @@ download it.
 
 ```
 personaxis pull maven           # the official catalogue, unchanged
-personaxis pull @david/maven    # anybody's published persona
+personaxis pull @mara/maven     # anybody's published persona
 ```
 
 The bare form still resolves to the official catalogue. That is deliberate and
@@ -869,7 +869,7 @@ not theirs is an oracle for enumerating what a competitor has published.
 
 ### Fix: creation never claims a polish that did not happen (V7.G)
 - **`create` reported "compiled + LLM polished" over a template.** `runCompile` returned
-  nothing, so "it did not throw" was read as "a model rewrote it" — which is false whenever
+  nothing, so "it did not throw" was read as "a model rewrote it", which is false whenever
   the faithfulness gate rejects the model's rewrite and the deterministic assembly is kept,
   or the provider is unreachable. Compilation now returns its outcome (`polished`, `via`,
   `model`, `outPath`), creation reports what actually happened, and a template produced
@@ -887,13 +887,13 @@ not theirs is an oracle for enumerating what a competitor has published.
   moved without saying what moved, from what, or by how much. `/drift` is now three planes,
   each reporting a magnitude on the same 0–1 scale:
   **continuous** (u-space over envelope coordinates), **structural** (the per-field diff of
-  the declared spec against the one in force — text, lists, flags, numbers, shapes, added
+  the declared spec against the one in force: text, lists, flags, numbers, shapes, added
   and removed fields alike, each tagged with its layer's edit policy), and **behavioral**
   (how far the compiled document moves because of those edits, whether the document the
   host agents are reading is still current, and how many turns have been lived since the
   last applied change).
 - **Every structural row opens.** Enter shows the literal value the spec declares and the
-  one in force, and says that the spec itself was never rewritten — applied self-edits live
+  one in force, and says that the spec itself was never rewritten; applied self-edits live
   in an overlay. That overlay is also why the comparison needs no snapshot file, no baseline
   copy and no git: both sides already exist on disk.
 - **`/status` and `/drift` stop overlapping.** The live-envelope block left `/status`, which
@@ -901,7 +901,7 @@ not theirs is an oracle for enumerating what a competitor has published.
   ("how far have I moved from what I declared, and in what").
 - **Fix (security): an unrecognized provenance source is now untrusted BY RULE.** It made
   the computed justification trust `NaN`; the gate still refused, but only because
-  `NaN >= min` is false — fail-closed by accident rather than by design, reported as
+  `NaN >= min` is false: fail-closed by accident rather than by design, reported as
   "justification trust NaN". Sources arrive from callers we do not control (MCP clients,
   agents, JSON on disk), so an unknown label is an expected input. It now scores 0 and the
   refusal names the source it did not recognize.
@@ -913,13 +913,13 @@ not theirs is an oracle for enumerating what a competitor has published.
   each cell marking whether that persona SET the value or inherited it, and Enter opening
   the setting for every persona with the layer that decided it (global config, project
   config, a per-persona assignment, its own spec, policy.yaml, the environment, or this
-  session) and how to change it. The jerarquía is explicit rather than implied: **improve
+  session) and how to change it. The hierarchy is explicit rather than implied: **improve
   is per persona** (it lives in each persona's own personaxis.md and can be changed for any
   of them from the drill-down), **sandbox is per session** (one posture per terminal, and
   the view says so instead of pretending otherwise).
 - **The persona selector belongs to the host.** Any miniapp that can show more than one
   persona declares its scopes and gets the same selector, in the same place, on the same
-  key (`p`) — Persona and `Settings > Status/Stats` answer for whichever persona it points
+  key (`p`): Persona and `Settings > Status/Stats` answer for whichever persona it points
   at. A scoped view is read-only by construction: it re-points the persona's files but
   never the session's loop or conversation, so it can display another persona and cannot
   make one speak or evolve by accident.
@@ -935,7 +935,7 @@ not theirs is an oracle for enumerating what a competitor has published.
   persona and cwd: every section acts on the persona named there, and Fleet is the one that
   spans projects, saying which span it is showing.
 - **Fleet gained a host column.** Next to whether a persona is awake, you now see which
-  agents can actually READ it — all four supported hosts: claude-code, codex, openclaw and
+  agents can actually READ it, on all four supported hosts: claude-code, codex, openclaw and
   Hermes. Presence and reach are different questions. The host list is derived from the
   compile-target registry and each host's location comes from the same `place()` the
   compiler writes through, so registering a new target makes it appear here too. Reach is

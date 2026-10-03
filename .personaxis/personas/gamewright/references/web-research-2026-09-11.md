@@ -12,7 +12,7 @@ _tavily, 2026-09-11_
 - [The Importance of Gameplay Loops in Game Design](https://blog.uat.edu/the-importance-of-gameplay-loops-in-game-design)
 - [A Short Guide To Game Design | Game-Design-Pillars](https://ch0m5.github.io/Game-Design-Pillars)
 - [What Is a Gameplay Loop? Key Types Explained | Vsquad](https://vsquad.art/blog/articles/what-gameplay-loop-types-core-loops-explained)
-- [Engagement Loops — ANDREW FISCHER](https://andrewfischergames.com/blog/engagement-loops)
+- [Engagement Loops - ANDREW FISCHER](https://andrewfischergames.com/blog/engagement-loops)
 - [Why the Core Gameplay Loop is Critical For Game Design](https://www.gamedeveloper.com/business/why-the-core-gameplay-loop-is-critical-for-game-design)
 - [Game Design For Engagement & Retention: How to keep your players playing](https://www.youtube.com/watch?v=sZWJw1RWH6s)
 
@@ -32,7 +32,7 @@ _tavily, 2026-09-11_
 _tavily, 2026-09-11_
 
 - [Game design document - General](https://forum.godotengine.org/t/game-design-document/135486)
-- [How to write a game design document — with examples and template | GitBook Blog](https://www.gitbook.com/blog/how-to-write-a-game-design-document)
+- [How to write a game design document - with examples and template | GitBook Blog](https://www.gitbook.com/blog/how-to-write-a-game-design-document)
 - [GAME DESIGN DOCUMENT (GDD) TEMPLATE](https://connect-prd-cdn.unity.com/20201215/83f3733d-3146-42de-8a69-f461d6662eb1/Game-Design-Document-Template.pdf)
 - [Game Design Document Template (Free Download)](https://gamedesignskills.com/game-design/game-design-document-template)
 - [Game design document - Wikipedia](https://en.wikipedia.org/wiki/Game_design_document)
@@ -49,7 +49,7 @@ _tavily, 2026-09-11_
 - [Vertical Slice in Game Development: Definition & Examples](https://tonogameconsultants.com/vertical-slice)
 - [Game Development Stages: Prototype, Vertical Slice, Demo](https://www.linkedin.com/posts/julianasilvabrito_demo-prototype-and-vertical-slice-activity-7435006171369046016-hYnf)
 - [Prototyping, Vertical Slices, and Planning a Complex Game](https://www.youtube.com/watch?v=atUsa3BE7t0)
-- [Ask a Game Dev — Game Development Glossary: The Vertical Slice](https://askagamedev.tumblr.com/post/77406994278/game-development-glossary-the-vertical-slice)
+- [Ask a Game Dev - Game Development Glossary: The Vertical Slice](https://askagamedev.tumblr.com/post/77406994278/game-development-glossary-the-vertical-slice)
 - [What Is A Vertical Slice? Exploring Key Concepts And ...](https://www.gianty.com/vertical-slice-game-development)
 
 ### game feel juice screen shake hit pause principles  
@@ -91,11 +91,11 @@ _tavily, 2026-09-11_
 ### SKILL.md claude skill game development github repository  
 _tavily, 2026-09-11_
 
-- [GitHub - gamedev-skills/awesome-gamedev-agent-skills: 67 game-dev skills for AI coding agents — Godot, Unity, Unreal, Phaser, PixiJS, three.js, Bevy, pygame, LÖVE, Roblox. Portable SKILL.md Agent Skills (the format Anthropic launched as Claude Skills), with a router that loads the right skill for your engine and task. Runs in Claude Code, Cursor, Kiro, Codex, Copilot, Gemini CLI and more. · GitHub](https://github.com/gamedev-skills/awesome-gamedev-agent-skills)
+- [GitHub - gamedev-skills/awesome-gamedev-agent-skills: 67 game-dev skills for AI coding agents - Godot, Unity, Unreal, Phaser, PixiJS, three.js, Bevy, pygame, LÖVE, Roblox. Portable SKILL.md Agent Skills (the format Anthropic launched as Claude Skills), with a router that loads the right skill for your engine and task. Runs in Claude Code, Cursor, Kiro, Codex, Copilot, Gemini CLI and more. · GitHub](https://github.com/gamedev-skills/awesome-gamedev-agent-skills)
 - [GitHub - anthropics/skills: Public repository for Agent Skills](https://github.com/anthropics/skills)
 - [Claude Skills GitHub Repositories: Public References and Community Resources - Verdent Guides](https://www.verdent.ai/guides/claude-skills-github-repository)
 - [GitHub - HermeticOrmus/claude-code-game-development: Game development patterns and workflows for Claude Code. Build games with AI assistance. · GitHub](https://github.com/HermeticOrmus/claude-code-game-development)
 - [GitHub - Mindrally/skills: 255+ Claude Code skills converted from Cursor rules. Expert coding guidelines for every major framework and language. · GitHub](https://github.com/Mindrally/skills)
 - [380 Claude Code skills & agent skills & plugins (30+ ... - GitHub](https://github.com/alirezarezvani/claude-skills)
 - [Claude-Code-Game-Studios - AI Agents on GitHub (24.9k★) | SkillsLLM](https://skillsllm.com/skill/claude-code-game-studios)
-- [Claude Code Game Studios — 36 Skills by donchitos | mdskills.ai](https://www.mdskills.ai/skills/claude-code-game-studios)
+- [Claude Code Game Studios - 36 Skills by donchitos | mdskills.ai](https://www.mdskills.ai/skills/claude-code-game-studios)

@@ -95,7 +95,7 @@ describe("something written while the agent works", () => {
 	it("reaches it in the next turn", async () => {
 		const { acp, prompts } = session({
 			onTurn: (turn, live) => {
-				if (turn === 1) live.intervene({ id: "i1", userId: "u_david", body: "use the other tone" });
+				if (turn === 1) live.intervene({ id: "i1", userId: "u_mara", body: "use the other tone" });
 			},
 		});
 
@@ -109,7 +109,7 @@ describe("something written while the agent works", () => {
 		// watching would believe their words landed while they sat in a list.
 		const { acp, emitted } = session({
 			onTurn: (turn, live) => {
-				if (turn === 1) live.intervene({ id: "i1", userId: "u_david", body: "steer" });
+				if (turn === 1) live.intervene({ id: "i1", userId: "u_mara", body: "steer" });
 			},
 		});
 
@@ -134,7 +134,7 @@ describe("something written while the agent works", () => {
 		const { acp } = session({
 			emit: (body, author) => reporter.reportWire(body as never, author),
 			onTurn: (turn, live) => {
-				if (turn === 1) live.intervene({ id: "i1", userId: "u_david", body: "steer" });
+				if (turn === 1) live.intervene({ id: "i1", userId: "u_mara", body: "steer" });
 			},
 		});
 
@@ -152,14 +152,14 @@ describe("something written while the agent works", () => {
 		const { acp } = session({
 			onAsker: (asker) => askers.push(asker),
 			onTurn: (turn, live) => {
-				if (turn === 1) live.intervene({ id: "i1", userId: "u_david", body: "steer" });
+				if (turn === 1) live.intervene({ id: "i1", userId: "u_mara", body: "steer" });
 			},
 		});
 
 		await acp.run();
 		expect(askers).toEqual([
 			{ kind: "component", name: "workspace" },
-			{ kind: "human", id: "u_david" },
+			{ kind: "human", id: "u_mara" },
 		]);
 	});
 

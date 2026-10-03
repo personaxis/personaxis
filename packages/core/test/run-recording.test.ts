@@ -25,7 +25,7 @@ import type { TurnRequest } from "../src/run/vocabulary.js";
 const ASKED: TurnRequest = {
 	turn: "t1",
 	prompt: "how is the branch",
-	asker: { kind: "human", id: "david" },
+	asker: { kind: "human", id: "mara" },
 };
 
 function running(provider: Parameters<typeof runnerWith>[0], ledger?: Ledger) {
@@ -77,7 +77,7 @@ describe("a turn that went well", () => {
 		await runner.run(ASKED);
 		const [opened, said, closed] = journal.all();
 
-		expect(opened!.author).toEqual({ kind: "human", id: "david" });
+		expect(opened!.author).toEqual({ kind: "human", id: "mara" });
 		// `self`, not the persona's canonical id. A record belongs to one persona, every
 		// coordinate entry in it already says `self`, and a second spelling for one actor
 		// in one chain is the drift the author vocabulary exists to end.

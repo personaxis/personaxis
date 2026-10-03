@@ -72,7 +72,7 @@ async function recorded(calls: readonly Scripted[]): Promise<Journal> {
 			policy: { ...DEFAULT_POLICY, workspaceRoot: workspace, sandbox: "workspace-write", approval: "on-request", resourceRoots: [folder, workspace] },
 			observer: recordTurns({ journal }),
 		},
-	).run({ turn: "t1", prompt: "design the cat game", asker: { kind: "human", id: "david" } });
+	).run({ turn: "t1", prompt: "design the cat game", asker: { kind: "human", id: "mara" } });
 	return journal;
 }
 
@@ -148,7 +148,7 @@ describe("where calls land in a turn's record (E80)", () => {
 				}),
 			},
 			observer: recordTurns({ journal }),
-		}).run({ turn: "t1", prompt: "go", asker: { kind: "human", id: "david" } });
+		}).run({ turn: "t1", prompt: "go", asker: { kind: "human", id: "mara" } });
 
 		const entries = journal.all();
 		expect(entries.map((entry) => entry.body.type)).toEqual(["turn-open", "call", "call", "message", "turn-close"]);
@@ -175,7 +175,7 @@ describe("where calls land in a turn's record (E80)", () => {
 				}),
 			},
 			observer: recordTurns({ journal }),
-		}).run({ turn: "t1", prompt: "go", asker: { kind: "human", id: "david" } });
+		}).run({ turn: "t1", prompt: "go", asker: { kind: "human", id: "mara" } });
 
 		const order = journal.all().map((entry) => (entry.body.type === "call" ? `call ${entry.body.callId}` : entry.body.type));
 		// A compaction writes a `failure` body (`compaction/measured.ts`).

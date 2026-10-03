@@ -1,7 +1,7 @@
 /**
  * E128: the three starting profiles, Regulated, Standard and Research.
  *
- * A profile is only the starting values of the three controls David decided (plan, section 13.9): how far
+ * A profile is only the starting values of the three controls: how far
  * each coordinate can move, who approves what lasts, and how fast it comes back. So what these check is
  * what the RUNTIME does with the persona each profile writes (the mode it resolves, what `editGate` does to
  * a proposed edit), plus the one promise the table cannot break: Standard is byte for byte what Genesis
