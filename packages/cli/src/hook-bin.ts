@@ -98,7 +98,7 @@ async function main(): Promise<void> {
 	} catch (error) {
 		return finish(
 			failClosed(
-				`the daemon on this machine is not answering (${error instanceof Error ? error.message : String(error)}). Is \`personaxis connect\` running?`,
+				`the daemon on this machine is not answering (${error instanceof Error ? error.message : String(error)}). Is \`personaxis guard\` running?`,
 			),
 		);
 	}

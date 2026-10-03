@@ -11,9 +11,8 @@ project, collection, team, and machine in your environment. It lives at `~/.pers
 
 ## Not the online registry
 
-This local registry is **separate** from the online one. [`push` / `pull`](./push-pull.md) publish and
-fetch persona **versions** to/from the hosted registry at personaxis.com; the overseer registry is a
-private, machine-local index of what you have. Different store, different purpose, don't conflate them.
+This local registry is a private, machine-local index of what you have. It is not an online
+catalogue of personas, and nothing in it leaves this machine.
 
 ## Subcommands
 

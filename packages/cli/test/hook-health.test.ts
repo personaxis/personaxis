@@ -59,7 +59,7 @@ describe("a hook the host cannot start", () => {
 	it("says what to do about it, not just that it is wrong", () => {
 		settings("personaxis-hook --endpoint personaxis-enforce-abc");
 
-		expect(describeAilment(hookHealth(root)[0]!)).toMatch(/personaxis connect/);
+		expect(describeAilment(hookHealth(root)[0]!)).toMatch(/personaxis guard/);
 		expect(describeAilment(hookHealth(root)[0]!)).toMatch(/ungated/);
 	});
 

@@ -221,7 +221,7 @@ export function enforcementHandler(deps: EnforcementDeps) {
 		}
 
 		const why: Record<Exclude<GateOutcome, "approved">, string> = {
-			denied: "a person declined this call in the workspace",
+			denied: "a person declined this call",
 			expired: "nobody answered the approval in time, so the call was refused",
 			// Named apart, because it is the one an operator can act on and the one
 			// where looking for the request in the workspace finds nothing.

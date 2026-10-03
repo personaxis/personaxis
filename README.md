@@ -253,7 +253,7 @@ code, is [`docs/commands/`](docs/commands/README.md).
 | `arbitrate [a] [b]` | Deterministic value-conflict resolution with a trace (`governance` ≻ `weight` ≻ name) |
 | `dash [--persona <p>]` | Live ASCII dashboard: sigil, envelopes, and chain, reflecting evolution in real time |
 | `sigil [--persona <p>]` | Render a persona's deterministic, state-aware ASCII sigil and envelope panel |
-| `push \| pull` | Publish or fetch a persona version (spec, compiled document, and support folders) |
+| `guard [--dir <path>]` | Enforce the persona's policy on Claude Code and Codex before each tool call, on this machine only; a call that needs a person is asked in its terminal |
 | `skills list \| pull` | Inspect `extensions.skills` entries and pull `github:` skills into `skills/<name>/` |
 | `service run \| resume` | Run a service on this machine step by step, including steps that are other services; `resume` picks a run back up from its journal when it is waiting on an approval or an answer |
 | `status \| drift \| audit \| memory \| doctor` | The same views the REPL opens, non-interactive and `--json`: what a persona is right now, how far it moved from what it declared, the ledger, what it remembers, and an offline health check |

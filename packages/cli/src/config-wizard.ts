@@ -142,16 +142,15 @@ export async function runModelSetup(
   out(chalk.dim("    [3] Anthropic (your Anthropic key)"));
   out(chalk.dim("    [4] HuggingFace (your HF token)"));
   out(chalk.dim("    [5] Cohere (your Cohere key)"));
-  out(chalk.dim("    [6] Personaxis hosted (remote)"));
-  out(chalk.dim("    [7] Coding agent (no key; hands off to Claude Code / Codex)"));
+  // L14: the hosted provider is not offered in this version, so the coding agent takes its number.
+  out(chalk.dim("    [6] Coding agent (no key; hands off to Claude Code / Codex)"));
   const provRaw = await ask(rl, "  Choose", "1");
   const kind: ProviderKind =
     provRaw === "2" ? "openai"
       : provRaw === "3" ? "anthropic"
       : provRaw === "4" ? "huggingface"
       : provRaw === "5" ? "cohere"
-      : provRaw === "6" ? "remote"
-      : provRaw === "7" ? "agent"
+      : provRaw === "6" ? "agent"
       : "local";
 
   const answers: ProfileAnswers = { kind };
@@ -181,15 +180,10 @@ export async function runModelSetup(
   } else if (kind === "cohere") {
     answers.model = await ask(rl, "  Model name", "command-r-plus");
     answers.keyEnv = keyEnv = await ask(rl, "  Env var holding your Cohere key", "COHERE_API_KEY");
-  } else if (kind === "remote") {
-    answers.apiBase = await ask(rl, "  Personaxis API base", "https://api.personaxis.com");
-    answers.model = await ask(rl, "  Model (optional, blank for the server default)", "");
-    keyEnv = "PERSONAXIS_API_TOKEN";
   }
 
   const profile = buildProfileFromAnswers(answers);
-  const suggested = kind === "remote" ? "personaxis" : kind;
-  const name = await ask(rl, "  Name this profile", suggested);
+  const name = await ask(rl, "  Name this profile", kind);
   if (!name) {
     out(chalk.yellow("  no name given, nothing saved."));
     return {};
@@ -203,7 +197,6 @@ export async function runModelSetup(
   out(chalk.green(`  ✓ saved profile "${name}"`) + chalk.dim(`  (${profile.provider}, ${configPath(scope)})`));
   if (keyEnv) out(chalk.dim(`  ! put your key in the env var: export ${keyEnv}=...   (never stored in a file)`));
   if (answers.keyMode === "inline") out(chalk.dim("  ! inline key stored user-only (0600); prefer an env var next time."));
-  if (kind === "remote") out(chalk.dim("  note: the Personaxis-hosted provider drives compile; live REPL reasoning needs an OpenAI-compatible endpoint."));
   return { name, keyEnv };
 }
 

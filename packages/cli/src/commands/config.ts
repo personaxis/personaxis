@@ -8,6 +8,7 @@ import { loadConfig, saveConfig, configPath, type PersonaxisConfig, type ConfigS
 import { runConfigMenu } from "../config-wizard.js";
 import { runCommandCenter } from "../command-center.js";
 import { resolvePersonaSourcePath } from "../load.js";
+import { GATED_PROVIDERS } from "../saas-gating.js";
 
 /** Sub-persona slugs under `.personaxis/personas/` (for the interactive per-persona assignment). */
 function personaSlugs(cwd: string): string[] {
@@ -44,7 +45,10 @@ const KNOWN_KEYS = [
   "remote.model",
 ] as const;
 
-const PROVIDER_VALUES = ["local", "byok", "agent", "remote"] as const;
+// L14: the keys of a provider this version does not offer are not listed, and `set` refuses them.
+const OFFERED_KEYS = KNOWN_KEYS.filter((key) => !GATED_PROVIDERS.includes(key.split(".")[0]!));
+
+const PROVIDER_VALUES = (["local", "byok", "agent", "remote"] as const).filter((p) => !GATED_PROVIDERS.includes(p));
 const BYOK_API_PROVIDER_VALUES = ["anthropic", "openai"] as const;
 
 function setPath(config: PersonaxisConfig, key: string, value: string): void {
@@ -101,12 +105,12 @@ function setPath(config: PersonaxisConfig, key: string, value: string): void {
     config.byok = { ...config.byok, model: value };
     return;
   }
-  if (section === "remote" && (field === "apiBase" || field === "model")) {
+  if (section === "remote" && !GATED_PROVIDERS.includes("remote") && (field === "apiBase" || field === "model")) {
     config.remote = { ...config.remote, [field]: value };
     return;
   }
 
-  throw new Error(`Unknown config key "${key}". Known keys: ${KNOWN_KEYS.join(", ")}`);
+  throw new Error(`Unknown config key "${key}". Known keys: ${OFFERED_KEYS.join(", ")}`);
 }
 
 function getPath(config: PersonaxisConfig, key: string): string | undefined {
@@ -118,7 +122,7 @@ function getPath(config: PersonaxisConfig, key: string): string | undefined {
 }
 
 const setCommand = new Command("set")
-  .description(`Set a config value. Known keys: ${KNOWN_KEYS.join(", ")}`)
+  .description(`Set a config value. Known keys: ${OFFERED_KEYS.join(", ")}`)
   .argument("<key>", "Config key, e.g. local.endpoint, personas.cmo.model, provider")
   .argument("<value>", "Value to set")
   .option("-g, --global", "Write to the global config (~/.personaxis/config.json) instead of the project", false)
@@ -217,7 +221,7 @@ const useCommand = new Command("use")
   });
 
 export const configCommand = new Command("config")
-  .description("Configure the model + provider (profiles, default, per-persona; local | byok | agent | remote)")
+  .description(`Configure the model + provider (profiles, default, per-persona; ${PROVIDER_VALUES.join(" | ")})`)
   .addCommand(setCommand)
   .addCommand(getCommand)
   .addCommand(showCommand)
