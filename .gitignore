@@ -56,3 +56,7 @@ coverage/
 # runs the server against a path inside the repo leaves them here. They are runtime
 # state of one process, never source.
 presence/
+
+# Python bytecode (the Hermes plugin is tested with a real interpreter)
+__pycache__/
+*.pyc
