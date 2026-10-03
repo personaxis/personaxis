@@ -421,8 +421,9 @@ describe("every gate the daemon builds asks the second axis", () => {
 	 * test that started a daemon to learn one fact about its construction would be
 	 * slow, flaky, and no more truthful than reading the construction.
 	 */
+	// Where the daemon is built since L14 (2026-10-03): `connect` and `guard` both start it from here.
 	const source = readFileSync(
-		join(__dirname, "..", "src", "commands", "connect.ts"),
+		join(__dirname, "..", "src", "workspace", "local-enforcement.ts"),
 		"utf-8",
 	);
 

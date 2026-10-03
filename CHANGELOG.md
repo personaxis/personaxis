@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Breaking: this version works without the Personaxis service, and `guard` enforces on its own
+
+- `connect` (and `login`), `pull`, `push` and `runtime` are not registered: they need the Personaxis service, which is
+  not live. Typing one says what it does and what brings it back. The hosted `remote` provider is not offered either,
+  and a config that still names it is refused with that reason.
+- `personaxis guard [--dir <path>]` starts the enforcement that used to start only inside `connect`: the persona's
+  policy, read from its own file, answers the `PreToolUse` hook of Claude Code and Codex before each tool call, with no
+  account and no network. A call the policy says needs a person is asked in its terminal, and refused when nobody can
+  answer.
+- The persona template tells its reader to `compile` and `decompile`, not to `push`.
+
 ### Genesis starts a persona from a profile, and every new persona is alive
 
 - `personaxis create --profile regulated|standard|research`, and the same choice in the full interview,

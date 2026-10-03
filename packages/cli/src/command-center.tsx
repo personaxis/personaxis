@@ -51,6 +51,7 @@ import { envelopeBars, sigilLines } from "@personaxis/tui/visual";
 import { AppFrame, SelectList, Field, Toast, type ListItem, type KeyHint } from "@personaxis/tui/ui";
 import { windowFor } from "@personaxis/tui/viewport";
 import { runFullscreen } from "@personaxis/tui/fullscreen";
+import { GATED_PROVIDERS } from "./saas-gating.js";
 import { loadConfig, saveConfig, configPath, type PersonaxisConfig } from "./config.js";
 import {
   buildProfileFromAnswers,
@@ -85,7 +86,7 @@ const PROVIDERS: ListItem[] = [
   { value: "cohere", title: "Cohere", desc: "Cohere's compatibility API (COHERE_API_KEY)" },
   { value: "remote", title: "Personaxis hosted", desc: "our managed models (paid)" },
   { value: "agent", title: "Coding agent", desc: "no key; hands compile prompts to Claude Code / Codex" },
-];
+].filter((p) => !GATED_PROVIDERS.includes(p.value)); // L14: the hosted provider is not offered in this version
 
 // ── The model wizard as data (one stateful form, not sequential renders) ─────
 

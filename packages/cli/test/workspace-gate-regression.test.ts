@@ -65,7 +65,7 @@ describe("the words a refusal uses have not moved", () => {
 
 		expect(reply.verdict).toBe("deny");
 		expect(reply.rule).toBe("out_of_scope");
-		expect(reply.reason).toContain("connect --dir");
+		expect(reply.reason).toContain("guard --dir");
 	});
 
 	it("still names the deny pattern that matched", async () => {

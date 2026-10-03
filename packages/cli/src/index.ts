@@ -15,6 +15,8 @@ import { templateCommand } from "./commands/template.js";
 import { pullCommand } from "./commands/pull.js";
 import { runtimeCommand } from "./commands/runtime.js";
 import { connectCommand } from "./commands/connect.js";
+import { guardCommand } from "./commands/guard.js";
+import { notOffered, offered } from "./saas-gating.js";
 import { stateCommand } from "./commands/state.js";
 import { arbitrateCommand } from "./commands/arbitrate.js";
 import { jacobianCommand } from "./commands/jacobian.js";
@@ -119,64 +121,78 @@ program
     });
   });
 
-program.addCommand(initCommand);
-program.addCommand(createCommand);
-program.addCommand(validateCommand);
-program.addCommand(lintCommand);
-program.addCommand(compileCommand);
-program.addCommand(exportCommand);
-program.addCommand(diffCommand);
-program.addCommand(specCommand);
-program.addCommand(listCommand);
-program.addCommand(templateCommand);
-program.addCommand(pullCommand);
-program.addCommand(runtimeCommand);
-program.addCommand(connectCommand);
-program.addCommand(stateCommand);
-program.addCommand(arbitrateCommand);
-program.addCommand(jacobianCommand);
-program.addCommand(proofCommand);
-program.addCommand(statusCommand);
-program.addCommand(auditCommand);
-program.addCommand(memoryCommand);
-program.addCommand(driftCommand);
-program.addCommand(goalCommand);
-program.addCommand(reviewCommand);
-program.addCommand(doctorCommand);
-program.addCommand(editCommand);
-program.addCommand(improveCommand);
-program.addCommand(migrateCommand);
-program.addCommand(configCommand);
-program.addCommand(modelCommand);
-program.addCommand(credentialCommand);
-program.addCommand(decompileCommand);
-program.addCommand(pushCommand);
-program.addCommand(skillsCommand);
-program.addCommand(overseerCommand);
-program.addCommand(orchestrateCommand);
-program.addCommand(teamCommand);
-program.addCommand(sigilCommand);
-program.addCommand(dashCommand);
-program.addCommand(menuCommand);
-program.addCommand(syncCommand);
-program.addCommand(serveCommand);
-program.addCommand(observeCommand);
-program.addCommand(serviceCommand);
-program.addCommand(webCommand);
-program.addCommand(watchCommand);
-program.addCommand(hooksCommand);
-program.addCommand(onboardCommand);
-program.addCommand(personasCommand);
-program.addCommand(traceCommand);
-program.addCommand(scanCommand);
-program.addCommand(leaseCommand);
-program.addCommand(consoleCommand);
-program.addCommand(signCommand);
-program.addCommand(verifyCommand);
-program.addCommand(attestCommand);
-program.addCommand(mcpCommand);
-program.addCommand(psCommand);
-program.addCommand(cardCommand);
+// L14: every command goes through one list, and what needs the Personaxis service is left out by the gating
+// table (`saas-gating.ts`), so it is neither run nor listed in `--help`; the code stays for when it comes back.
+const COMMANDS = [
+  initCommand,
+  createCommand,
+  validateCommand,
+  lintCommand,
+  compileCommand,
+  exportCommand,
+  diffCommand,
+  specCommand,
+  listCommand,
+  templateCommand,
+  pullCommand,
+  runtimeCommand,
+  connectCommand,
+  guardCommand,
+  stateCommand,
+  arbitrateCommand,
+  jacobianCommand,
+  proofCommand,
+  statusCommand,
+  auditCommand,
+  memoryCommand,
+  driftCommand,
+  goalCommand,
+  reviewCommand,
+  doctorCommand,
+  editCommand,
+  improveCommand,
+  migrateCommand,
+  configCommand,
+  modelCommand,
+  credentialCommand,
+  decompileCommand,
+  pushCommand,
+  skillsCommand,
+  overseerCommand,
+  orchestrateCommand,
+  teamCommand,
+  sigilCommand,
+  dashCommand,
+  menuCommand,
+  syncCommand,
+  serveCommand,
+  observeCommand,
+  serviceCommand,
+  webCommand,
+  watchCommand,
+  hooksCommand,
+  onboardCommand,
+  personasCommand,
+  traceCommand,
+  scanCommand,
+  leaseCommand,
+  consoleCommand,
+  signCommand,
+  verifyCommand,
+  attestCommand,
+  mcpCommand,
+  psCommand,
+  cardCommand,
+];
+for (const command of COMMANDS) if (offered(command.name())) program.addCommand(command);
+
+// A gated name typed anyway is told what it is and what brings it back. Without this the root command takes the word
+// as an argument and answers "too many arguments", which reads as a broken command rather than one not offered yet.
+const gated = notOffered(process.argv[2] ?? "");
+if (gated) {
+  process.stderr.write(`personaxis ${process.argv[2]} is not part of this version: it ${gated.reason}. It comes back with ${gated.returnsWith}.\n`);
+  process.exit(1);
+}
 
 // FR.9, fire-and-forget update hint (daily cache; PERSONAXIS_NO_UPDATE_CHECK=1 disables).
 void checkForUpdate("personaxis", version).then((latest) => {

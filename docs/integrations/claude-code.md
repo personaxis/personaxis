@@ -157,7 +157,7 @@ This writes the canonical `.personaxis/personas/<slug>/PERSONA.md` **and** expor
 task-specific work to it via `/agents`. Local skills declared in `extensions.skills` are
 materialized to `.claude/skills/<name>/`. The `.claude/agents/<slug>.md` file is a generated export
 , edit `.personaxis/personas/<slug>/personaxis.md` and recompile, or edit the export and
-`personaxis push <slug>` to fold the change back.
+`personaxis decompile <slug>` to fold the change back.
 
 See [../architecture/agent-adoption.md](../architecture/agent-adoption.md) for the compile-target
 model, and [../architecture/deployment.md](../architecture/deployment.md) for how the three paths map
