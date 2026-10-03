@@ -1,0 +1,12 @@
+{
+  "name": "personaxis-openclaw-guard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}
