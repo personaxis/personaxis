@@ -812,6 +812,8 @@ export class PersonaAgent {
     // E94: replies in a row with no text and no call, and whether any call did real work in this run.
     let emptyReplies = 0;
     let workedThisRun = false;
+    // E165: replies in a row whose text was cut at the length limit.
+    let cutReplies = 0;
     // E81: every call that succeeded in this run, in order, which is what can mark a step of the persona's
     // list done; and the one message that puts the list back in front of the model, replaced rather than added.
     const succeeded: string[] = [];
@@ -1424,6 +1426,24 @@ export class PersonaAgent {
           }
           // Twice, after real work: the work stands and the turn ends without words, through the ordinary
           // completion below, so a declared verification still judges it.
+        }
+
+        // E165: a reply cut at the length limit is not an answer either. The cut was only read on calls (E137), so a
+        // TEXT reply that ran out of room closed the turn answered: seen on 2026-10-02 with Nemotron 3.5 Lightning,
+        // 16,381 characters of a repeated fragment ending `finish: length`. Told once; the cut text does not go into
+        // the conversation, so the model is not asked to continue garbage. A second cut in a row goes through as it is.
+        const cutText = res.toolCalls.length === 0 && !saidNothing && res.finish === "length";
+        cutReplies = cutText ? cutReplies + 1 : 0;
+        if (cutText && cutReplies === 1) {
+          messages.push({
+            role: "system",
+            content:
+              `[${authorId({ kind: "runtime", mechanism: "cut-reply", reason: "the model's reply was cut at the length limit" })}] ` +
+              "Your last reply was cut at the length limit, so the person would get it unfinished. " +
+              "Reply to the person again, shorter and complete, or continue with a tool call.",
+          });
+          bus.emit({ type: "agent-think", text: "[cut-reply] the reply was cut at the length limit; asking once more" });
+          continue;
         }
 
         // No tool call → the model answered in prose; treat as a completion candidate.

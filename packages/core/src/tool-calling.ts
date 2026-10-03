@@ -630,8 +630,14 @@ export async function requestToolCall(
         }
       }
 
+      // E166: a reply whose text IS its reasoning carries no answer. Read raw on 2026-10-03 with Nemotron 3.5 Lightning
+      // on NVIDIA's API: when the model does not close its reasoning, the API returns that same text in `content` and
+      // in `reasoning_content`, and the persona delivered 15,449 characters of "Here's a thinking process" as its
+      // reply. Only the exact same text counts, so an answer that merely repeats part of its reasoning still stands;
+      // what is left is a reply with only reasoning, which the loop already asks about once (E94).
+      const echoed = toolCalls.length === 0 && reply.reasoned === true && reply.content.trim() !== "" && reply.content.trim() === (reply.reasoning ?? "").trim();
       return {
-        text: reply.content.trim(),
+        text: echoed ? "" : reply.content.trim(),
         toolCalls,
         usedFallback: false,
         usage: extractUsage({ usage: reply.usage }),
