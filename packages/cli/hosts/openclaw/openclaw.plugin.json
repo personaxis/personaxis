@@ -1,0 +1,9 @@
+{
+  "id": "personaxis-guard",
+  "name": "Personaxis guard",
+  "description": "The persona's policy decides each tool call before it runs, served by `personaxis guard`.",
+  "categories": ["other"],
+  "contracts": { "tools": [] },
+  "activation": { "onStartup": true },
+  "configSchema": { "type": "object", "additionalProperties": false }
+}

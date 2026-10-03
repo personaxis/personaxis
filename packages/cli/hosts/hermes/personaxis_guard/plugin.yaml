@@ -1,0 +1,3 @@
+name: personaxis_guard
+version: "0.1"
+description: The persona's policy decides each tool call before it runs, served by `personaxis guard` (documented, not yet watched firing).
