@@ -49,7 +49,18 @@ export interface ServerOptions {
    * the human launching the server passes --allow-decide.
    */
   allowDecide?: boolean;
+  /** Mount the four hosted-registry tools. Defaults to `HOSTED_OFFERED`; tests of those tools pass `true`. */
+  hosted?: boolean;
 }
+
+/**
+ * L14 (2026-10-03): this version offers nothing that needs the Personaxis service, and the
+ * hosted registry the four cloud tools call is not live. Mounting them would hand a model
+ * four tools that can only answer "get a key" for an account nobody can open yet, so they
+ * stay out, as `pull`, `push` and the `remote` provider stay out of the CLI. The code stays;
+ * coming back is flipping this.
+ */
+export const HOSTED_OFFERED = false;
 
 /** Version single-source: the package's own manifest (never a hand-kept literal). */
 const PKG_VERSION: string = (() => {
@@ -327,7 +338,7 @@ export function buildServer(opts: ServerOptions = {}): McpServer {
     },
   );
 
-  mountCloudTools(server);
+  if (opts.hosted ?? HOSTED_OFFERED) mountCloudTools(server);
 
   return server;
 }
@@ -335,7 +346,7 @@ export function buildServer(opts: ServerOptions = {}): McpServer {
 /**
  * R9: the four that talk to the hosted registry.
  *
- * Mounted unconditionally and answering with where to get a key when there is none.
+ * When offered (see `HOSTED_OFFERED`), mounted whether or not a key is set, answering with where to get a key when there is none.
  * The alternative, offering them only when a key is present, was rejected for the
  * reason the two-axis gate gives everywhere else: a tool that is absent for an unknown
  * reason and a tool that does not exist look identical to a model, and a person

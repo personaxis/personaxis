@@ -32,7 +32,7 @@ beforeEach(async () => {
 	delete process.env.PERSONAXIS_API_KEY;
 
 	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-	const server = buildServer();
+	const server = buildServer({ hosted: true });
 	await server.connect(serverSide);
 	client = new Client({ name: "test", version: "1.0.0" });
 	await client.connect(clientSide);
@@ -44,7 +44,21 @@ afterEach(async () => {
 	else process.env.PERSONAXIS_API_KEY = savedKey;
 });
 
-describe("one server, twenty tools", () => {
+describe("not in this version (L14)", () => {
+	it("a default server mounts none of the four, because the hosted registry is not live", async () => {
+		const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+		await buildServer().connect(serverSide);
+		const plain = new Client({ name: "test", version: "1.0.0" });
+		await plain.connect(clientSide);
+		const names = (await plain.listTools()).tools.map((tool) => tool.name);
+		await plain.close();
+
+		for (const tool of CLOUD_TOOLS) expect(names).not.toContain(tool);
+		expect(names).toHaveLength(16);
+	});
+});
+
+describe("one server, twenty tools, when the hosted half is offered", () => {
 	it("offers the four hosted ones beside the local ones", async () => {
 		const names = (await client.listTools()).tools.map((tool) => tool.name);
 
