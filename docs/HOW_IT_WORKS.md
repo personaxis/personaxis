@@ -173,7 +173,7 @@ The evolution mode is decided by the spec's `improvement_policy.mode`:
   gate), exact compile sensitivity (decorative numbers), deterministic arbitration.
 
 **Spec toolchain:** `init`, `validate`, `lint`, `compile`, `decompile`, `state`, `migrate`,
-`push`, `pull`, `skills`, `diff`, `export`, `spec`, `list`, `config`. (`create` replaces the older
+`skills`, `diff`, `export`, `spec`, `list`, `config`. (`create` replaces the older
 `use`/`templates` scaffolds.)
 
 ## 6. Persona reuse (global + overlay)
@@ -250,7 +250,7 @@ TypeScript everywhere. Two distribution channels:
 Useful when you want a **governed identity + persistent memory + bounded evolution**, not a
 replacement for Claude Code.
 
-1. **Authoring:** `personaxis create` (or `init`/`pull`) → `personaxis validate` (passes the 12
+1. **Authoring:** `personaxis create` (or `init`) → `personaxis validate` (passes the 12
    invariants) → `personaxis compile` (generates `PERSONA.md`).
 2. **Life:** `personaxis` opens the REPL. With a local/BYOK model
    (`PERSONAXIS_ENDPOINT`+`MODEL`), you talk to the persona: each turn it **observes → appraises →

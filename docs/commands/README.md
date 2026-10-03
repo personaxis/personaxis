@@ -38,7 +38,6 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`dash`](./dash.md) | Live ASCII dashboard (sigil + envelopes + memory chain), refreshed from `state.json` each frame. |
 | [`scan`](./scan.md) | Cross-harness config scanner (red/blue/auditor). |
 | [`sign` / `verify` / `attest`](./attest.md) | Sign the spec bytes; verify tamper-evidence; mint and re-check the local behavioral credential (drift + chain + expiry). |
-| [`push` / `pull`](./push-pull.md) | Publish / fetch a persona version (spec + compiled doc + resources). |
 | [`personas`](./personas.md) | Global persona registry (list/import/export/adopt; reuse across projects). |
 | [`overseer`](./overseer.md) | Optional local registry of personas/projects (powers `orchestrate`). |
 | [`orchestrate <task>`](./orchestrate.md) | Route a task to the best-matched registered persona (capability-ranked). |
@@ -58,8 +57,7 @@ the interactive session). Source of truth: `packages/cli/src/index.ts` (CLI) and
 | [`export`](./export.md) | Export the compiled doc to clean JSON / YAML / Markdown (no pedagogical comments). |
 | [`diff <a> <b>`](./diff.md) | Field-by-field diff of two `PERSONA.md`; flags breaking changes (CI gate). |
 | `list` · `template` | Installed personas · authoring scaffolds (`--help` each). |
-| [`runtime`](./runtime.md) | **Requires a Personaxis backend account**: hosted sessions/traces/evaluate. |
-| [`connect`](./connect.md) | **Requires a Personaxis workspace**: link this machine (device flow) and stream its work to the browser. Consented directories only. |
+| [`guard`](./guard.md) | Enforce the persona's policy on Claude Code and Codex before each tool call, on this machine only. |
 | [`trace`](./trace.md) | Inspect JSONL/OTLP traces (causal timeline). |
 | [_(no subcommand)_](./repl.md) | Enter the living **REPL**. |
 
@@ -105,7 +103,7 @@ app. `/help moved` prints the map. Full table in [`repl.md`](./repl.md).
 > `/serve stop` / `/watch stop`, or `/exit`). **Any other CLI subcommand** also works as `/<name> …`:
 > the REPL passes it through to `personaxis <name>` and echoes the output (`/spec`, `/export`,
 > `/decompile`, `/diff`, `/orchestrate`, `/team`, `/skills`, `/scan`, `/personas`, `/migrate`,
-> `/push`, `/pull`, …). `/init <name>` scaffolds a **sub-persona** (the root already exists in-session).
+> …). `/init <name>` scaffolds a **sub-persona** (the root already exists in-session).
 > `observe` has no `/` because the living loop already runs a governed tick **every turn**. Same engine
 > either way: the terminal `personaxis <cmd>` and the in-app `/<cmd>` are two doors to one engine.
 

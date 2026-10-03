@@ -472,9 +472,9 @@ export function describeAilment(finding: HookFinding): string {
 	const where = `${finding.host} (${finding.settingsPath})`;
 	switch (finding.ailment.kind) {
 		case "unrunnable":
-			return `${where}: the hook names a command the host cannot start, so every tool call has been proceeding ungated. Run \`personaxis connect\` to rewrite it, or delete the entry if this folder is not connected.`;
+			return `${where}: the hook names a command the host cannot start, so every tool call has been proceeding ungated. Run \`personaxis guard\` to rewrite it, or delete the entry if this folder is not guarded.`;
 		case "mangled_address":
-			return `${where}: the hook's socket address contains backslashes, which a shell collapses before the hook sees them. Run \`personaxis connect\` to rewrite it.`;
+			return `${where}: the hook's socket address contains backslashes, which a shell collapses before the hook sees them. Run \`personaxis guard\` to rewrite it.`;
 	}
 }
 
