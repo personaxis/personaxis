@@ -79,7 +79,10 @@ export type LoopEvent =
   | { type: "trace-exported"; format: string; path: string; spanCount: number }
   // Context-window manager
   | { type: "context-meter"; used: number; limit: number; pct: number }
-  | { type: "context-compacted"; removed: number; usedAfter: number };
+  | { type: "context-compacted"; removed: number; usedAfter: number }
+  // E36: a call the endpoint returned as TEXT was read with a dialect, once per dialect and run. It is the sign of a
+  // server without its model family's tool parser, which otherwise works in silence.
+  | { type: "dialect-read"; dialect: string };
 
 export type LoopListener = (e: LoopEvent) => void;
 
