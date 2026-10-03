@@ -32,7 +32,8 @@
   },
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "hosts"
   ],
   "scripts": {
     "build": "node ../../scripts/embed-assets.mjs && tsc",

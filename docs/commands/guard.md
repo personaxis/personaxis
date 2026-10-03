@@ -33,3 +33,11 @@ through for want of a person.
 
 The hook refuses every call while nothing answers on the socket, and says to start `guard`. A
 directory with no persona is refused rather than given a made-up policy.
+
+## Other agents: OpenClaw and Hermes
+
+Their point before a tool call is a plugin, not a settings file, so `guard` does not install anything for them. The
+package carries one plugin for each in `hosts/` (`openclaw/` for `before_tool_call`, `hermes/personaxis_guard/` for
+`pre_tool_call`), which ask this same socket through `personaxis-hook`. Both are **documented, not verified**: written
+from each host's documentation and tested against `guard`, but not yet watched firing inside the host. How to install
+them by hand is in `hosts/README.md`.
