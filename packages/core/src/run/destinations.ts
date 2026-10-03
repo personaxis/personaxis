@@ -81,6 +81,23 @@ const TABLE: readonly Entry[] = [
 		},
 	},
 	{
+		// E167: Nemotron 3.5 Lightning on NVIDIA's API thinks by default, and when its reasoning is not closed the API
+		// returns that same text as the answer. Read raw on 2026-10-03: the title call (16 tokens, not streamed) came back
+		// `finish: length` with "Here's a thinking process: ..." in both `content` and `reasoning_content`; with
+		// `chat_template_kwargs.enable_thinking: false` it answered with `reasoning_content: null`. `reasoning_effort:
+		// "none"` was accepted too, but the switch already carried by this seam is the one sent. Only Lightning was
+		// measured, so only Lightning is declared.
+		model: /^nvidia\/nemotron-3\.5-lightning-[^/]*$/i,
+		capabilities: {
+			id: "nemotron-3.5-lightning",
+			effort: [],
+			foreignReasoning: false,
+			cacheSeconds: 0,
+			rejects: [],
+			thinkingOff: { chat_template_kwargs: { enable_thinking: false } },
+		},
+	},
+	{
 		// OpenAI's reasoning models take a named effort. `minimal` exists on the newer
 		// ones and not on the o-series, and the ladder handles that by stepping down.
 		model: /^(o[1-9]|gpt-5)/i,
