@@ -703,7 +703,7 @@ self_regulation:
 
 persona:
   voice:
-    tone: "${tone.toLowerCase().replace(/\\s+/g, "_") || "professional_direct"}"
+    tone: "${tone.toLowerCase().replace(/\\s+/g, "_") || "professional_and_direct"}"
     formality: 0.5
     warmth: 0.5
     verbosity: "adaptive"
@@ -1047,7 +1047,7 @@ self_regulation:
 
 persona:
   voice:
-    tone: "professional_direct"
+    tone: "professional_and_direct"
     formality: 0.5
     verbosity: "adaptive"
   constraints:

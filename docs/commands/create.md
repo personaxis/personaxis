@@ -24,7 +24,7 @@ report). `[slug]` names the persona (default: under `.personaxis/personas/<slug>
 | `--deep` | ask the FULL question bank (20) instead of the 12 core questions |
 | `--profile <name>` | starting profile, `regulated`, `standard` (default) or `research`: see below |
 | `--yes` | non-interactive: accept labeled defaults, overwrite existing |
-| `--json` | emit spec + gates + provenance as JSON (dry-run unless `--yes`) |
+| `--json` | emit spec + gates + notes + provenance as JSON (dry-run unless `--yes`) |
 | `--provider <p>` | override the provider for LLM extraction (`local\|byok\|agent`) |
 
 ## Two interviews, one bank
@@ -73,6 +73,11 @@ repairs it by synthesis and recompiles, and only a coordinate that cannot be mad
 load-bearing fails the gate (a bug, not a user error). The result: `create` in any
 mode, with or without a model, produces zero decorative numbers, which you can confirm
 with [`personaxis jacobian`](./jacobian.md). Exit codes follow the validator convention.
+
+What Genesis had to work around (no model configured, an extractor that failed, a web search
+that returned nothing) is printed as a warning when `create` finishes and listed under
+**Worked around** in `creation-report.md`. These are not gates: nothing was checked, something
+was missing, and the persona was built from labeled defaults where it was.
 
 See: `docs/architecture/genesis.md` (design), `creation-report.md` (what to review;
 its "Defaults" section lists every number NOT earned from evidence, and its provenance

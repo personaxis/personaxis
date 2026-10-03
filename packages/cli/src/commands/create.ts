@@ -443,7 +443,10 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
 
   const lint = runRules(result.spec as Record<string, unknown>).findings;
   const lintErrors = lint.filter((f) => f.severity === "error");
-  gates.push({ name: "lint", pass: lintErrors.length === 0, detail: `${lintErrors.length} error(s), ${lint.length - lintErrors.length} warning(s)` });
+  // Warnings only: this counted every non-error finding, info included, so the report said 3 where the
+  // terminal, counting warnings, said 1 (2026-10-03).
+  const lintWarnings = lint.filter((f) => f.severity === "warning").length;
+  gates.push({ name: "lint", pass: lintErrors.length === 0, detail: `${lintErrors.length} error(s), ${lintWarnings} warning(s)` });
 
   // Round-trip lite: the stage-1 assembler must accept the spec (compile gate).
   let compiled = "";
@@ -480,7 +483,6 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     console.error(chalk.red("✗ internal error:"), "load-bearing gate crashed, nothing was written.", (e as Error).message);
     process.exit(1);
   }
-  for (const n of llmNotes) gates.push({ name: "provider", pass: true, detail: n });
 
   const slug = (result.spec.metadata as { name: string }).name;
   const baseDir = opts.root ? resolve(".personaxis") : resolve(".personaxis", "personas", slug);
@@ -491,10 +493,10 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   }
 
   const summary = provenanceSummary(result.spec, result.ledger);
-  const report = renderCreationReport(result, gates);
+  const report = renderCreationReport(result, gates, llmNotes);
 
   if (opts.json) {
-    console.log(JSON.stringify({ spec: result.spec, gates, provenance: summary, path: relative(process.cwd(), personaPath) }, null, 2));
+    console.log(JSON.stringify({ spec: result.spec, gates, notes: llmNotes, provenance: summary, path: relative(process.cwd(), personaPath) }, null, 2));
     if (!opts.yes) return; // --json without --yes is a dry-run
   }
 
@@ -565,6 +567,8 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(provenance: ${summary.covered.length}/${summary.quantitativeFields.length} fields, ${summary.defaultsOnly.length} default(s) to review)`)}`);
     const warns = lint.filter((f) => f.severity === "warning").length;
     if (warns) console.log(chalk.dim(`  ${warns} lint warning(s), run \`personaxis lint\` for detail (decorative numbers are worth fixing).`));
+    // What was worked around (no model, a failed search) said where it happens, not only in the report.
+    for (const note of llmNotes) console.log(chalk.yellow(`  ⚠ ${note}`));
     console.log(
       chalk.dim(
         polished
