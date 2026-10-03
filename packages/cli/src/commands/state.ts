@@ -2,10 +2,10 @@
  * `personaxis state`, manage state.json runtime state (v0.6+).
  *
  * Subcommands:
- *   state init, Create an empty state.json beside a PERSONA.md, seeded
- *                   from envelope means declared in PERSONA.md.
+ *   state init, Create an empty state.json beside the persona's spec, seeded
+ *                   from envelope means declared in its personaxis.md.
  *   state mutate, Adjust a current value in state.json by a delta, clamped
- *                   to the envelope declared in PERSONA.md. Mirrors the
+ *                   to the envelope declared in the spec. Mirrors the
  *                   runtime tool `adjust_persona_state(field, delta, reason)`.
  *   state show, Pretty-print the current state.
  *
@@ -20,7 +20,9 @@
 
 import { Command } from "commander";
 import { existsSync, unlinkSync } from "fs";
-import { resolve, dirname, join } from "path";
+import { dirname, join } from "path";
+import { resolvePersonaSourcePath } from "../load.js";
+import { rewind, rewindPlan } from "../rewind.js";
 import chalk from "chalk";
 import {
   loadPersona,
@@ -48,10 +50,12 @@ function resolvePersonaAndState(personaPathArg?: string): {
   personaPath: string;
   statePath: string;
 } {
-  const personaPath = resolve(personaPathArg ?? "./PERSONA.md");
-  if (!existsSync(personaPath)) {
-    throw new Error(`PERSONA.md not found at ${personaPath}`);
-  }
+  // E170: the same resolution `lint`, `goal` and `status` use. This defaulted to
+  // `./PERSONA.md`, which since spec v1 is the compiled prose with no frontmatter, so in
+  // a project as `create` leaves it `state show` reported an empty `persona@0.0.0` in
+  // `locked` and wrote its state.json at the root, without an error. An explicit path
+  // still wins; a repository from before v1 is still found by its `PERSONA.md`.
+  const personaPath = resolvePersonaSourcePath(personaPathArg);
   const statePath = join(dirname(personaPath), "state.json");
   return { personaPath, statePath };
 }
@@ -59,8 +63,8 @@ function resolvePersonaAndState(personaPathArg?: string): {
 // ─── state init ────────────────────────────────────────────────────────────
 
 const initSubcommand = new Command("init")
-  .description("Create a state.json beside PERSONA.md seeded from envelope means.")
-  .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
+  .description("Create a state.json beside the persona's spec, seeded from envelope means.")
+  .option("-f, --file <path>", "The persona's personaxis.md, or a slug (default: the persona in scope)")
   .option("--force", "Overwrite if state.json already exists")
   .action((options: { file?: string; force?: boolean }) => {
     try {
@@ -92,12 +96,12 @@ const initSubcommand = new Command("init")
 const mutateSubcommand = new Command("mutate")
   .description(
     "Adjust a current value in state.json by a delta, governed, clamped to the " +
-      "envelope declared in PERSONA.md, and audited. Mirrors adjust_persona_state.",
+      "envelope declared in the persona's spec, and audited. Mirrors adjust_persona_state.",
   )
   .requiredOption("--field <path>", "Dot-notation field path (e.g., 'mood.tone')")
   .requiredOption("--delta <number>", "Delta to apply (positive or negative)")
   .requiredOption("--reason <text>", "Human-readable rationale (required for audit)")
-  .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
+  .option("-f, --file <path>", "The persona's personaxis.md, or a slug (default: the persona in scope)")
   .option(
     "--actor <kind>",
     "Mutation actor: actor-llm | runtime-decay | runtime-context | human-operator | judge-correction",
@@ -124,7 +128,7 @@ const mutateSubcommand = new Command("mutate")
         if (!(field in env.envelopes)) {
           console.error(
             chalk.red("Error:"),
-            `No envelope declared for '${options.field}' in PERSONA.md. ` +
+            `No envelope declared for '${options.field}' in the persona's spec. ` +
               `Mutable fields: ${Object.keys(env.envelopes).join(", ")}`,
           );
           process.exit(2);
@@ -195,8 +199,8 @@ const mutateSubcommand = new Command("mutate")
 // ─── state show ────────────────────────────────────────────────────────────
 
 const showSubcommand = new Command("show")
-  .description("Pretty-print the current state.json beside PERSONA.md.")
-  .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
+  .description("Pretty-print the current state.json beside the persona's spec.")
+  .option("-f, --file <path>", "The persona's personaxis.md, or a slug (default: the persona in scope)")
   .option("--json", "Output raw JSON instead of formatted summary")
   .action((options: { file?: string; json?: boolean }) => {
     try {
@@ -245,7 +249,7 @@ const rebuildSubcommand = new Command("rebuild")
   .description(
     "Check that state.json still says what the record says, and reprint it with --write.",
   )
-  .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
+  .option("-f, --file <path>", "The persona's personaxis.md, or a slug (default: the persona in scope)")
   .option("--write", "Reprint state.json from the record (default: dry-run, report only)")
   .option("--json", "Output the result as JSON")
   .action((options: { file?: string; write?: boolean; json?: boolean }) => {
@@ -312,7 +316,7 @@ const driftSubcommand = new Command("drift")
     "Drift report (MATH_CORE.md): per-coordinate u/band/headroom, layer drift vs " +
       "governance.drift_thresholds, and the T3 evidence cost (min audited steps to the next band).",
   )
-  .option("-f, --file <path>", "Path to PERSONA.md (default: ./PERSONA.md)")
+  .option("-f, --file <path>", "The persona's personaxis.md, or a slug (default: the persona in scope)")
   .option("--json", "Output the report as JSON")
   .action((options: { file?: string; json?: boolean }) => {
     try {
@@ -381,10 +385,55 @@ const driftSubcommand = new Command("drift")
 
 // ─── Parent state command ──────────────────────────────────────────────────
 
+// ─── state rewind ────────────────────────────────────────────────────────────
+
+/**
+ * E171: the shell door to what `/audit → Timeline` does in the app. Same planner, same
+ * mover: the values go back with ordinary recorded moves, and nothing is truncated.
+ */
+const rewindSubcommand = new Command("rewind")
+  .description("Undo the last N state mutations with new recorded moves (the history is kept, never truncated).")
+  .argument("<n>", "How many of the most recent mutations to undo")
+  .option("-f, --file <path>", "The persona's personaxis.md, or a slug (default: the persona in scope)")
+  .option("--dry-run", "Show what would move, write nothing")
+  .option("--json", "Output the result as JSON")
+  .action(async (n: string, options: { file?: string; dryRun?: boolean; json?: boolean }) => {
+    try {
+      const steps = Number(n);
+      if (!Number.isInteger(steps) || steps < 1) throw new Error(`<n> must be a whole number of at least 1, got "${n}".`);
+      const { personaPath, statePath } = resolvePersonaAndState(options.file);
+      const handle = loadPersona(personaPath);
+      const env = extractEnvelopes(handle.frontmatter);
+      const state = ensureState(handle);
+
+      if (options.dryRun) {
+        const { moves } = rewindPlan(state, env.envelopes, steps);
+        if (options.json) return console.log(JSON.stringify({ dryRun: true, steps, moves }, null, 2));
+        if (!moves.length) return console.log(chalk.dim(`  rewind ${steps}: state already at that point.`));
+        for (const m of moves) console.log(`  ${chalk.cyan(m.field)}: ${m.from} → ${m.to}`);
+        return console.log(chalk.dim("  dry-run, nothing written."));
+      }
+
+      // The operator, unnamed, as in the app: a person ran this and the CLI does not
+      // know which one, and inventing a name would sign entries nobody signed.
+      const { changed } = await rewind(personaPath, statePath, state, env.envelopes, steps, record.authorOf("human-operator"));
+      if (options.json) return console.log(JSON.stringify({ steps, changed }, null, 2));
+      console.log(
+        changed.length
+          ? `${chalk.green("✓")} rewound ${steps} mutation(s), restored ${changed.length} field(s): ${changed.join(", ")} (recorded, chain intact)`
+          : chalk.dim(`  rewind ${steps}: state already at that point.`),
+      );
+    } catch (err) {
+      console.error(chalk.red("Error:"), (err as Error).message);
+      process.exit(1);
+    }
+  });
+
 export const stateCommand = new Command("state")
   .description("Manage state.json runtime state (v0.6+).")
   .addCommand(initSubcommand)
   .addCommand(mutateSubcommand)
   .addCommand(showSubcommand)
   .addCommand(rebuildSubcommand)
-  .addCommand(driftSubcommand);
+  .addCommand(driftSubcommand)
+  .addCommand(rewindSubcommand);
