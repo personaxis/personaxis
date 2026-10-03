@@ -233,7 +233,7 @@ a single core be reused at every entry point (the Codex submit/event pattern).
 ## 9. Packaging and platforms
 
 TypeScript everywhere. Two distribution channels:
-- **npm** (`npm i -g personaxis`), requires Node 20 or newer.
+- **npm** (`npm i -g personaxis`), requires Node 20.18.1 or newer.
 - **Single binary** per platform via `bun compile` (`pnpm run package`), no runtime; the assets
   (schemas/templates/version) are **embedded** at build, so the binary is self-contained.
 

@@ -19,6 +19,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   answer.
 - The persona template tells its reader to `compile` and `decompile`, not to `push`.
 
+### A slow local model is waited for, up to fifteen minutes, instead of five
+
+- Every call to the model now runs under its own clock: fifteen minutes for the first header and between chunks,
+  or `PERSONAXIS_MODEL_HEADERS_TIMEOUT_MS`. It used to be Node's, which gives up after 300 seconds without a header,
+  and a small open model on a laptop's CPU behind Ollama sends none until it has read the whole prompt.
+- Requires Node 20.18.1 or newer (it was 20.0.0), for `undici` 7, the library Node's own `fetch` is built on.
+
 ### Genesis starts a persona from a profile, and every new persona is alive
 
 - `personaxis create --profile regulated|standard|research`, and the same choice in the full interview,
