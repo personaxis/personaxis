@@ -22,7 +22,7 @@
     "public pointing there, so the private side feeds this registry through a script and the",
     "public page only ever reads the registry."
   ],
-  "updated": "2026-09-10",
+  "updated": "2026-10-05",
   "scoreboard": "docs/GUARANTEES.md",
   "claims": [
     {
@@ -37,9 +37,9 @@
       "id": "conformance",
       "statement": "The conformance suite passes in full.",
       "status": "proven",
-      "figures": ["15/15"],
-      "retired": [],
-      "source": "packages/evals"
+      "figures": ["19/19"],
+      "retired": ["15/15"],
+      "source": "packages/evals, nineteen scenarios in scenarios.ts since 2026-10"
     },
     {
       "id": "hot-path",

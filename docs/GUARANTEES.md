@@ -27,26 +27,21 @@ with generated adversarial input on every CI build.
 The map from each theorem to the code that implements it is
 [`architecture/math-core.md`](./architecture/math-core.md).
 
-## Measured
+## The scoreboard
 
-| What | Result |
+Every figure below is checked against `docs/evidence.json` by a test: a figure that disappears from
+this page, or a withdrawn one that comes back, fails the build.
+
+| Claim | Status |
 |---|---|
-| Property tests for T1 to T6 | 28 properties, 2,306,140 generated adversarial cases (100,000 per CPU-bound property), 0 counterexamples. CI runs them on every build with `FC_NUM_RUNS` set |
-| Conformance suite (`@personaxis/evals`) | 19 scenarios, all passing, with no API keys |
-| Cost of one state update | p99 of 0.074, 0.094 and 0.245 ms per tick with 8, 16 and 64 values |
-| Genesis provenance | Every number Genesis writes has a recorded origin: 500 hostile seeds, 0 values left without a source or without an effect on the compiled document |
+| The engine's guarantees T1 to T6 | ✅ Proven and property-tested: 28 properties, 2,306,140 generated adversarial cases (100,000 per CPU-bound property), 0 counterexamples |
+| Conformance suite (`@personaxis/evals`) | ✅ 19/19 scenarios pass, with no API keys |
+| Cost of one state update | ✅ p99 of 0.074 / 0.094 / 0.245 ms per tick with 8, 16 and 64 values |
+| Genesis against a hand-written prompt | ⚠️ Split. Provenance holds by construction: 500 hostile seeds, zero decorative values. Whether the result behaves more consistently depends on the same judges as the next row, so it is not evidence yet |
+| Whether a persona makes an agent behave better than the same content as a plain prompt | ❌ Withdrawn, not measured. The condition named after the product never ran through the engine, and the two judge models disagreed with each other at r = -0.302, scoring the version that produced 27 emojis under an instruction to break character above the one that produced none |
+| Whether a value's effect on the compiled document predicts its effect on behavior | 🔬 Uncomputable on the test persona: the effect on the document was 0.012 on all eleven coordinates, and with eleven coordinates the smallest correlation that could be told from zero is 0.600 |
+| Whether the same persona behaves the same on different models | 🔬 No resolution. Four models compared: correlations from -0.473 to 0.509, and the same model against itself only 0.067 to 0.316, so every estimate is mostly noise |
 
-## Not measured yet
-
-- **Whether a persona makes an agent do a job better than without it, on each model.** This is the
-  question that matters most, and no result is published. An earlier comparison against a plain
-  system prompt was withdrawn on 2026-09-10: the condition named after the product never ran through
-  the engine, and the two judge models disagreed with each other.
-- **Whether the same persona behaves the same on different models.** Four models were compared on
-  2026-09-10 and the instrument could not tell them apart from noise, so the answer is neither yes nor
-  no.
-- **Whether the size of a value's effect on the compiled document predicts its effect on behavior.**
-  On the test persona the effect on the compiled document was almost the same for every value, so
-  there was nothing to correlate.
-
-When any of these is measured, the result goes here, whichever way it comes out.
+The question that matters most for a persona you load into an agent, whether it makes the agent do a
+job better on each model, is not measured yet. When it is, the result goes in this table, whichever
+way it comes out.
