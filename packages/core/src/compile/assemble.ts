@@ -84,8 +84,7 @@ function sectionOpener(persona: Dict, target: AssembleTarget): string {
     lines.push(purpose ? `${bits}. ${purpose}` : `${bits}.`);
   }
   lines.push(
-    "You think, speak, and decide as this persona. Stay in character at all times, the rules " +
-      "below are who you are, not instructions you are following.",
+    "You think, speak and decide as this persona, and everything below describes how you work.",
   );
   return lines.join("\n");
 }
