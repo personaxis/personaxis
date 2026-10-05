@@ -17,7 +17,7 @@ import { Persona } from "@personaxis/sdk";
 
 const persona = new Persona("./.personaxis/personas/support/personaxis.md");
 
-// 1. The compiled identity, as the system prompt of YOUR model call.
+// 1. The compiled persona document, as the system prompt of YOUR model call.
 const systemPrompt = persona.compiledIdentity();
 
 // 2. One governed tick of the living loop on an observation, on the configured model.
