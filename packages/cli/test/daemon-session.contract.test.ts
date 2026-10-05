@@ -48,13 +48,13 @@ function fakeSocket() {
 		close: () => {
 			open = false;
 		},
-		onOpen: (fn) => {
+		onOpen: (fn: () => void) => {
 			handlers.onOpen = fn;
 		},
-		onMessage: (fn) => {
+		onMessage: (fn: (d: string) => void) => {
 			handlers.onMessage = fn;
 		},
-		onClose: (fn) => {
+		onClose: (fn: (c: number) => void) => {
 			handlers.onClose = fn;
 		},
 		onError: () => {},

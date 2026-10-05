@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { distillTurns, isInfraErrorReply, sessionBrief } from "../src/memory/consolidate.js";
 import type { SessionTurn } from "../src/sessions.js";
 
-const t = (role: SessionTurn["role"], content: string): SessionTurn => ({ role, content, ts: new Date().toISOString() });
+const t = (role: SessionTurn["role"], content: string): SessionTurn => ({ type: "turn", role, content, ts: new Date().toISOString() });
 
 describe("infra errors never become memory (V5.FIX.3)", () => {
   it("classifies provider/agent failures as infra, normal replies as lived experience", () => {
