@@ -1,79 +1,73 @@
-# personaxis CLI, documentation
+# Personaxis CLI documentation
 
-Feature-organized reference for **what is implemented** in this repo (the reference CLI
-for the personaxis.md spec). It exists so a human, or another AI working on the project, 
-can see at a glance how each piece works and verify the implementation matches the design.
+Reference for the Personaxis CLI and engine: what each piece does and where its code is. If you want
+an agent to load a persona, start with [`integrations/`](integrations/README.md). If you want to build
+one, start with [`guides/getting-started.md`](guides/getting-started.md), then
+[`HOW_IT_WORKS.md`](HOW_IT_WORKS.md).
 
-The spec itself (normative field reference) lives in the sibling `persona.md` repo:
-[docs/SPEC.md](../../persona.md/docs/SPEC.md) and
-[docs/PERSONA_PROMPTING.md](../../persona.md/docs/PERSONA_PROMPTING.md).
-
-**New here? Start with [CONCEPTS_FAQ.md](CONCEPTS_FAQ.md)**, a single, navigable answer to the
-common conceptual questions (compile/decompile, sub-personas, what self-evolves and who decides,
-the modes, the six memory kinds, sessions, the sandbox, every REPL command), each linking to the
-deeper architecture doc below.
-
-**The evidence scoreboard** is [`GUARANTEES.md`](GUARANTEES.md) (product-facing: what is proven
-vs measured vs pending). The full **research report** (the paper, the formal proofs, the
-preregistered protocol, and the experiment runners) is published separately as a dedicated
-report.
+The spec itself lives in the `persona.md` repository:
+[docs/SPEC.md](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md) and
+[docs/PERSONA_PROMPTING.md](https://github.com/personaxis/persona.md/blob/main/docs/PERSONA_PROMPTING.md).
+What is measured, and what is not yet, is in [`GUARANTEES.md`](GUARANTEES.md).
 
 ## Map
 
 ```
 docs/
-  CONCEPTS_FAQ.md      START HERE: direct answers to the common conceptual questions
-  HOW_IT_WORKS.md      the overview: what personaxis is, the loop, the security model
-  guides/              task-oriented entry points
-    getting-started.md   by audience: developers / teams & enterprises / creators
-    creating-personas.md which `create` door for which input, provenance review, iteration
-    configuration.md     model/endpoint/API-key config (global+project+per-persona, dev & prod)
-    providers.md         the local | byok | agent providers for compile/decompile
-    production.md        MCP / SDK / serve, the four production controls, troubleshooting
-    recipes.md           8 vertical starting points (NPC, brand voice, legal, fintech, tutor, …)
-  architecture/        how the system works, end to end
-    runtime.md           START HERE for runtime: how input enters, one tick phase by phase, what persists, every case (the spine, code-referenced)
-    math-core.md         theorem→code map (which module implements which definition/theorem)
-    genesis.md           the persona-creation pipeline design (`personaxis create`)
-    deployment.md        the two use-modes, the four surfaces, hooks, cross-OS, self-host vs SaaS
-    self-evolution.md    how personaxis.md self-edits (whole spec), and how it compiles to PERSONA.md (the "living" loop)
-    compile.md           compile / decompile, the artifact model, canonical output paths, purely-qualitative compiled doc
-    multi-persona.md     root + sub-personas, @routing, isolation, per-persona colors
-    agent-adoption.md    how the four focus hosts adopt a persona, Claude Code, Codex, openclaw, Hermes (all live)
-    saas-managed.md      DESIGN (not built here), the managed SaaS: serverless API + queue + workers + Postgres
-    memory.md            the six memory.types (episodic, semantic, procedural, autobiographical, user_preferences, evaluations)
-    sessions.md          persistent per-persona conversations, /sessions, /resume, /compact (persisted)
-    awareness.md         runtime structural self-knowledge (root vs sub, address, sub-tree, resources)
-    sandbox.md           two-axis permission policy, postures, the honest Windows limit
-    project-registry.md  how the CLI learns which projects have personas (by USE, not by scanning), and portable project identity
-    presence.md          who is using a persona right now: one file per instance, heartbeat liveness, and what the fleet shows
-    multi-device.md      the same persona on several machines: per-device logs, the fold, hybrid logical clocks, per-device chains
-  integrations/        how each host uses personaxis
-    README.md            START HERE, mental model + 3-step quickstart + which host + use cases
-    claude-code.md       hooks (per-turn learning) + MCP (on-demand) + native subagent
-    codex.md             AGENTS.md + Stop hook + subagent + MCP
-    openclaw.md          SOUL.md + command:stop hook + MCP
-    hermes.md            ~/.hermes/SOUL.md + on_session_end hook + MCP
-    claude-code-mcp.md   MCP walkthrough (register the server, tools, a real session trace)
-    http-agents.md       personaxis serve, HTTP for non-MCP agents
-  commands/            one entry per CLI command (validate, compile, observe, watch, hooks, …)
-    README.md            command index
+  HOW_IT_WORKS.md      the overview: the files of a persona, a turn, what is enforced, how agents load it
+  CONCEPTS_FAQ.md      six short answers: compile, change over time, memory, sessions, sandbox, create or init
+  GUARANTEES.md        what is tested, with the numbers, and what is not
+  guides/
+    getting-started.md   install, configure a model, create, load into your agent, CI checks
+    creating-personas.md which way in for which input, reviewing the creation report, improving a persona
+    configuration.md     model, endpoint and key settings: global, project and per persona
+    providers.md         the local, byok and agent providers for compile and decompile
+    production.md        MCP, SDK and serve in production, and troubleshooting
+    recipes.md           starting points for different kinds of work
+    agent-usage.md       how an agent drives the CLI from outside the app
+    parity.md            what the app and the shell commands each cover
+  architecture/
+    runtime.md           how input enters, one tick phase by phase, what persists (with code references)
+    math-core.md         which module implements which theorem
+    genesis.md           how `personaxis create` builds a persona
+    compile.md           compile and decompile, output paths, the compiled document
+    self-evolution.md    how a persona edits its own definition under its improvement policy
+    memory.md            the six memory kinds
+    sessions.md          saved conversations, resume, compaction
+    sandbox.md           the two-axis permission policy and the postures
+    agent-core.md        the agent loop and its tools
+    persona-prompting.md how the compiled document is structured for a model
+    deployment.md        the ways to run it: SDK, serve, MCP, hooks, watch
+    agent-adoption.md    how Claude Code, Codex, OpenClaw and Hermes load a compiled persona
+    target-matrix.md     which file each agent reads
+    multi-persona.md     a root persona and its sub-personas
+    awareness.md         what a persona knows about its own place: root or sub, address, resources
+    project-registry.md  how the CLI learns which projects have personas
+    presence.md          who is using a persona right now
+    multi-device.md      the same persona on several machines
+    home-layout.md       what lives in ~/.personaxis
+    command-center.md    the menu
+    TECH_STACK.md        the libraries and why
+  integrations/
+    README.md            start here: which agent, and the three-step setup
+    claude-code.md       hooks, MCP and a native subagent
+    claude-code-mcp.md   registering the MCP server, the tools, a real session
+    codex.md             AGENTS.md, the Stop hook, a subagent and MCP
+    openclaw.md          SOUL.md, its hook and MCP
+    hermes.md            SOUL.md, its hook and MCP
+    http-agents.md       personaxis serve, for agents that do not speak MCP
+  commands/            one page per command, every flag and exit code
 ```
 
-## The three-artifact model (start here)
+## The files next to a persona
 
-| Artifact | What | Mutability | Who writes it |
-|---|---|---|---|
-| `.personaxis/[personas/<slug>/]personaxis.md` | The quantitative + persona-prompting **spec** (source of truth) | Versioned; humans, or the persona under governance | `decompile`, governed self-edits |
-| `PERSONA.md` (root) · `.personaxis/personas/<slug>/PERSONA.md` (sub) | The **compiled, LLM-facing** document (system-prompt slot #1) | Generated | `compile` |
-| `state.json` | Mutable **runtime** dials (mood/affect) | Runtime | the state engine |
+| File | What it is | Who writes it |
+|---|---|---|
+| `personaxis.md` | The definition (source of truth) | You, or the persona under its improvement policy |
+| `PERSONA.md` | The compiled document a model reads | `compile` |
+| `record.jsonl` | The state: every change, hash-chained | The runtime; append-only |
+| `state.json` | A view printed from the record | The runtime; checked by `state rebuild` |
 
-Resources (`memory.md`, `memory/`, `references/`, `examples/`, `skills/`, `assets/`,
-`policy.yaml`, `self-edits.jsonl`) live next to each `personaxis.md`, the root's in
-`.personaxis/`, a sub's in `.personaxis/personas/<slug>/`. The layout **recurses**.
-
-## Status legend used in these docs
-
-- **Implemented**: code + tests in this repo.
-- **Best-effort**: works, with an honest limitation stated (e.g. native OS sandboxing).
-- **Planned**: designed, not yet wired (always called out explicitly).
+Next to each `personaxis.md` there may also be `memory.md`, `memory/`, `references/`, `examples/`,
+`skills/`, `assets/`, `policy.yaml` and `self-edits.jsonl`. The root persona keeps them in
+`.personaxis/`, a sub-persona in `.personaxis/personas/<slug>/`, and the layout repeats for each level.
