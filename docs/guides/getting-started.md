@@ -1,84 +1,80 @@
-# Getting started: by audience
+# Getting started
 
-One toolchain, three doors. Everything below is local-first and BYOK: no account,
-no daemon, plain git-versionable files.
+Build a persona, load it into the agent you already use, and check what it does. Everything here runs
+on your machine with your own model key or a local model; there is no account.
 
-## Developers (5 minutes)
+## 1. Install
 
 ```bash
-# No install, run it now:   npx personaxis proof --quick
-# Install it:               npm i -g personaxis
-# From source (newest, ahead of npm):
-#   pnpm install && pnpm run build
-#   run it as: node packages/cli/dist/index.js <cmd>
-
-personaxis proof --quick             # watch the guarantees hold before trusting them
-personaxis create dev-buddy          # the interview builds a governed persona
-personaxis --persona .personaxis/personas/dev-buddy/personaxis.md   # live REPL
+npm i -g personaxis          # or prefix every command with npx
 ```
 
-> **Windows / PowerShell.** `running scripts is disabled on this system` is PowerShell blocking
-> npm's `.ps1` launcher (it does this for every npm CLI). Run
-> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or use `personaxis.cmd` / `npx personaxis`.
+From source: `pnpm install && pnpm run build`, then run `node packages/cli/dist/index.js <cmd>`.
 
-In the REPL: `/state` (envelope values), `/drift` (where you are + what a change
-costs), `/replay` (history as animation), `/arbitrate` (value conflicts),
-`/improve suggesting` (allow governed self-proposals), `/dash` (live dashboard).
+> **Windows / PowerShell.** `running scripts is disabled on this system` is PowerShell blocking npm's
+> `.ps1` launcher, as it does for every npm CLI. Run `Set-ExecutionPolicy -Scope CurrentUser
+> RemoteSigned` once, or use `personaxis.cmd` or `npx personaxis`.
 
-For coding agents: `personaxis compile --platform claude-code` places
-`.claude/agents/<slug>.md`; `--platform codex` targets AGENTS.md/TOML. The persona
-follows your repo, not a vendor.
+## 2. Point it at a model
 
-## Teams & enterprises
+```bash
+personaxis config            # a local server (Ollama, LM Studio, llama.cpp) or your own API key
+```
 
-1. **Author** the persona with `create` (the creation report is your review doc:
-   every number has provenance; the "Defaults" section is the review checklist).
-2. **Lock it**: `personaxis improve locked` (state still adapts inside envelopes;
-   the SPEC cannot self-modify). Governance postures: locked → suggesting →
-   autonomous, and a sibling `policy.yaml` can only make things stricter.
-3. **Gate deploys**: `personaxis validate` (five exit states) and
-   `personaxis state drift` (exit 2 past declared thresholds) in CI.
-4. **Audit**: the mutation log and episodic memory are hash-chained;
-   `personaxis state rebuild` proves state ≡ history; `proof` scenes 4–5 are the
-   demo for your risk team. Right-to-erasure is supported without breaking chains.
+Do this before creating a persona. Without a model, `create` still produces a valid persona, but most
+of it is labelled defaults.
 
-## Creators (worlds, characters, brand voices)
+## 3. Create a persona
 
-Bring what you have: `personaxis create --from-import your-card.png` upgrades a
-SillyTavern-style card into a governed persona; `--from-transcript` induces one
-from example chats; the interview builds one from your answers. Per-vertical
-starting points: [`recipes.md`](./recipes.md).
+```bash
+personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
+```
 
-## Prompts & tips that pay off
+Then open `.personaxis/personas/reviewer/creation-report.md`. It shows which sentence of the brief
+produced each value, and its Defaults section lists everything Genesis assumed: that list is what you
+review. [`creating-personas.md`](./creating-personas.md) covers the other ways in (an interview, your
+repository, a SOUL.md or character card, transcripts) and `--research`, which adds sourced references.
 
-- **The numbers are already load-bearing**: `create` synthesizes per-band
-  `expression {low, moderate, high}` prose for every trait and affect coordinate, so
-  `personaxis jacobian` shows zero decorative numbers out of the box. Tune the wording
-  on the traits you care about; you are sharpening prose, not adding it.
-- **Half-life for moods**: `half_life: 4` on mood coordinates gives you a persona
-  that reacts AND recovers, with a provable ceiling on standing drift (δ_max/λ).
-  Genesis already sets one where the evidence implies volatility.
-- **Write briefs like evidence**: `create --from-prompt` keeps only what it can
-  quote. "Never reveals sources; terse; warms up to regulars over weeks" beats
-  "cool mysterious vibe".
-- **The demo that lands**: `personaxis proof` first, then YOUR persona in the REPL
-  with `/drift` after ten hostile turns. Bounded beats vibes.
-- **When something looks wrong**: `validate` names the exact failing field;
-  `state rebuild` repairs a torn state from its log; `personaxis-evals` runs the
-  15-scenario conformance suite against your build.
+## 4. Load it into your agent
+
+```bash
+personaxis compile reviewer --platform claude-code    # or codex, openclaw, hermes
+```
+
+Or serve it to any MCP host with `npx -y @personaxis/mcp`. The table of how each agent loads a
+persona is in the [README](../../README.md#how-each-agent-loads-a-persona).
+
+## 5. See it work
+
+```bash
+personaxis --persona .personaxis/personas/reviewer/personaxis.md
+```
+
+Talk to it in plain language. `/persona` shows its definition, `/status` what it is now, `/audit` the
+record of everything it did, `/memory` what it remembers and `/doctor` anything wrong with it. Every
+view has a shell command with `--json` for scripts: `personaxis status`, `audit`, `memory`, `doctor`.
+
+## In CI
+
+```bash
+personaxis validate          # exit 0 valid, 1 schema, 2 policy, 3 conceptual
+personaxis lint              # findings, each with the fix
+personaxis state rebuild     # the state still matches its record
+```
+
+To stop a persona from editing its own definition, `personaxis improve locked`. A `policy.yaml` next to
+it can only make the rules stricter.
 
 ## Where things live
 
 ```
-.personaxis/personaxis.md        the quantitative spec (identity: version this)
-PERSONA.md                       the compiled document agents actually read
-.personaxis/state.json           mutable runtime state (envelope-clamped)
-.personaxis/personas/<slug>/     sub-personas (same trio each)
-creation-report.md               provenance of every number (Genesis)
-memory/episodic.jsonl            hash-chained memory (tamper-evident)
+.personaxis/personas/<slug>/personaxis.md     the definition (version this)
+.personaxis/personas/<slug>/PERSONA.md        the compiled document an agent reads
+.personaxis/personas/<slug>/state.json        the values that move as it works
+.personaxis/personas/<slug>/creation-report.md   where every value came from
+.personaxis/personas/<slug>/skills/           its procedures
+.personaxis/personas/<slug>/references/       its sourced knowledge
 ```
 
-Next: [`creating-personas.md`](./creating-personas.md) (which `create` door for which
-input) · [`production.md`](./production.md) (deploy + CI gates + troubleshooting) ·
-deeper: `docs/HOW_IT_WORKS.md` · spec: `personaxis spec` · guarantees:
-`../GUARANTEES.md` · math: `../architecture/math-core.md`.
+Next: [`creating-personas.md`](./creating-personas.md) · [`production.md`](./production.md) ·
+[`../commands/`](../commands/README.md) · [`../GUARANTEES.md`](../GUARANTEES.md).
