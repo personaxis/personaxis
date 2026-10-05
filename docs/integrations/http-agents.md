@@ -150,4 +150,3 @@ a non-empty string.
 | A persona embedded in a Node/TS backend | `@personaxis/sdk` (`import { Persona }`) |
 | A language-agnostic HTTP boundary / out-of-process persona | **`personaxis serve`** (this doc) |
 | On-demand persona tools inside an MCP host (Claude Code/Codex/Cursor) | `personaxis-mcp` ([claude-code.md](./claude-code.md)) |
-| A fully managed, we-host-it offering | The SaaS design ([../architecture/saas-managed.md](../architecture/saas-managed.md)) |

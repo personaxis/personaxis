@@ -71,18 +71,9 @@ Two ways to run the engine in Mode 2:
 | **MCP `personaxis-mcp`** | Persona as MCP tools (stdio) | Mode 1, MCP hosts (Claude Code/Codex/Cursor), on-demand |
 | **Daemon `personaxis watch`** | Keeps `PERSONA.md` fresh in the background (uses the library) | Mode 1 idle / Mode 2 long-lived process |
 
-## The managed SaaS (D), future, not built here
-
-The managed offering: **we** host the engine and provide **our** model (billed via our key), with
-per-tenant isolation, so a client points at our API and we keep their `PERSONA.md` alive without
-running any infrastructure themselves. It does **not** require always-on VMs, it's all Node/TS with a
-**serverless API + a durable queue + stateless workers + Postgres** (pay per work, scale horizontally).
-Its design lives in [saas-managed.md](./saas-managed.md); it is **not implemented in this repo**.
-
 ## Which do I pick?
 
 - Coding with Claude Code and want a living persona → **Mode 1**: `personaxis hooks install` + (optional)
   `personaxis-mcp`. Configure a model once ([configuration.md](../guides/configuration.md)).
 - Building an app that needs an evolving persona and your backend is Node/TS → **Mode 2, SDK**.
 - Same, but a different language / you want an HTTP boundary → **Mode 2, `serve`**.
-- You want zero infra and to pay for a managed persona → **the SaaS (D)** (when available).
