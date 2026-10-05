@@ -16,7 +16,7 @@
 
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -451,11 +451,13 @@ describe("the pieces, where a wrong one would be invisible from outside", () => 
 	});
 
 	it("finds a path in any argument, whatever the host calls the field", () => {
-		const state = join("C:", "work", ".personaxis", "state.json");
-		expect(namesState(JSON.stringify({ file_path: state }), "C:\\work", state)).toBe(true);
-		expect(namesState(JSON.stringify({ abs_path: state }), "C:\\work", state)).toBe(true);
-		expect(namesState(JSON.stringify({ nested: { p: state } }), "C:\\work", state)).toBe(true);
-		expect(namesState(JSON.stringify({ file_path: "other.json" }), "C:\\work", state)).toBe(false);
+		// A root built for the platform the test runs on: a literal C:\ path is not absolute on Linux.
+		const root = resolve("work");
+		const state = join(root, ".personaxis", "state.json");
+		expect(namesState(JSON.stringify({ file_path: state }), root, state)).toBe(true);
+		expect(namesState(JSON.stringify({ abs_path: state }), root, state)).toBe(true);
+		expect(namesState(JSON.stringify({ nested: { p: state } }), root, state)).toBe(true);
+		expect(namesState(JSON.stringify({ file_path: "other.json" }), root, state)).toBe(false);
 	});
 
 	it("resolves a relative path against the directory the call was made in", () => {
