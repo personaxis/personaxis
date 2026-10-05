@@ -236,7 +236,7 @@ cognition:
     abstain_when_above: 0.60
   tool_use_policy:
     requires_governance_check: false
-    allowed_tools: [file_read, file_write, schema_validate]
+    allowed_tools: [read_file, write_file, run_command]
   reasoning_style: "Read the constraint before writing the behavior. Trace each implementation decision back to a rule in the spec."
 
 memory:
