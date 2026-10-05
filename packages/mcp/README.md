@@ -1,9 +1,10 @@
 # @personaxis/mcp
 
 An MCP server (stdio) that exposes a [personaxis.md](https://github.com/personaxis/persona.md)
-persona as tools any MCP host can call: Claude Code, Codex, Cursor. The host brings the model and
-the tool loop; the server brings the persona's identity, state, memory and policy, and every change
-goes through the same clamp, audit and governance gate as the rest of the engine.
+persona as tools an MCP host can call. The host brings the model and the tool loop; the server brings
+the persona's compiled document, state, memory and policy, and every change goes through the same
+clamp, record and gate as the rest of the engine. Registration is documented and tested for Claude
+Code and Codex; other hosts that run stdio MCP servers should work and have not been tested here.
 
 ## Register it
 
@@ -28,6 +29,8 @@ args = ["-y", "@personaxis/mcp"]
 With `npm i -g @personaxis/mcp` the command is `personaxis-mcp`.
 
 ## Tools (16)
+
+The four hosted-registry tools of older documents are not offered in this version.
 
 | Group | Tools |
 |---|---|

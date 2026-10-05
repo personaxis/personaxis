@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/mcp",
   "version": "0.17.0",
-  "description": "Personaxis MCP server: expose a governed persona as tools any MCP host (Claude Code, Codex, Cursor) can call.",
+  "description": "Personaxis MCP server: load a persona into an MCP host such as Claude Code or Codex, as 16 tools.",
   "license": "MIT",
   "type": "module",
   "exports": {
