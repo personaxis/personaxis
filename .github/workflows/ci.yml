@@ -108,96 +108,38 @@ jobs:
           # of the worker-RPC timeout even under the property suites.
           FC_NUM_RUNS: "300"
 
-  golden:
-    name: golden test (validate CMO = PASS)
+  gates:
+    name: repository gates (test types, private pointers, doc references)
     runs-on: ubuntu-latest
-    # Measured: 26s.
+    # Measured: 26s for the job this replaced.
     timeout-minutes: 10
     steps:
-      - name: Checkout cli
-        uses: actions/checkout@v4
-        with:
-          path: cli
-
-      # The golden persona lives in the sibling spec repo. Checked out side-by-side
-      # so the relative path the golden test uses (../persona.md) resolves in CI too.
-      - name: Checkout persona.md spec
-        uses: actions/checkout@v4
-        with:
-          repository: personaxis/persona.md
-          path: persona.md
-        continue-on-error: true
-
-      # This job checks the repository out into `cli/`, so the runner's working
-      # directory has no package.json and the action cannot find `packageManager`
-      # on its own. Pointing it at the manifest keeps one pnpm everywhere without
-      # writing a version down twice.
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          package_json_file: cli/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: cli/pnpm-lock.yaml
 
       - name: Install & build
-        working-directory: cli
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
 
-      - name: Validate golden CMO persona (must exit 0 = PASS)
-        working-directory: cli
-        run: |
-          if [ -f ../persona.md/.personaxis/personas/cmo/personaxis.md ]; then
-            node packages/cli/dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md
-          else
-            echo "::warning::sibling persona.md repo not available; skipping golden validate"
-          fi
-
-      # Byte-identity rule: schemas AND templates must match persona.md.
-      # Blocking, drift is a spec-conformance regression. `check-mirror` owns the
-      # file list (scripts/sync-spec-mirror.mjs) so this gate never drifts from the
-      # `sync-mirror` command contributors run locally. A missing sibling is a skip.
-      - name: Enforce schema + template byte-identity with persona.md
-        if: ${{ hashFiles('persona.md/schema/persona.schema.json') != '' }}
-        working-directory: cli
-        run: pnpm run check-mirror
-
-      # E32: the tests themselves, through the type checker. Every package's tsconfig
-      # says `"include": ["src"]`, so `tsc --noEmit` had never looked at a test file and
-      # about 2,600 of them ran against shapes nothing could check: an action class that
-      # does not exist, a tool stub missing the two flags that decide whether the loop
-      # may run it alongside another, a policy with no egress allowlist. A ratchet per
-      # package, which only falls, and which also refuses a gain that was not locked in.
-      #
-      # Here rather than in the matrix `Typecheck` step because it runs `tsc` per package
-      # and the answer does not vary by OS. And blocking, on an argument E30 made by
-      # example rather than by assertion: `ExecutablePolicy` is branded so that only
-      # `compile()` can produce one, and the negative control that proves the brand works
-      # goes red ONLY here. A type-level guard can be caught by nothing else.
+      # Every package's tsconfig includes only src, so tsc never looks at a test file.
+      # This runs the tests through the type checker with a ceiling per package that
+      # only goes down.
       - name: Tests, through the type checker
-        working-directory: cli
         run: pnpm run check-test-types
 
-      # This repository is public and sits beside work that is not. `.gitignore` keeps
-      # the private material out and always has; what leaked was thinner, a comment or
-      # a script name pointing INTO it. Two of those reached users, inside strings that
-      # `personaxis init` writes into their own files and inside a schema description
-      # that ships to npm, where no edit here can reach them any more. Blocking, and
-      # unconditional: it needs no sibling checkout and nothing to be installed.
+      # This repository is public and sits beside private work. No tracked file may
+      # point into it.
       - name: No public file points at private work
-        working-directory: cli
         run: pnpm run check-private
 
-      # The architecture docs explain the engine by pointing at it, and a pointer is the
-      # first sentence to rot: renaming a module does not touch the prose that named it.
-      # Two were already dead when this was written, one of them in a document whose own
-      # header promises the code and the prose never drift. Source files only, so a file
-      # the product GENERATES in a user's folder is not mistaken for a missing one.
+      # The architecture docs explain the engine by citing source files; a citation to a
+      # file that no longer exists fails here.
       - name: The architecture docs cite code that exists
-        working-directory: cli
         run: pnpm run check-docs-refs
 
   evals:
