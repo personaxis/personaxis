@@ -27,7 +27,8 @@ import {
   writeState,
   stateExists,
 } from "../persona.js";
-import { withStateLock } from "../lock.js";
+import { acquireStateLock } from "../lock.js";
+import { fileRecordStorage, type RecordStorage } from "../record/store.js";
 import {
   readMemory,
   commitMemoryEntry,
@@ -38,8 +39,33 @@ import {
 } from "../memory.js";
 
 export interface LockProvider {
-  /** Run `fn` while holding the exclusive lock for `key` (a persona's state path). */
-  withLock<T>(key: string, fn: () => T): T;
+  /**
+   * Take the exclusive lock for `key` (a persona's state path) and return its release.
+   *
+   * Acquire-and-release rather than `withLock(key, fn)`, and the change was forced by
+   * a real hazard rather than taste. `withLock` is generic over what the callback
+   * returns, so handing it an async function type-checks and releases the lock the
+   * moment the promise is CREATED. Everything after the first await then runs
+   * unprotected, and a persona's read, mutate and print is entirely after the first
+   * await. A lock held only until the first await looks like protection in the code
+   * and provides none.
+   */
+  acquire(key: string): () => void;
+}
+
+/**
+ * Hold a lock across a synchronous body. Safe only because `fn` cannot await.
+ *
+ * Kept as a helper on top of `acquire` rather than as a method on the port, so
+ * nothing can implement the dangerous shape.
+ */
+export function withHeld<T>(lock: LockProvider, key: string, fn: () => T): T {
+  const release = lock.acquire(key);
+  try {
+    return fn();
+  } finally {
+    release();
+  }
 }
 
 export interface StateStore {
@@ -47,6 +73,19 @@ export interface StateStore {
   write(key: string, state: StateFile): void;
   exists(key: string): boolean;
 }
+
+/**
+ * Where a persona's record lives: the entries themselves, not a file of them.
+ *
+ * The seam had to move down a level once the record became the source. `StateStore`
+ * is a port over a document that is now printed rather than kept, so a hosted engine
+ * given only that port would be hosting the projection and losing the thing it is
+ * projected from. This is the same boundary at the level the truth is at.
+ *
+ * One declaration, in the module that knows what a record needs, rather than a
+ * second one here that could drift from it.
+ */
+export type RecordStore = RecordStorage;
 
 export interface MemoryStore {
   /** The curated long-term semantic memory (memory.md) as text. */
@@ -63,8 +102,15 @@ export interface ChainVerification {
 export interface LedgerStore {
   /** All episodic entries (the hash-chained ledger), oldest→newest. */
   read(key: string): MemoryEntry[];
-  /** Append one entry, extending the hash chain. */
-  append(key: string, entry: MemoryEntry): void;
+  /**
+   * Append one entry, extending the hash chain, and return WHAT WAS WRITTEN.
+   *
+   * E33: the commit re-anchors under a lock, because between preparing an entry and
+   * committing it another process on this machine may have appended. A caller that
+   * kept the prepared entry would hold a hash that is not in the file, and the
+   * evaluation written against that hash would name an entry nobody can find.
+   */
+  append(key: string, entry: MemoryEntry): MemoryEntry;
   /** Verify the chain is intact (tamper-evidence). */
   verify(key: string): ChainVerification;
   /** Erase an entry's content while keeping the chain verifiable (right-to-delete). */
@@ -84,6 +130,12 @@ export interface ModelClient {
 export interface Storage {
   lock: LockProvider;
   state: StateStore;
+  /**
+   * Optional while `state.json` is still written beside it. R8 is what makes this
+   * the only one of the two that matters, and the default is the filesystem so an
+   * adapter written before this existed keeps working.
+   */
+  record?: RecordStore;
   memory: MemoryStore;
   ledger: LedgerStore;
   model?: ModelClient;
@@ -92,8 +144,10 @@ export interface Storage {
 // ── default filesystem adapters (the reference implementation) ──────────────────
 
 export const fsLockProvider: LockProvider = {
-  withLock: (key, fn) => withStateLock(key, fn),
+  acquire: (key) => acquireStateLock(key),
 };
+
+export const fsRecordStore: RecordStore = fileRecordStorage;
 
 export const fsStateStore: StateStore = {
   read: (key) => readState(key),
@@ -118,5 +172,16 @@ export const fsLedgerStore: LedgerStore = {
 
 /** The default filesystem storage bundle (git-versionable persona folder). */
 export function defaultFsStorage(): Storage {
-  return { lock: fsLockProvider, state: fsStateStore, memory: fsMemoryStore, ledger: fsLedgerStore };
+  return {
+    lock: fsLockProvider,
+    state: fsStateStore,
+    record: fsRecordStore,
+    memory: fsMemoryStore,
+    ledger: fsLedgerStore,
+  };
 }
+
+// F2: where an ALLOWED action happens. Separate from the storage ports above because it
+// answers a different question (this machine or a container the workspace started), and
+// because it is emphatically not a security boundary: gating happens before it.
+export * from "./execution.js";

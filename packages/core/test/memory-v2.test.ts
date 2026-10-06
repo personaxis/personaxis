@@ -39,6 +39,7 @@ import {
   memoryTools,
   memoryDocs,
   salienceOf,
+  type Appraiser,
   type StateFile,
   type MemoryEntry,
 } from "../src/index.js";
@@ -145,6 +146,42 @@ describe("a stable fact survives a session (V2-F1.1, generalized; name is one in
     await loop.tick({ observation: "recuerda esto", source: "user" }); // salient, keeps the loop honest
     // And learning it the first time is an autobiographical milestone.
     expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(true);
+    // E16: the milestone is owned by the turn that produced it, not by a constant.
+    expect(readAutobiographical(personaPath).find((e) => e.event.includes("Mara"))?.owner).toBe("user");
+  });
+
+  it("E16: the same fact arriving from a TOOL is remembered, and does not become identity", async () => {
+    // The ASI06 loop this closes: a tool result reaches memory, and the next turn reads
+    // it back as the persona's own account of itself. Both halves are asserted, because
+    // refusing to remember anything a tool said would be a different bug.
+    //
+    // The appraiser is a stub, not HeuristicAppraiser: the heuristic one only extracts
+    // facts when `source === "user"`, so it can never reach this path. A MODEL-backed
+    // appraiser has no such filter (see APPRAISAL_JSON_SCHEMA's `preferences`), and it
+    // is the one that reads a poisoned tool result and proposes a preference from it.
+    writeFileSync(personaPath, fixture());
+    seed();
+    const fromTool: Appraiser = {
+      appraise: async () => ({
+        appraisal: "the observation states a name",
+        mutations: [],
+        memories: [],
+        preferences: [{ key: "interlocutor.name", value: "Mara", rationale: "stated in the observation" }],
+        confidence: 0.8,
+      }),
+    };
+    const loop = new LivingLoop(personaPath, { appraiser: fromTool });
+    await loop.tick({ observation: "the user's name is Mara", source: "tool" });
+
+    const pref = readPreferences(personaPath)["interlocutor.name"];
+    expect(pref?.value).toBe("Mara");
+    expect(pref?.owner).toBe("tool");
+    expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(false);
+
+    // Control on the same stub: from the user, the very same signal DOES earn the milestone.
+    rmSync(join(dirname(personaPath), "memory"), { recursive: true, force: true });
+    await new LivingLoop(personaPath, { appraiser: fromTool }).tick({ observation: "me llamo Mara", source: "user" });
+    expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(true);
   });
 
   it("non-salient chatter earns NO episodic entry (dedup with sessions/)", async () => {
@@ -217,6 +254,21 @@ describe("session distillation (V2-F1.3)", () => {
     expect(brief).toContain("roadmap");
     expect(sessionBrief(personaPath, "old")).toBe(""); // nothing besides the excluded one
   });
+
+  // E138: the first message is where people put their conditions. This one is the bench's, word for word, and its
+  // condition starts at character 110, which is where both memories used to cut it.
+  const CONDITION_LATE =
+    "I am making a small browser game for a jam. Two things about my players before anything else: a good number of them are colour blind, red and green especially, and they play on old laptops with integrated graphics. With that in mind, what would you change first about a platformer that feels floaty?";
+
+  it("a condition stated late in the first message crosses into the next session, in both memories (E138)", () => {
+    const event = distillTurns([{ type: "turn", role: "user", content: CONDITION_LATE, ts: "t1" }] as never, "jam").find((x) => x.kind === "event");
+    expect(event?.content).toContain("colour blind, red and green");
+    writeFileSync(personaPath, fixture());
+    ensureSession(personaPath, { id: "jam", kind: "root", participants: ["(root)"], name: "jam", created: "2026-09-24", persona: "" });
+    appendTurn(personaPath, "jam", { role: "user", content: CONDITION_LATE });
+    appendTurn(personaPath, "jam", { role: "assistant", content: "Raise gravity first." });
+    expect(sessionBrief(personaPath, "next")).toContain("colour blind, red and green");
+  });
 });
 
 describe("retention pruning (V2-F1.6)", () => {
@@ -266,12 +318,12 @@ describe("retrieval (V2-F1.4)", () => {
     const tools = memoryTools(personaPath, { maxItems: 10, useEmbeddings: false, useReranker: false });
     const search = tools.find((t) => t.name === "memory_search")!;
     expect(search.isReadOnly).toBe(true);
-    const out = await search.execute({ query: "deploy" }, {} as never);
+    const out = await search.execute({ query: "deploy" }, {} as never, {} as never);
     expect(out).toContain("github actions");
     const id = out.match(/#[0-9a-f]{8}/)?.[0];
     expect(id).toBeTruthy();
     const get = tools.find((t) => t.name === "memory_get")!;
-    const full = await get.execute({ id }, {} as never);
+    const full = await get.execute({ id }, {} as never, {} as never);
     expect(full).toContain("github actions");
   });
 

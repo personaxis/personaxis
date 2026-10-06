@@ -14,17 +14,17 @@ personaxis improve [mode] [--persona <path>]
 | mode | behavior (qualitative self-edits to the layer-10 `persona` prompting fields) |
 |---|---|
 | `locked` | the spec never self-edits, humans only. |
-| `suggesting` | the persona PROPOSES edits; they QUEUE in the ledger for batch approval via `/review`. |
+| `suggesting` | the persona PROPOSES edits; they QUEUE in the ledger for batch approval via `personaxis review`. |
 | `autonomous` | proposals auto-apply, still gated by consensus + protected paths + the `user`-trust provenance gate. |
 
 > The mode governs **qualitative** evolution (prose). Numeric envelope nudges (mood/affect) are
 > cheap, clamped and reversible, so `suggesting` and `autonomous` behave the same for them, only
-> `locked` stops them. Review queued qualitative proposals with `/review` in the REPL.
+> `locked` stops them. Review queued qualitative proposals with [`personaxis review`](./review.md).
 
 ## How it writes
 Comment-preserving text surgery on the `improvement_policy.mode` line in the `personaxis.md`
-frontmatter, the source the runtime reads (`readMode`). The REPL has the same control as
-`/improve`.
+frontmatter, the source the runtime reads (`readMode`). In the app, the same control is in
+`/persona`, Evolution tab.
 
 ## Examples
 ```bash
@@ -32,5 +32,4 @@ personaxis improve                 # show current mode
 personaxis improve suggesting      # enable governed self-edit proposals
 ```
 
-> Not to be confused with the REPL `/mode` (sandbox posture). `improve` is the
-> self-improvement posture.
+`/mode` in the REPL is the sandbox posture, a different setting.

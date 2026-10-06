@@ -25,7 +25,7 @@ function seedSession(personaPath: string, name: string, turns: Array<[string, st
   const id = newSessionId();
   ensureSession(personaPath, {
     id,
-    kind: "root",
+    kind: "root", persona: "",
     participants: ["(root)"],
     name,
     created: new Date().toISOString(),
@@ -103,7 +103,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
     const id = newSessionId();
     ensureSession(personaPath, {
       id,
-      kind: "root",
+      kind: "root", persona: "",
       participants: ["(root)"],
       name: "with-evidence",
       created: new Date().toISOString(),
@@ -131,7 +131,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
     const id = newSessionId();
     ensureSession(personaPath, {
       id,
-      kind: "root",
+      kind: "root", persona: "",
       participants: ["(root)"],
       name: "n",
       created: new Date().toISOString(),

@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "fs";
 import { resolve, relative, dirname, basename, join } from "path";
 import { homedir } from "os";
 import matter from "gray-matter";
+import { run } from "@personaxis/core";
 
 const PERSONAXIS_DIR = ".personaxis";
 
@@ -140,15 +141,6 @@ export function resolvePersonaSourcePath(target?: string): string {
 }
 
 /**
- * Canonical location of the COMPILED document for a given quantitative spec:
- *   sub-persona -> `.personaxis/personas/<slug>/PERSONA.md` (inside its folder)
- *   root persona -> `<repo>/PERSONA.md` (one level ABOVE `.personaxis/`)
- *   root persona in the user's HOME -> `~/.personaxis/PERSONA.md`
- * The HOME exception is a documented assumption (SPEC is silent): the home directory is
- * not a project root, so a loose `~/PERSONA.md` would be litter the user never finds.
- * Single owner of this rule; compile (write) and the REPL (read) both use it.
- */
-/**
  * Resolve a `-p/--persona` OPTION with a cwd-literal default: an explicit path wins
  * untouched; when the caller left the default and it does not exist at the cwd, fall
  * back to the walked-up root spec (same discovery `personaxis` itself uses).
@@ -163,18 +155,18 @@ export function resolvePersonaOption(optPath: string, def = ".personaxis/persona
   }
 }
 
-export function compiledPathFor(personaPath: string): string {
-  const baseDir = dirname(personaPath);
-  if (isSubagentPath(personaPath)) return join(baseDir, "PERSONA.md");
-  const parent = dirname(baseDir);
-  if (sameDir(parent, homedir())) return join(baseDir, "PERSONA.md");
-  return join(parent, "PERSONA.md");
-}
-
-/** True if `filePath` belongs to a subagent persona under `.personaxis/personas/<slug>/`. */
-export function isSubagentPath(filePath: string): boolean {
-  return filePath.replace(/\\/g, "/").includes(`${PERSONAXIS_DIR}/personas/`);
-}
+/*
+ * Both of these moved to `@personaxis/core` and are re-exported here so every caller
+ * in this package keeps working unchanged.
+ *
+ * They moved because the SDK could not import them. A library cannot depend on the
+ * CLI, so the SDK wrote its own version of `compiledPathFor` and got the root case
+ * wrong: it looked beside the spec, where only a SUB-persona's compiled document
+ * lives, so `compiledIdentity()` silently returned the raw spec body for every
+ * ordinary project. A question with two answers has one owner or it has none.
+ */
+export const compiledPathFor = run.compiledPathFor;
+export const isSubagentPath = run.isSubagentPath;
 
 /**
  * The full slug chain for a (possibly NESTED) sub-persona path. A persona at

@@ -21,7 +21,8 @@ import { hostname } from "node:os";
 import chalk from "chalk";
 import { isAwake, readLiveStatus } from "./fleet.js";
 import { hostsFor } from "./repl/scope.js";
-import {
+import { stateOf,
+  type MutationLogEntry,
   loadPersona,
   readState,
   extractEnvelopes,
@@ -50,6 +51,7 @@ import { envelopeBars, sigilLines } from "@personaxis/tui/visual";
 import { AppFrame, SelectList, Field, Toast, type ListItem, type KeyHint } from "@personaxis/tui/ui";
 import { windowFor } from "@personaxis/tui/viewport";
 import { runFullscreen } from "@personaxis/tui/fullscreen";
+import { GATED_PROVIDERS } from "./saas-gating.js";
 import { loadConfig, saveConfig, configPath, type PersonaxisConfig } from "./config.js";
 import {
   buildProfileFromAnswers,
@@ -84,7 +86,7 @@ const PROVIDERS: ListItem[] = [
   { value: "cohere", title: "Cohere", desc: "Cohere's compatibility API (COHERE_API_KEY)" },
   { value: "remote", title: "Personaxis hosted", desc: "our managed models (paid)" },
   { value: "agent", title: "Coding agent", desc: "no key; hands compile prompts to Claude Code / Codex" },
-];
+].filter((p) => !GATED_PROVIDERS.includes(p.value)); // L14: the hosted provider is not offered in this version
 
 // ── The model wizard as data (one stateful form, not sequential renders) ─────
 
@@ -680,7 +682,10 @@ function StateSection(props: { personaPath: string }): React.JSX.Element {
   try {
     const handle = loadPersona(props.personaPath);
     const fm = handle.frontmatter;
-    const st = readState(handle.statePath);
+    const st = stateOf(handle);
+    // Looking at a persona must not create it, so a persona that has not started says
+    // so rather than being brought into existence by having been looked at.
+    if (!st) return <Text dimColor>{"  not initialized yet · personaxis state init"}</Text>;
     const env = extractEnvelopes(fm);
     const theme = personaTheme(fm);
     return (
@@ -702,8 +707,9 @@ function StateSection(props: { personaPath: string }): React.JSX.Element {
 
 function AuditSection(props: { personaPath: string }): React.JSX.Element {
   try {
-    const st = readState(loadPersona(props.personaPath).statePath);
+    const st = stateOf(loadPersona(props.personaPath));
     const chain = verifyMemoryChain(props.personaPath);
+    const log = st?.mutation_log ?? [];
     const ledger = proposals(props.personaPath);
     return (
       <Box flexDirection="column">
@@ -714,10 +720,10 @@ function AuditSection(props: { personaPath: string }): React.JSX.Element {
         </Text>
         <Text> </Text>
         <Text bold>{"Mutation log (last 12)"}</Text>
-        {st.mutation_log.slice(-12).map((m, i) => (
+        {log.slice(-12).map((m: MutationLogEntry, i: number) => (
           <Text key={i} dimColor>{`  ${m.ts}  ${m.field}: ${m.from} → ${m.to}${m.clamped ? "  clamped" : ""}`}</Text>
         ))}
-        {st.mutation_log.length === 0 ? <Text dimColor>{"  (no mutations yet)"}</Text> : null}
+        {log.length === 0 ? <Text dimColor>{"  (no mutations yet)"}</Text> : null}
       </Box>
     );
   } catch (e) {

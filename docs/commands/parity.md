@@ -1,35 +1,34 @@
-# TUI ↔ external parity
+# App ↔ command-line parity
 
-> V5.P5.1. The rule: EVERY capability has two doors over the same engine: a miniapp/command
-> inside the TUI (menus, arrows, live refresh) and a non-interactive surface a coding agent,
-> a script or CI can call (`personaxis <cmd>`, plain text or JSON). Agents cannot drive
-> menus; they get flags. The REPL also passes any unknown `/name` through to
-> `personaxis <name>`.
+Most capabilities have two doors over the same engine: a view or command inside the app (menus,
+arrows, live refresh) and a command a coding agent, a script or CI can call, in plain text or
+JSON. Agents cannot drive menus, so they get flags. Inside the app, an unknown `/name` runs
+`personaxis <name>`, and an old command that became a tab says where it went (`/help moved`).
 
-| Capability | Inside the TUI | Outside (agents/CI) | Machine-readable |
+| Capability | Inside the app | Outside (agents, CI) | Machine-readable |
 |---|---|---|---|
 | Talk one turn | chat | `personaxis -p "<prompt>"` | `--output-format json \| stream-json` |
-| Status / config / usage / stats | `/status` (Settings miniapp) | `personaxis state show`, `personaxis model`, session files | `state show` JSON, sessions JSONL |
-| Context breakdown | `/context [all]` | (session-bound; use `-p` format json for turn metering) | stream-json events |
-| Drift, both planes | `/drift` view | `personaxis state drift -f <spec>` | exit 2 on exceedance (CI gate) |
-| State history / rewind | `/rewind` timeline | `personaxis state rebuild`, `/rewind <n>` textual | mutation_log JSONL |
-| Sessions | `/resume` picker | `personaxis --resume <id>` / `--continue` | sessions JSONL |
-| Memory | `/memory` browser | `personaxis observe`, memory files | `memory/*.jsonl` |
-| Improve mode | `/improve` menu | `personaxis improve <mode>` | text verdict |
-| Review queue | `/review` view | `personaxis edit` + `/review approve <id>` textual | self-edits ledger JSONL |
-| Doctor / validate / lint | `/doctor [@sub] [net]` | `personaxis validate <file>`, `personaxis lint <file>` | exit codes (5-status contract) |
-| Model | `/model` menu | `personaxis model` · `model set <name> [--persona <slug\|main>] [--project]` | `model --json` |
-| Hooks | `/hooks` submenu | `personaxis hooks install --host <h> [-g]` | text + exit code |
-| Skills | `/skill` miniapp | `personaxis skills list \| pull` | skills-manifest.json |
-| Proof | `/proof` (suspension) | `personaxis proof --auto [--quick] [--demo] [--persona <p>]` | exit 0 only if every check passed |
-| Create | `/create` (wizard) | `personaxis create --from-* --yes [--json] [--no-polish]` | `--json` (spec+gates+provenance) |
+| Status, config, usage | `/status` | `personaxis status`, `personaxis model` | `--json` on both |
+| Context breakdown | `/context` | (session-bound; `-p --output-format json` meters a turn) | stream-json events |
+| Distance from baseline | `/drift` | `personaxis drift`, `personaxis state drift` | `--json`; `state drift` exits 2 past a threshold |
+| State history and rewind | `/audit → Timeline` | `personaxis state show`, `personaxis state rewind <n>` | `--json` |
+| Integrity and replay | `/audit → Integrity` | `personaxis audit --tab Integrity` | `--json` |
+| Sessions | `/resume` | `personaxis --resume <id>`, `--continue` | session files (JSONL) |
+| Memory | `/memory` | `personaxis memory`, `personaxis observe` | `--json` |
+| Goal | `/persona → Evolution` | `personaxis goal [text]`, `goal --clear` | `--json` |
+| Improvement mode | `/persona → Evolution` | `personaxis improve <mode>` | text verdict |
+| Review queue | `/persona → Evolution` | `personaxis review [approve\|reject] [id]` | `--json` |
+| Doctor, validate, lint | `/doctor` | `personaxis doctor`, `validate`, `lint` | `--json`; exit codes (five-status contract) |
+| Model | `/model` | `personaxis model`, `model set <name> [--persona <slug>] [--project]` | `model --json` |
+| Host hooks | `/status → Daemons` | `personaxis hooks install --host <h>`, `hooks check` | text and exit code |
+| Skills | `/skill` | `personaxis skills list \| pull` | skills-manifest.json |
+| Proof | `/doctor → Proof` | `personaxis proof --auto [--quick] [--demo] [--persona <p>]` | exit 0 only if every check passed |
+| Create | `/create` | `personaxis create --from-* --yes [--json] [--no-polish]` | `--json` (spec, gates, provenance) |
 | Compile | `/compile` | `personaxis compile [slug] [--platform <host>]` | manifest.json hashes |
-| Serve | `/serve [port]` | `personaxis serve -p <spec> [--host] [--token]` | HTTP endpoints |
-| Background tasks | `/bg` + `/tasks` | task records + `.out` stream-json under `.personaxis/tasks/` | JSONL events |
-| Fleet | Command Center Fleet (g = all projects) | `personaxis ps` | `.live.json` markers |
-| Attestation | (see docs) | `personaxis attest [--check] [--ttl]` | attestation JSON |
+| Serve over HTTP | `/status → Daemons` | `personaxis serve -p <spec> [--host] [--token]` | HTTP endpoints |
+| Background tasks | `/bg` | task records and `.out` stream-json under `.personaxis/tasks/` | JSONL events |
+| Fleet | `/menu → All my projects` | `personaxis ps`, `personaxis overseer show` | `.live.json` markers |
+| Attestation | (command line only) | `personaxis attest [--check] [--ttl]` | `--format vc \| a2a` |
 
-Known gaps (tracked, honest): `/context` has no standalone external twin (its inputs are
-session-scoped); `drift`/`audit` JSON output beyond exit codes is served by the HTTP surface
-(`/persona/state`, `/persona/audit`) rather than flags. If an agent needs one of these as a
-flag, file it; the registry pattern makes additions cheap.
+Known gap: `/context` has no command-line twin, because what it measures belongs to a live
+session.

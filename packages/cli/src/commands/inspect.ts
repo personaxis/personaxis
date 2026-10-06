@@ -14,11 +14,11 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { readState, proposals, applySelfEdit, rejectSelfEdit, readMemoryTypes } from "@personaxis/core";
+import { ensureState, readState, proposals, applySelfEdit, rejectSelfEdit, readMemoryTypes } from "@personaxis/core";
 import { resolve } from "node:path";
 import { resolvePersonaSourcePath } from "../load.js";
 import { makeCtx } from "../repl/session.js";
-import { makeMeter, readGoalText } from "../repl/config.js";
+import { goalPathFor, makeMeter, readGoalText, writeGoalAt } from "../repl/config.js";
 import { loadPersona } from "@personaxis/core";
 import { statusLines } from "../repl/views/settings-data.js";
 import { auditLines, AUDIT_TABS } from "../repl/views/audit-data.js";
@@ -60,13 +60,13 @@ function emit(lines: string[], json: unknown, asJson: boolean): void {
 }
 
 export const statusCommand = new Command("status")
-  .description("Snapshot of a persona right now: identity, model, posture, drift, memory, mutations")
+  .description("Snapshot of a persona right now: name and role, model, posture, distance from baseline, memory, mutations")
   .option("-p, --persona <path>", "Persona to inspect (defaults to the one in scope)")
   .option("--json", "Emit machine-readable JSON")
   .action((opts: { persona?: string; json?: boolean }) => {
     const ctx = inspectCtx(opts.persona);
     const lines = statusLines(ctx);
-    const st = readState(ctx.handle.statePath);
+    const st = ensureState(ctx.handle);
     emit(
       lines,
       {
@@ -157,12 +157,18 @@ export const driftCommand = new Command("drift")
   });
 
 export const goalCommand = new Command("goal")
-  .description("Show the persona's standing goal (set it from the session with /goal)")
+  .description("Show the persona's standing goal, or set it (in the app: /persona → Evolution)")
+  .argument("[text...]", "The new standing goal (omit to show the current one)")
   .option("-p, --persona <path>", "Persona to inspect (defaults to the one in scope)")
+  .option("--clear", "Remove the standing goal")
   .option("--json", "Emit machine-readable JSON")
-  .action((opts: { persona?: string; json?: boolean }) => {
+  .action((words: string[], opts: { persona?: string; clear?: boolean; json?: boolean }) => {
     const path = resolvePersonaSourcePath(opts.persona);
     if (!opts.persona) noteInheritance(path);
+    // E171: the door `/goal <text>` was retired to. Same file and same writer as the app's
+    // Evolution tab; empty text clears, which is what `--clear` says out loud.
+    const text = words.join(" ").trim();
+    if (text || opts.clear) writeGoalAt(goalPathFor(path), opts.clear ? "" : text);
     const goal = readGoalText(loadPersona(path));
     emit(
       [goal ? `  ${chalk.cyan("goal")}  ${goal}` : chalk.dim("  no standing goal set")],

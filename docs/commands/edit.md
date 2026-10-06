@@ -12,5 +12,11 @@ personaxis edit identity.short_name "Vega"
 - The value is coerced to the current value's type; wrong types are rejected.
 - Edits to `self_regulation` and other governance-controlled layers are refused unless the
   governance policy allows the actor.
-- **Inside the app:** `/review` decides queued edits; Settings > Config edits the
-  session-level knobs in place.
+- Inside the app, queued edits are decided in `/persona`, Evolution tab.
+
+| Flag | Effect |
+|---|---|
+| `--slug <slug>` | edit a sub-persona's spec instead of the root |
+| `--force` | allow editing a protected or governance-controlled path (governance can still refuse) |
+| `--reason <text>` | rationale recorded in the self-edit ledger |
+| `--dry-run` | show the change and its validation, write nothing |

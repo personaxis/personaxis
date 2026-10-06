@@ -9,20 +9,28 @@ import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { offered } from "../src/saas-gating.js";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..");
 const docsDir = join(repoRoot, "docs", "commands");
 const indexTs = join(here, "..", "src", "index.ts");
 
+/**
+ * The commands this version registers: the `COMMANDS` list of src/index.ts, less what the gating table keeps out
+ * (L14). Read from the source rather than imported, because index.ts parses argv on import.
+ */
+function registeredCommands(src: string): string[] {
+  const list = /const COMMANDS = \[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
+  return [...list.matchAll(/(\w+)Command,/g)].map((m) => m[1]!).filter((name) => offered(name));
+}
+
 /** Commands documented on a shared/combined page. */
-const PAGE_ALIAS: Record<string, string> = {
-  push: "push-pull",
-  pull: "push-pull",
-};
+const PAGE_ALIAS: Record<string, string> = {};
 
 describe("docs/commands parity (V6.7)", () => {
   const src = readFileSync(indexTs, "utf-8");
-  const commands = [...src.matchAll(/addCommand\((\w+)Command/g)].map((m) => m[1]);
+  const commands = registeredCommands(src);
 
   it("finds the registered command list", () => {
     expect(commands.length).toBeGreaterThan(30);

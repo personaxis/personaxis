@@ -63,14 +63,17 @@ export const DEFAULT_POLICY: Policy = {
 };
 
 /**
- * FR.8 (Codex protocol.rs anti-escalation): subpaths that stay PROTECTED even
- * inside a writable root. `.git/hooks` = arbitrary-code-execution escalation
- * (a write there runs on the user's next git command); `.personaxis` = the
- * persona's identity artifacts, raw file writes would bypass the governance
- * ledger (self-edits are the sanctioned path). A deny here is NOT overridable
- * by the allow-list (deny precedence).
+ * FR.8 (Codex protocol.rs anti-escalation): folders that stay PROTECTED even
+ * inside a writable root, at any depth below it. `.git` = arbitrary-code-execution
+ * escalation: a write to `.git/hooks` runs on the user's next git command, and so
+ * does one to `.git/config` that sets `core.hooksPath` or `core.fsmonitor`, which
+ * is why Codex keeps the whole folder read-only rather than only its hooks
+ * (`WritableRoot.read_only_subpaths`); this list named only `.git/hooks` until
+ * 2026-09-11. `.personaxis` = the persona's identity artifacts, raw file writes
+ * would bypass the governance ledger (self-edits are the sanctioned path). A deny
+ * here is NOT overridable by the allow-list (deny precedence).
  */
-export const PROTECTED_SUBPATHS = [".git/hooks", ".personaxis"] as const;
+export const PROTECTED_SUBPATHS = [".git", ".personaxis"] as const;
 
 /** Named permission profiles (FR.8), one word instead of four knobs. */
 export const PERMISSION_PROFILES = {
@@ -92,16 +95,35 @@ export function policyFromProfile(
 
 /** True when `p` lands inside a protected subpath of any writable root. */
 export function isProtectedPath(p: string, policy: Policy): boolean {
-  const roots = [policy.workspaceRoot, ...(policy.writableRoots ?? [])];
-  const abs = isAbsolute(p) ? normalize(p) : normalize(`${policy.workspaceRoot}/${p}`);
-  for (const root of roots) {
-    for (const sub of PROTECTED_SUBPATHS) {
-      const guard = normalize(`${root}/${sub}`);
-      const rel = relative(guard, abs);
-      if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return true;
-    }
-  }
-  return false;
+  const abs = isAbsolute(p) ? normalize(p) : resolve(policy.workspaceRoot, p);
+  return [policy.workspaceRoot, ...(policy.writableRoots ?? [])].some((root) => isProtectedUnder(abs, root));
+}
+
+/**
+ * True when `p`, resolved from `root`, lands inside `root` and under one of the
+ * `PROTECTED_SUBPATHS`, at any depth: a nested project's `.personaxis` is another
+ * persona's identity, and a submodule's `.git` runs code like the top one does.
+ *
+ * Folded to lower case, because Windows and macOS do not tell `.Personaxis` from
+ * `.personaxis`, and protecting a folder nobody names that way on Linux costs nothing.
+ *
+ * Two defects fixed here on 2026-09-11 (E59): a name that merely starts with two
+ * dots inside a protected folder (`.personaxis/..notes`) was read as a way out of
+ * it and left unprotected, by the same bare-prefix test `pathEscapesWorkspace` had;
+ * and only the top level of a root was looked at.
+ */
+export function isProtectedUnder(p: string, root: string): boolean {
+  const base = resolve(root);
+  const target = isAbsolute(p) ? normalize(p) : resolve(base, p);
+  const rel = relative(base, target);
+  if (rel === "" || climbsOut(rel)) return false;
+  const protectedNames: readonly string[] = PROTECTED_SUBPATHS;
+  return rel.split(/[\\/]+/).some((segment) => protectedNames.includes(segment.toLowerCase()));
+}
+
+/** `..` alone, or `..` followed by a separator, or another drive: a relative path that leaves its base. */
+function climbsOut(rel: string): boolean {
+  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || isAbsolute(rel);
 }
 
 /**
@@ -155,9 +177,20 @@ export interface CommandClass {
   escapesWorkspace: boolean;
 }
 
-const NETWORK = /\b(curl|wget|nc|ncat|ssh|scp|telnet|ftp|rsync)\b|\bnpm\s+(install|i|publish)\b|\bpip\s+install\b/i;
-const WRITE = />>?|\b(rm|mv|cp|mkdir|touch|tee|dd|truncate|chmod|chown|ln)\b/i;
-const DESTRUCTIVE = /\brm\s+-[a-z]*f|\b(mkfs|fdisk|shred|:\(\)\s*\{)/i;
+// E62, 2026-09-11: PowerShell and cmd are shells too. Claude Code on Windows runs commands through a
+// tool called `PowerShell`, and none of its verbs were in these lists, so `Remove-Item -Recurse
+// -Force C:\Users` classified as nothing at all. And `rm -r` deletes a tree as surely as `rm -f`.
+const NETWORK =
+  /\b(curl|wget|nc|ncat|ssh|scp|telnet|ftp|rsync)\b|\bnpm\s+(install|i|publish)\b|\bpip\s+install\b|\b(Invoke-WebRequest|Invoke-RestMethod|iwr|irm|Start-BitsTransfer|Send-MailMessage)\b|Net\.WebClient/i;
+const WRITE =
+  />>?|\b(rm|mv|cp|mkdir|touch|tee|dd|truncate|chmod|chown|ln|del|erase|rmdir)\b|\b(Remove-Item|Set-Content|Add-Content|Out-File|New-Item|Copy-Item|Move-Item|Rename-Item|Clear-Content)\b/i;
+const DESTRUCTIVE =
+  /\brm\s+-[a-z]*[rf]|\b(mkfs|fdisk|shred|:\(\)\s*\{)|\bRemove-Item\b[^|;&\n]*\s-(r|fo)|\b(rd|rmdir|del|erase)\b[^|;&\n]*\s\/s\b|\b(Format-Volume|Clear-Disk)\b/i;
+
+/** True when a command is destructive by the documented classification: a tree delete, a forced delete, a disk format. */
+export function isDestructiveCommand(cmd: string): boolean {
+  return DESTRUCTIVE.test(cmd);
+}
 
 /**
  * A leading-slash token that is really a Windows/CLI SWITCH, not a filesystem path
@@ -174,19 +207,88 @@ export function classifyCommand(cmd: string, workspaceRoot: string): CommandClas
   const writesFiles = WRITE.test(cmd);
   const network = NETWORK.test(cmd);
   const destructive = DESTRUCTIVE.test(cmd);
-  const escapesWorkspace = (cmd.match(/(?:^|\s)(\/[^\s'"]+|[~][^\s'"]*|\.\.\/[^\s'"]*)/g) ?? [])
-    .map((tok) => tok.trim())
-    .filter((tok) => !isCliSwitch(tok))
-    .some((tok) => pathEscapesWorkspace(tok, workspaceRoot));
+  const escapesWorkspace = commandPathTokens(cmd).some((tok) => pathEscapesWorkspace(tok, workspaceRoot));
   return { writesFiles, network, destructive, escapesWorkspace };
 }
 
-/** True if `p` resolves outside `root`. */
+/**
+ * E85: when a zero exit code proves what somebody thinks it proves.
+ *
+ * Adopted without changes from the note `trabajar-sin-nadie-delante` (2026-08-22), which measured it in a
+ * repository that had already been wrong about it: a command's exit code attributes to that command only when
+ * it was the ONLY command of the sequence, or when the whole sequence is conjunctions (`&&`) and the code was
+ * zero. A pipeline reports the LAST stage, so `tests | tee log` exits zero when the tests failed; a disjunction
+ * runs the right side precisely when the left failed, so zero can mean the fallback worked; and a background
+ * job exits immediately with the shell's code, not the job's.
+ *
+ * Pure and about the text, because the verdict has to be readable before anything runs. Quotes are respected,
+ * so an operator inside a string is not an operator: `echo "a && b"` is one command.
+ */
+export function exitCodeAttributes(cmd: string): { readonly attributes: boolean; readonly why: string } {
+  const text = cmd.trim();
+  if (!text) return { attributes: false, why: "there is no command" };
+
+  const operators: string[] = [];
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    const pair = text.slice(i, i + 2);
+    if (pair === "&&" || pair === "||") {
+      operators.push(pair);
+      i += 1;
+      continue;
+    }
+    // A single `&` that is not `&&` backgrounds what came before it; `;` and a newline chain unconditionally,
+    // so what the code reports is only the last one. A pipe reports the last stage.
+    if (ch === "&" || ch === "|" || ch === ";" || ch === "\n") operators.push(ch);
+  }
+
+  if (operators.length === 0) return { attributes: true, why: "one command, so its code is its own" };
+  const bad = operators.find((op) => op !== "&&");
+  if (bad === undefined) return { attributes: true, why: "every step is a conjunction, so zero means each one passed" };
+  const named =
+    bad === "|" ? "a pipeline reports its last stage" : bad === "||" ? "a disjunction runs the right side only when the left failed" : bad === "&" ? "a background job returns the shell's code, not its own" : "an unconditional chain reports only the last command";
+  return { attributes: false, why: named };
+}
+
+/**
+ * The tokens of a command that could be a way out: absolute (`/x`, `C:\x`), home (`~/x`), or any
+ * token with a `..` segment anywhere in it. The last used to be only a token STARTING with `../`, so
+ * `cat docs/../../secret` was never looked at. A relative token with no `..` is not returned: it
+ * lands inside whatever folder the command runs in. A token may open with a quote (E62): `rm -rf
+ * "C:\Users"` hid its path from a scan that wanted whitespace right before it.
+ */
+export function commandPathTokens(cmd: string): string[] {
+  return (cmd.match(/(?:^|\s)['"]?(\/[^\s'"]+|[A-Za-z]:[\\/][^\s'"]*|[~][^\s'"]*|[^\s'"]*\.\.[\\/][^\s'"]*)/g) ?? [])
+    .map((tok) => tok.trim().replace(/^['"]/, ""))
+    .filter((tok) => !isCliSwitch(tok));
+}
+
+/**
+ * True if `p` resolves outside `root`.
+ *
+ * Always resolved. The first version returned "inside" for any relative path that did not
+ * START with `..`, without resolving it, so `docs/../../x` passed the read gate, the file-write
+ * gate and the command scan as a path inside the workspace. Found 2026-09-11.
+ *
+ * Symlinks are not followed: a link inside the workspace that points out of it is reported as
+ * inside. That needs the filesystem, and this is a pure check on a string.
+ */
 export function pathEscapesWorkspace(p: string, root: string): boolean {
   if (p.startsWith("~")) return true;
-  if (!isAbsolute(p) && !p.startsWith("..")) return false;
-  const rel = relative(normalize(root), normalize(isAbsolute(p) ? p : `${root}/${p}`));
-  return rel.startsWith("..") || isAbsolute(rel);
+  const base = resolve(root);
+  const target = isAbsolute(p) ? normalize(p) : resolve(base, p);
+  // `..` alone or `..` followed by a separator is a way up. A name that merely starts with two
+  // dots (`..cache`) is a folder inside, and a bare prefix test used to call it a way out.
+  return climbsOut(relative(base, target));
 }
 
 export type Decision = "allow" | "ask" | "deny";
@@ -268,8 +370,11 @@ export function evaluateCommand(cmd: string, policy: Policy = DEFAULT_POLICY): C
 /** Strictness order for approval modes (stricter = later). */
 const APPROVAL_STRICTNESS: ApprovalMode[] = ["never", "on-failure", "on-request", "untrusted"];
 
-/** FR.8: resolve the approval mode for a classified command (strictest category wins). */
-function effectiveApproval(policy: Policy, klass: CommandClass): ApprovalMode {
+/**
+ * FR.8: resolve the approval mode for a classified command (strictest category wins).
+ * Exported for the consent matrix (E61), which has to read the same answer this gate reads.
+ */
+export function effectiveApproval(policy: Policy, klass: CommandClass): ApprovalMode {
   const candidates: ApprovalMode[] = [policy.approval];
   const a = policy.approvals;
   if (a) {
@@ -280,6 +385,19 @@ function effectiveApproval(policy: Policy, klass: CommandClass): ApprovalMode {
   return candidates.reduce((strictest, m) =>
     APPROVAL_STRICTNESS.indexOf(m) > APPROVAL_STRICTNESS.indexOf(strictest) ? m : strictest,
   );
+}
+
+/**
+ * O22: the stricter of two approval modes.
+ *
+ * Exported beside the order it reads, and reading that same order, because a second strictness scale written
+ * somewhere else is a scale that disagrees with this one the day somebody adds a mode. It exists for work
+ * handed to a colleague: the colleague acts under the lower ceiling of the two, and on this dimension the lower ceiling IS the stricter mode. It is not a preference: with
+ * `never` or `on-failure` a risky operation comes back `allow` from `evaluateCommand`, so a looser colleague
+ * would turn into silent permission what the asker would have sent to a person.
+ */
+export function stricterApproval(a: ApprovalMode, b: ApprovalMode): ApprovalMode {
+  return APPROVAL_STRICTNESS.indexOf(a) >= APPROVAL_STRICTNESS.indexOf(b) ? a : b;
 }
 
 /**

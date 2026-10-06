@@ -1,0 +1,756 @@
+/**
+ * Services that contain services, run with no model and no database.
+ *
+ * The persona turn is a fake that answers from a script, so every property below is about the
+ * composition and not about what a model happened to say. See the ADR "servicios compuestos".
+ */
+
+import { describe, expect, it } from "vitest";
+
+import {
+	clientBrief,
+	MAX_SERVICE_DEPTH,
+	checkComposition,
+	resumeService,
+	runService,
+	type PersonaStepResult,
+	type ServiceDef,
+	type ServicePorts,
+} from "../../src/service/compose.js";
+
+type Script = Record<string, PersonaStepResult>;
+
+/** Ports whose persona turns come from a script keyed by persona address. */
+function ports(defs: ServiceDef[], script: Script, approve: "approved" | "rejected" | "unavailable" = "approved") {
+	const byAddress = new Map(defs.map((d) => [d.address, d]));
+	const prompts: Record<string, string> = {};
+	const calls: string[] = [];
+	const p: ServicePorts = {
+		resolveService: (a) => byAddress.get(a),
+		async runPersonaStep({ personaRef, prompt }) {
+			calls.push(personaRef);
+			prompts[personaRef] = prompt;
+			return script[personaRef] ?? { outcome: "completed", summary: `${personaRef} done` };
+		},
+		async approve() {
+			return approve;
+		},
+	};
+	return { p, prompts, calls };
+}
+
+const line = (address: string, ...refs: Array<{ persona?: string; service?: string; approval?: boolean }>): ServiceDef => ({
+	address,
+	name: address,
+	steps: refs.map((r, i) => ({
+		position: i + 1,
+		instruction: `do part ${i + 1}`,
+		...(r.persona ? { personaRef: r.persona } : {}),
+		...(r.service ? { serviceRef: r.service } : {}),
+		...(r.approval ? { requiresApproval: true } : {}),
+	})),
+});
+
+describe("a service of personas", () => {
+	it("runs the steps in order and hands each one what the last left", async () => {
+		const svc = line("contracts", { persona: "reader" }, { persona: "reviewer" });
+		const { p, prompts, calls } = ports([svc], { reader: { outcome: "completed", summary: "found 3 risky clauses" } });
+		const r = await runService(svc, p);
+		expect(r.status).toBe("completed");
+		expect(calls).toEqual(["reader", "reviewer"]);
+		// The handover is the SaaS's own handoverText, so the second step reads the first's note.
+		expect(prompts.reviewer).toContain("found 3 risky clauses");
+	});
+
+	it("ends the whole service when one of its own steps stops, which is what advance decides", async () => {
+		const svc = line("watch", { persona: "watcher" }, { persona: "writer" });
+		const { p, calls } = ports([svc], { watcher: { outcome: "stopped", summary: "nothing new" } });
+		const r = await runService(svc, p);
+		expect(r.status).toBe("completed");
+		expect(calls).toEqual(["watcher"]);
+	});
+});
+
+describe("a service that is a step of another", () => {
+	it("runs the sub-service to the end and hands its result to the next step", async () => {
+		const sub = line("due-diligence", { persona: "researcher" }, { persona: "summariser" });
+		const main = line("deal", { persona: "intake" }, { service: "due-diligence" }, { persona: "partner" });
+		const { p, prompts, calls } = ports([main, sub], { summariser: { outcome: "completed", summary: "no blockers found" } });
+		const r = await runService(main, p);
+		expect(r.status).toBe("completed");
+		expect(calls).toEqual(["intake", "researcher", "summariser", "partner"]);
+		expect(prompts.partner).toContain("no blockers found");
+	});
+
+	it("briefs every step of the sub-service with the parent's step and what came before it", async () => {
+		// Found on 2026-09-11 preparing the first real run: the sub-service started with an empty
+		// handover, so due diligence did not know which deal it was checking.
+		const sub = line("due-diligence", { persona: "researcher" }, { persona: "summariser" });
+		const main: ServiceDef = {
+			address: "deal",
+			name: "deal",
+			steps: [
+				{ position: 1, personaRef: "intake", instruction: "take the deal in" },
+				{ position: 2, serviceRef: "due-diligence", instruction: "check the counterparty of this deal" },
+			],
+		};
+		const { p, prompts } = ports([main, sub], { intake: { outcome: "completed", summary: "counterparty is Acme Ltd" } });
+		await runService(main, p);
+		for (const who of ["researcher", "summariser"]) {
+			expect(prompts[who]).toContain("check the counterparty of this deal");
+			expect(prompts[who]).toContain("counterparty is Acme Ltd");
+		}
+		// Its own instruction still comes first, as stepPrompt decides.
+		expect(prompts.researcher?.startsWith("do part 1")).toBe(true);
+	});
+
+	it("carries the brief down more than one level", async () => {
+		const leaf = line("background-check", { persona: "checker" });
+		const mid = line("due-diligence", { service: "background-check" });
+		const main = line("deal", { persona: "intake" }, { service: "due-diligence" });
+		const { p, prompts } = ports([main, mid, leaf], { intake: { outcome: "completed", summary: "counterparty is Acme Ltd" } });
+		await runService(main, p);
+		expect(prompts.checker).toContain("counterparty is Acme Ltd");
+	});
+
+	// Each note is cut to 3 000 characters by handover.ts, so several notes are needed to pass the
+	// cap; one long note never does. The first version of these two tests used one, and passed
+	// nothing through the trimming at all.
+	const noted = (address: string, prefix: string, count: number, then: { service: string }): { def: ServiceDef; script: Script } => ({
+		def: line(address, ...Array.from({ length: count }, (_, i) => ({ persona: `${prefix}${i + 1}` })), then),
+		script: Object.fromEntries(
+			Array.from({ length: count }, (_, i) => [`${prefix}${i + 1}`, { outcome: "completed" as const, summary: `${prefix.toUpperCase()}${i + 1} ${"x".repeat(3_500)}` }]),
+		),
+	});
+
+	it("trims the outermost context first, and says so, when the brief would pass its cap", async () => {
+		const leaf = line("leaf", { persona: "checker" });
+		const mid = noted("mid", "near", 2, { service: "leaf" });
+		const root = noted("root", "far", 3, { service: "mid" });
+		const { p, prompts } = ports([root.def, mid.def, leaf], { ...root.script, ...mid.script });
+		await runService(root.def, p);
+		const prompt = prompts.checker ?? "";
+		expect(prompt).toContain("NEAR1");
+		expect(prompt).toContain("NEAR2");
+		// The oldest note of the outermost service is what goes, and the cut is announced.
+		expect(prompt).not.toContain("FAR1");
+		expect(prompt).toContain("FAR3");
+		expect(prompt).toContain("The start of the larger job is trimmed here");
+	});
+
+	it("drops the outer context entirely when the step right above fills the cap on its own", async () => {
+		const leaf = line("leaf", { persona: "checker" });
+		const mid = noted("mid", "near", 4, { service: "leaf" });
+		const root = noted("root", "far", 1, { service: "mid" });
+		const { p, prompts } = ports([root.def, mid.def, leaf], { ...root.script, ...mid.script });
+		await runService(root.def, p);
+		const prompt = prompts.checker ?? "";
+		expect(prompt).toContain("NEAR4");
+		expect(prompt).not.toContain("FAR1");
+		// Instruction, the brief from the step above (its handover capped at 12 000) and nothing else.
+		expect(prompt.length).toBeLessThan(13_000);
+	});
+
+	it("gives a service that is nobody's step no brief at all", async () => {
+		const svc = line("alone", { persona: "only" });
+		const { p, prompts } = ports([svc], {});
+		await runService(svc, p);
+		expect(prompts.only).toBe("do part 1");
+	});
+
+});
+
+describe("what the client asked for", () => {
+	it("reaches every step, before the handover and after the step's own instruction", async () => {
+		// A service is fixed steps; the request is what varies between two runs of it. Added
+		// 2026-09-11 so the same brief can go to a service and to a bare agent and be compared.
+		const svc = line("game", { persona: "designer" }, { persona: "builder" });
+		const { p, prompts } = ports([svc], { designer: { outcome: "completed", summary: "core loop is dodge and stack" } });
+		await runService(svc, p, { brief: clientBrief("Make me a small game about a cat crossing a road.") });
+		for (const who of ["designer", "builder"]) {
+			expect(prompts[who]).toContain("Make me a small game about a cat crossing a road.");
+			expect(prompts[who]).toContain("it is not an instruction from another step");
+		}
+		expect(prompts.designer?.startsWith("do part 1")).toBe(true);
+		// The request came before this service's own steps, so it reads before their handover.
+		const builder = prompts.builder ?? "";
+		expect(builder.indexOf("cat crossing a road")).toBeLessThan(builder.indexOf("core loop is dodge and stack"));
+	});
+
+	it("reaches the steps of a sub-service too, under the step that ran it", async () => {
+		const sub = line("build", { persona: "builder" });
+		const main = line("game", { persona: "designer" }, { service: "build" });
+		const { p, prompts } = ports([main, sub], { designer: { outcome: "completed", summary: "core loop is dodge and stack" } });
+		await runService(main, p, { brief: clientBrief("Make me a small game about a cat crossing a road.") });
+		expect(prompts.builder).toContain("cat crossing a road");
+		expect(prompts.builder).toContain("core loop is dodge and stack");
+	});
+
+	it("is nothing when the request is empty or only spaces, so no step reads an empty heading", () => {
+		expect(clientBrief("")).toBeNull();
+		expect(clientBrief("   \n\t ")).toBeNull();
+	});
+
+	it("trims a request past the cap and says where it was cut", () => {
+		const long = clientBrief("x".repeat(20_000)) ?? "";
+		expect(long.length).toBeLessThan(12_300);
+		expect(long).toContain("The rest of the request is trimmed here");
+	});
+});
+
+describe("a service that is a step of another, continued", () => {
+	it("holds each note once: a service step points at the step inside it that delivered", async () => {
+		// The first real run stored the documentation twice, once in the sub-service's last step
+		// and again in the parent's step, 4 068 characters each.
+		const sub = line("docs", { persona: "drafter" }, { persona: "editor" });
+		const main = line("release", { service: "docs" }, { persona: "notifier" });
+		const { p, prompts } = ports([main, sub], { editor: { outcome: "completed", summary: "THE REFERENCE" } });
+		const r = await runService(main, p);
+		const serviceStep = r.steps.find((s) => "service" in s.who);
+		expect(serviceStep?.summary).toBeNull();
+		expect(serviceStep?.deliveredBy).toEqual({ path: ["release", "docs"], position: 2 });
+		const delivered = r.steps.find((s) => s.path.join(">") === "release>docs" && s.position === 2);
+		expect(delivered?.summary).toBe("THE REFERENCE");
+		expect(r.steps.filter((s) => s.summary === "THE REFERENCE")).toHaveLength(1);
+		// And the next step of the parent still receives it: the pointer is for the record only.
+		expect(prompts.notifier).toContain("THE REFERENCE");
+		expect(r.summaryFrom).toEqual({ path: ["release"], position: 2 });
+	});
+
+	it("keeps the text on a service step when no step inside it left a note to point at", async () => {
+		// A sub-service that stopped without a note delivers its reason, and there is no step to
+		// point at, so the text stays on the parent's step.
+		const sub = line("quiet", { persona: "silent" }, { persona: "unused" });
+		const main = line("outer", { service: "quiet" });
+		const { p } = ports([main, sub], { silent: { outcome: "stopped", summary: null } });
+		const r = await runService(main, p);
+		const serviceStep = r.steps.find((s) => "service" in s.who);
+		expect(serviceStep?.deliveredBy).toBeUndefined();
+		expect(serviceStep?.summary).toBe("stopped at step 1");
+	});
+
+	it("leaves a service step without a note when nothing inside it left one", async () => {
+		const sub = line("quiet", { persona: "silent" });
+		const main = line("outer", { service: "quiet" }, { persona: "next" });
+		const { p, prompts } = ports([main, sub], { silent: { outcome: "completed", summary: null } });
+		const r = await runService(main, p);
+		const serviceStep = r.steps.find((s) => "service" in s.who);
+		expect(serviceStep?.summary).toBeNull();
+		expect(serviceStep?.deliveredBy).toBeUndefined();
+		// The next step is told plainly, in handover.ts's own words, that nothing was left.
+		expect(prompts.next).toContain("Left no note");
+	});
+
+	it("records the sub-service's steps under its own path", async () => {
+		const sub = line("child", { persona: "a" });
+		const main = line("parent", { service: "child" });
+		const { p } = ports([main, sub], {});
+		const r = await runService(main, p);
+		const inner = r.steps.find((s) => "persona" in s.who && s.who.persona === "a");
+		expect(inner?.path).toEqual(["parent", "child"]);
+	});
+
+	it("does NOT end the parent when a sub-service stops early: it delivered empty", async () => {
+		// The trap from the ADR. A step that stops ends its own service; if that propagated up,
+		// a sub-service's "nothing to do" would end a parent that still had work.
+		const sub = line("scan", { persona: "scanner" }, { persona: "unused" });
+		const main = line("report", { service: "scan" }, { persona: "writer" });
+		const { p, calls } = ports([main, sub], { scanner: { outcome: "stopped", summary: "nothing to scan" } });
+		const r = await runService(main, p);
+		expect(r.status).toBe("completed");
+		expect(calls).toContain("writer");
+		expect(calls).not.toContain("unused");
+	});
+
+	it("fails the parent step when the sub-service fails, and the parent stops there", async () => {
+		const sub = line("check", { persona: "checker" });
+		const main = line("ship", { service: "check" }, { persona: "shipper" });
+		const { p, calls } = ports([main, sub], { checker: { outcome: "failed", summary: null, reason: "the diff does not apply" } });
+		const r = await runService(main, p);
+		expect(r.status).toBe("failed");
+		expect(calls).not.toContain("shipper");
+		// The parent's step says which step of which service failed, and why, instead of "step 1
+		// failed", which on the parent's record reads as its own step 1.
+		expect(r.steps.find((s) => s.path.length === 1 && s.position === 1)?.reason).toBe(
+			"step 1 of check failed: the diff does not apply",
+		);
+	});
+
+	it("turns a persona port that throws into a failed step, and keeps the steps before it", async () => {
+		const svc = line("ship", { persona: "writer" }, { persona: "broken" }, { persona: "shipper" });
+		const { p, calls } = ports([svc], {});
+		const inner = p.runPersonaStep.bind(p);
+		p.runPersonaStep = async (input) => {
+			if (input.personaRef === "broken") throw new Error("provider 503");
+			return inner(input);
+		};
+		const r = await runService(svc, p);
+		expect(r.status).toBe("failed");
+		expect(r.steps.map((s) => s.outcome)).toEqual(["completed", "failed"]);
+		expect(r.steps[1]?.reason).toBe("provider 503");
+		expect(calls).not.toContain("shipper");
+	});
+
+	it("fails a step whose sub-service is not installed, instead of skipping it", async () => {
+		const main = line("ship", { service: "missing" }, { persona: "shipper" });
+		const { p, calls } = ports([main], {});
+		const r = await runService(main, p);
+		expect(r.status).toBe("failed");
+		expect(calls).not.toContain("shipper");
+	});
+});
+
+describe("what cannot be composed", () => {
+	it("finds a cycle before running anything", () => {
+		const a = line("a", { service: "b" });
+		const b = line("b", { service: "a" });
+		const map = new Map([a, b].map((d) => [d.address, d]));
+		expect(checkComposition(a, (x) => map.get(x)).some((m) => m.startsWith("cycle: a -> b -> a"))).toBe(true);
+	});
+
+	it("refuses a cycle at run time too, because a definition can change after it was checked", async () => {
+		const a = line("a", { service: "b" });
+		const b = line("b", { service: "a" });
+		const { p } = ports([a, b], {});
+		const r = await runService(a, p);
+		expect(r.status).toBe("failed");
+	});
+
+	it("refuses nesting deeper than the limit", async () => {
+		const chain: ServiceDef[] = [];
+		for (let i = 0; i <= MAX_SERVICE_DEPTH + 1; i += 1) {
+			chain.push(line(`s${i}`, i <= MAX_SERVICE_DEPTH ? { service: `s${i + 1}` } : { persona: "leaf" }));
+		}
+		const { p, calls } = ports(chain, {});
+		const r = await runService(chain[0]!, p);
+		expect(r.status).toBe("failed");
+		expect(calls).not.toContain("leaf");
+	});
+
+	it("reports a step with both references, or none", () => {
+		const svc: ServiceDef = {
+			address: "bad",
+			name: "bad",
+			steps: [
+				{ position: 1, instruction: "x", personaRef: "p", serviceRef: "s" },
+				{ position: 2, instruction: "y" },
+			],
+		};
+		const problems = checkComposition(svc, () => undefined);
+		expect(problems.filter((m) => m.includes("exactly one"))).toHaveLength(2);
+	});
+
+	it("reports positions with a gap", () => {
+		const svc: ServiceDef = { address: "gap", name: "gap", steps: [{ position: 1, instruction: "x", personaRef: "p" }, { position: 3, instruction: "y", personaRef: "q" }] };
+		expect(checkComposition(svc, () => undefined).some((m) => m.includes("no gaps"))).toBe(true);
+	});
+});
+
+describe("approval never happens by itself", () => {
+	it("continues when a person approves", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const { p, calls } = ports([svc], {}, "approved");
+		expect((await runService(svc, p)).status).toBe("completed");
+		expect(calls).toContain("sender");
+	});
+
+	it("ends without sending when a person rejects", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const { p, calls } = ports([svc], {}, "rejected");
+		expect((await runService(svc, p)).status).toBe("completed");
+		expect(calls).not.toContain("sender");
+	});
+
+	it("waits, and does not approve, when nobody can answer", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const { p, calls } = ports([svc], {}, "unavailable");
+		const r = await runService(svc, p);
+		expect(r.status).toBe("waiting");
+		expect(calls).not.toContain("sender");
+	});
+
+	it("makes the parent wait when a sub-service is waiting", async () => {
+		const sub = line("approve-me", { persona: "drafter", approval: true }, { persona: "after" });
+		const main = line("outer", { service: "approve-me" }, { persona: "final" });
+		const { p, calls } = ports([main, sub], {}, "unavailable");
+		const r = await runService(main, p);
+		expect(r.status).toBe("waiting");
+		expect(calls).not.toContain("final");
+	});
+});
+
+describe("the control of the control", () => {
+	it("a naive propagation of a sub-service's stop WOULD have ended the parent", async () => {
+		// Reproduces what the trap would do, so the suite proves the real implementation avoids it
+		// rather than passing because the scenario never exercised the stop.
+		const sub = line("scan", { persona: "scanner" });
+		const { p } = ports([sub], { scanner: { outcome: "stopped", summary: "nothing" } });
+		const r = await runService(sub, p);
+		// The sub-service itself did end early...
+		expect(r.status).toBe("completed");
+		expect(r.reason).toMatch(/stopped at step 1/);
+		// ...and a parent that read "stopped" as its own outcome would have ended, which is why the
+		// mapping in runSubService turns it into "completed" instead.
+	});
+});
+
+describe("a step that declares the files it leaves (E60)", () => {
+	/**
+	 * A folder in memory: a persona "writes" by putting a file in it, stamped with the time it did.
+	 * The check reads the same folder, so what it finds is what the step did and not what it said.
+	 */
+	function folder(existing: Record<string, number> = {}) {
+		const files = new Map<string, { bytes: number; at: number }>(
+			Object.entries(existing).map(([path, bytes]) => [path, { bytes, at: 0 }]),
+		);
+		const checked: Array<{ paths: readonly string[]; since: number }> = [];
+		const check: NonNullable<ServicePorts["checkProduced"]> = async ({ paths, since }) => {
+			checked.push({ paths, since });
+			const produced = paths.flatMap((path) => {
+				const file = files.get(path);
+				return file && file.at >= since ? [{ path, bytes: file.bytes }] : [];
+			});
+			return { produced, missing: paths.filter((path) => !produced.some((f) => f.path === path)) };
+		};
+		const write = (path: string, bytes: number) => files.set(path, { bytes, at: Date.now() });
+		return { check, write, checked };
+	}
+
+	const declaring = (address: string, persona: string, produces: string[], then?: string): ServiceDef => ({
+		address,
+		name: address,
+		steps: [
+			{ position: 1, personaRef: persona, instruction: "write the reference", produces },
+			...(then ? [{ position: 2, personaRef: then, instruction: "build on it" }] : []),
+		],
+	});
+
+	it("fails a step that said it wrote the file and did not, and stops the line there", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"], "reviewer");
+		const fs = folder();
+		const { p, calls } = ports([svc], { scribe: { outcome: "completed", summary: "saved to docs/refunds.md" } });
+		const r = await runService(svc, { ...p, checkProduced: fs.check });
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("step 1 was to write docs/refunds.md, and did not");
+		expect(calls).not.toContain("reviewer");
+		// What the agent claimed stays in the record, next to the reason that says it was not so.
+		expect(r.steps[0]).toMatchObject({ outcome: "failed", summary: "saved to docs/refunds.md" });
+	});
+
+	it("completes a step that wrote it, and records what it left in the SaaS's shape", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"], "reviewer");
+		const fs = folder();
+		const base = ports([svc], {});
+		const r = await runService(svc, {
+			...base.p,
+			checkProduced: fs.check,
+			async runPersonaStep(input) {
+				if (input.personaRef === "scribe") fs.write("docs/refunds.md", 1200);
+				return base.p.runPersonaStep(input);
+			},
+		});
+		expect(r.status).toBe("completed");
+		expect(r.steps[0]!.produced).toEqual([{ path: "docs/refunds.md", bytes: 1200 }]);
+		expect(r.steps[1]!.produced).toBeUndefined();
+	});
+
+	it("does not count a file that was already there before the step began", async () => {
+		const svc = declaring("docs", "scribe", ["docs/CHANGELOG.md"]);
+		const fs = folder({ "docs/CHANGELOG.md": 800 });
+		const { p } = ports([svc], {});
+		const r = await runService(svc, { ...p, checkProduced: fs.check });
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("docs/CHANGELOG.md");
+	});
+
+	it("names only the files that are missing", async () => {
+		const svc = declaring("docs", "scribe", ["docs/a.md", "docs/b.md"]);
+		const fs = folder();
+		const base = ports([svc], {});
+		const r = await runService(svc, {
+			...base.p,
+			checkProduced: fs.check,
+			async runPersonaStep(input) {
+				fs.write("docs/a.md", 10);
+				return base.p.runPersonaStep(input);
+			},
+		});
+		expect(r.steps[0]!.reason).toContain("was to write docs/b.md,");
+		expect(r.steps[0]!.reason).not.toContain("docs/a.md");
+		expect(r.steps[0]!.produced).toEqual([{ path: "docs/a.md", bytes: 10 }]);
+	});
+
+	it("does not check a step that already failed, which has its own reason", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const fs = folder();
+		const { p } = ports([svc], { scribe: { outcome: "failed", summary: null, reason: "the model timed out" } });
+		const r = await runService(svc, { ...p, checkProduced: fs.check });
+		expect(r.steps[0]!.reason).toBe("the model timed out");
+		expect(fs.checked).toHaveLength(0);
+	});
+
+	it("fails the step when the runner cannot check files, instead of taking the agent's word", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const { p } = ports([svc], {});
+		const r = await runService(svc, p);
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("this runner cannot check them");
+	});
+
+	it("fails the step when the check itself throws, and says so", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const { p } = ports([svc], {});
+		const r = await runService(svc, {
+			...p,
+			async checkProduced() {
+				throw new Error("EACCES");
+			},
+		});
+		expect(r.status).toBe("failed");
+		expect(r.steps[0]!.reason).toContain("the check itself failed: EACCES");
+	});
+
+	it("tells the agent what it will be checked on", async () => {
+		const svc = declaring("docs", "scribe", ["docs/refunds.md"]);
+		const fs = folder();
+		const { p, prompts } = ports([svc], {});
+		await runService(svc, { ...p, checkProduced: fs.check });
+		expect(prompts.scribe).toContain("the run checks that it wrote docs/refunds.md");
+	});
+
+	it("checks a step done by a whole service once that service has finished", async () => {
+		const sub = line("docs-update", { persona: "scribe" });
+		const main: ServiceDef = {
+			address: "release",
+			name: "release",
+			steps: [{ position: 1, serviceRef: "docs-update", instruction: "update the docs", produces: ["docs/refunds.md"] }],
+		};
+		const fs = folder();
+		const base = ports([main, sub], {});
+		const r = await runService(main, {
+			...base.p,
+			checkProduced: fs.check,
+			async runPersonaStep(input) {
+				fs.write("docs/refunds.md", 42);
+				return base.p.runPersonaStep(input);
+			},
+		});
+		expect(r.status).toBe("completed");
+		expect(r.steps.at(-1)).toMatchObject({ who: { service: "docs-update" }, produced: [{ path: "docs/refunds.md", bytes: 42 }] });
+		// And the sub-service's own steps were told what the parent expects of them.
+		expect(base.prompts.scribe).toContain("the run checks that it wrote docs/refunds.md");
+	});
+
+	it("refuses, before running, a declared file outside the service's folder", () => {
+		const svc: ServiceDef = {
+			address: "bad",
+			name: "bad",
+			steps: [{ position: 1, personaRef: "scribe", instruction: "x", produces: ["/etc/passwd", "../other/x.md", "~/.ssh/config", "C:\\x.md", ""] }],
+		};
+		const problems = checkComposition(svc, () => undefined);
+		expect(problems.filter((p) => p.includes("not relative"))).toHaveLength(3);
+		expect(problems.some((p) => p.includes("climbs out"))).toBe(true);
+		expect(problems.some((p) => p.includes("not a file path"))).toBe(true);
+	});
+});
+
+describe("picking up a run that waits (E97)", () => {
+	const question = {
+		question: "What is your niece's name?",
+		options: [{ label: "I will tell you" }, { label: "Leave a blank to fill in" }],
+		recommended: "I will tell you",
+	};
+
+	/** Ports whose `asker` stops at the question the first time it runs, and does its step every time after. */
+	function askingOnce(defs: ServiceDef[], asker: string, script: Script = {}) {
+		const base = ports(defs, script);
+		const seen: Record<string, string[]> = {};
+		let asked = false;
+		base.p.runPersonaStep = async (input) => {
+			base.calls.push(input.personaRef);
+			base.prompts[input.personaRef] = input.prompt;
+			(seen[input.personaRef] ??= []).push(input.prompt);
+			if (input.personaRef === asker && !asked) {
+				asked = true;
+				return { outcome: "failed", summary: null, reason: "waiting for an answer", waitingOnPerson: true, question };
+			}
+			return script[input.personaRef] ?? { outcome: "completed", summary: `${input.personaRef} done` };
+		};
+		return { ...base, seen };
+	}
+
+	it("says what a run waits for, precisely enough to pick it up", async () => {
+		const svc = line("party", { persona: "intake" }, { persona: "builder" });
+		const { p } = askingOnce([svc], "builder");
+		const r = await runService(svc, p);
+		expect(r.status).toBe("waiting");
+		expect(r.waiting).toMatchObject({ kind: "answer", path: ["party"], through: [], position: 2, question });
+	});
+
+	it("runs the step that asked again with the answer, and goes on from there without running the steps before it", async () => {
+		const svc = line("party", { persona: "intake" }, { persona: "builder" }, { persona: "checker" });
+		const { p, calls, seen, prompts } = askingOnce([svc], "builder", {
+			intake: { outcome: "completed", summary: "a cat game for a birthday" },
+			builder: { outcome: "completed", summary: "built Happy Birthday Mia" },
+		});
+		const first = await runService(svc, p);
+		const again = await resumeService(svc, p, { result: first }, { kind: "answer", answer: "Mia" });
+		expect(again.resumed).toBe(true);
+		if (!again.resumed) return;
+		expect(again.result.status).toBe("completed");
+		expect(calls).toEqual(["intake", "builder", "builder", "checker"]);
+		const retaken = seen.builder?.[1] ?? "";
+		expect(retaken).toContain("What is your niece's name?");
+		expect(retaken).toMatch(/\n\nMia$/);
+		// The note of the step that is not run again still reaches the step that asked, rebuilt from its record.
+		expect(retaken).toContain("a cat game for a birthday");
+		expect(prompts.checker).toContain("built Happy Birthday Mia");
+		expect(again.result.steps.map((s) => `${s.position}:${s.outcome}`)).toEqual(["1:completed", "2:completed", "3:completed"]);
+	});
+
+	it("reads a number as the option it names, the way the TUI does", async () => {
+		const svc = line("party", { persona: "builder" });
+		const { p, seen } = askingOnce([svc], "builder");
+		const first = await runService(svc, p);
+		await resumeService(svc, p, { result: first }, { kind: "answer", answer: "2" });
+		expect(seen.builder?.[1]).toMatch(/\n\nLeave a blank to fill in$/);
+	});
+
+	it("keeps waiting on an empty answer, which is no answer and never the recommendation", async () => {
+		const svc = line("party", { persona: "builder" });
+		const { p, calls } = askingOnce([svc], "builder");
+		const first = await runService(svc, p);
+		expect(await resumeService(svc, p, { result: first }, { kind: "answer", answer: "   " })).toEqual({ resumed: false, why: "an empty answer is no answer, so the run keeps waiting" });
+		expect(calls).toEqual(["builder"]);
+	});
+
+	it("goes on after an approved step without running it again, with its note handed on", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const { p, calls, prompts } = ports([svc], { drafter: { outcome: "completed", summary: "the letter to the landlord" } }, "unavailable");
+		const first = await runService(svc, p);
+		expect(first.waiting).toEqual({ kind: "approval", path: ["sign"], through: [], position: 1 });
+		const again = await resumeService(svc, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("completed");
+		expect(calls).toEqual(["drafter", "sender"]);
+		expect(prompts.sender).toContain("the letter to the landlord");
+		if (again.resumed) expect(again.result.steps.filter((s) => s.position === 1)).toHaveLength(1);
+	});
+
+	it("ends a refused run without the next step, with the reason the person gave", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const { p, calls } = ports([svc], {}, "unavailable");
+		const first = await runService(svc, p);
+		const again = await resumeService(svc, p, { result: first }, { kind: "approval", approved: false, reason: "not this landlord" });
+		expect(again.resumed && again.result).toMatchObject({ status: "completed", reason: "not this landlord" });
+		expect(calls).toEqual(["drafter"]);
+	});
+
+	it("goes back into a sub-service at its own waiting point instead of starting it over", async () => {
+		const sub = line("approve-me", { persona: "drafter", approval: true }, { persona: "after" });
+		const main = line("outer", { persona: "intake" }, { service: "approve-me" }, { persona: "final" });
+		const { p, calls, prompts } = ports(
+			[main, sub],
+			{
+				intake: { outcome: "completed", summary: "the tenant is Ana" },
+				drafter: { outcome: "completed", summary: "a draft for Ana" },
+				after: { outcome: "completed", summary: "sent to Ana" },
+			},
+			"unavailable",
+		);
+		const first = await runService(main, p);
+		expect(first.waiting).toMatchObject({ kind: "approval", path: ["outer", "approve-me"], position: 1 });
+		expect(first.waiting?.through.map((t) => t.position)).toEqual([2]);
+		const again = await resumeService(main, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("completed");
+		expect(calls).toEqual(["intake", "drafter", "after", "final"]);
+		// Inside the sub-service, the step after the approval still reads the parent's job and the approved draft.
+		expect(prompts.after).toContain("the tenant is Ana");
+		expect(prompts.after).toContain("a draft for Ana");
+		expect(prompts.final).toContain("sent to Ana");
+		if (again.resumed) {
+			expect(again.result.steps.map((s) => `${s.path.join(">")}/${s.position}`)).toEqual(["outer/1", "outer>approve-me/1", "outer>approve-me/2", "outer/2", "outer/3"]);
+		}
+	});
+
+	it("answers a question asked inside a sub-service, and the parent goes on", async () => {
+		const sub = line("build", { persona: "builder" });
+		const main = line("party", { persona: "intake" }, { service: "build" }, { persona: "wrapper" });
+		const { p, calls, seen } = askingOnce([main, sub], "builder", { intake: { outcome: "completed", summary: "a cat game for a birthday" } });
+		const first = await runService(main, p);
+		expect(first.waiting).toMatchObject({ kind: "answer", path: ["party", "build"], position: 1 });
+		const again = await resumeService(main, p, { result: first }, { kind: "answer", answer: "Mia" });
+		expect(again.resumed && again.result.status).toBe("completed");
+		expect(calls).toEqual(["intake", "builder", "builder", "wrapper"]);
+		expect(seen.builder?.[1]).toContain("a cat game for a birthday");
+		expect(seen.builder?.[1]).toMatch(/\n\nMia$/);
+	});
+
+	it("leaves alone a run that does not wait, and one that waits for something else", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true }, { persona: "sender" });
+		const done = ports([svc], {}, "approved");
+		const completed = await runService(svc, done.p);
+		const before = [...done.calls];
+		expect(await resumeService(svc, done.p, { result: completed }, { kind: "approval", approved: true })).toEqual({
+			resumed: false,
+			why: "only a waiting run is picked up, and this one is completed",
+		});
+		expect(done.calls).toEqual(before);
+
+		const waits = ports([svc], {}, "unavailable");
+		const waiting = await runService(svc, waits.p);
+		expect(await resumeService(svc, waits.p, { result: waiting }, { kind: "answer", answer: "yes" })).toEqual({
+			resumed: false,
+			why: "this run is waiting for an approval, not for an answer",
+		});
+		expect(waits.calls).toEqual(["drafter"]);
+	});
+
+	it("refuses a run of another service, and a stored run that does not say what it waits for", async () => {
+		const svc = line("sign", { persona: "drafter", approval: true });
+		const other = line("other", { persona: "drafter" });
+		const { p, calls } = ports([svc, other], {}, "unavailable");
+		const first = await runService(svc, p);
+		expect((await resumeService(other, p, { result: first }, { kind: "approval", approved: true })).resumed).toBe(false);
+		const { waiting: _dropped, ...unreadable } = first;
+		expect((await resumeService(svc, p, { result: unreadable }, { kind: "approval", approved: true })).resumed).toBe(false);
+		const edited = { ...first, waiting: { kind: "approval", path: ["sign"], through: [{ position: 1, since: 0 }], position: 1 } } as typeof first;
+		expect((await resumeService(svc, p, { result: edited }, { kind: "approval", approved: true })).resumed).toBe(false);
+		expect(calls).toEqual(["drafter"]);
+	});
+
+	it("counts a file a sub-service wrote before the wait as written by the step that waited", async () => {
+		// The step that runs the sub-service is checked on its files when the sub-service ends, against the moment
+		// it began. Picked up later, that moment is still the one it began at, not the moment it was picked up.
+		const sub = line("build", { persona: "writer", approval: true }, { persona: "finisher" });
+		const main: ServiceDef = { address: "party", name: "party", steps: [{ position: 1, serviceRef: "build", instruction: "build the game", produces: ["game.html"] }] };
+		const written = new Map<string, number>();
+		const base = ports([main, sub], {}, "unavailable");
+		const p: ServicePorts = {
+			...base.p,
+			async runPersonaStep(input) {
+				if (input.personaRef === "writer") written.set("game.html", Date.now());
+				return base.p.runPersonaStep(input);
+			},
+			async checkProduced({ paths, since }) {
+				const produced = paths.filter((path) => (written.get(path) ?? -1) >= since).map((path) => ({ path, bytes: 1 }));
+				return { produced, missing: paths.filter((path) => !produced.some((f) => f.path === path)) };
+			},
+		};
+		const first = await runService(main, p);
+		await new Promise((done) => setTimeout(done, 5));
+		const again = await resumeService(main, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("completed");
+	});
+
+	it("fails, running nothing, when the step it waited through no longer runs that sub-service", async () => {
+		const sub = line("approve-me", { persona: "drafter", approval: true }, { persona: "after" });
+		const main = line("outer", { persona: "intake" }, { service: "approve-me" });
+		const { p, calls } = ports([main, sub], {}, "unavailable");
+		const first = await runService(main, p);
+		const changed: ServiceDef = { ...main, steps: main.steps.map((s) => (s.position === 2 ? { position: 2, instruction: "x", personaRef: "someone" } : s)) };
+		const again = await resumeService(changed, p, { result: first }, { kind: "approval", approved: true });
+		expect(again.resumed && again.result.status).toBe("failed");
+		expect(again.resumed && again.result.reason).toContain("no longer runs approve-me");
+		expect(calls).toEqual(["intake", "drafter"]);
+	});
+});

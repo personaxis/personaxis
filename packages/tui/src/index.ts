@@ -15,6 +15,7 @@ import chalk from "chalk";
 import {
   loadPersona,
   ensureState,
+  stateOf,
   readState,
   extractEnvelopes,
   verifyMemoryChain,
@@ -48,7 +49,10 @@ function parseArgs(argv: string[]): DashOpts {
 
 export function renderFrame(personaPath: string, frame: number): string {
   const handle = loadPersona(personaPath);
-  const state = readState(handle.statePath);
+  const state = stateOf(handle);
+  // Ensured at startup, so this is somebody deleting it underneath a running
+  // dashboard. Saying so beats a stack trace over a live screen.
+  if (!state) return "  this persona has no state any more · personaxis state init";
   const env = extractEnvelopes(handle.frontmatter);
   const theme = personaTheme(handle.frontmatter);
   const chain = verifyMemoryChain(handle.personaPath);
@@ -108,6 +112,9 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  // Starting a dashboard on a persona is an act, not a look, so this is where the
+  // persona is brought into being if it has not been yet. Every frame after it only
+  // reads.
   ensureState(loadPersona(personaPath));
 
   // Non-interactive (pipe/CI/--once): print static frames, no screen takeover.

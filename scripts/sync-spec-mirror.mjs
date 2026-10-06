@@ -55,8 +55,10 @@ function handle(srcAbs, destAbs, label) {
     drift++;
     return;
   }
-  const src = readFileSync(srcAbs);
-  const same = existsSync(destAbs) && Buffer.compare(src, readFileSync(destAbs)) === 0;
+  // Compared with line endings normalized: git stores both sides with LF, and a Windows checkout writes
+  // CRLF into one working tree and not the other, which reported identical files as drift (2026-10-03).
+  const lf = (path) => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+  const same = existsSync(destAbs) && lf(srcAbs) === lf(destAbs);
   if (same) return;
   if (check) {
     console.error(`::error::mirror drift (${label}): ${destAbs} differs from ${srcAbs}`);
@@ -77,7 +79,7 @@ if (check) {
     console.error(`\n${drift} mirror file(s) out of sync. Run \`pnpm run sync-mirror\` and commit.`);
     process.exit(1);
   }
-  console.log("spec mirror is byte-identical across cli ↔ persona.md ✓");
+  console.log("spec mirror is identical across cli ↔ persona.md (line endings aside) ✓");
 } else {
   console.log(synced === 0 ? "spec mirror already byte-identical ✓" : `\n${synced} file(s) synced.`);
 }

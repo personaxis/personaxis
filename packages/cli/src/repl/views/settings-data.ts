@@ -9,7 +9,7 @@ import chalk from "chalk";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import {
+import { stateOf,
   readState,
   extractEnvelopes,
   driftReport,
@@ -33,7 +33,8 @@ const row = (label: string, value: string): string => `  ${chalk.cyan(label.padE
 /** Settings > Status: the session snapshot + the live state surface (absorbs /state). */
 export function statusLines(ctx: Ctx): string[] {
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
-  const st = readState(ctx.handle.statePath);
+  const st = stateOf(ctx.handle);
+  if (!st) return [];
   const env = extractEnvelopes(ctx.handle.frontmatter);
   const report = driftReport({
     values: st.values,

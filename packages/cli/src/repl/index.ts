@@ -14,7 +14,7 @@ import { stdin, stdout } from "node:process";
 import { join, relative, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import chalk from "chalk";
-import { readState, writeState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease } from "@personaxis/core";
+import { ensureState, record, readState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
@@ -25,6 +25,7 @@ import { runCommandCenter } from "../command-center.js";
 import type { Ctx, ReplOptions } from "./types.js";
 import { POSTURES, resolvePersonaPath, notePostureChange, llmConfig, ctxModelArg, makeMeter } from "./config.js";
 import { loadMergedConfig } from "../config.js";
+import { mountRegistered } from "../mcp/mount.js";
 import { matchPermission, callDetail } from "../permissions.js";
 import { readHooksConfig, runHooks } from "@personaxis/core";
 import { replyLine, userLine, fmtK, firstRunModelHint } from "./render.js";
@@ -50,7 +51,7 @@ import { listSkills, addSkill, pullSkill, updateSkill, removeSkill } from "./vie
 import { qualitativeDriftLines } from "./views/drift-data.js";
 import { AUDIT_TABS, auditLines } from "./views/audit-data.js";
 import { registerHistoryView } from "./views/history.js";
-import { rewindState } from "../rewind.js";
+import { rewind, rewindPlan } from "../rewind.js";
 import { resolveDeclaredSkills } from "../targets/skills.js";
 import { loadPersonaFile, slugAddressFromPath } from "../load.js";
 
@@ -168,6 +169,30 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   // SessionStart user hook (V2-F3.C14): best-effort, never blocks startup.
   void runHooks("SessionStart", { persona: personaPath }, readHooksConfig(personaPath)).catch(() => {});
 
+  // E3: the MCP servers the operator registered, mounted once for the session.
+  //
+  // Here rather than in `turn.ts`, and that is the whole reason it is a session
+  // concern: a runner is built per turn, so mounting there would start somebody's
+  // programs again on every message. It also matches what E5 will need, a tool
+  // catalogue that is fixed for the session, since a catalogue that changed mid
+  // conversation invalidates the prompt cache it is part of.
+  //
+  // Costs nothing when no server is registered, which is the ordinary case, because
+  // an empty list connects to nothing.
+  const mcp = await mountRegistered({
+    onFailure: (failure) =>
+      stdout.write(
+        chalk.yellow(`  · MCP server "${failure.name}" did not start`) +
+          chalk.dim(`: ${failure.reason}\n`),
+      ),
+  });
+  ctx.mcp = mcp;
+  if (mcp.tools.length > 0) {
+    stdout.write(
+      chalk.dim(`  · ${mcp.tools.length} tool(s) from ${mcp.servers.length} MCP server(s)\n`),
+    );
+  }
+
   // --continue / --resume [id]: rehydrate a saved conversation before the UI starts.
   if (opts.continueLast || opts.resume !== undefined) {
     const query = opts.continueLast ? "" : (opts.resume ?? "");
@@ -216,7 +241,10 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     // Renewing on the same beat as presence keeps the two from disagreeing about whether
     // this instance is still alive.
     if (wantsLease && !readOnly) acquireLease(ctx.handle.personaPath, { sessionId: ctx.sessionId, reason: "repl session" });
-  }, 20_000);
+    // D6: the interval is DERIVED from the staleness window core enforces, never a second
+    // literal. This one read 20s while the window said 90s; two numbers that must agree and
+    // live apart is how a writer ends up beating slower than readers expire.
+  }, PRESENCE_HEARTBEAT_MS);
   beat.unref?.();
   try {
     if (stdin.isTTY) {
@@ -236,7 +264,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 // ── Non-TTY: simple line reader (pipes/CI) ───────────────────────────────────
 async function runLineMode(ctx: Ctx): Promise<void> {
   stdout.write("\n");
-  await awaken(ctx.handle.frontmatter, readState(ctx.handle.statePath));
+  await awaken(ctx.handle.frontmatter, ensureState(ctx.handle));
   stdout.write(voiceWrap(ctx.theme, `  ${ctx.name} is awake`) + chalk.dim(` · mode=${ctx.mode} · posture=${POSTURES[ctx.postureIndex]}\n\n`));
 
   const roster = buildRoster(ctx);
@@ -388,11 +416,19 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   const perms = loadMergedConfig().permissions ?? {};
   ctx.approve = async (call) => {
     // Persistent permissions (V2-F3.B9): consult config allow/deny before asking.
+    //
+    // C6b: each refusal says who made it. A configured rule and a person typing N are
+    // different decisions, and the record used to write both down as "user denied",
+    // which is only true of one of them.
     const decision = matchPermission(call.name, callDetail(call.args), perms);
-    if (decision === "deny") return "deny";
+    if (decision === "deny") {
+      return { decision: "deny", reason: "a permission rule in this machine's config refuses it" };
+    }
     if (decision === "allow") return "always";
     const ans = (await screen.ask(`  approve ${chalk.cyan(call.name)}?  [y]es · [a]lways · [N]o`)).trim().toLowerCase();
-    return ans === "y" || ans === "yes" ? "approve" : ans === "a" || ans === "always" ? "always" : "deny";
+    if (ans === "y" || ans === "yes") return "approve";
+    if (ans === "a" || ans === "always") return "always";
+    return { decision: "deny", reason: "the person at this keyboard was asked and said no" };
   };
   // FASE 7 P2, the app breathes the math: the loop's events drive the gauge,
   // the crossing moment, the drift view, and full-screen suspensions.
@@ -431,7 +467,7 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   // V5.P2.3: the state history view behind /rewind and /replay.
   registerHistoryView({
     log: () =>
-      (readState(ctx.handle.statePath).mutation_log ?? []).map((m, idx) => ({
+      (ensureState(ctx.handle).mutation_log ?? []).map((m, idx) => ({
         idx,
         ts: (m as { ts?: string }).ts ?? "",
         field: (m as { field?: string }).field ?? "?",
@@ -443,17 +479,25 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
         reason: (m as { reason?: string }).reason,
       })),
     preview: (n) => {
-      const state = structuredClone(readState(ctx.handle.statePath));
+      // The plan and nothing else. Showing somebody what would happen used to run the
+      // same code that did it, against a clone, which is a simulation only for as
+      // long as nobody forgets the clone.
       const env = extractEnvelopes(ctx.handle.frontmatter);
-      const before = { ...state.values };
-      const { changed } = rewindState(state, env.envelopes, n);
-      return changed.map((f) => ({ field: f, from: before[f] ?? 0, to: state.values[f] ?? 0 }));
+      const { moves } = rewindPlan(ensureState(ctx.handle), env.envelopes, n);
+      return moves.map((m) => ({ field: m.field, from: m.from, to: m.to }));
     },
-    rewind: (n) => {
-      const state = readState(ctx.handle.statePath);
+    rewind: async (n) => {
       const env = extractEnvelopes(ctx.handle.frontmatter);
-      const { changed, steps } = rewindState(state, env.envelopes, n);
-      writeState(ctx.handle.statePath, state);
+      const { changed, steps } = await rewind(
+        ctx.handle.personaPath,
+        ctx.handle.statePath,
+        ensureState(ctx.handle),
+        env.envelopes,
+        n,
+        // The operator, unnamed. The REPL knows a person typed this and does not know
+        // which person, and inventing one would put a name on entries nobody signed.
+        record.authorOf("human-operator"),
+      );
       return changed.length
         ? chalk.dim(`  rewound ${steps} mutation(s) · restored ${changed.length} field(s): ${changed.join(", ")} (recorded, chain intact)`)
         : chalk.dim(`  rewind ${steps}: state already at that point.`);

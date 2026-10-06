@@ -6,6 +6,7 @@
  */
 
 export * from "./persona.js";
+export * as service from "./service/index.js";
 export * from "./lock.js";
 export * from "./envelopes.js";
 export * from "./math/uspace.js";
@@ -16,8 +17,6 @@ export * from "./math/arbitration.js";
 export * from "./math/jacobian.js";
 export * from "./math/structural-drift.js";
 export * from "./genesis/index.js";
-export * from "./state-engine.js";
-export * from "./state-rebuild.js";
 export * from "./spec-edit.js";
 export * from "./appraisal.js";
 export * from "./evolution-view.js";
@@ -46,8 +45,8 @@ export * from "./memory/knobs.js";
 export * from "./memory/facts.js";
 export * from "./memory/retrieval.js";
 export * from "./memory/consolidate.js";
+export * from "./memory/close.js";
 export * from "./sessions.js";
-export * from "./session-writer.js";
 export * from "./provenance.js";
 export * from "./injection.js";
 export * from "./config-scan.js";
@@ -67,13 +66,38 @@ export * from "./loop.js";
 export * from "./tools/exec.js";
 export * from "./tools/registry.js";
 export * from "./tools/define.js";
+export * from "./tools/dialects.js";
+export * from "./tools/mounted.js";
+export * from "./security/taint.js";
+export * from "./security/broker.js";
 export * from "./tools/mcp-adapter.js";
+// Only what reaches outside core: the CLI resolves and renders, the loop mounts the tool. The
+// provider constructors and the gate stay in their module, where the tests read them.
+export {
+	WEB_PROVIDERS,
+	renderWebResults,
+	resolveWebSearch,
+	webSearchTool,
+	type WebResult,
+	type WebSearchOptions,
+	type WebSearchProvider,
+	type WebSettings,
+} from "./web/search.js";
 export * from "./loop-breaker.js";
 export * from "./planner.js";
-export * from "./skill-activation.js";
+// J.4c: reading a model plan and deciding what the run does with the verdict. Separate from
+// the planner, which only answers whether the steps would be allowed.
+export * from "./plan-phase.js";
+export * from "./plan-run.js";
+// G6/J.7: measured regression between eval runs, and the causal trace a post-mortem reads.
+export * from "./regression.js";
+export * from "./causal-trace.js";
+export * from "./skill-guide.js";
 export * from "./skill-writer.js";
 export * from "./postmortem.js";
 export * from "./task-state.js";
+// E84: a surface that has a person in front of it shows the question and reads the answer the same way.
+export * from "./tools/ask-person.js";
 export * from "./tool-output-store.js";
 export * from "./security/forensic-log.js";
 export * from "./security/interceptor.js";
@@ -81,7 +105,47 @@ export * from "./security/watchdog.js";
 export * from "./security/ingest.js";
 export * from "./security/isolation.js";
 export * from "./security/consent.js";
+export * from "./security/provenance.js";
+export * from "./security/mcp-provenance.js";
 export * from "./tool-calling.js";
 export * from "./agent.js";
 
+export * from "./wire/adapter.js";
+export * from "./wire/record.js";
+export * from "./wire/redact.js";
+export * from "./enforcement/action-classes.js";
+export * from "./enforcement/egress.js";
+export * from "./enforcement/policy-compile.js";
+export * from "./enforcement/policy-from-persona.js";
+
 export { CORE_VERSION } from "./generated/version.js";
+
+/**
+ * The kernel, under a name of its own.
+ *
+ * A namespace rather than a flat re-export, for two reasons. It runs beside the
+ * existing engine and does not replace anything yet, so a reader should be able to
+ * tell at the call site which world a symbol comes from. And its vocabulary is
+ * generic on purpose (`event`, `Component`, `serviceKey`), which is exactly the
+ * vocabulary that collides with everything when it is spread flat.
+ */
+export * as kernel from "./kernel/index.js";
+
+/**
+ * The record, under a name of its own, for the same reasons as the kernel: it runs
+ * beside the stored copy rather than replacing it yet, and its vocabulary (`verify`,
+ * `derive`, `chain`) is generic enough to collide with half the tree if spread flat.
+ */
+export * as record from "./record/index.js";
+
+/** The two-axis gate, namespaced for the same reasons as the two above. */
+export * as gate from "./gate/index.js";
+
+/** Running turns: the loop as a seam, namespaced like the three above. */
+export * as run from "./run/index.js";
+
+/** Compaction that respects the envelope, namespaced like the rest. */
+export * as compaction from "./compaction/index.js";
+
+/** Where a run happens and what it may touch there, namespaced like the rest. */
+export * as worlds from "./worlds/index.js";

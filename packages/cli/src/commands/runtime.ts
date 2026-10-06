@@ -11,56 +11,33 @@ import chalk from "chalk";
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { version } from "../generated/assets.js";
-import { REGISTRY_UA_PREFIX } from "../registry-config.js";
+import { WorkspaceClient, WorkspaceError } from "../workspace/client.js";
 
-const DEFAULT_BASE_URL = "https://personaxis.com";
-
-function getApiKey(): string {
-	const key = process.env.PERSONAXIS_API_KEY;
-	if (!key) {
-		console.error(chalk.red("PERSONAXIS_API_KEY is not set."));
-		console.error(
-			chalk.dim("Create a key in the dashboard: https://personaxis.com/[org]/settings/api-keys"),
-		);
-		process.exit(1);
-	}
-	return key;
-}
-
-function getBaseUrl(): string {
-	return (process.env.PERSONAXIS_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-}
-
-async function apiCall<T>(
-	method: "GET" | "POST",
-	path: string,
-	body?: unknown,
-): Promise<T> {
-	const key = getApiKey();
-	const base = getBaseUrl();
-	const res = await fetch(`${base}${path}`, {
-		method,
-		headers: {
-			Authorization: `Bearer ${key}`,
-			"User-Agent": `${REGISTRY_UA_PREFIX}${version}`,
-			Accept: "application/json",
-			...(body != null ? { "Content-Type": "application/json" } : {}),
-		},
-		body: body != null ? JSON.stringify(body) : undefined,
-	});
-	if (!res.ok) {
-		let msg = `${method} ${path} failed with ${res.status}`;
-		try {
-			const j = (await res.json()) as { error?: { code?: string; message?: string } };
-			if (j.error?.message) msg = `${j.error.code ?? "ERROR"}: ${j.error.message}`;
-		} catch {
-			/* keep default */
+/**
+ * One client, shared with `connect`.
+ *
+ * This file used to carry its own copy: its own base URL, its own credential
+ * lookup, its own error shaping. Two clients are two behaviours the day one is
+ * fixed, so the duplicate is gone and the credential now also resolves to the
+ * device token of a linked machine.
+ *
+ * The exit stays here. A command may exit; the client may not.
+ */
+async function apiCall<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+	try {
+		return await new WorkspaceClient().request<T>(method, path, body);
+	} catch (error) {
+		if (error instanceof WorkspaceError) {
+			console.error(chalk.red(error.code === "ERROR" ? error.message : `${error.code}: ${error.message}`));
+			if (error.code === "NO_CREDENTIAL") {
+				console.error(
+					chalk.dim("Create a key in the dashboard: https://personaxis.com/[org]/settings/api-keys"),
+				);
+			}
+			process.exit(1);
 		}
-		console.error(chalk.red(msg));
-		process.exit(1);
+		throw error;
 	}
-	return (await res.json()) as T;
 }
 
 const startCmd = new Command("start")

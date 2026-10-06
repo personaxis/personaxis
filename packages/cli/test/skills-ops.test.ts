@@ -1,6 +1,6 @@
 /**
- * V7.A5: "/skills su menu no funciona para nada... no funciona el enter apply ni el p
- * pull, tampoco hay forma de agregar skills o de actualizar los que ya existen".
+ * V7.A5: the /skills menu did not work at all: Enter did not apply, p did not pull, and
+ * there was no way to add skills or update the ones already installed.
  *
  * The view had no engine behind it. These are the real operations it now calls, which
  * the external subcommands share: declare, materialize, refresh, stop declaring.

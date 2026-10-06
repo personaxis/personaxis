@@ -10,9 +10,6 @@ import { join } from "node:path";
 import {
   runHooks,
   readHooksConfig,
-  SessionWriter,
-  rebuildSessionIndex,
-  readSessionIndex,
   readSession,
   newSessionId,
   resolveLayered,
@@ -117,102 +114,16 @@ describe("FR.4 shell-out hooks", () => {
   });
 });
 
-// ── FR.6 sessions ─────────────────────────────────────────────────────────────
-
-describe("FR.6 session writer + threading + derived index", () => {
-  it("queues turns, threads parent_uuid automatically, and flush() acks durability", async () => {
-    const id = newSessionId();
-    const w = new SessionWriter(personaPath, {
-      id,
-      kind: "root",
-      participants: ["user", "h"],
-      name: "test",
-      created: new Date().toISOString(),
-      persona: "",
-    });
-    const u1 = w.append({ role: "user", content: "hola" });
-    const u2 = w.append({ role: "assistant", content: "hola, soy h", from: "(root)" });
-    await w.flush();
-
-    const { turns } = readSession(personaPath, id);
-    expect(turns).toHaveLength(2);
-    expect(turns[0].uuid).toBe(u1);
-    expect(turns[0].parent_uuid).toBeUndefined();
-    expect(turns[1].uuid).toBe(u2);
-    expect(turns[1].parent_uuid).toBe(u1); // threaded to the previous turn
-
-    await w.shutdown();
-    expect(() => w.append({ role: "user", content: "tarde" })).toThrow(/shut down/);
-  });
-
-  it("writes stay ordered under a burst (single background drain)", async () => {
-    const id = newSessionId();
-    const w = new SessionWriter(personaPath, {
-      id, kind: "root", participants: [], name: "burst", created: new Date().toISOString(), persona: "",
-    });
-    for (let i = 0; i < 50; i++) w.append({ role: "user", content: `turno ${i}` });
-    await w.shutdown();
-    const { turns } = readSession(personaPath, id);
-    expect(turns.map((t) => t.content)).toEqual([...Array(50).keys()].map((i) => `turno ${i}`));
-  });
-
-  it("the derived index lists sessions and is rebuildable from the JSONL truth", async () => {
-    const id = newSessionId();
-    const w = new SessionWriter(personaPath, {
-      id, kind: "root", participants: [], name: "indexed", created: new Date().toISOString(), persona: "",
-    });
-    w.append({ role: "user", content: "x" });
-    await w.shutdown();
-
-    const built = await rebuildSessionIndex(personaPath);
-    expect(built.sessions.some((s) => s.id === id)).toBe(true);
-    expect(existsSync(join(dir, ".personaxis", "sessions", "index.json"))).toBe(true);
-
-    // A corrupt index falls back to the JSONL scan (source of truth).
-    writeFileSync(join(dir, ".personaxis", "sessions", "index.json"), "{nope");
-    const read = readSessionIndex(personaPath);
-    expect(read.sessions.some((s) => s.id === id)).toBe(true);
-
-    // The index is DERIVED: deleting it loses nothing.
-    const raw = readFileSync(join(dir, ".personaxis", "sessions", `${id}.jsonl`), "utf-8");
-    expect(raw).toContain('"turno' === raw ? "" : "x"); // sanity: jsonl holds the data
-  });
-});
-
-// ── FR.5 config layers ────────────────────────────────────────────────────────
-
-describe("FR.5 numeric config-layer precedence", () => {
-  it("ordinary keys: highest-ranked layer wins and the winner is attributable", () => {
-    expect(resolveLayered({})).toBeUndefined();
-    expect(resolveLayered({ global: "sonnet" })).toEqual({ value: "sonnet", source: "global" });
-    // env (30) beats frontmatter (28) beats persona (25) beats project (20) beats global (10)
-    expect(
-      resolveLayered({ global: "a", project: "b", persona: "c", frontmatter: "d", env: "e" }),
-    ).toEqual({ value: "e", source: "env" });
-    expect(resolveLayered({ global: "a", project: "b" })).toEqual({ value: "b", source: "project" });
-    // rank sanity: the declared order is strictly increasing managed→env
-    const ranks = Object.values(CONFIG_LAYERS);
-    expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
-  });
-
-  it("policy-tier keys: the STRICTEST layer wins regardless of rank (min-wins generalized)", () => {
-    const strictness = ["autonomous", "suggesting", "locked"] as const; // 0 = most permissive
-    // env (highest rank) says autonomous, but global says locked → locked wins.
-    expect(
-      resolvePolicyTier({ global: "locked", env: "autonomous" }, strictness),
-    ).toEqual({ value: "locked", source: "global" });
-    // A lower layer can TIGHTEN a higher one…
-    expect(
-      resolvePolicyTier({ project: "suggesting", env: "autonomous" }, strictness),
-    ).toEqual({ value: "suggesting", source: "project" });
-    // …but never loosen it.
-    expect(
-      resolvePolicyTier({ project: "locked", env: "suggesting" }, strictness),
-    ).toEqual({ value: "locked", source: "project" });
-    // Unknown values never win a policy decision.
-    expect(resolvePolicyTier({ env: "yolo" }, strictness)).toBeUndefined();
-    expect(
-      resolvePolicyTier({ env: "yolo", global: "suggesting" }, strictness),
-    ).toEqual({ value: "suggesting", source: "global" });
-  });
-});
+// FR.6's session writer was DELETED by E11, and so were its tests.
+//
+// It queued turns for a background drain and derived a session index, and nothing
+// called either. The reasoning for removing rather than mounting it lives on
+// `appendTurn` in `sessions.ts`, where the next person will wonder why the write is
+// synchronous: the async path is less safe (a queue loses its un-acked tail) and saves
+// a fraction of a millisecond at the end of a turn that just waited seconds for a
+// model, and the index solved a problem measured not to exist, 21 sessions in the
+// largest persona on the machine.
+//
+// The behaviour those three tests actually protected, turns landing in order with
+// their threading intact, is covered by the `appendTurn` tests above and by every
+// session the REPL writes.

@@ -16,7 +16,7 @@
  */
 
 import chalk from "chalk";
-import {
+import { stateOf,
   readState,
   extractEnvelopes,
   driftReport,
@@ -42,7 +42,10 @@ export const DRIFT_TABS = ["Continuous", "Structural", "Behavioral"] as const;
 /** The numeric report, or undefined when the persona has no state yet. */
 function continuousReport(ctx: Ctx): DriftReport | undefined {
   try {
-    const st = readState(ctx.handle.statePath);
+    const st = stateOf(ctx.handle);
+    // A persona that has not started has no drift, which is different from no drift
+    // measured. The signature already says so; this is what makes it true.
+    if (!st) return undefined;
     const fm = ctx.handle.frontmatter as Record<string, unknown>;
     const env = extractEnvelopes(ctx.handle.frontmatter);
     return driftReport({

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { ToolInterceptor } from "../src/security/interceptor.js";
 import { ForensicLog } from "../src/security/forensic-log.js";
+import { accept } from "../src/security/taint.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
 import type { ToolSpec } from "../src/tools/registry.js";
 import type { ToolCall } from "../src/tool-calling.js";
@@ -24,6 +25,16 @@ function tool(name: string, execute: ToolSpec["execute"]): ToolSpec {
     execute,
   };
 }
+
+/**
+ * Reads a tool output, which is tainted since E13.
+ *
+ * The value no longer comes out of the interceptor as a bare string: reading it
+ * produces the taint in the same expression, so no caller can take one and leave
+ * the other. These tests care about the text, so they read it and drop the taint
+ * deliberately, which is a thing a test may do and the loop may not.
+ */
+const read = (output: Parameters<typeof accept<string>>[0]) => accept(output, "clean").value;
 
 describe("tool interceptor (K.03)", () => {
   it("a blocked call is recorded and NEVER executed", () => {
@@ -54,7 +65,7 @@ describe("tool interceptor (K.03)", () => {
     const it_ = new ToolInterceptor(DEFAULT_POLICY, forensic);
     const out = await it_.run(tool("read_file", async () => evil), call("read_file", { path: "notes.md" }));
     // The output is tagged so the model treats it as data, and the finding is recorded.
-    expect(out.output).toMatch(/injection-(suspicious|malicious)/);
+    expect(read(out.output)).toMatch(/injection-(suspicious|malicious)/);
     expect(out.outputVerdict).not.toBe("clean");
     expect(forensic.entries()[0].outputVerdict).not.toBe("clean");
   });
@@ -69,7 +80,7 @@ describe("tool interceptor (K.03)", () => {
       call("run_command"),
     );
     expect(out.ok).toBe(false);
-    expect(out.output).toContain("execution error: boom");
+    expect(read(out.output)).toContain("execution error: boom");
     expect(forensic.entries()[0].ok).toBe(false);
   });
 });

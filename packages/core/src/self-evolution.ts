@@ -21,8 +21,10 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import matter from "gray-matter";
 import type { ProvenanceSource } from "./appraisal.js";
-import type { ImprovementMode } from "./governance.js";
+import { DEFAULT_GOVERNANCE, readMaxStepDelta, type ImprovementMode } from "./governance.js";
+import { getAtPath } from "./spec-edit.js";
 import { sensitiveActionGate } from "./provenance.js";
 import { isV1Frontmatter } from "./envelopes.js";
 import { markRecompilePending } from "./recompile-marker.js";
@@ -87,9 +89,26 @@ export interface VerifierResult {
   reason: string;
 }
 
+/**
+ * What a verifier is shown.
+ *
+ * E23: `fromValue` is the value being replaced, and the KEY BEING PRESENT is itself
+ * information, separately from what it holds. Present-and-undefined means the caller
+ * looked and there was nothing there, which is a creation. Absent means nobody looked,
+ * which is not a fact about the persona at all. Collapsing the two would make a
+ * verifier that needs the old value silently pass whenever a caller forgot to pass it,
+ * and that is the shape of every guard that reads as covered and refuses nothing.
+ */
+export interface SelfEditProposal {
+  targetPath: string;
+  toValue: unknown;
+  rationale: string;
+  fromValue?: unknown;
+}
+
 export interface SelfEditVerifier {
   name: string;
-  verify(proposal: { targetPath: string; toValue: unknown; rationale: string }): VerifierResult;
+  verify(proposal: SelfEditProposal): VerifierResult;
 }
 
 /** Defense-in-depth: protected paths must never reach application. */
@@ -122,6 +141,68 @@ export const envelopeSanityVerifier: SelfEditVerifier = {
     return { verifier: "envelope-sanity", pass: true, reason: "envelope sane" };
   },
 };
+
+/** True for the `{ mean?, range: [min, max] }` shape the affect layers use. */
+function asEnvelope(v: unknown): [number, number] | null {
+  const r = (v as { range?: unknown } | null)?.range;
+  return Array.isArray(r) && r.length === 2 && typeof r[0] === "number" && typeof r[1] === "number"
+    ? [r[0], r[1]]
+    : null;
+}
+
+/**
+ * E23: WIDENING AN ENVELOPE IS A STEP, AND STEPS HAVE A CEILING.
+ *
+ * The identity axis weighs a coordinate against the envelope the spec declares, so a
+ * persona that widens its own envelope is afterwards measured against a ruler it moved
+ * itself. Nothing stopped that, and not for lack of governance: `max_step_delta` bounds
+ * how far a VALUE moves in one step, and had no counterpart for the ruler. The value had
+ * a brake; the thing measuring it did not.
+ *
+ * So the same ceiling applies to both, rather than a new spec key for a second number.
+ * Reusing it is the conservative reading: `governance.max_step_delta` already means "how
+ * far this persona may move in one step", and a wider envelope is exactly that. If a
+ * different ceiling is wanted for envelopes, that is a spec change and a decision, not
+ * something to invent here.
+ *
+ * NARROWING IS FREE, and the asymmetry is the whole design. A persona choosing to hold
+ * itself to a tighter range needs no permission; one granting itself more room does,
+ * because that is the move that lets it approve of itself. Same principle as a layer
+ * that may only ever harden what another layer set.
+ */
+function envelopeStepVerifier(maxStepDelta: number): SelfEditVerifier {
+  return {
+    name: "envelope-step",
+    verify: (p) => {
+      const to = asEnvelope(p.toValue);
+      if (!to) return { verifier: "envelope-step", pass: true, reason: "not an envelope edit" };
+
+      // Absent key means nobody looked. An envelope edit whose predecessor was never
+      // read cannot be judged, and not judging is refusing.
+      if (!("fromValue" in p)) {
+        return { verifier: "envelope-step", pass: false, reason: "envelope edit arrived without the value it replaces" };
+      }
+      const from = asEnvelope(p.fromValue);
+      if (from === null) {
+        // Present but not an envelope: nothing was there, so this creates one rather
+        // than widening one, and there is no step to bound.
+        return { verifier: "envelope-step", pass: true, reason: "no previous envelope to widen" };
+      }
+
+      // Per side, not on the width: moving both edges out by the ceiling would
+      // otherwise pass while doubling the room.
+      const out = Math.max(from[0] - to[0], to[1] - from[1]);
+      if (out > maxStepDelta) {
+        return {
+          verifier: "envelope-step",
+          pass: false,
+          reason: `widens [${from[0]}, ${from[1]}] to [${to[0]}, ${to[1]}], ${out.toFixed(3)} past an edge against a ${maxStepDelta} ceiling`,
+        };
+      }
+      return { verifier: "envelope-step", pass: true, reason: out > 0 ? `widens by ${out.toFixed(3)}, within the step` : "narrows or holds" };
+    },
+  };
+}
 
 /** A non-empty rationale is required (auditability + anti-noise). */
 export const rationaleVerifier: SelfEditVerifier = {
@@ -157,12 +238,25 @@ export const qualitativeSafetyVerifier: SelfEditVerifier = {
   },
 };
 
+/**
+ * The default panel. `envelopeStepVerifier` carries the DEFAULT ceiling here, because a
+ * caller with no persona in hand has nothing better; `verifiersFor` builds the panel
+ * with the persona's own `governance.max_step_delta` when there is one.
+ */
 export const DEFAULT_VERIFIERS: SelfEditVerifier[] = [
   invariantVerifier,
   envelopeSanityVerifier,
+  envelopeStepVerifier(DEFAULT_GOVERNANCE.maxStepDelta),
   rationaleVerifier,
   qualitativeSafetyVerifier,
 ];
+
+/** The panel for a specific persona, so its declared step ceiling is the one enforced. */
+function verifiersFor(frontmatter: Record<string, unknown>): SelfEditVerifier[] {
+  return DEFAULT_VERIFIERS.map((v) =>
+    v.name === "envelope-step" ? envelopeStepVerifier(readMaxStepDelta(frontmatter)) : v,
+  );
+}
 
 /** Paths whose VALUE is qualitative prose the persona may evolve under governance.
  * v1.0: the prompting material lives inside layer 10 `persona`; ≤0.10: the
@@ -256,7 +350,7 @@ export interface ConsensusResult {
 }
 
 export function consensusVerify(
-  proposal: { targetPath: string; toValue: unknown; rationale: string },
+  proposal: SelfEditProposal,
   verifiers: SelfEditVerifier[] = DEFAULT_VERIFIERS,
   quorum = verifiers.length, // unanimous by default
 ): ConsensusResult {
@@ -299,6 +393,24 @@ export function readLedger(personaPath: string): LedgerEvent[] {
  */
 export function recordLedgerEvent(personaPath: string, e: LedgerEvent): void {
   append(personaPath, e);
+}
+
+/**
+ * The persona's declared spec, for the two things applying an edit needs from it: the
+ * value being replaced and the step ceiling to judge it against.
+ *
+ * Read with `gray-matter` here rather than through `loadPersona`, which would pull the
+ * persona loader into a module the loader has no reason to depend on. Failure is an
+ * empty document on purpose: a persona file that cannot be parsed leaves `fromValue`
+ * undefined, and an envelope edit with no readable predecessor is refused rather than
+ * waved through.
+ */
+function frontmatterOf(personaPath: string): Record<string, unknown> {
+  try {
+    return existsSync(personaPath) ? (matter(readFileSync(personaPath, "utf-8")).data as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 export function isProtected(targetPath: string): boolean {
@@ -360,7 +472,7 @@ export function applySelfEdit(
   personaPath: string,
   id: string,
   approver: string,
-  verifiers: SelfEditVerifier[] = DEFAULT_VERIFIERS,
+  verifiers?: SelfEditVerifier[],
 ): { status: ProposalStatus; version: string; consensus: ConsensusResult } {
   const view = proposals(personaPath).find((p) => p.id === id);
   if (!view) throw new SelfEditError(`no proposal ${id}`);
@@ -368,9 +480,19 @@ export function applySelfEdit(
     throw new SelfEditError(`proposal ${id} is ${view.status}, cannot apply`);
   }
 
+  // E23: the value being replaced, read here because this is the first point that has
+  // both the persona and the proposal. `fromValue` is set unconditionally, so a path
+  // that holds nothing arrives as present-and-undefined (a creation) rather than as an
+  // absent key (nobody looked), which the panel treats as two different things.
+  const fm = frontmatterOf(personaPath);
   const consensus = consensusVerify(
-    { targetPath: view.targetPath, toValue: view.toValue, rationale: view.rationale },
-    verifiers,
+    {
+      targetPath: view.targetPath,
+      toValue: view.toValue,
+      rationale: view.rationale,
+      fromValue: getAtPath(fm, view.targetPath),
+    },
+    verifiers ?? verifiersFor(fm),
   );
   if (!consensus.passed) {
     const reasons = consensus.results.filter((r) => !r.pass).map((r) => `${r.verifier}: ${r.reason}`).join("; ");

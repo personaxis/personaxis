@@ -8,8 +8,9 @@
 
 import chalk from "chalk";
 import { eventLine } from "@personaxis/tui/visual";
-import type { PersonaTheme } from "@personaxis/core";
+import { lineFor, type PersonaTheme } from "@personaxis/core";
 import type { Ctx, LoopEvent } from "./types.js";
+import { VERDICT_LABEL, verdictSentences, type DeliveredChecks } from "../engine-verdict.js";
 
 export function phaseFor(e: LoopEvent): string {
   switch (e.type) {
@@ -33,6 +34,11 @@ export function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
     case "agent-step":
     case "agent-think":
     case "agent-finish":
+      return null;
+    // E4 streams the reply token by token. A transcript line per token would be a
+    // wall of one-character lines; the live phase label shows it instead, and the
+    // finished reply is printed once by the caller as it always was.
+    case "agent-delta":
       return null;
     case "tool-propose":
       return chalk.cyan(`  → ${e.tool} ${chalk.dim(JSON.stringify(e.args).slice(0, 80))}`);
@@ -63,6 +69,12 @@ export function renderEvent(theme: PersonaTheme, e: LoopEvent): string | null {
       return null; // surfaced in the concise per-turn summary (not inline noise) / status bar
     case "context-compacted":
       return chalk.dim(`  · context compacted (${e.removed} msgs freed)`);
+    // E36: visible on purpose; a call read out of the text means the server is probably missing the model's parser.
+    case "dialect-read":
+      return chalk.yellow(`  ⚠ the model server returned a tool call as text; read with the ${e.dialect} dialect (the server is probably missing this model's tool parser)`);
+    // E81: the persona's own task list, each time it writes it, on one line.
+    case "task-list":
+      return chalk.dim(`  ☰ tasks ${e.tasks.map((task) => lineFor(task)).join(" · ").slice(0, 200)}`);
     default:
       return eventLine(theme, e);
   }
@@ -137,6 +149,21 @@ export function renderMarkdown(src: string): string {
     out.push(renderInlineMarkdown(raw));
   }
   return out.join("\n");
+}
+
+/**
+ * E134: what the engine found broken in what the turn delivered, said by Personaxis under the persona's reply.
+ *
+ * A persona can close a turn saying it fixed something the engine has just run and seen fail: measured in
+ * `e132co`, a reply said "I have fixed the syntax error [...] The game should now run" over a page that did not
+ * compile, and the only thing contradicting it was a dim activity line above. The reply is the model's and is
+ * shown as it is; this is the product's own account, in the same words `check_page` uses, and only when a check
+ * failed, because a line under every good delivery would be noise nobody reads. Paths are shown relative to the
+ * project, like the rest of the transcript's paths a person reads.
+ */
+export function engineVerdictLines(delivered: DeliveredChecks, cwd: string): string[] {
+  // E149: the sentence comes from `engine-verdict.ts`, which an editor over ACP says too; this only colours it.
+  return verdictSentences(delivered, cwd).map((said) => `  ${chalk.yellow(VERDICT_LABEL)} ${said}`);
 }
 
 export function replyLine(ctx: Ctx, text: string): string {

@@ -32,8 +32,26 @@ export function presenceDir(personaPath: string): string {
   return join(dirname(personaPath), "presence");
 }
 
-/** The surface driving the persona. Knowing WHICH agent holds it is half the value. */
-export type PresenceHost = "repl" | "headless" | "claude-code" | "codex" | "openclaw" | "hermes" | "mcp" | "serve" | "loop";
+/**
+ * The surface driving the persona. Knowing WHICH agent holds it is half the value.
+ *
+ * The host answers "through what is this persona being used"; `activity` answers "what is
+ * it doing". Keeping those apart is why `watch` and a one-shot `compile` share a host: both
+ * hold the persona to produce its compiled document, and the activity says which is which.
+ * Adding a host per command would grow a vocabulary nobody could read at a glance.
+ */
+export type PresenceHost =
+  | "repl"
+  | "headless"
+  | "claude-code"
+  | "codex"
+  | "openclaw"
+  | "hermes"
+  | "mcp"
+  | "serve"
+  | "loop"
+  | "compile"
+  | "task";
 
 export interface Presence {
   deviceId: string;
@@ -61,6 +79,16 @@ export interface Presence {
  * showing it a little too long. Writers refresh well inside this window.
  */
 export const PRESENCE_STALE_MS = 90_000;
+
+/**
+ * How often a long-running holder refreshes its heartbeat.
+ *
+ * DERIVED, never a second literal: a writer beating slower than readers expire would drop
+ * off the fleet while still running, and the two numbers drifting apart is exactly how that
+ * happens. A third of the window means three missed beats before anyone is declared dead,
+ * which survives a machine that stalls briefly without keeping a corpse on the list.
+ */
+export const PRESENCE_HEARTBEAT_MS = Math.floor(PRESENCE_STALE_MS / 3);
 
 function presenceFile(personaPath: string, pid = process.pid): string {
   return join(presenceDir(personaPath), `${machineId()}-${pid}.json`);
@@ -102,9 +130,40 @@ export function announcePresence(
   }
 }
 
+/**
+ * Refresh presence because the persona was just USED, at most once per heartbeat.
+ *
+ * For surfaces with no loop of their own to hang a timer on: the MCP server does not hold a
+ * persona, it is handed one per call, and it has no way to know the host has walked away.
+ * Use drives the refresh, and silence lets the entry expire on its own, which says exactly
+ * the right thing: nobody is driving this persona right now. A timer would have kept
+ * claiming otherwise while the host sat idle.
+ *
+ * Throttled because a chatty host can call many times a second and presence is a file
+ * write. Skipping a refresh is free; the window is a third of the staleness budget.
+ */
+const lastTouch = new Map<string, number>();
+export function touchPresence(
+  personaPath: string,
+  info: { host: PresenceHost; project?: string; sessionId?: string; activity?: string },
+  now = Date.now(),
+): void {
+  const prev = lastTouch.get(personaPath);
+  if (prev !== undefined && now - prev < PRESENCE_HEARTBEAT_MS) return;
+  // This map is the one thing here that can grow, so it gets the same treatment as the
+  // presence directory: entries past the staleness window are dropped as they are noticed.
+  // A long-lived server handed many personas would otherwise keep every path it ever saw.
+  if (lastTouch.size > 64) {
+    for (const [path, ts] of lastTouch) if (now - ts > PRESENCE_STALE_MS) lastTouch.delete(path);
+  }
+  lastTouch.set(personaPath, now);
+  announcePresence(personaPath, info);
+}
+
 /** Withdraw this process's presence on a clean exit. */
 export function releasePresence(personaPath: string): void {
   try {
+    lastTouch.delete(personaPath);
     const f = presenceFile(personaPath);
     if (existsSync(f)) unlinkSync(f);
   } catch {

@@ -1,0 +1,248 @@
+/**
+ * The bridge between a running persona and the workspace watching it.
+ *
+ * The engine emits LoopEvents about a loop. The workspace speaks about a job a
+ * team is watching. `mapLoopEvent` translates between the two vocabularies and
+ * `DaemonConnection` carries the result; this is the piece that sits between
+ * them and holds the state neither of them has.
+ *
+ * That state is one thing: the call id. The engine does not carry one, because
+ * its events are consumed in order by a single listener and it never needed to.
+ * The workspace does, because a gate freezes one specific call and several may
+ * be in flight. Correlating propose, verdict and result into one id is this
+ * file's whole job, and getting it wrong means a gate freezing the wrong call.
+ *
+ * It also holds the last check before content crosses the machine boundary: the
+ * consented scope. That is not duplicated work either, because it answers a
+ * different question from the hook. The hook refuses a tool call that touches an
+ * unconsented path; this catches a path that reaches an event with no call
+ * refused, which is what happens when a model quotes a filename or a library
+ * error names a config it could not open.
+ *
+ * Everything else is deliberately absent. No buffering, because the connection
+ * already does it and doing it twice would reorder on reconnect. No secret
+ * redaction, because the adapter already did it and doing it twice means two
+ * places that can drift.
+ */
+
+import { mapLoopEvent, type LoopEvent, type WireEmission } from "@personaxis/core";
+import type { WireAuthor, WireEvent, WireSource } from "@personaxis/protocol/workspace";
+
+import { guardDeep } from "./scope-guard.js";
+
+export interface ReporterSink {
+	emit: (event: WireEvent) => void;
+	finishJob?: (jobId: string) => void;
+}
+
+export interface JobReporterOptions {
+	jobId: string;
+	sink: ReporterSink;
+	/** Injected so a test can assert on timestamps. */
+	now?: () => Date;
+	/** Where these events came from. `hosted` when the run is not on a laptop. */
+	source?: WireSource;
+	/** Told when an engine event does not reach the wire, and why. */
+	onDrop?: (kind: string, reason: string) => void;
+	/**
+	 * E24: the ephemeral channel, for a screen watching the persona type.
+	 *
+	 * Optional, and what happens without it is the point: the delta is discarded, not
+	 * queued and not stored. Nothing here is ever counted as dropped either, because a
+	 * drop is a decision about the RECORD and this never had a place in it.
+	 *
+	 * A delta that does not arrive leaves no gap. The finished message reaches the
+	 * durable channel under its own event, once, whether or not anyone was watching.
+	 */
+	onLive?: (delta: string) => void;
+	/**
+	 * The directories the operator consented to expose.
+	 *
+	 * Paths outside them are replaced on the way out. This is defence in depth
+	 * rather than the primary control: the hook already refuses a tool call
+	 * touching an unconsented path. What this catches is a path reaching an
+	 * event with no call refused, which is what happens when a model quotes a
+	 * filename or a library error names a config it could not open.
+	 *
+	 * Absent means no guard. Passing an empty array is a different thing: it
+	 * means nothing was consented to, and everything absolute is replaced.
+	 */
+	scope?: readonly string[];
+}
+
+/** Events after which the job is over and the connection can release its queue. */
+const TERMINAL_KINDS = new Set(["persona.session.ended"]);
+
+export class JobReporter {
+	// `scope` stays optional rather than defaulted, because absent and empty mean
+	// different things here: no guard at all, versus nothing was consented to.
+	private readonly options: Required<Omit<JobReporterOptions, "onDrop" | "scope" | "onLive">> &
+		Pick<JobReporterOptions, "onDrop" | "scope" | "onLive">;
+
+	/**
+	 * The call currently in flight.
+	 *
+	 * One at a time, which matches how the engine runs: it proposes a call,
+	 * waits for a verdict, and gets a result before proposing another. If that
+	 * ever stops being true this becomes a map keyed by something the engine
+	 * provides, and the tests here are what will notice.
+	 */
+	private currentCallId: string | null = null;
+	private callCounter = 0;
+
+	/** So a caller can say how much of a run never reached the workspace. */
+	private droppedCount = 0;
+	private finished = false;
+
+	constructor(options: JobReporterOptions) {
+		this.options = {
+			now: () => new Date(),
+			source: "daemon",
+			...options,
+		};
+	}
+
+	get dropped(): number {
+		return this.droppedCount;
+	}
+
+	/**
+	 * Reports one engine event.
+	 *
+	 * Never throws. A reporter that could throw would take down the run it is
+	 * reporting on, and a job that dies because nobody could watch it is the
+	 * worst possible trade.
+	 */
+	report(event: LoopEvent): void {
+		try {
+			this.reportUnsafe(event);
+		} catch (error) {
+			this.droppedCount++;
+			this.options.onDrop?.(event.type, `reporter error: ${String(error)}`);
+		}
+	}
+
+	/**
+	 * Report an event that is already in the wire vocabulary.
+	 *
+	 * The other entry point. `report` takes what our own engine emits and
+	 * translates it; this takes what a host agent's stream has already been
+	 * translated into, by `HostStreamTranslator`.
+	 *
+	 * It exists so that path gets the same treatment rather than its own copy of
+	 * it: the scope guard, the envelope with `seq` left at zero, the terminal
+	 * kind releasing the queue, and the promise never to throw. A second emitter
+	 * that wrapped its own envelopes would be a second place for those four
+	 * things to drift.
+	 *
+	 * No call id is assigned here, and that is the point: the host names its own
+	 * calls and the hook is handed the same name, so an id minted on this side
+	 * would give one call two names.
+	 *
+	 * The author is a parameter rather than a default on this object because the
+	 * answer changes between two events a line apart: the daemon opening a session
+	 * and the agent it then drives are different authors on the same job. A default
+	 * would be right for one and quietly wrong for the other, which is the shape
+	 * this bug already had once.
+	 */
+	reportWire(body: WireEmission, author?: WireAuthor): void {
+		try {
+			this.options.sink.emit(this.envelope(this.guard(body), author));
+			if (TERMINAL_KINDS.has(body.kind)) this.finish();
+		} catch (error) {
+			this.droppedCount++;
+			this.options.onDrop?.(body.kind, `reporter error: ${String(error)}`);
+		}
+	}
+
+	private reportUnsafe(event: LoopEvent): void {
+		// A new call starts at the proposal. Assigning the id here, before the
+		// mapping, is what lets the verdict and the result reuse it.
+		if (event.type === "tool-propose") {
+			this.callCounter++;
+			this.currentCallId = `call_${this.callCounter}`;
+		}
+
+		const result = mapLoopEvent(event, { callId: this.currentCallId ?? "" });
+
+		if ("drop" in result) {
+			this.droppedCount++;
+			this.options.onDrop?.(event.type, result.drop);
+			return;
+		}
+
+		// E24: out on the ephemeral channel and gone. Deliberately BEFORE the call-id
+		// bookkeeping and outside the dropped count: this never belonged to the record,
+		// so it neither closes a call nor counts as something the record lost.
+		if ("live" in result) {
+			this.options.onLive?.(result.live);
+			return;
+		}
+
+		// The call is over once its result is reported. Clearing here rather
+		// than on the next proposal means a stray event between calls cannot
+		// borrow the previous call's id.
+		if (event.type === "tool-result") this.currentCallId = null;
+
+		this.options.sink.emit(this.envelope(this.guard(result.emit)));
+
+		if (TERMINAL_KINDS.has(result.emit.kind)) this.finish();
+	}
+
+	/**
+	 * Replaces filesystem paths the operator did not consent to expose.
+	 *
+	 * Redacts rather than drops. A run whose events vanish because a message
+	 * mentioned /etc/hosts is a run nobody can audit, and the record is worth
+	 * more complete than pristine.
+	 */
+	private guard(emission: WireEmission): WireEmission {
+		const scope = this.options.scope;
+		return scope === undefined ? emission : (guardDeep(emission, scope) as WireEmission);
+	}
+
+	/**
+	 * Wraps an emission in its envelope.
+	 *
+	 * `seq` is zero on purpose: the control plane assigns the authoritative
+	 * sequence, and a producer that numbered its own events would give two
+	 * daemons on the same job two conflicting orders.
+	 */
+	private envelope(emission: WireEmission, author?: WireAuthor): WireEvent {
+		return {
+			job_id: this.options.jobId,
+			seq: 0,
+			ts: this.options.now().toISOString(),
+			source: this.options.source,
+			// Omitted rather than guessed when nobody said. Absent means unknown, and
+			// a reader must not fill it in with the persona.
+			...(author === undefined ? {} : { author }),
+			...emission,
+		} as WireEvent;
+	}
+
+	/**
+	 * Marks the job over.
+	 *
+	 * Idempotent: a session that ends twice, which a stop condition racing an
+	 * error can produce, must not release the queue twice.
+	 */
+	finish(): void {
+		if (this.finished) return;
+		this.finished = true;
+		this.options.sink.finishJob?.(this.options.jobId);
+	}
+}
+
+/**
+ * Subscribes a reporter to an event source.
+ *
+ * Returns the unsubscribe, so a caller that starts a run can stop reporting on
+ * it without reaching into the reporter.
+ */
+export function reportTo(
+	source: { on: (listener: (event: LoopEvent) => void) => () => void },
+	reporter: JobReporter,
+): () => void {
+	return source.on((event) => reporter.report(event));
+}

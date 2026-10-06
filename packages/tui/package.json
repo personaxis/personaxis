@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/tui",
-  "version": "0.15.0",
-  "description": "Personaxis TUI, Ink 7 components (living dashboard, streaming transcript with commit queue, brand sigil/aura) + the pre-Ink REPL line editor (until F3.6).",
+  "version": "0.17.0",
+  "description": "Terminal UI for Personaxis: the Ink components the personaxis app is built from, and personaxis-dash, a live dashboard of a persona's sigil, envelopes and memory-chain integrity.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -24,27 +24,29 @@
   "scripts": {
     "build": "tsc",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@personaxis/core": "workspace:*",
-    "chalk": "^5.4.1",
     "@personaxis/protocol": "workspace:*",
+    "chalk": "^5.4.1",
+    "diff": "^8.0.3",
     "ink": "^7.1.0",
-    "react": "^19.0.0",
+    "ink-text-input": "^6.0.0",
     "marked": "^15.0.0",
     "marked-terminal": "^7.3.0",
-    "ink-text-input": "^6.0.0",
-    "zustand": "^5.0.0",
-    "diff": "^7.0.0"
+    "react": "^19.0.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.0.0",
-    "@types/react": "^19.0.0",
     "@types/diff": "^7.0.0",
-    "ink-testing-library": "^4.0.0"
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@vitest/coverage-v8": "3.2.6",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.0"
   },
   "publishConfig": {
     "access": "public"

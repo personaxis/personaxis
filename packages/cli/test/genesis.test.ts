@@ -122,7 +122,8 @@ describe("PB-G: Genesis is valid by construction", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+    // Each run validates the spec twice; at the 300 runs CI asks for, this takes several seconds.
+  }, 60_000);
 
   // PB-G2 (FASE 7 P1, gap G1): no number leaves Genesis decorative. For ANY
   // hostile seed, every envelope coordinate of the FULL pipeline's spec (merge

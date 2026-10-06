@@ -20,6 +20,8 @@ import {
   type Appraiser,
 } from "./appraisal.js";
 import { renderEvolutionView } from "./evolution-view.js";
+import { thinkingOffFor } from "./run/destinations.js";
+import { withModelClock } from "./run/model-clock.js";
 
 export interface LlmAppraiserConfig {
   /** OpenAI-compatible base URL, e.g. http://localhost:11434/v1 (Ollama). */
@@ -55,7 +57,7 @@ matches the provided schema:
 - "preferences": optional STABLE facts/preferences you inferred (key + value). A fact is about an
   ENTITY, not just "the user": use a dotted "<subject>.<attribute>" key where subject is the party
   you are talking to ("interlocutor.name", "interlocutor.role"), a NAMED person/agent/app
-  ("person:david.timezone", "agent:reviewer.owner", "app:frontend.stack"), or the project
+  ("person:mara.timezone", "agent:reviewer.owner", "app:frontend.stack"), or the project
   ("project.deadline"). Plain (dot-free) keys are loose preferences ("format.tone" has a dot so it
   is a fact about "format"; use "tone" alone for a pure preference). Record a self-introduction
   EVERY time so recall addresses the party by name across sessions;
@@ -82,7 +84,10 @@ export class LlmAppraiser implements Appraiser {
 
     const userMsg = [
       `# Persona identity (slot #1)`,
-      input.personaBody.slice(0, 4000),
+      // E116: whole. This is the judge of how the persona evolves, and it was reading 4.000
+      // characters of an identity that runs past 5.000: it decided what a turn meant to a
+      // persona whose limits and summary it had never seen.
+      input.personaBody,
       ``,
       evolutionBlock,
       ``,
@@ -97,7 +102,15 @@ export class LlmAppraiser implements Appraiser {
         { role: "user", content: userMsg },
       ],
       temperature: 0.4,
-      max_tokens: this.cfg.maxTokens ?? 512,
+      // 2048 and not 512, and the number is measured rather than chosen. On the HuggingFace
+      // router (2026-09-10) Qwen3.5-9B answers a one-paragraph prompt in 758 completion
+      // tokens of which most are thinking, and at 512 it returns an empty string. The old
+      // 512 predates models that think before they answer, and it is now a budget that a
+      // whole family of open models cannot finish inside.
+      max_tokens: this.cfg.maxTokens ?? 2048,
+      // E140: measured 2026-09-24, Qwen3.5-9B spent all 2048 thinking (8 000 characters) on every appraisal of the
+      // bench and the persona never learned from a turn. A destination that declared a switch is told not to think.
+      ...thinkingOffFor(this.cfg.endpoint, this.cfg.model),
     };
 
     // Constrained decoding, most-constrained first. Endpoints accept different
@@ -127,7 +140,7 @@ export class LlmAppraiser implements Appraiser {
       const timer = setTimeout(() => ctrl.abort(), this.cfg.timeoutMs ?? 30_000);
       let res: Response;
       try {
-        res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, {
+        res = await fetchImpl(`${this.cfg.endpoint.replace(/\/$/, "")}/chat/completions`, withModelClock({
           method: "POST",
           headers: {
             "content-type": "application/json",
@@ -135,16 +148,43 @@ export class LlmAppraiser implements Appraiser {
           },
           body: JSON.stringify(body),
           signal: ctrl.signal,
-        });
+        }));
       } finally {
         clearTimeout(timer);
       }
 
       if (res.ok) {
         const json = (await res.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
+          choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning?: string; reasoning_content?: string } }>;
         };
-        const content = json.choices?.[0]?.message?.content ?? "{}";
+        const choice = json.choices?.[0];
+        const content = choice?.message?.content ?? "";
+
+        // A BLANK answer is not an empty appraisal, and the difference is the whole bug.
+        //
+        // Measured 2026-09-10 on the HuggingFace router with Qwen3.5-9B: at max_tokens 512
+        // the model spends the entire budget thinking and returns HTTP 200 with content "".
+        // An empty string is not nullish, so `?? "{}"` never fired; JSON.parse("") threw; the
+        // prose-extraction catch found no {...}; and `parseAppraisalSignal({})` handed back a
+        // NEUTRAL signal as though the model had answered and had nothing to report.
+        //
+        // The persona then never evolves, on every tick, with no error anywhere. That is the
+        // silent local failure this file must not have: a model that could not answer has to
+        // look different from a model that answered "no change".
+        if (content.trim() === "") {
+          const reasoning = choice?.message?.reasoning ?? choice?.message?.reasoning_content;
+          lastErr =
+            choice?.finish_reason === "length"
+              ? "the model hit its token limit before writing an answer" +
+                (reasoning ? ", having spent the budget thinking" : "") +
+                "; raise maxTokens for a reasoning model"
+              : reasoning
+                ? "the model returned only its reasoning and no answer; raise maxTokens"
+                : "the model returned an empty answer";
+          // Relaxing response_format cannot conjure an answer out of an exhausted budget.
+          break;
+        }
+
         let parsed: unknown;
         try {
           parsed = JSON.parse(content);
@@ -153,7 +193,11 @@ export class LlmAppraiser implements Appraiser {
           const m = content.match(/\{[\s\S]*\}/);
           parsed = m ? JSON.parse(m[0]) : {};
         }
-        return parseAppraisalSignal(parsed);
+        const signal = parseAppraisalSignal(parsed);
+        // E95: the portable schema sends a property that takes any value as a string holding JSON, so under that
+        // strategy a self-edit's value comes back written as JSON. The other strategies send no schema, and a
+        // string there is the value itself.
+        return responseFormat?.type === "json_schema" ? { ...signal, selfEdits: signal.selfEdits?.map((edit) => ({ ...edit, toValue: fromJsonText(edit.toValue) })) } : signal;
       }
 
       lastErr = `HTTP ${res.status}: ${await safeText(res)}`;
@@ -165,6 +209,16 @@ export class LlmAppraiser implements Appraiser {
       }
     }
     throw new Error(`LLM appraiser ${lastErr}`);
+  }
+}
+
+/** A value sent as JSON text, read back. Text that is not JSON is taken as the string it is. */
+function fromJsonText(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
   }
 }
 

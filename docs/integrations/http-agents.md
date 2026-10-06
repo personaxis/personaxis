@@ -1,15 +1,13 @@
-# HTTP integration, `personaxis serve` for non-MCP agents
+# HTTP integration: `personaxis serve` for non-MCP agents
 
-Not every agent speaks MCP. `personaxis serve` exposes a living, governed persona over plain HTTP,
-plus a self-describing `agents.md` contract (the Hugging Face "Spaces as Agent Tools" pattern): any
-agent in any language can `curl /agents.md`, learn the endpoints, and drive the persona. It is the
-same governed engine as the REPL and the MCP server, every mutation is clamped and audited, every
-observation is prompt-injection scanned.
+Not every agent speaks MCP. `personaxis serve` exposes a persona over plain HTTP, plus an `agents.md`
+file that lists the endpoints: any agent in any language can `curl /agents.md`, learn the endpoints, and
+drive the persona. It is the same governed engine as the REPL and the MCP server. Every mutation is
+clamped and audited, and observations are scanned for prompt injection.
 
-This is a Mode 2 surface (persona runtime powering a product), see
-[../architecture/deployment.md](../architecture/deployment.md). Prefer embedding
-[`@personaxis/sdk`](../architecture/deployment.md) when your backend is Node/TS; use `serve` when you
-want a language-agnostic HTTP boundary or an out-of-process persona.
+This surface is for an app that embeds a persona (see [deployment](../architecture/deployment.md)).
+Prefer embedding [`@personaxis/sdk`](../../packages/sdk) when your backend is Node or TypeScript; use
+`serve` when you want a language-agnostic HTTP boundary or an out-of-process persona.
 
 ## Start the server
 
@@ -19,7 +17,7 @@ personaxis serve --persona <path-to-personaxis.md-or-PERSONA.md> [--port 7637]
 
 Default port is `7637`. `serve` resolves the persona's model through the normal
 [configuration](../guides/configuration.md) precedence (`config.json` `local.endpoint`/`model` or
-`PERSONAXIS_ENDPOINT` + `PERSONAXIS_MODEL`), **not** just env vars. When no model resolves,
+`PERSONAXIS_ENDPOINT` and `PERSONAXIS_MODEL`), not just environment variables. When no model resolves,
 `/persona/observe` falls back to the deterministic heuristic appraiser; `/persona/agent` requires a
 configured tool-calling model and returns `400` without one.
 
@@ -97,7 +95,7 @@ Response:
 
 ### `POST /persona/agent`
 Run the persona's governed Agent Loop on a task: it proposes shell/file tool calls, each gated by the
-persona's sandbox policy, executes the allowed ones, and returns the step events + final result.
+persona's sandbox policy, executes the allowed ones, and returns the step events + how the turn ended.
 
 Request:
 ```json
@@ -106,8 +104,30 @@ Request:
 
 Response:
 ```json
-{ "result": { "...": "..." }, "events": [ /* step events */ ], "trace": [ /* trace file paths, if enabled */ ] }
+{
+  "outcome": {
+    "turn": "6fb83c6a-5bee-489a-a5c6-7e502405c6d7",
+    "stopReason": "answered",
+    "answer": "…",
+    "steps": 3,
+    "cost": { "tokens": 1380, "usd": 0.004 }
+  },
+  "events": [ /* step events */ ],
+  "trace": [ /* trace file paths, if enabled */ ]
+}
 ```
+
+`stopReason` is a closed set, so a client can switch on it: `answered` (the loop said it was done),
+`budget` (a step, token, cost or time ceiling), `stopped` (a stop condition the spec declared),
+`refused` (a guard would not let it continue), `interrupted`, `empty`, `failed`, `abandoned`. Every
+one but the first three closes with an empty `answer` or an explanatory `failure: { code, message }`.
+
+`turn` is the entry id in the persona's record, so the same turn can be looked up in `record.jsonl`
+afterwards: what was asked, what was answered, how it ended and what it cost.
+
+The specific ceiling that stopped a run, the verification verdict with each verifier named, and the
+wall clock are all in `events` (`agent-stop-condition`, `verify-result` / `verify-complete`,
+`agent-budget`), not in `outcome`, which carries only what any loop can report.
 
 Requires a configured tool-calling model (`400` without one). This is non-interactive: anything the
 sandbox policy marks as needing approval is **denied** (never auto-approved over HTTP). `task` must be
@@ -119,13 +139,12 @@ a non-empty string.
 - Invalid JSON bodies return `400 { "error": "invalid JSON body" }`; unknown routes return `404`;
   unexpected errors return `500` with the message.
 - Untrusted observations are injection-scanned; malicious content does not steer evolution.
-- Identity is immutable over HTTP, only runtime state + memory evolve, within the universal invariants.
+- Over HTTP only runtime state and memory evolve, within the universal invariants.
 
 ## When to use this vs. the alternatives
 
 | You want… | Use |
 |---|---|
 | A persona embedded in a Node/TS backend | `@personaxis/sdk` (`import { Persona }`) |
-| A language-agnostic HTTP boundary / out-of-process persona | **`personaxis serve`** (this doc) |
+| A language-agnostic HTTP boundary / out-of-process persona | `personaxis serve` (this doc) |
 | On-demand persona tools inside an MCP host (Claude Code/Codex/Cursor) | `personaxis-mcp` ([claude-code.md](./claude-code.md)) |
-| A fully managed, we-host-it offering | The SaaS design ([../architecture/saas-managed.md](../architecture/saas-managed.md)) |

@@ -1,289 +1,238 @@
 # personaxis
 
-> **Compliance infrastructure for AI agents, built on an open persona spec.** Your agent
-> already reads a default file, CLAUDE.md, AGENTS.md, SOUL.md, GEMINI.md; personaxis compiles a
-> governed persona INTO those files and makes it provably stay who it declares: define the
-> persona once (any format imports), enforce it at runtime with mathematical bounds, watch its
-> drift live, and mint an attestation anyone can re-check, in the stack's own formats (W3C VC,
-> A2A Agent Card).
+A persona is the whole way a professional works: the procedures it follows, the criteria it applies,
+the tools it reaches, the knowledge it cites with sources, what it has learned on the job, and the
+limits it keeps. Personaxis writes that down as plain files you version with git, and any agent can
+load it: Claude Code and Codex through `CLAUDE.md` or `AGENTS.md`, OpenClaw and Hermes through
+`SOUL.md`, any MCP host through `@personaxis/mcp`, and editors that speak ACP through `personaxis-acp`.
 
 [![npm](https://img.shields.io/npm/v/personaxis)](https://www.npmjs.com/package/personaxis)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Spec](https://img.shields.io/badge/spec-1.1.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
 
-This is the **personaxis monorepo**: eight lockstep packages that implement the
-[personaxis.md spec](https://github.com/personaxis/persona.md). The command-line tool ships to
-npm as **`personaxis`** and installs the `personaxis` command.
+This repository holds the eight packages that implement the open
+[personaxis.md spec](https://github.com/personaxis/persona.md). The command-line tool ships to npm as
+`personaxis`.
 
-Define an AI persona once (all ten layers, not just a name and a vibe) in plain, git-versionable
-files; run it unchanged on Claude, GPT, Gemini, or a local model; and get **mathematical
-guarantees** that it cannot drift outside what you declared:
-
-- **It can't escape.** Every mutable value lives in a declared envelope, and no adversarial input
-  sequence can leave it (theorem T1, checked against **2.3M generated adversarial cases, 0
-  counterexamples**: [`docs/GUARANTEES.md`](docs/GUARANTEES.md)).
-- **Change is forensic.** Pushing behavior away from its declared baseline costs a provable
-  minimum of hash-chained audit entries (T3); history replays deterministically, and tampering is
-  located, not just detected (T4/T5).
-- **Created from anything, grounded in evidence.** `personaxis create` builds a
-  valid-by-construction persona from an interview, a prompt, your repo, a **SOUL.md / SoulSpec
-  package**, a character card, or transcripts, with a creation report giving the provenance of
-  every number. Compile out to every default-read file: CLAUDE.md (Claude Code), AGENTS.md
-  (Codex, Cursor and the 60K+ repo ecosystem), SOUL.md (OpenClaw, Hermes), and the
-  `PERSONA:BASELINE` block for GEMINI.md / `.github/copilot-instructions.md` when present.
-- **The persona holds, and you can prove it.** `personaxis attest` mints a local behavioral
-  credential (spec signature + drift within declared thresholds + tamper-evident audit chain,
-  with expiry); `attest --check` re-derives every claim and answers "is this agent still who it
-  declares?" with an exit code CI can gate on. `attest --format vc` / `--format a2a` emit the
-  same credential as a W3C Verifiable Credential 2.0 or an A2A Agent Card extension, so it
-  rides the rails the agent stack already parses.
-
-**Documentation:** [`docs/`](docs/README.md) (this repo, the CLI) ·
-[`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) (the overview) ·
-[`docs/commands/`](docs/commands/README.md) (every command, flag, and exit code) ·
-[`docs/guides/`](docs/guides/) (task-oriented) ·
-[`docs/GUARANTEES.md`](docs/GUARANTEES.md) (evidence scoreboard) ·
-[`docs/architecture/math-core.md`](docs/architecture/math-core.md) (theorem-to-code map). The
-normative spec itself lives in the sibling [persona.md](https://github.com/personaxis/persona.md)
-repository.
+What this version does not include: a hosted hub to publish and pull personas, a bench that measures
+how much a persona improves an agent on each model, and a web studio. They are being built, and none
+of their commands are in this package. [`docs/GUARANTEES.md`](docs/GUARANTEES.md) lists what is
+measured today and what is not.
 
 ---
 
 ## Install
 
-**Try it without installing (npx).** Runs the published CLI straight from the registry, nothing
-lands on your PATH:
-
-```bash
-npx personaxis proof --quick   # 60 s, offline: watch the guarantees hold
-npx personaxis create dev-buddy
-```
-
-**Install it (npm).** Once you use it regularly, put the `personaxis` command on your PATH:
-
 ```bash
 npm i -g personaxis
-personaxis proof --quick     # 60 s, offline: watch the guarantees hold before trusting them
+personaxis proof --quick     # 60 s, offline: runs the engine's own checks on a throwaway persona
 ```
 
-> **Windows / PowerShell.** If a global command prints `running scripts is disabled on this
-> system`, PowerShell is blocking npm's `.ps1` launcher. It does this for every npm-installed CLI,
-> not just personaxis. Fix it once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or
-> call `personaxis.cmd ...` (or `npx personaxis ...`) instead.
+Or without installing: `npx personaxis proof --quick`.
 
-**Developers (from source).** For hacking on personaxis, or the newest code before it is
-published (Node 18+, pnpm):
+> **Windows / PowerShell.** If a global command prints `running scripts is disabled on this
+> system`, PowerShell is blocking npm's `.ps1` launcher, as it does for every npm-installed CLI. Fix
+> it once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or call `personaxis.cmd ...`
+> or `npx personaxis ...` instead.
+
+From source (Node 20.18.1+, pnpm):
 
 ```bash
 git clone https://github.com/personaxis/personaxis && cd personaxis
 pnpm install
-pnpm run build                            # builds the eight packages
+pnpm run build
 node packages/cli/dist/index.js proof --quick
 ```
 
-After editing source, run `pnpm run build` again, then re-run `node packages/cli/dist/index.js
-<cmd>`. Run the suite with `pnpm run test`. Invoking your checkout directly keeps it distinct from a
-published `npm i -g personaxis`, so there is never any doubt about which build answers. Every
-`personaxis <cmd>` shown below is `node packages/cli/dist/index.js <cmd>` from a source checkout.
+Every `personaxis <cmd>` below is `node packages/cli/dist/index.js <cmd>` from a source checkout.
 
-## Your first 10 minutes
+## Your first ten minutes
 
-**1. Create a persona** (in any folder: your project, or an empty dir):
+**1. Create a persona** in any folder:
 
 ```bash
-personaxis create dev-buddy --from-prompt "A blunt senior code reviewer. Never rubber-stamps;
-praises only what earned it; explains the WHY of every rejection. Patient with juniors."
+personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-You get four files under `.personaxis/personas/dev-buddy/`: `personaxis.md` (the quantitative
-ten-layer spec, **this is the persona**), `PERSONA.md` (the compiled document a model actually
-reads), `state.json` (its mutable runtime state), and `creation-report.md` (**read this one**: it
-shows which sentence of your brief produced each number, and labels every default it assumed).
-No brief? Run `personaxis create dev-buddy` with no flags for the psychometric interview,
-`--from-project` to infer a persona from your repo, or `--from-import card.png` to upgrade a
-character card.
+You get four files under `.personaxis/personas/reviewer/`: `personaxis.md` (the definition, in ten
+layers), `PERSONA.md` (the compiled document a model reads), `state.json` (the values that move as it
+works) and `creation-report.md`. Read the report. It shows which sentence of your brief produced each
+number and labels every default it assumed. Without a working model most of the persona is labelled
+defaults, so configure one first (step 2) if you want a persona built from evidence.
 
-**2. Talk to it.** The REPL is the app:
+Other ways in: no flag starts an interview, `--from-project` reads your repository's own docs,
+`--from-import` takes a SOUL.md or SoulSpec package, a character card or a system prompt, and
+`--from-transcript` works from example conversations. `--research` searches the web for the field and
+keeps what it found in `references/`, each source with its date.
+
+**2. Point it at a model.** Any OpenAI-compatible endpoint works, hosted or local:
 
 ```bash
-personaxis --persona .personaxis/personas/dev-buddy/personaxis.md
-# chat in natural language, or: /state /drift /arbitrate /replay /audit /memory /persona /help
+export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama, LM Studio, llama.cpp or a hosted API
+export PERSONAXIS_MODEL=qwen3:4b                        # a small local model works; expect weaker tool use
 ```
 
-It works offline (heuristic appraiser). For real conversation quality, point it at any
-OpenAI-compatible model once:
+`personaxis model` shows which model each persona resolves to, and sets it per persona.
+
+**3. Load it into your agent:**
 
 ```bash
-export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama / LM Studio / llama.cpp / hosted
-export PERSONAXIS_MODEL=qwen3:4b                        # even a small local model is safe here
+personaxis compile reviewer --platform claude-code   # writes .claude/agents/reviewer.md
+npx -y @personaxis/mcp                               # or serve it to any MCP host (16 tools)
 ```
 
-**3. Watch it live, bounded.** Every turn runs a governed tick: state moves only inside the
-declared envelopes, every change lands in a hash-chained audit log, and behavior changes only
-when a value crosses a declared band.
+**4. Talk to it directly**, if you want to see it work outside your agent:
 
 ```bash
-personaxis state drift -f .personaxis/personas/dev-buddy/personaxis.md   # position, band, cost of change
-personaxis dash                                                          # live dashboard, second terminal
+personaxis --persona .personaxis/personas/reviewer/personaxis.md
+# chat in plain language, or: /persona /status /audit /memory /doctor /help
 ```
 
-**4. Give it to your coding agent** (Claude Code, Codex, Cursor):
-
-```bash
-personaxis compile dev-buddy --platform claude-code   # writes .claude/agents/dev-buddy.md
-personaxis-mcp                                        # or run the MCP server (16 persona tools)
-```
-
-Where to next: [`docs/guides/getting-started.md`](docs/guides/getting-started.md) (by audience) ·
-[`docs/guides/creating-personas.md`](docs/guides/creating-personas.md) (every `create` door and
-how to review provenance) · [`docs/guides/production.md`](docs/guides/production.md) (deploy, CI
-gates, troubleshooting) · [`docs/guides/recipes.md`](docs/guides/recipes.md) (eight vertical
-starting points).
+Next: [`docs/guides/getting-started.md`](docs/guides/getting-started.md) ·
+[`docs/guides/creating-personas.md`](docs/guides/creating-personas.md) ·
+[`docs/commands/`](docs/commands/README.md) (every command, flag and exit code).
 
 ---
 
-## What is actually running
+## How each agent loads a persona
 
-Each REPL turn feeds a **governed Living Loop** (`observe → appraise → evolve → recompile →
-memory`). Every state change is **clamped to the persona's envelopes, audited in an immutable
-mutation log, and reversible**, and episodic memory is an **append-only hash chain**
-(tamper-evident and poisoning-evident). Identity stays immutable; only `state.json` and memory
-evolve, within the spec's universal invariants. The model, any model, only *proposes*; the code
-and the spec *enforce*.
+| Agent | How it reads the persona | Command |
+|---|---|---|
+| Claude Code | `PERSONA.md`, referenced as `@PERSONA.md` from `CLAUDE.md`; or a subagent in `.claude/agents/<slug>.md`; or MCP | `compile --platform claude-code`, `@personaxis/mcp` |
+| Codex | `PERSONA.md`, referenced from `AGENTS.md`; or `.codex/agents/<slug>.toml`; or MCP | `compile --platform codex`, `@personaxis/mcp` |
+| Cursor and other editors that read `AGENTS.md` | the `AGENTS.md` baseline | `compile --platform codex` |
+| OpenClaw | `SOUL.md` | `compile --platform openclaw` |
+| Hermes | `.hermes/SOUL.md` | `compile --platform hermes` |
+| Editors that speak ACP | the persona runs as the agent | `personaxis-acp` |
+| Anything over HTTP | an `agents.md` endpoint | `personaxis serve --persona <path>` |
 
-The eight lockstep packages: **`@personaxis/spec`** (schemas, validator, universals),
-**`core`** (the engine, math core, Living Loop, Genesis), **`protocol`** (the op/event transport),
-**`personaxis`** (the CLI), **`mcp`** (the MCP server), **`sdk`** (the in-process façade),
-**`evals`** (the conformance harness), and **`tui`** (the ASCII dashboard).
+MCP registration is documented and tested for Claude Code and Codex
+([`docs/integrations/claude-code-mcp.md`](docs/integrations/claude-code-mcp.md)). Cursor is reached
+through `AGENTS.md`; there is no tested MCP snippet for it yet.
 
-## The three version numbers
+## What a persona brings to a job
 
-They are independent on purpose, so read them separately:
+| What it has | Where it lives | How the agent reaches it |
+|---|---|---|
+| Skills | `.personaxis/personas/<slug>/skills/<name>/SKILL.md` | `use_skill` loads the method before the work starts |
+| Services | `.personaxis/services/<name>.json` | `run_service` runs a multi-step job; every step must leave the files it declares, and the run keeps a journal |
+| References | `.personaxis/personas/<slug>/references/` | `read_file`, by the path the index gives it |
+| Sub-personas | `.personaxis/personas/<slug>/personas/` | `delegate`, for work one of them is made for |
+| Memory | its own store, an append-only hash chain | `memory_search`, before it says it does not remember |
 
-| Number | Example | What it versions | Where you see it |
-|---|---|---|---|
-| Package / CLI | `0.14.0` | the software (all eight packages move together, lockstep) | `personaxis --version` |
-| Spec | `1.1.0` | the `personaxis.md` file format the software implements | `spec_version:` in every persona |
-| apiVersion | `personaxis.com/v1` | the stable API namespace of the spec | `apiVersion:` in every persona |
+It also gets `ask_person`, for a missing fact it should not invent, and `check_page`, which runs a page
+it just built and reads back the line that failed.
 
-The software at `0.14.0` implements spec `1.1.0`. The CLI can keep releasing while still targeting
-spec `1.1.0`, and a persona written for spec `1.0.0` keeps validating because `1.1.0` only adds
-optional fields.
+## What the engine enforces
 
-**New in 0.14.0** (the terminal app grows up):
+A loaded persona is only worth trusting if its limits hold when the model is wrong or under attack.
+These hold in code, not in the prompt:
 
-- **Fourteen commands, not forty.** The slash surface is four groups (Talk / Identity /
-  Build / Run), eighteen entries in the palette once you count `/sandbox`, `/bg`, `/help` and
-  `/exit`. Twenty-three older verbs still run when typed, and `/help moved` says where each
-  one now lives.
-- **Miniapps instead of walls of text.** `/persona`, `/status`, `/audit`, `/drift`, `/doctor`
-  and the rest are navigable views with tabs, selectable rows and drill-downs. `p` switches
-  persona in every one of them, so a sub-persona is one key away rather than a syntax to
-  remember.
-- **Drift covers the whole spec, not just the numbers.** Three planes: continuous (u-space
-  over envelopes), **structural** (a field-by-field diff of what the spec declares vs what is
-  in force, for strings, lists, flags and shapes alike), and **behavioral** (whether the
-  change moves the document agents actually read).
-- **No finding without a remedy.** `fix` is a required field on every validator issue and
-  every lint finding, so a check cannot ship without stating the edit that resolves it.
-- **Everything works outside the TUI.** Every capability either has a non-interactive
-  subcommand with `--json` or declares why it only means something inside a live session, and
-  a test fails when a new command answers neither way. Agents drive the CLI; they cannot
-  drive menus.
-- **A face per persona.** The `aura` is a layered portrait generated from the persona's own
-  hash and animated from its live state.
+- Every value that can change stays inside the range the persona declares. Theorem T1, checked on
+  2,306,140 generated adversarial cases with 0 counterexamples ([`docs/GUARANTEES.md`](docs/GUARANTEES.md)).
+- A tool call that no permission covers does not run.
+- Every turn and every change is written to a hash-chained record. History replays deterministically,
+  and a tampered entry is located by its position in the chain.
+- `@personaxis/evals` runs 19 conformance scenarios with no API keys, on every CI build.
+
+What it does not decide is whether the model makes the right call. A small open model will sometimes
+answer from memory what its own service answers better, or do a job itself instead of handing it to
+the sub-persona built for it. That is why the limits live in the tool layer: a wrong decision still
+cannot run a forbidden action.
+
+## Packages
+
+| Package | What it is |
+|---|---|
+| `@personaxis/spec` | the schemas, the validator and the universal rules |
+| `@personaxis/core` | the engine: state, the loop, the record, Genesis |
+| `@personaxis/protocol` | the transport between a front end and the engine, and the ACP bridge |
+| `personaxis` | the CLI |
+| `@personaxis/mcp` | the MCP server |
+| `@personaxis/sdk` | run a persona inside your own Node or TypeScript backend |
+| `@personaxis/evals` | the conformance suite |
+| `@personaxis/tui` | the terminal interface |
+
+All eight move together on one version: `personaxis --version`.
 
 ---
 
 ## Command reference
 
-A curated subset is below. The complete reference, one page per command with every flag and exit
-code, is [`docs/commands/`](docs/commands/README.md).
+The most used commands are below. Every command, with every flag and exit code, is in
+[`docs/commands/`](docs/commands/README.md).
 
-| Command | Description |
+| Command | What it does |
 |---|---|
-| `create [slug]` | Genesis: build a valid-by-construction persona from an interview, `--from-prompt`, `--from-project`, `--from-import` (SOUL.md / SoulSpec, cards V2/V3, system prompts, AGENTS.md), or `--from-transcript`, with per-number provenance |
-| `(no subcommand)` | Enter the living REPL: talk to your persona; it replies and evolves via the governed Living Loop |
-| `validate` | Schema and universals validation; returns `PASS`, `PASS_WITH_WARNINGS`, `FAIL_SCHEMA`, `FAIL_POLICY`, or `FAIL_CONCEPTUAL`. Also validates sibling `policy.yaml` and `state.json` |
-| `lint` | Semantic lint with structured findings (errors, warnings, info) |
-| `init [--agent \| --user]` | Scaffold a persona (project baseline, agent persona, or user persona) |
-| `compile [<slug>] [--root] [--platform <p>]` | Compile `personaxis.md` to `PERSONA.md` (root) or a subagent document, via the configured provider |
-| `decompile [<slug>] [--root]` | Fold a hand-edited `PERSONA.md` back into a proposed `personaxis.md` (validated before write) |
-| `edit <dot-path> <value>` | Surgical, governed single-leaf edit; re-validates and refuses any edit that breaks a universal |
-| `state init \| mutate \| show \| drift \| rebuild` | Seed, adjust (clamped + logged), inspect, measure drift, or replay the mutation log |
-| `proof [--quick]` | Watch the guarantees hold, offline: adversarial storm, certified band-crossing cost, tamper located, deterministic replay |
-| `jacobian` | Exact compile-sensitivity per coordinate; flags provably decorative numbers |
-| `sign` \| `verify` | Sign the spec bytes (content hash + sigil fingerprint); verify tamper-evidence (exit 0/1/2) |
-| `attest [--check] [--ttl <h>]` | Mint the local behavioral credential (signature + drift within thresholds + intact chain, expiring); `--check` re-derives every claim (exit 0 live / 1 not live / 2 error) |
-| `arbitrate [a] [b]` | Deterministic value-conflict resolution with a trace (`governance` ≻ `weight` ≻ name) |
-| `dash [--persona <p>]` | Live ASCII dashboard: sigil, envelopes, and chain, reflecting evolution in real time |
-| `sigil [--persona <p>]` | Render a persona's deterministic, state-aware ASCII sigil and envelope panel |
-| `push \| pull` | Publish or fetch a persona version (spec, compiled document, and support folders) |
-| `skills list \| pull` | Inspect `extensions.skills` entries and pull `github:` skills into `skills/<name>/` |
-| `overseer` / `team` / `orchestrate` | The master view; operational multi-agent teams; capability-routed task dispatch |
-| `serve --persona <p>` | Serve a persona over HTTP and `agents.md` for agents that do not speak MCP |
-| `sync <other-state.json>` | Reconcile a portable persona's `state.json` across machines (no clobber) |
-| `migrate <from>-to-<to>` | Structural codemods between spec versions (up to `0.10-to-1.0`), each with a written report |
-| `export`, `diff`, `spec`, `list`, `template` | Export frontmatter, diff two versions, print the spec, list installed personas, manage templates |
+| `create [slug]` | Build a persona from an interview, a brief, a project, an import or transcripts, with a creation report |
+| `compile [slug] [--platform <p>]` | Write the document an agent reads, for one of the four platforms below |
+| `validate` | Check the schema and the universal rules; exit codes below |
+| `lint` | Findings with a fix for each one |
+| `decompile [slug]` | Fold a hand-edited `PERSONA.md` back into the definition, validated before it writes |
+| `edit <path> <value>` | Change one field; refuses any edit that breaks a universal rule |
+| `state init \| mutate \| show \| rebuild \| rewind` | Seed, adjust (clamped and logged), inspect, replay or undo the persona's moving values |
+| `status \| audit \| memory \| doctor` | The REPL's views from a shell, with `--json` |
+| `skills list \| pull` | List a persona's skills and pull `github:` skills locally |
+| `service run \| resume` | Run a multi-step service on this machine, and resume one waiting on an answer |
+| `serve --persona <p>` | Serve a persona over HTTP for agents that do not speak MCP |
+| `hooks install` | Wire Claude Code, Codex, OpenClaw or Hermes so the persona learns from each turn |
+| `proof [--quick]` | Run the engine's checks offline on a throwaway persona |
+| `export`, `diff`, `spec`, `list`, `template`, `migrate`, `sync` | Export, compare two versions, print the spec, list personas, templates, spec migrations, reconcile state across machines |
+
+More advanced commands (`jacobian`, `sign`, `verify`, `attest`, `arbitrate`, `guard`, `team`,
+`orchestrate`, `overseer`, `dash`, `sigil`) have their own pages in [`docs/commands/`](docs/commands/README.md).
 
 ### Validate exit codes
 
 | Status | Exit | Meaning |
 |---|---|---|
-| `PASS` | 0 | All MUST present and all universals satisfied |
-| `PASS_WITH_WARNINGS` | 0 | Valid but missing SHOULDs or near-universal recommendations |
-| `FAIL_SCHEMA` | 1 | MUST field absent or wrong type |
-| `FAIL_POLICY` | 2 | A universal policy invariant violated |
-| `FAIL_CONCEPTUAL` | 3 | Prohibited claim or wrong universal constant |
+| `PASS` | 0 | Every required field present and every universal rule satisfied |
+| `PASS_WITH_WARNINGS` | 0 | Valid, with recommended fields missing |
+| `FAIL_SCHEMA` | 1 | A required field is missing or has the wrong type |
+| `FAIL_POLICY` | 2 | A universal rule is violated |
+| `FAIL_CONCEPTUAL` | 3 | A prohibited claim or a wrong universal constant |
 
 ### Compile targets
 
 | Platform | Root output | Subagent output | Skills |
 |---|---|---|---|
-| `claude-code` | `PERSONA.md` (+ `CLAUDE.md` baseline) | `.claude/agents/<slug>.md` | materialized to `.claude/skills/<name>/` |
-| `codex` | `PERSONA.md` (+ `AGENTS.md` baseline) | `.codex/agents/<slug>.toml` | materialized to `.agents/skills/<name>/` |
-| `cursor` | `.cursor/rules/persona.mdc` | n/a | archived |
-| `soul-md` | `SOUL.md` | n/a | archived |
+| `claude-code` | `PERSONA.md` (+ `CLAUDE.md` baseline) | `.claude/agents/<slug>.md` | copied to `.claude/skills/<name>/` |
+| `codex` | `PERSONA.md` (+ `AGENTS.md` baseline) | `.codex/agents/<slug>.toml` | copied to `.agents/skills/<name>/` |
+| `openclaw` | `SOUL.md` | `.openclaw/agents/<slug>/SOUL.md` | as `claude-code` |
+| `hermes` | `.hermes/SOUL.md` | `.hermes/agents/<slug>/SOUL.md` | as `claude-code` |
 
-Compile is LLM-based (via the configured provider). Edit
-`.personaxis/[personas/<slug>/]personaxis.md`, then recompile; do not hand-edit the generated
-`PERSONA.md`, `.claude/agents/`, `.codex/agents/`, or materialized skills (use `personaxis
-decompile` to fold hand-edits back into the spec).
+Edit `.personaxis/[personas/<slug>/]personaxis.md` and recompile. Do not hand-edit the generated
+files; `decompile` folds hand edits back into the definition.
 
----
+## The four files of a persona
 
-## The three-artifact model
-
-| Artifact | Role | Who writes it |
+| File | Role | Who writes it |
 |---|---|---|
-| `.personaxis/[personas/<slug>/]personaxis.md` | The quantitative ten-layer spec (source of truth) | Humans, or the persona under governance, via `decompile` |
-| `PERSONA.md` / `.claude/agents/<slug>.md` | The compiled, LLM-facing document | Generated via `compile` |
-| `state.json` | Mutable runtime state (trait/affect/mood values) | `state mutate` (CLI) or `adjust_persona_state` (runtime) |
-| `policy.yaml` | Observability and improvement policy | Ops; never inlined into the actor prompt |
-
-State mutations are clamped to the envelopes (`{mean, range}`) declared in `personaxis.md`. The
-mutation log in `state.json` records every change with its timestamp, actor, reason, and whether
-the runtime clamped it or governance blocked it.
+| `personaxis.md` | The definition, in ten layers; the source of truth | You, or the persona itself under its improvement policy |
+| `PERSONA.md` / `.claude/agents/<slug>.md` | The compiled document a model reads | `compile` |
+| `state.json` | The values that move as it works, with a log of every change | `state mutate` or the runtime |
+| `policy.yaml` | The improvement and evaluation policy | You; never placed in the model's prompt |
 
 ## Skills
 
-`extensions.skills` is an index, not a content host. Each entry resolves to a folder with a
-`SKILL.md` (agentskills.io format):
+`extensions.skills` lists where each skill lives. Each entry resolves to a folder with a `SKILL.md`
+in the agentskills.io format:
 
 ```yaml
 extensions:
   skills:
-    - "./skills/quarterly-planning"   # local, materialized on compile
-    - "@org/name@1.2.0"               # registry, reference-only
-    - "github:org/repo/path"          # github, pullable
+    - "./skills/quarterly-planning"   # local, copied into place on compile
+    - "github:org/repo/path"          # pulled with `personaxis skills pull`
 ```
 
-`personaxis compile` materializes every local entry into the target platform's skill-discovery
-directory, and writes `skills-manifest.json` recording each entry's status (`materialized`,
-`missing-local`, or `reference-only`). `personaxis skills pull` clones a `github:` skill into
-`skills/<name>/`, validates its `SKILL.md`, and rewrites the entry to the local path.
+`compile` copies every local skill into the target platform's skill folder and writes
+`skills-manifest.json` with each entry's status.
 
----
+## Versions
+
+Three numbers, versioned separately: the package (`personaxis --version`), the spec (`1.1.0`, in
+`spec_version:` of every persona) and the API namespace (`personaxis.com/v1`, in `apiVersion:`). A
+persona written for spec `1.0.0` still validates, because `1.1.0` only adds optional fields.
 
 ## License
 

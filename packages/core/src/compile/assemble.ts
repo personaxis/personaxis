@@ -84,8 +84,7 @@ function sectionOpener(persona: Dict, target: AssembleTarget): string {
     lines.push(purpose ? `${bits}. ${purpose}` : `${bits}.`);
   }
   lines.push(
-    "You think, speak, and decide as this persona. Stay in character at all times, the rules " +
-      "below are who you are, not instructions you are following.",
+    "You think, speak and decide as this persona, and everything below describes how you work.",
   );
   return lines.join("\n");
 }
@@ -359,7 +358,22 @@ function sectionSelfImprovement(persona: Dict): string {
  * prose, no LLM. This is what makes the spec's numbers compile-load-bearing, 
  * and what the persona Jacobian (J_compile) measures.
  */
+/** The heading of the section the band prose lives under. Exported because the moment reads it (E118). */
+export const EXPRESSION_HEADING = "## How your traits express right now";
+
 function sectionExpression(persona: Dict, stateValues?: Record<string, number>): string {
+  const lines = expressionLines(persona, stateValues);
+  if (lines.length === 0) return "";
+  return [EXPRESSION_HEADING, "", ...lines].join("\n");
+}
+
+/**
+ * One line per coordinate, the band prose its value selects: the lines of "How your traits express
+ * right now". Exported for E118, so that the message of the moment and the compiled identity are
+ * written by ONE function: two would be two opinions about how a persona is, and the difference
+ * between them is exactly what the moment has to report.
+ */
+export function expressionLines(persona: Dict, stateValues?: Record<string, number>): string[] {
   const lookup = extractEnvelopes(persona as PersonaFrontmatter);
   const lines: string[] = [];
   for (const [field, e] of Object.entries(lookup.envelopes)) {
@@ -376,8 +390,7 @@ function sectionExpression(persona: Dict, stateValues?: Record<string, number>):
     const label = staticallyDecorative(e) ? "" : ` (${bandOf(value, e)})`;
     lines.push(`- **${name}**${label}: ${prose}`);
   }
-  if (lines.length === 0) return "";
-  return ["## How your traits express right now", "", ...lines].join("\n");
+  return lines;
 }
 
 /**

@@ -51,7 +51,7 @@ export function buildSignature(data: PersonaData, raw: string, sourceName: strin
 
 export const signCommand = new Command("sign")
   .description(
-    "Sign a persona: write a local integrity attestation (content hash + sigil) that `verify` and the hosted verifier check.",
+    "Sign a persona: write a local integrity record (content hash + sigil) that `verify` checks.",
   )
   .option("--persona <path>", "path to personaxis.md (default: resolve from cwd)")
   .option("--print", "print the signature to stdout instead of writing " + SIG_NAME)

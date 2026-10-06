@@ -13,4 +13,6 @@ personaxis diff old/PERSONA.md new/PERSONA.md --format json   # for CI
 | `<before>` `<after>` | The two `PERSONA.md` files to compare. |
 | `--format <text\|json>` | Output format (default `text`). |
 
+Exit code is 1 when the diff contains a breaking change, otherwise 0.
+
 Pairs with [`validate`](./validate.md) (is the new one valid?) and [`export`](./export.md) (clean form).

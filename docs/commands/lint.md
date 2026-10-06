@@ -5,33 +5,37 @@ Semantic, tier-aware findings against the layer/field contract, beyond schema va
 
 ## Usage
 ```bash
+personaxis lint                    # lints ./.personaxis/personaxis.md
 personaxis lint <file>
+personaxis lint --format json      # for CI
 ```
 
+With no file it lints `.personaxis/personaxis.md`, the same file `validate` reads; a repository from before spec
+v1, whose only persona file is a `PERSONA.md` with frontmatter, is linted from there.
+
 ## What it checks (selection)
-- Required top-level fields + supported `spec_version` (0.3 … 0.10, 1.0). The linter is
+- Required top-level fields + supported `spec_version` (0.3 … 0.10, 1.0 and 1.1). The linter is
   version-aware: at v1.0 it expects `apiVersion personaxis.com/v1`, the layer-9 name
   `self_regulation`, and no `metadata.display_name`; legacy personas are checked at their
   legacy paths.
 - Metadata completeness; layer coverage summary.
-- **Persona prompting** (honest, tier-aware): if the layer-10 `persona.address` is set,
+- Persona prompting (tier-aware): if the layer-10 `persona.address` is set,
   recommend a non-empty `you_are`; suggest 2-4 `voice_exemplars`; remind that hard limits
   never override safety; hint when the material is absent (the compiled doc will be derived
   from the quantitative layers).
 
 ## Every finding carries its remedy
 
-`fix` is a **required** field on `Finding`, so the compiler is what stops a new rule from
-shipping a bare warning. It prints under each finding:
+Every finding prints a `fix` line saying what to change:
 
 ```
 warning  personality.traits.humor   'humor' declares an envelope but no per-band expression …
          fix: Add expression: {low, moderate, high} under personality.traits.humor, each line
               saying how the persona actually behaves in that band. Right now the number is
-              decorative: `personaxis jacobian` shows it moves nothing.
+              decorative: changing it does not change the compiled document.
 ```
 
-Where the honest remedy is "nothing to change in the file", it says so and explains why (the
+Where the remedy is "nothing to change in the file", it says so and explains why (the
 `memory-policy-unenforced` findings report a gap in THIS runtime, not a defect in your
 persona).
 

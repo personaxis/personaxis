@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import chalk from "chalk";
-import { sigilParams, renderSigil, readState, type PersonaFrontmatter } from "@personaxis/core";
+import { stateOf, loadPersona, sigilParams, renderSigil, readState, type PersonaFrontmatter } from "@personaxis/core";
 import { loadPersonaFile } from "../load.js";
 
 export interface CardData {
@@ -28,7 +28,9 @@ export function buildCard(data: Record<string, unknown>, raw: string, personaPat
   const statePath = join(dirname(personaPath), "state.json");
   let mutations = 0;
   try {
-    if (existsSync(statePath)) mutations = readState(statePath).mutation_log.length;
+    // Described, not created. A card is a picture of a persona and drawing one must
+    // not be what brings its state into existence.
+    mutations = stateOf(loadPersona(personaPath))?.mutation_log.length ?? 0;
   } catch {
     /* no state yet */
   }

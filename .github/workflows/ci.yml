@@ -1,10 +1,28 @@
 name: CI
 
+# Every branch, not just `main`.
+#
+# It used to be `branches: [main]`, and on 2026-08-29 that cost a release. The
+# `feature/runtime-kernel` branch had 63 commits that had never been built or run
+# anywhere but the Windows machine they were written on, because nothing triggered
+# here until they reached `main`. One of them asserted the opposite of its own name
+# on any platform that is not Windows, and what found it was the publish job, at the
+# publish step, after the tag was already pushed.
+#
+# A branch that is only correct on its author's laptop is not correct, and finding
+# that out from a release is finding out too late. The matrix below already covers
+# three operating systems; it just was not being asked.
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
+
+# Every job carries a time budget, and the numbers beside each one are measured
+# rather than guessed. Two reasons, and the second is the one that bites: a job
+# with no timeout that hangs runs for six hours by default, and on a metered
+# repository that is the month's allowance in one afternoon. This one is public
+# and unmetered, so here it is about noticing: a build that suddenly takes ten
+# times what it took is a regression somebody should hear about.
 
 permissions:
   contents: read
@@ -13,17 +31,31 @@ jobs:
   build:
     name: build & typecheck (${{ matrix.os }} / node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
+    # Measured 2026-08-30 on this workflow: 36s on ubuntu, 37 on macOS, 65 on
+    # windows. Ten minutes is roughly ten times the slowest, which is a budget
+    # that survives a slow runner and still catches something that hangs.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [20, 22]
+        # 20 because `engines` promises it and a promise nobody tests is a guess.
+        # 22 is in maintenance LTS, 24 is the active one and what a new install
+        # gets today. Leaving 24 out meant not testing the version most people
+        # actually run. This repository is public, so the matrix is free: what it
+        # costs is wall clock, and these run in parallel.
+        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` on purpose. The action reads `packageManager` from the root
+      # package.json, so CI and a laptop run the same pnpm. Pinned to 10.34.5
+      # because `minimumReleaseAge` in pnpm-workspace.yaml, the 48-hour hold that
+      # is this repository's defence against a compromised release, needs pnpm
+      # >= 10.16 to do anything at all. `version: 10` happened to satisfy that in
+      # CI and nothing said so, while a laptop on 10.13 had the setting written
+      # down and not enforced.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
@@ -50,11 +82,12 @@ jobs:
   test:
     name: test suite (ubuntu / node 22)
     runs-on: ubuntu-latest
+    # Measured: 137s here, 71s locally for the whole suite, and a local build of
+    # 8.5s. The gap is the install. Fifteen minutes is the budget.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -63,73 +96,80 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
-      - name: Test
-        run: pnpm run test
+      # Coverage, not just green. `test:coverage` runs the same suites and then holds
+      # each package to the floor in vitest.floor.ts, which is where all eight numbers
+      # live so they can be compared. A floor only moves up; lowering one costs a line
+      # in a diff, and that is the entire mechanism.
+      - name: Test, against the coverage floor
+        run: pnpm run test:coverage
         env:
           # Per-push regression gate (5x the local default of 200). The core suite
           # uses the forks pool (packages/core/vitest.config.ts) so this stays clear
           # of the worker-RPC timeout even under the property suites.
           FC_NUM_RUNS: "300"
 
-  golden:
-    name: golden test (validate CMO = PASS)
+  gates:
+    name: repository gates (test types, private pointers, doc references)
     runs-on: ubuntu-latest
+    # Measured: 26s for the job this replaced.
+    timeout-minutes: 10
     steps:
-      - name: Checkout cli
-        uses: actions/checkout@v4
+      # Full history: the check on what a pull request adds has to see every commit of it.
+      - uses: actions/checkout@v4
         with:
-          path: cli
-
-      # The golden persona lives in the sibling spec repo. Checked out side-by-side
-      # so the relative path used by CLAUDE.md (../persona.md) resolves in CI too.
-      - name: Checkout persona.md spec
-        uses: actions/checkout@v4
-        with:
-          repository: personaxis/persona.md
-          path: persona.md
-        continue-on-error: true
-
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: cli/pnpm-lock.yaml
 
       - name: Install & build
-        working-directory: cli
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
 
-      - name: Validate golden CMO persona (must exit 0 = PASS)
-        working-directory: cli
-        run: |
-          if [ -f ../persona.md/.personaxis/personas/cmo/personaxis.md ]; then
-            node packages/cli/dist/index.js validate ../persona.md/.personaxis/personas/cmo/personaxis.md
-          else
-            echo "::warning::sibling persona.md repo not available; skipping golden validate"
-          fi
+      # Every package's tsconfig includes only src, so tsc never looks at a test file.
+      # This runs the tests through the type checker with a ceiling per package that
+      # only goes down.
+      - name: Tests, through the type checker
+        run: pnpm run check-test-types
 
-      # Byte-identity rule (CLAUDE.md): schemas AND templates must match persona.md.
-      # Blocking, drift is a spec-conformance regression. `check-mirror` owns the
-      # file list (scripts/sync-spec-mirror.mjs) so this gate never drifts from the
-      # `sync-mirror` command contributors run locally. A missing sibling is a skip.
-      - name: Enforce schema + template byte-identity with persona.md
-        if: ${{ hashFiles('persona.md/schema/persona.schema.json') != '' }}
-        working-directory: cli
-        run: pnpm run check-mirror
+      # This repository is public and sits beside private work. No tracked file may
+      # point into it.
+      - name: No public file points at private work
+        run: pnpm run check-private
+
+      # The check above reads the tip. A file that one commit adds and the next deletes
+      # leaves the tip clean and the public history dirty, and a merge cannot take a commit
+      # back. This reads the lines every commit of the pull request adds; the control
+      # proves it can fail.
+      - name: No commit of the pull request adds personal data
+        run: node scripts/check-private-history.mjs --control
+      - name: No commit of the pull request adds personal data (this pull request)
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-private-history.mjs origin/${{ github.base_ref }}
+
+      # The architecture docs explain the engine by citing source files; a citation to a
+      # file that no longer exists fails here.
+      - name: The architecture docs cite code that exists
+        run: pnpm run check-docs-refs
+
+      # The writing rules a program can measure: no long dash, no heading that defines
+      # something by what it is not, no filler words. The control proves each is caught.
+      - name: The public docs keep the writing rules
+        run: |
+          node scripts/check-docs-style.mjs --control
+          pnpm run check-docs-style
 
   evals:
     name: governance evals (deterministic, no API keys)
     runs-on: ubuntu-latest
+    # Measured: 24s.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22

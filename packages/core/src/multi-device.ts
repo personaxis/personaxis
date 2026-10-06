@@ -42,7 +42,7 @@ import type { Envelope } from "./envelopes.js";
 /**
  * The envelope clamp, in the one form the fold needs.
  *
- * Deliberately the SAME arithmetic as `applyMutation` in the state engine
+ * Deliberately the SAME arithmetic as `decide` in `record/mutate.ts`
  * (`Math.max(min, Math.min(max, requested))`): the merged history must obey the identical
  * bound as the local one, and two implementations of "the value cannot leave its box"
  * would eventually disagree about the box.

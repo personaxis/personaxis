@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
-  applyMutation,
+  record,
   toU,
   fromU,
   projectValue,
@@ -24,7 +24,7 @@ import {
   driftReport,
   type Envelope,
 } from "../../src/index.js";
-import { NUM_RUNS, envelopeArb, freshState, PROP_TIMEOUT } from "./arbitraries.js";
+import { NUM_RUNS, envelopeArb, PROP_TIMEOUT } from "./arbitraries.js";
 
 /** Non-degenerate envelopes (positive half-width on both sides) for u-inversion. */
 const solidEnvelopeArb: fc.Arbitrary<Envelope> = envelopeArb.filter(
@@ -118,24 +118,25 @@ describe("PB-T3 evidence cost: minStepsToCross is a certified lower bound", () =
         ({ e, start, deltaMax, up }) => {
           const field = "personality.traits.x";
           const envs = { [field]: e };
-          const state = freshState();
-          state.values[field] = start;
+          let at = start;
           const startBand = bandOf(start, e);
           const bound = coordinateDrift(field, start, e, deltaMax).minStepsToCross;
 
           // Adversary: pushes the maximum admitted delta every tick, in one direction.
           let steps = 0;
           for (let i = 0; i < 500; i++) {
-            const r = applyMutation(state, envs, {
+            const r = record.decide(at, e, {
               field,
               delta: up ? deltaMax : -deltaMax,
               reason: "pb-t3 adversary",
             });
+            at = r.to;
             steps++;
             if (bandOf(r.to, e) !== startBand) {
-              // Crossed: the audited-entry count must respect the bound.
+              // Crossed: the step count must respect the bound. That every step is an
+              // entry is the record's business and its own suite proves it; what this
+              // proves is the arithmetic, which is what T3 is about.
               expect(steps).toBeGreaterThanOrEqual(bound);
-              expect(state.mutation_log.length).toBe(steps); // every step logged
               return;
             }
             if (r.to === r.from) return; // pinned at the wall inside the same band: no crossing ever

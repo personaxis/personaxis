@@ -60,14 +60,39 @@ function checkSyncStatus(loaded: LoadResult, result: ValidationResult): void {
     return;
   }
 
-  if (hashContent(loaded.raw) !== manifest.personaxisMdHash) {
-    warn(`personaxis.md changed since the last ${manifest.lastOp}. Run 'personaxis compile' or 'personaxis push' to refresh ${compiledRel}.`);
+  // R5: where this copy came from, and whether it is still what arrived.
+  //
+  // Printed before the drift checks because it is the more basic question: a persona
+  // somebody pulled and then edited is a different situation from one they wrote, and
+  // until now nothing anywhere could tell the two apart.
+  if (manifest.installed) {
+    const { registry, slug, version, at, hash } = manifest.installed;
+    console.log(
+      `    ${chalk.dim("↓")} installed from ${chalk.bold(slug)} v${version} ${chalk.dim(`(${registry}, ${at.slice(0, 10)})`)}`,
+    );
+    if (hashContent(loaded.raw) !== hash) {
+      // Not a warning. Editing a persona you installed is the ordinary thing to do
+      // with one, and this exists so the fact is VISIBLE, not so it is discouraged.
+      console.log(`    ${chalk.dim("·")} edited locally since it was installed`);
+    }
   }
 
-  if (!existsSync(compiledPath)) {
+  // The compile halves are absent on a manifest an install wrote, and comparing a
+  // hash against `undefined` would report a change nobody made.
+  if (manifest.personaxisMdHash !== undefined && hashContent(loaded.raw) !== manifest.personaxisMdHash) {
+    warn(`personaxis.md changed since the last ${manifest.lastOp}. Run 'personaxis compile' to refresh ${compiledRel}.`);
+  }
+
+  if (manifest.compiledMdHash === undefined) {
+    // Nothing has been compiled from this copy yet, which is the normal state right
+    // after a pull. Saying it beats silence: the next step is a compile.
+    if (!existsSync(compiledPath)) {
+      console.log(`    ${chalk.dim("·")} not compiled yet. Run 'personaxis compile'.`);
+    }
+  } else if (!existsSync(compiledPath)) {
     warn(`${compiledRel} not found. Run 'personaxis compile'.`);
   } else if (hashContent(readFileSync(compiledPath, "utf-8")) !== manifest.compiledMdHash) {
-    warn(`${compiledRel} was hand-edited since the last ${manifest.lastOp}. Run 'personaxis push' (decompiles) or 'personaxis compile' (overwrites it from personaxis.md).`);
+    warn(`${compiledRel} was hand-edited since the last ${manifest.lastOp}. Run 'personaxis decompile' (keeps the edits) or 'personaxis compile' (overwrites it from personaxis.md).`);
   }
 }
 

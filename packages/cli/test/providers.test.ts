@@ -54,9 +54,9 @@ describe("resolveProvider, profile-aware (a profile can be any provider kind)", 
     expect(resolveProvider().name).toBe("byok");
   });
 
-  it("a default remote profile selects the remote provider", () => {
+  it("a default remote profile is refused with the reason, since this version does not offer the hosted provider (L14)", () => {
     writeGlobal({ profiles: { a: { provider: "remote", apiBase: "https://api.personaxis.com" } }, defaultProfile: "a" });
-    expect(resolveProvider().name).toBe("remote");
+    expect(() => resolveProvider()).toThrow(/not part of this version/);
   });
 
   it("a default local profile selects the local provider", () => {

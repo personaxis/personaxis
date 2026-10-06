@@ -10,6 +10,14 @@ import { describe, it, expect } from "vitest";
 import { defineTool } from "../src/tools/define.js";
 import { validateToolArgs } from "../src/tools/registry.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
+import { noExecution } from "../src/ports/execution.js";
+
+/**
+ * E32: the third argument is the ExecutionPort, WHERE the action happens, and these
+ * calls were leaving it out. One that refuses everything rather than a live one, so
+ * the call also asserts what it should: none of these tools touches the machine.
+ */
+const INERT = noExecution("this tool must not act");
 
 const ALLOW = {
   decision: "allow" as const,
@@ -54,7 +62,7 @@ describe("defineTool produces a normal ToolSpec (J.1)", () => {
 
   it("runs gate and execute with the (validated) args", async () => {
     expect(sample.gate({ path: "a.txt", count: 2 }, DEFAULT_POLICY).decision).toBe("allow");
-    expect(await sample.execute({ path: "a.txt", count: 2, mode: "append" }, DEFAULT_POLICY)).toBe("wrote 2 to a.txt (append)");
+    expect(await sample.execute({ path: "a.txt", count: 2, mode: "append" }, DEFAULT_POLICY, INERT)).toBe("wrote 2 to a.txt (append)");
   });
 });
 

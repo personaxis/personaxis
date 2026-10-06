@@ -14,11 +14,15 @@ import type { InterviewItem, InterviewAnswers } from "@personaxis/core";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 25));
 
+// E32: every item was missing `depth`, which the real bank declares on all of them and
+// which decides whether a question belongs to the short interview or the long one. A
+// wizard driven by items that have no depth is a wizard tested against a bank that
+// cannot exist. `core` on all four, because these four are the short path.
 const ITEMS: InterviewItem[] = [
-  { id: "id-name", kind: "text", construct: "identity.display_name", rule: "verbatim", question: "What is this persona called?" },
-  { id: "t-open", kind: "likert", construct: "personality.traits.openness", rule: "likert-to-mean", question: "Explores unconventional angles." },
-  { id: "d-unknown", kind: "choice", construct: "cognition.default_strategy", rule: "dilemma-unknown", question: "Facing unknowns it should…", options: ["ask for evidence", "hypothesize, labeled", "best effort, disclosed"] },
-  { id: "v-rank", kind: "rank", construct: "values_and_drives.values", rule: "rank-to-weight", question: "Order what it values most.", candidates: ["clarity", "speed"] },
+  { id: "id-name", depth: "core", kind: "text", construct: "identity.display_name", rule: "verbatim", question: "What is this persona called?" },
+  { id: "t-open", depth: "core", kind: "likert", construct: "personality.traits.openness", rule: "likert-to-mean", question: "Explores unconventional angles." },
+  { id: "d-unknown", depth: "core", kind: "choice", construct: "cognition.default_strategy", rule: "dilemma-unknown", question: "Facing unknowns it should…", options: ["ask for evidence", "hypothesize, labeled", "best effort, disclosed"] },
+  { id: "v-rank", depth: "core", kind: "rank", construct: "values_and_drives.values", rule: "rank-to-weight", question: "Order what it values most.", candidates: ["clarity", "speed"] },
 ];
 
 async function drive(items: InterviewItem[], keys: string[]): Promise<{ answers: InterviewAnswers; frames: () => string }> {

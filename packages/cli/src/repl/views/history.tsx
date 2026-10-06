@@ -30,8 +30,14 @@ export interface HistoryActions {
   log(): HistoryEntry[];
   /** Fields that a rewind of the last n mutations would restore (no write). */
   preview(n: number): Array<{ field: string; from: number; to: number }>;
-  /** Perform the rewind; returns a status line. */
-  rewind(n: number): string;
+  /**
+   * Perform the rewind and say what happened.
+   *
+   * Asynchronous because the moves go into the record and the caller waits for them
+   * to be durable before reporting them. Reporting a rewind that a crash could take
+   * back is worse than making somebody wait for it.
+   */
+  rewind(n: number): Promise<string>;
   notify(line: string): void;
 }
 
@@ -88,9 +94,11 @@ export function registerHistoryView(actions: HistoryActions): void {
         if (key.downArrow) return void (setConfirming(false), setCursor((c) => Math.min(entries.length - 1, c + 1)));
         if (key.return && entries.length) {
           if (!confirming) return void setConfirming(true);
-          actions.notify(actions.rewind(n));
+          void actions.rewind(n).then((line) => {
+            actions.notify(line);
+            setRefresh((x) => x + 1);
+          });
           setConfirming(false);
-          setRefresh((x) => x + 1);
           setCursor(0);
         }
       },

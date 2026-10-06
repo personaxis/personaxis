@@ -16,6 +16,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, append
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { ChatMessage } from "./tool-calling.js";
+import { thinkingOffFor } from "./run/destinations.js";
+import { withModelClock } from "./run/model-clock.js";
 
 /**
  * Where a session came from.
@@ -97,8 +99,35 @@ export function ensureSession(personaPath: string, header: Omit<SessionHeader, "
   writeFileSync(p, JSON.stringify({ type: "header", ...header }) + "\n", "utf-8");
 }
 
-/** Append one turn. Requires the session to already exist (call ensureSession first).
- * Returns the turn's uuid (generated when not supplied) for parent_uuid threading. */
+/**
+ * Append one turn. Requires the session to already exist (call ensureSession first).
+ * Returns the turn's uuid (generated when not supplied) for parent_uuid threading.
+ *
+ * ## Why this is synchronous, and why there is no background writer
+ *
+ * There was one. `session-writer.ts` implemented the Codex rollout pattern: turns into
+ * an in-memory queue, a single background drain appending them in order, `flush()` to
+ * ack durability, plus a derived `sessions/index.json` so listing did not have to read
+ * every file. It was complete, tested, and called by nothing, and E11 deleted it
+ * rather than mounting it. The reasoning is here because this is where somebody will
+ * next wonder whether the sync write is a shortcut.
+ *
+ * **The async write is slower where it counts and less safe.** A queue loses its
+ * un-acked tail on a crash; `appendFileSync` of one JSON line loses nothing. And the
+ * cost it saves is a fraction of a millisecond, at the end of a turn that just spent
+ * seconds waiting for a model. Codex writes asynchronously because Codex writes far
+ * more; copying the mechanism without the volume is copying the shape.
+ *
+ * **The index solved a problem this product does not have.** Measured on 2026-09-04
+ * across every persona on the machine that wrote this: 21 sessions in the largest,
+ * 13 in the working repository. `listSessions` reads and parses those in the time it
+ * takes to decide whether to. An index is a cache, and a cache is a second thing that
+ * can be wrong; adding one before there is a measurement asking for it is exactly the
+ * kind of decision this repository does not make.
+ *
+ * When somebody has ten thousand sessions and a slow `listSessions` to point at, the
+ * index comes back, with the number that justified it.
+ */
 export function appendTurn(
   personaPath: string,
   id: string,
@@ -233,7 +262,7 @@ export async function nameSession(
   firstMessage: string,
 ): Promise<string> {
   const fetchImpl = llm.fetchImpl ?? fetch;
-  const res = await fetchImpl(`${llm.endpoint.replace(/\/$/, "")}/chat/completions`, {
+  const res = await fetchImpl(`${llm.endpoint.replace(/\/$/, "")}/chat/completions`, withModelClock({
     method: "POST",
     headers: { "content-type": "application/json", ...(llm.apiKey ? { authorization: `Bearer ${llm.apiKey}` } : {}) },
     body: JSON.stringify({
@@ -244,10 +273,16 @@ export async function nameSession(
       ],
       temperature: 0,
       max_tokens: 16,
+      // E140: a model that thinks spends 16 tokens thinking; a destination that declared a switch is told not to.
+      ...thinkingOffFor(llm.endpoint, llm.model),
     }),
-  });
+  }));
   if (!res.ok) throw new Error(`namer HTTP ${res.status}`);
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const json = (await res.json()) as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
+  // E95: a reply cut at the cap is not a title. Measured 2026-09-15 with Cohere's command-a-plus, which thinks first: all
+  // 16 tokens went to reasoning and the content came back as that reasoning, so a session was named
+  // `The user says: "First message: Design a small arcade game an`. The deterministic name is better than that.
+  if (json.choices?.[0]?.finish_reason === "length") throw new Error("title cut off at the token cap");
   const out = (json.choices?.[0]?.message?.content ?? "").trim().replace(/^["']|["']$/g, "").replace(/[.]+$/, "");
   if (!out) throw new Error("empty title");
   return out.slice(0, 60);

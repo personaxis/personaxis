@@ -1,24 +1,26 @@
 # Using personaxis inside Claude Code (MCP)
 
-Claude Code (or another MCP host: Codex, Cursor) brings the powerful model and the tool-use loop.
-Personaxis brings **living identity + memory + awareness** through the `personaxis-mcp` MCP server.
+Claude Code (or another MCP host: Codex, Cursor) brings the model and the tool-use loop. Personaxis
+brings the persona (its procedures, knowledge and memory) through the `personaxis-mcp` MCP server.
 
 ## 1. Register the server
 
-`personaxis-mcp` is a stdio MCP server. Register it in Claude Code (the project's `.mcp.json` or
-`claude mcp add`):
+`personaxis-mcp` is a stdio MCP server in its own npm package, `@personaxis/mcp` (installing the
+`personaxis` CLI does not add it). Register it in Claude Code (the project's `.mcp.json` or
+`claude mcp add`), and the host fetches it on first use:
 
 ```json
 {
   "mcpServers": {
     "personaxis": {
-      "command": "personaxis-mcp"
+      "command": "npx",
+      "args": ["-y", "@personaxis/mcp"]
     }
   }
 }
 ```
 
-Not published yet (from the repo):
+With `npm i -g @personaxis/mcp` the command is `personaxis-mcp` directly. From a source checkout:
 
 ```json
 {
@@ -31,15 +33,15 @@ Not published yet (from the repo):
 }
 ```
 
-> CLI equivalent: `claude mcp add personaxis -- personaxis-mcp`
+> CLI equivalent: `claude mcp add personaxis -- npx -y @personaxis/mcp`
 
 ## 2. Tools it exposes (16)
 
-> Short list below; the full reference is in [claude-code.md](./claude-code.md). The MCP server is 0.12.0.
+The short list is below; the full reference is in [claude-code.md](./claude-code.md).
 
 | Tool | Why the host calls it |
 |---|---|
-| `persona_compiled` | Load the identity (system prompt slot #1) |
+| `persona_compiled` | Load the compiled persona (system prompt slot #1) |
 | `persona_state` / `persona_envelopes` | Read current state / mutable ranges |
 | `adjust_persona_state` | Adjust mood/affect (clamped + audited) |
 | `persona_observe` | One governed Living Loop cycle over an observation |
@@ -50,12 +52,12 @@ Not published yet (from the repo):
 | `evaluate_command` | Sandbox policy: allow / ask / deny this command? |
 | `skill_review` | Security review of a skill before using it |
 
-## 3. A real session trace
+## 3. A session trace
 
-Real output from a simulated session (MCP client ↔ `personaxis-mcp`) over the CMO persona:
+Illustrative output from a session (MCP client and `personaxis-mcp`) over the CMO persona:
 
 ```text
-# session start: host loads the identity
+# session start: host loads the persona
 → persona_compiled({persona})
 ← {"compiled":"## Overview\n\n**CMO** is a Chief Marketing Officer persona built for founders…"}
 
@@ -83,16 +85,8 @@ Real output from a simulated session (MCP client ↔ `personaxis-mcp`) over the 
    "memory_chain_intact":true,"anomalies":[]}
 ```
 
-What you see here, concretely:
-- the identity is **loaded** once and persists;
-- malicious external content is **detected** before it can influence the persona;
-- a destructive command is **denied** by policy (it never runs);
-- affect is adjusted **clamped and audited**;
-- the persona **remembers** (chained memory) in a governed tick;
-- at close, **integrity** is verifiable. State + memory carry over to the next session.
-
 ## 4. Without MCP
 
-- **Native subagent:** `personaxis compile --platform claude-code` writes `.claude/agents/<slug>.md`;
-  Claude Code adopts it as a subagent (the agent *is* the persona). `live-sync` keeps it current.
-- **HTTP / agents.md:** `personaxis serve --persona <path>` for agents that do not speak MCP.
+- Native subagent: `personaxis compile --platform claude-code` writes `.claude/agents/<slug>.md`;
+  Claude Code uses it as a subagent (the agent is the persona).
+- HTTP and `agents.md`: `personaxis serve --persona <path>` for agents that do not speak MCP.

@@ -19,7 +19,9 @@ import {
   otherInstances,
   describePresence,
   presenceDir,
+  touchPresence,
   PRESENCE_STALE_MS,
+  PRESENCE_HEARTBEAT_MS,
 } from "../src/presence.js";
 
 let dir: string;
@@ -109,5 +111,51 @@ describe("presence", () => {
   it("no presence directory means idle, not a crash", () => {
     expect(livePresence(personaPath)).toEqual([]);
     expect(describePresence([])).toBe("idle");
+  });
+});
+
+describe("the heartbeat and the staleness window (D6)", () => {
+  it("beats several times inside the window readers judge by", () => {
+    // The failure this rules out is a writer beating slower than readers expire, which
+    // drops a running instance off the fleet. Three beats leaves room for a machine that
+    // stalls briefly without keeping a dead one on the list.
+    expect(PRESENCE_HEARTBEAT_MS).toBeLessThan(PRESENCE_STALE_MS / 2);
+    expect(PRESENCE_STALE_MS / PRESENCE_HEARTBEAT_MS).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("presence driven by use, for surfaces with no loop of their own", () => {
+  it("announces on first use", () => {
+    touchPresence(personaPath, { host: "mcp", activity: "driven by an MCP host" });
+    expect(livePresence(personaPath)).toHaveLength(1);
+    expect(livePresence(personaPath)[0].host).toBe("mcp");
+  });
+
+  it("does not rewrite the file on every call", () => {
+    // A chatty host calls many times a second and presence is a file write. Skipping a
+    // refresh costs nothing: the entry is good for the whole staleness window.
+    const t0 = Date.now();
+    touchPresence(personaPath, { host: "mcp", activity: "first" }, t0);
+    touchPresence(personaPath, { host: "mcp", activity: "second" }, t0 + 1);
+
+    expect(livePresence(personaPath)[0].activity).toBe("first");
+  });
+
+  it("refreshes once the heartbeat window has passed", () => {
+    const t0 = Date.now();
+    touchPresence(personaPath, { host: "mcp", activity: "first" }, t0);
+    touchPresence(personaPath, { host: "mcp", activity: "later" }, t0 + PRESENCE_HEARTBEAT_MS + 1);
+
+    expect(livePresence(personaPath)[0].activity).toBe("later");
+  });
+
+  it("announces again after a release, rather than staying throttled", () => {
+    // The throttle must not outlive the presence it was throttling: a server that released
+    // a persona and was handed it again would otherwise stay invisible for a full window.
+    touchPresence(personaPath, { host: "mcp", activity: "first" });
+    releasePresence(personaPath);
+    touchPresence(personaPath, { host: "mcp", activity: "handed it again" });
+
+    expect(livePresence(personaPath)[0].activity).toBe("handed it again");
   });
 });

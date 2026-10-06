@@ -17,6 +17,10 @@ export interface MemoryKindRow {
   name: string;
   enabled: boolean;
   count: number;
+  /** E16: the kind's write cap, when it has one. Shown so a full log is visible as full. */
+  cap?: number;
+  /** E16: rows moved out of the live log by the cap. Nothing is deleted, so nothing is hidden. */
+  archived?: number;
   file: string;
   entries(): string[];
 }
@@ -78,7 +82,11 @@ export function registerMemoryView(actions: MemoryActions): void {
           {kinds.slice(win.start, win.end).map((k, i) => {
             const gi = win.start + i;
             const selected = gi === cursor;
-            const label = ` ${k.name.padEnd(17)} ${k.enabled ? `${String(k.count).padStart(4)} entr${k.count === 1 ? "y  " : "ies"}` : "  (off)   "}  ${k.file}`;
+            // E16: a kind at its cap says so, and says what it archived. A count on its
+            // own reads the same at 12 entries and at the ceiling.
+            const bound = k.cap ? `/${k.cap}` : "";
+            const archived = k.archived ? ` +${k.archived} archived` : "";
+            const label = ` ${k.name.padEnd(17)} ${k.enabled ? `${String(k.count).padStart(4)}${bound} entr${k.count === 1 ? "y  " : "ies"}${archived}` : "  (off)   "}  ${k.file}`;
             return (
               <Text key={k.name} inverse={selected} dimColor={!selected && !k.enabled}>
                 {selected ? "  ❯" : "   "}

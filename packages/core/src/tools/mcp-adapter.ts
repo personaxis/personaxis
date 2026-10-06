@@ -44,6 +44,13 @@ export function mcpToolToSpec(serverName: string, d: McpToolDescriptor, call: Mc
     // (validateToolArgs checks the top level, which is all the flat built-ins needed too).
     parameters: d.inputSchema ?? { type: "object", properties: {}, additionalProperties: true },
     isReadOnly: readOnly,
+    // K6: what this can do, declared, because the inference table has never seen it and
+    // never will. MEASURED: `github:create_issue` infers to an EMPTY list, so a tool that
+    // writes to a remote service is weighed as nothing at all on the axis that exists to
+    // weigh it. Reaching the server is egress in every case; a tool that does not call
+    // itself read-only can also write outside the workspace, which is what an MCP server
+    // is for. A hint is the server talking about itself, so it may only ADD here.
+    envelope: readOnly ? ["network_egress"] : ["network_egress", "external_write"],
     // Concurrency across an external server is unknown; only a read-only + idempotent tool
     // is safe to run in parallel. Everything else serializes.
     isConcurrencySafe: readOnly && d.annotations?.idempotentHint === true,

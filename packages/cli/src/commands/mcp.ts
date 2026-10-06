@@ -10,6 +10,9 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
+import { describe, describeAssurance } from "@personaxis/core";
+
+import { approve } from "../mcp/approvals.js";
 import { loadConfig, saveConfig } from "../config.js";
 
 export const mcpCommand = new Command("mcp").description(
@@ -26,10 +29,58 @@ mcpCommand
     config.mcpServers = config.mcpServers ?? {};
     config.mcpServers[name] = { command, ...(args && args.length ? { args } : {}) };
     saveConfig(config, scope);
+    // K9: registering by hand IS the consent, so the approval is recorded here, at the
+    // moment somebody decided. It goes to the operator's home whatever scope the config
+    // went to, because a project config is inside the workspace a persona writes to and
+    // an approval kept beside the thing it attests is worth nothing.
+    const provenance = approve({
+      name,
+      command,
+      ...(args && args.length ? { args } : {}),
+    });
     console.log(
       chalk.green(`✓ added MCP server "${name}"`) +
         chalk.dim(` (${scope}): ${command}${args && args.length ? " " + args.join(" ") : ""}`),
     );
+    console.log(chalk.dim(`  ${describeAssurance(provenance)}`));
+  });
+
+mcpCommand
+  .command("approve [name]")
+  .description("record the declaration of a registered server as approved")
+  .action((name?: string) => {
+    // The upgrade path, and the only one. A server registered before approvals existed
+    // has no record, so it does not mount; recording it silently on first sight would
+    // be trusting whatever is in the config right now, which is exactly what a persona
+    // could have written yesterday. This makes it a decision somebody takes.
+    const servers = {
+      ...(loadConfig("global").mcpServers ?? {}),
+      ...(loadConfig("project").mcpServers ?? {}),
+    };
+    const names = name ? [name] : Object.keys(servers);
+
+    if (!names.length) {
+      console.log(chalk.dim("no MCP servers registered."));
+      return;
+    }
+
+    for (const each of names) {
+      const spec = servers[each];
+      if (!spec) {
+        console.error(chalk.red(`no MCP server named "${each}" is registered.`));
+        continue;
+      }
+      const provenance = approve({
+        name: each,
+        command: spec.command,
+        ...(spec.args ? { args: spec.args } : {}),
+        ...(spec.env ? { envKeys: Object.keys(spec.env) } : {}),
+      });
+      console.log(
+        chalk.green(`✓ approved "${each}"`) + chalk.dim(`: ${describe({ name: each, command: spec.command, ...(spec.args ? { args: spec.args } : {}) })}`),
+      );
+      console.log(chalk.dim(`  ${describeAssurance(provenance)}`));
+    }
   });
 
 mcpCommand

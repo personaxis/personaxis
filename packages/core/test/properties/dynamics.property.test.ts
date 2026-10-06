@@ -8,16 +8,28 @@
  *  - A1: arbitration is a strict total order (total, antisymmetric, transitive);
  *  - A2: U7 is derivable, safety (governance, ≥0.90 by U6) beats every
  *    non-governance value;
- *  - mutation_log chain: entries chain like the episodic ledger; any tamper of
- *    a chained entry is detected; a legacy (unhashed) prefix is tolerated.
+ *
+ * ## These drive the arithmetic that runs, which they did not
+ *
+ * They used to push a `StateFile` through `applyHomeostasis` and `applyMutation`, the
+ * engine that wrote into `state.json`. Nothing takes that path any more: a move is
+ * `decide`, and a homeostatic step is `homeostaticMoves` fed through the same
+ * `decide`. A property suite proving things about a code path the product no longer
+ * uses is a suite that reads as coverage and is not.
+ *
+ * The chain properties that lived here are gone with it. They proved that the
+ * `mutation_log` inside `state.json` chained and detected tampering, and that chain is
+ * retired. `record.property.test.ts` proves the same things and more about the chain
+ * that ships: a changed value anywhere, an author moved onto somebody else, a deletion
+ * anywhere but the end, any reordering, an entry spliced in from another chain, and
+ * that no state is ever reported for a chain that does not verify.
  */
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
-  applyMutation,
-  applyHomeostasis,
   decayRate,
-  verifyMutationChain,
+  homeostaticMoves,
+  record,
   arbitrate,
   compareValues,
   rankValues,
@@ -27,9 +39,32 @@ import {
   coordinateDrift,
   type ArbitrationValue,
   type Envelope,
-  type MutationLogEntry,
 } from "../../src/index.js";
-import { NUM_RUNS, envelopeArb, freshState, deltaArb, PROP_TIMEOUT } from "./arbitraries.js";
+import { NUM_RUNS, envelopeArb, deltaArb, PROP_TIMEOUT } from "./arbitraries.js";
+
+/** The coordinate every property here moves. Named once so the string is not spelled six times. */
+const FIELD = "affect.baseline.mood.tone";
+
+/**
+ * One homeostatic step, through the arithmetic a real tick uses.
+ *
+ * `homeostaticMoves` says what should move and `decide` says where it lands, which is
+ * exactly the pair the record path runs. Returns how many coordinates moved, because
+ * one of the properties needs to know when decay has converged and stopped.
+ */
+function decay(values: Record<string, number>, envs: Record<string, Envelope>): number {
+  const moves = homeostaticMoves(values, envs);
+  for (const move of moves) {
+    values[move.field] = record.decide(values[move.field] ?? envs[move.field]!.mean, envs[move.field]!, move).to;
+  }
+  return moves.length;
+}
+
+/** One forced move, clamped to the envelope the same way a recorded one is. */
+function force(values: Record<string, number>, envs: Record<string, Envelope>, delta: number, reason: string): void {
+  const envelope = envs[FIELD]!;
+  values[FIELD] = record.decide(values[FIELD] ?? envelope.mean, envelope, { field: FIELD, delta, reason }).to;
+}
 
 const solidEnvelopeArb: fc.Arbitrary<Envelope> = envelopeArb.filter(
   (e) => e.mean - e.min > 1e-3 && e.max - e.mean > 1e-3,
@@ -47,17 +82,16 @@ describe("PB-T6 homeostasis", () => {
         (e, h, frac, up) => {
           const env: Envelope = { ...e, halfLife: h };
           const envs = { "affect.baseline.mood.tone": env };
-          const state = freshState();
           const start = up ? e.mean + (e.max - e.mean) * frac : e.mean - (e.mean - e.min) * frac;
-          state.values["affect.baseline.mood.tone"] = start;
+          const values: Record<string, number> = { [FIELD]: start };
           const lambda = decayRate(h);
 
           let dev = Math.abs(start - e.mean);
           for (let t = 0; t < 30; t++) {
-            const results = applyHomeostasis(state, envs);
-            const v = state.values["affect.baseline.mood.tone"];
+            const moved = decay(values, envs);
+            const v = values[FIELD]!;
             const newDev = Math.abs(v - e.mean);
-            if (results.length === 0) {
+            if (moved === 0) {
               // Below epsilon: converged. Deviation must already be tiny relative to λ.
               expect(newDev).toBeLessThanOrEqual(dev + 1e-12);
               break;
@@ -66,7 +100,6 @@ describe("PB-T6 homeostasis", () => {
             expect(newDev).toBeCloseTo((1 - lambda) * dev, 6);
             expect(v).toBeGreaterThanOrEqual(e.min);
             expect(v).toBeLessThanOrEqual(e.max);
-            expect(results[0].entry.actor).toBe("runtime-decay");
             dev = newDev;
           }
           // Monotone: after 30 ticks the deviation never grew.
@@ -87,7 +120,7 @@ describe("PB-T6 homeostasis", () => {
         (e, h, deltaMax, noise) => {
           const env: Envelope = { ...e, halfLife: h };
           const envs = { "affect.baseline.mood.tone": env };
-          const state = freshState();
+          const values: Record<string, number> = { [FIELD]: e.mean };
           const lambda = decayRate(h);
           const bound = deltaMax / lambda;
 
@@ -95,12 +128,11 @@ describe("PB-T6 homeostasis", () => {
           // assert the bound only once the transient term is below 5% of it.
           let transient = Math.max(e.max - e.mean, e.mean - e.min);
           for (const raw of noise) {
-            applyHomeostasis(state, envs);
+            decay(values, envs);
             // Adversary: pushes a bounded delta each tick (sign from generated noise).
-            const delta = Math.sign(raw || 1) * deltaMax;
-            applyMutation(state, envs, { field: "affect.baseline.mood.tone", delta, reason: "iss forcing" });
+            force(values, envs, Math.sign(raw || 1) * deltaMax, "iss forcing");
             transient *= 1 - lambda;
-            const dev = Math.abs(state.values["affect.baseline.mood.tone"] - e.mean);
+            const dev = Math.abs(values[FIELD]! - e.mean);
             if (transient < 0.05 * bound) {
               // dev ≤ (1−λ)·bound + δ_max = bound  (+ transient + FP slack)
               expect(dev).toBeLessThanOrEqual(bound + transient + 1e-9);
@@ -125,12 +157,11 @@ describe("PB-T6 homeostasis", () => {
         (e, h, frac, up) => {
           const env: Envelope = { ...e, halfLife: h };
           const envs = { "affect.baseline.mood.tone": env };
-          const state = freshState();
           const start = up ? e.mean + (e.max - e.mean) * frac : e.mean - (e.mean - e.min) * frac;
-          state.values["affect.baseline.mood.tone"] = start;
+          const values: Record<string, number> = { [FIELD]: start };
           const uBefore = toU(start, env);
-          applyHomeostasis(state, envs);
-          const uAfter = toU(state.values["affect.baseline.mood.tone"], env);
+          decay(values, envs);
+          const uAfter = toU(values[FIELD]!, env);
           expect(Math.abs(uAfter)).toBeLessThanOrEqual(Math.abs(uBefore) + 1e-9);
           if (Math.abs(uAfter) > 1e-9) {
             expect(Math.sign(uAfter)).toBe(Math.sign(uBefore));
@@ -156,28 +187,27 @@ describe("PB-T6 homeostasis", () => {
           const envs = { "affect.baseline.mood.tone": env };
           const [, b2] = bandBoundaries(env);
           // Start at the mean; adversary pushes upward toward the high band.
-          const state = freshState();
-          state.values["affect.baseline.mood.tone"] = e.mean;
+          const values: Record<string, number> = { [FIELD]: e.mean };
           const startBand = bandOf(e.mean, env);
           if (startBand === "high" || b2 >= e.max) return; // no upward crossing available
           const floor = Math.ceil((b2 - e.mean) / deltaMax);
           let gateSteps = 0;
           for (let t = 0; t < floor + 40; t++) {
-            applyHomeostasis(state, envs);
-            applyMutation(state, envs, { field: "affect.baseline.mood.tone", delta: deltaMax, reason: "pb-t3-decay push" });
+            decay(values, envs);
+            force(values, envs, deltaMax, "pb-t3-decay push");
             gateSteps++;
-            if (bandOf(state.values["affect.baseline.mood.tone"], env) === "high") break;
+            if (bandOf(values[FIELD]!, env) === "high") break;
           }
-          const crossed = bandOf(state.values["affect.baseline.mood.tone"], env) === "high";
+          const crossed = bandOf(values[FIELD]!, env) === "high";
           if (crossed) {
             expect(gateSteps).toBeGreaterThanOrEqual(floor);
             // Once outside the baseline's band, the exit back is decay-reachable:
             // the report must say so.
-            const d = coordinateDrift("affect.baseline.mood.tone", state.values["affect.baseline.mood.tone"], env, deltaMax);
+            const d = coordinateDrift(FIELD, values[FIELD]!, env, deltaMax);
             expect(d.decayAssisted).toBe(true);
           }
           // At the baseline's own band the floor is certified: never decayAssisted.
-          const atMean = coordinateDrift("affect.baseline.mood.tone", e.mean, env, deltaMax);
+          const atMean = coordinateDrift(FIELD, e.mean, env, deltaMax);
           expect(atMean.decayAssisted).toBe(false);
         },
       ),
@@ -228,79 +258,6 @@ describe("PB-A1/A2 arbitration", () => {
           expect(arbitrate(v, safety).winner).toBe("safety");
         },
       ),
-      { numRuns: NUM_RUNS },
-    );
-  }, PROP_TIMEOUT);
-});
-
-describe("mutation_log hash chain (T3 forensic upgrade)", () => {
-  const historyArb = envelopeArb.chain((e) =>
-    fc.record({
-      e: fc.constant(e),
-      deltas: fc.array(deltaArb, { minLength: 2, maxLength: 20 }),
-      pick: fc.nat(1000),
-      fieldToTamper: fc.constantFrom("to", "from", "reason", "actor", "ts", "delta_requested", "prev_hash", "hash"),
-    }),
-  );
-
-  it("engine-produced logs verify; ANY tamper of a chained entry is detected", () => {
-    fc.assert(
-      fc.property(historyArb, ({ e, deltas, pick, fieldToTamper }) => {
-        const envs = { "personality.traits.x": e };
-        const state = freshState();
-        for (const d of deltas) {
-          applyMutation(state, envs, { field: "personality.traits.x", delta: d, reason: "chain" });
-        }
-        expect(verifyMutationChain(state.mutation_log).ok).toBe(true);
-        expect(verifyMutationChain(state.mutation_log).chained).toBe(deltas.length);
-
-        const idx = pick % state.mutation_log.length;
-        const victim = { ...state.mutation_log[idx] } as Record<string, unknown>;
-        victim[fieldToTamper] =
-          typeof victim[fieldToTamper] === "number"
-            ? (victim[fieldToTamper] as number) + 1
-            : `${String(victim[fieldToTamper])}~t`;
-        const tampered = [...state.mutation_log];
-        tampered[idx] = victim as unknown as MutationLogEntry;
-        const v = verifyMutationChain(tampered);
-        expect(v.ok).toBe(false);
-        expect(v.brokenAt).toBeLessThanOrEqual(Math.min(idx + 1, tampered.length - 1));
-      }),
-      { numRuns: NUM_RUNS },
-    );
-  }, PROP_TIMEOUT);
-
-  it("a legacy (unhashed) prefix is tolerated; interior deletion of chained entries is detected", () => {
-    fc.assert(
-      fc.property(historyArb, ({ e, deltas, pick }) => {
-        const envs = { "personality.traits.x": e };
-        const state = freshState();
-        // Legacy prefix: entries without hash (pre-1.1 logs).
-        const legacy: MutationLogEntry = {
-          ts: "2025-01-01T00:00:00.000Z",
-          field: "personality.traits.x",
-          from: e.mean,
-          to: e.mean,
-          delta_requested: 0,
-          clamped: false,
-          reason: "legacy",
-          actor: "human-operator",
-        };
-        state.mutation_log.push(legacy);
-        for (const d of deltas) {
-          applyMutation(state, envs, { field: "personality.traits.x", delta: d, reason: "chain" });
-        }
-        const v0 = verifyMutationChain(state.mutation_log);
-        expect(v0.ok).toBe(true);
-        expect(v0.chained).toBe(deltas.length);
-        // Interior deletion among the CHAINED entries (never the tail).
-        const chainedStart = 1;
-        const deletable = state.mutation_log.length - 1 - chainedStart;
-        fc.pre(deletable >= 1);
-        const idx = chainedStart + (pick % deletable);
-        const cut = state.mutation_log.filter((_, k) => k !== idx);
-        expect(verifyMutationChain(cut).ok).toBe(false);
-      }),
       { numRuns: NUM_RUNS },
     );
   }, PROP_TIMEOUT);

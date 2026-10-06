@@ -1,67 +1,68 @@
-# Claude Code parity: the feature catalog
+# Coding-agent parity: the feature catalog
 
-personaxis is a living, governed persona agent AND a full interactive coding-agent CLI. This page
-tracks parity with the features a modern coding agent (Claude Code / Codex) exposes, plus the
-personaxis-native capabilities no other agent has (drift, governance, the persona fleet).
+personaxis runs a persona as a working agent in the terminal, so it is measured here against the
+features a modern coding-agent CLI (Claude Code, Codex) exposes, plus the capabilities that are
+specific to a governed persona. Checked against the code on 2026-10-03.
 
-Legend: **done** shipped and tested · **partial** usable, being extended · **planned** on the
-roadmap.
+Legend: done means shipped and tested, partial means usable with the limit stated, not yet means absent
+in this version.
 
-## A. Session & context
-
-| Capability | Status | Where |
-|---|---|---|
-| Persistent sessions (`/sessions`, `/resume`) | done | `packages/core/src/sessions.ts` |
-| `--continue` / `--resume [id]` startup flags | done | `packages/cli/src/index.ts`, `repl/session.ts` (`resumeSessionInto`) |
-| `/compact` (summarize older turns, persisted) | done | `repl/commands.ts`, `core/src/context.ts` |
-| `/status` (model · posture · drift · memory · session · context) | done | `repl/commands.ts` |
-| `/context` (window usage + compact hint) | done | `repl/commands.ts` |
-| `@file` mentions with fuzzy completion | planned | |
-| Headless `-p` with `--output-format json` | partial (line mode exists) | `repl/index.ts` |
-| Input queue while responding · Esc to interrupt | planned | |
-
-## B. Tools & permissions
+## A. Session and context
 
 | Capability | Status | Where |
 |---|---|---|
-| File + shell tools (read/write/edit/glob/grep/bash) | done | `core/src/tools/registry.ts` |
-| `memory_search` / `memory_get` tools | done | `core/src/memory/retrieval.ts` |
-| Sandbox postures (read-only / workspace-write / full) | done | `core/src/sandbox.ts` |
-| Persistent permission allowlist/denylist | planned | |
-| Background tasks (`/bg`, `/tasks`) | partial (serve/watch daemons) | `repl/daemons.ts` |
-| MCP client (mount external MCP servers as tools) | planned | (server side ships in `@personaxis/mcp`) |
+| Persistent sessions, resumed with `/resume` | done | `core/src/sessions.ts` |
+| `--continue` / `--resume [id]` at startup | done | `cli/src/index.ts`, `repl/session.ts` |
+| `/compact`, and automatic compaction near the window | done | `repl/compact.ts`, `core/src/context.ts` |
+| `/status` (model, posture, drift, memory, session, usage, daemons) | done | `repl/views/settings-data.ts` |
+| `/context` (window usage and what fills it) | done | `repl/commands.ts` |
+| `@path` file mentions | done | `repl/mentions.ts` |
+| Headless `-p` with `--output-format text \| json \| stream-json` | done | `repl/headless.ts` |
+| Typing while the persona responds, Esc to interrupt a turn | not yet | |
+
+## B. Tools and permissions
+
+| Capability | Status | Where |
+|---|---|---|
+| File and shell tools (read, list, find, write, edit, run) | done | `core/src/tools/registry.ts` |
+| Memory tools | done | `core/src/memory/retrieval.ts` |
+| Sandbox postures (read-only, workspace-write, full access), `shift+tab` to cycle | done | `core/src/sandbox.ts` |
+| Persistent allow/deny rules for tool calls | done | `permissions` in the config (`cli/src/config.ts`) |
+| Background tasks (`/bg`) | done | `repl/tasks.ts`, `repl/daemons.ts` |
+| MCP client: mount external MCP servers as tools | done | `personaxis mcp add/list/remove`, `cli/src/mcp/` |
+| Web search | done, with a search provider key | `personaxis web`, the `web_search` tool |
 
 ## C. Extensibility
 
 | Capability | Status | Where |
 |---|---|---|
-| Skills (`extensions.skills`, materialized on compile) | done | `cli/src/targets/skills.ts` |
-| Custom slash commands (`.personaxis/commands/*.md`) | done | `cli/src/repl/custom-commands.ts` |
-| User lifecycle hooks (session-start/pre-tool/post-tool) | partial (host hooks exist) | `core/src/hooks.ts` |
-| Sub-persona delegation with a budget | partial (@mention routing) | `repl/turn.ts` |
+| Skills (`extensions.skills`, materialized on compile, `use_skill` at runtime) | done | `cli/src/targets/skills.ts` |
+| Custom slash commands (`.personaxis/commands/*.md`) | done | `repl/custom-commands.ts` |
+| Lifecycle hooks (`hooks.json` beside the persona: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SessionEnd`) | done | `core/src/hooks.ts` |
+| Delegation to sub-personas and colleagues | done | the `delegate` tool, `core/src/run/colleagues.ts` |
+| Services: a repeatable job with steps (`run_service`) | done | `personaxis service` |
 
-## D. Observability & control
-
-| Capability | Status | Where |
-|---|---|---|
-| `/context` (window usage + compact hint) | done | `repl/commands.ts` |
-| `/doctor` (config · provider ping · persona · memory chain · version) | done | `repl/commands.ts` |
-| `/cost` / `/usage` (per-session tokens + cost) | done | `repl/commands.ts`, `repl/turn.ts` (cumulative accounting) |
-| `/help` by category with `/help <query>` filter | done | `repl/commands.ts` |
-| `/rewind` (per-turn checkpoint restore) | planned | (mutation_log is the basis) |
-| Configurable keybindings / statusline | planned | |
-
-## E. personaxis-native (no other agent has these)
+## D. Observability and control
 
 | Capability | Status | Where |
 |---|---|---|
-| The Command Center (stable alt-screen hub) | done | `cli/src/command-center.tsx` |
-| Live drift + band-crossing moments | done | `tui/src/components.tsx`, `core/src/math/` |
-| Governed self-edits (`/review`, Proposals section) | done | `core/src/self-evolution.ts` |
-| Cross-session memory + user profile | done | `core/src/memory/` |
-| Persona fleet (`personaxis ps`, live status) | planned (F4) | |
-| Verifiable identity (sigil + hash-chain) | done | `core/src/sigil.ts`, `core/src/memory.ts` |
+| `/doctor` (config, provider, spec, lint, memory chain, version) | done | `repl/doctor-checks.ts` |
+| Usage and cost per session | done | `/status → Usage` |
+| `/help` by category, `/help <query>`, `/help moved` | done | `repl/commands.ts` |
+| Rewind state to before the last N moves, recorded | done | `/audit → Timeline`, `personaxis state rewind <n>` |
+| Configurable statusline | done | `statusline` in the config |
+| Configurable keybindings | not yet | |
 
-Items marked **planned** are not stubs: each has an execution entry in
-the project's internal roadmap. This table is the single place a contributor checks
-before adding a feature, to avoid duplicating one that already exists under a different name.
+## E. Specific to a governed persona
+
+| Capability | Status | Where |
+|---|---|---|
+| The Command Center (`/menu`, `personaxis menu`) | done | `cli/src/command-center.tsx` |
+| Distance from baseline on three planes, with band crossings | done | `/drift`, `personaxis drift` |
+| Governed self-edits with a review queue | done | `/persona → Evolution`, `personaxis review` |
+| Memory across sessions, by kind | done | `/memory`, `personaxis memory` |
+| Persona fleet: who holds each persona, through what surface | done | `personaxis ps` |
+| Hash-chained record, tamper located on replay | done | `/audit → Integrity`, `core/src/record/` |
+| Enforcing the persona's policy on Claude Code and Codex running here | done | `personaxis guard` |
+| Serving the persona to MCP hosts (16 tools) | done | `personaxis-mcp`, `packages/mcp` |
+| Running the persona as an agent for an editor over ACP | done | `personaxis-acp`, `cli/src/acp-bin.ts` |

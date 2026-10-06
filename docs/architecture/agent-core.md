@@ -1,180 +1,137 @@
----
-title: Agent core architecture
-version: 1.0.0
-date: 2026-07-21
-status: draft
----
+# Agent core
 
-# Agent core architecture
+How a persona's agent loop reasons, acts, remembers and stops, in `packages/core`. The agent's
+behavior comes from the persona: reasoning depth reads `cognition.uncertainty_policy`, refusal reads
+`self_regulation.hard_limits`, learning reads `memory` and `improvement_policy`. The code is the
+mechanism and the persona is the policy.
 
-How the Personaxis agent reasons, acts, learns, and stays safe over long-horizon tasks. This
-is the design contract for the production agent loop. It names what already exists in
-`packages/core` and what the V11 program adds, so the two never drift.
+## Tools
 
-Design stance: the agent's behavior is **derived from the persona**, not hardcoded. Reasoning
-depth reads `cognition.uncertainty_policy`; refusal reads `self_regulation.hard_limits`;
-learning reads `memory` and `improvement_policy`. The code is the mechanism; the persona is
-the policy.
+Each tool is one file in `core/src/tools/builtin/`, declared with `defineTool` (`tools/define.ts`):
+name, description, category, danger, JSON Schema `parameters`, read-only and concurrency flags, a
+gate and `execute`. The JSON Schema is the single schema source, so there is no parallel Zod
+declaration, and `validateToolArgs` checks arguments against it at run time. MCP tools enter the same
+registry through an adapter (`tools/mcp-adapter.ts`). Every tool is registered behind the tool-call
+gate, so no path from the model to the operating system skips it.
 
-## 1. Tools: one typed source, no drift
+## Skills and tool selection
 
-**Today.** `core/src/tools/registry.ts` holds a hand-written `TOOLS[]` array. A prior deliberate
-decision (**FR.7**, documented in `registry.ts`) makes the JSON Schema the *single* schema source
-and rejects a parallel Zod declaration; schemas are flat by design. That already removes
-schema↔schema drift. The gap it leaves: handlers read `args` as an untyped
-`Record<string, unknown>` (e.g. `str(a, "path")`), so nothing at compile time ties the handler's
-argument access to the schema it declared.
+The persona does not get a skill picked for it. A selector that scored a message against each
+skill's name and description was measured on 2026-09-13 and retired: "game" activated all three of a
+game designer's skills, "a kitten crossing the street" activated none, and the tool subset that came
+with them hid `check_page` from the one step written to use it.
 
-**Target (honors FR.7, no Zod, no new runtime dependency).**
-`defineTool({ name, description, category, danger, parameters, isReadOnly, isConcurrencySafe,
-gate, execute })` keeps the JSON Schema as the single source and derives the handler's `args`
-**type** from that schema with a local `InferArgs<Schema>` mapper for flat schemas (only primitive
-props, which FR.7 guarantees). So the schema still drives runtime validation
-(`validateToolArgs`) *and* now the handler's compile-time types, from one declaration. The catalog
-is assembled from `tools/builtin/*` (one file per tool), not a central array; adding a capability
-is one isolated file. MCP tools enter the same registry through an adapter. Namespacing by
-category (`fs`, `shell`, `persona`, `net`, `mcp`).
+Instead the persona reads its skills in the work map and loads one by name with `use_skill`
+(`tools/use-skill.ts`). Loading is a gated call, so it is also the trace of which skill was used in
+which turn. Tools outside the starting set are reached with `find_tools` (`tools/find-tools.ts`):
+the model searches, gets names and descriptions, and asks for what it wants. Searching grants
+nothing, and each tool's own gate still runs at call time. See [the skills command](../commands/skills.md).
 
-**Why this and not Zod.** Reversing FR.7 to introduce Zod would reintroduce exactly the parallel
-declaration that decision removed, and add a runtime dependency to `core`. Deriving the handler
-type from the existing JSON Schema achieves the same goal (no drift, compile-time + runtime
-safety, modular registration) while respecting the prior reasoning and staying dependency-free.
-Every tool is registered *behind the interceptor* (security module 03): there is no path from the
-model to the OS that skips the pipeline.
+## A post-mortem that writes skills
 
-## 2. Skills drive tool selection, dynamically
+When `improvement_policy` allows it and the host injects an extractor, closing a hard task (several
+steps, a failure then a success, or low initial confidence) runs a post-mortem (`postmortem.ts`): the
+model reads the transcript and result and extracts the lesson. The result is a new skill, written
+by `skill-writer.ts`:
 
-**Today.** `core/src/skill-lifecycle.ts` scores skills for a task (`recommend()` =
-capabilityMatch × trust × successRate) but nothing injects them, and the agent always starts
-with the full tool catalog.
+1. `renderSkill` is deterministic, so the content hash is stable, and `safeSkillName` removes path
+   traversal from a model-chosen name.
+2. `skill-review.ts` vets the draft in memory (`scanForInjection` and a danger review) before it
+   touches disk, in every posture; a dangerous body is refused even under `autonomous`.
+3. The governance gate then decides: blocked if `locked`, queued under `skills/pending/` if
+   `suggesting`, written to `skills/` if `autonomous`.
+4. The new skill is registered in the ledger (`skill-lifecycle.ts`) with its provenance.
 
-**Target algorithm, at task start.**
-1. Derive task capabilities; call `recommend(task)`.
-2. Select the top-k skills over a score threshold; inject *their* methodology (`.md`) into the
-   system prompt as the active playbook (hot tier). Not every skill, only the relevant ones.
-3. Each skill declares `allowed_tools`; the agent starts with the **subset** those skills need
-   plus the base tools, not the whole catalog (tool-subsetting).
-4. If mid-task the model needs a capability outside the subset, it expands on demand via a
-   `find_tools` tool (the deferred-tool pattern).
+It is wired through `AgentOptions.postmortem` and fires best-effort at the run's success points. A
+persona without an injected extractor never reflects. Only the new-skill destination exists today;
+routing a lesson to a refinement of an existing skill, a memory entry or a spec self-edit is not built.
 
-**Why.** Fewer tools in the prompt means less tool hallucination and fewer tokens (the
-"tool-overload" failure). The skill anchors *method*, cutting blind exploration. Subsetting with
-on-demand expansion keeps decision quality high as the catalog grows. New module:
-`core/src/skill-activation.ts`, invoked in `agent.ts` before the loop.
+## Planning, re-evaluation and the loop breaker
 
-## 3. Self-evolution: a post-mortem that writes skills
+- A run configured with `AgentOptions.plan` asks the model for a plan before acting. `assessPlan`
+  (`planner.ts`) checks each step against the sandbox and the hard limits, and a plan that violates
+  a hard limit is rejected without executing anything (`plan-run.ts`).
+- `LoopBreaker` (`loop-breaker.ts`) forces a strategy change or a stop with a diagnosis when the same
+  tool fails with near-identical arguments `repeatLimit` times (default 3) or a run makes no progress
+  for `stallLimit` steps (default 5).
 
-**Today.** `core/src/self-evolution.ts` proposes and verifies edits to the *spec*; the skill
-ledger records outcomes but nothing writes skills.
+## Context
 
-**Target loop (autonomous only when `improvement_policy = autonomous`).**
-1. On closing a hard task (multi-step, failure-then-success, or low initial confidence), run a
-   post-mortem: the model receives the transcript + result and extracts the lesson (what failed,
-   what worked, the winning sequence).
-2. Classify the destination: (a) a new skill `.md` with the abstracted method, (b) a refinement
-   (diff) of an existing skill, (c) a memory preference/fact, (d) a spec self-edit proposal.
-3. For skills: generate the `.md`, run it through `scanForInjection` + a danger review (a
-   self-written skill is code that will later run: **security first, in every posture** — a
-   dangerous body is refused even under `autonomous`), and only then through the governance gate
-   (block if `locked`, queue to `skills/pending/` if `suggesting`, write to `skills/` if
-   `autonomous`).
-4. Record a new skill in the ledger with `register` (its birth; `promote` is reserved for a
-   version superseding an incumbent, `skill-lifecycle.ts`) plus provenance. The next similar task
-   activates it, closing the loop with section 2.
+`context.ts` auto-compacts at 0.8 of the window, and a `ContextMeter` tracks fill.
 
-**Why.** This is the Voyager/Reflexion pattern: an auto-generated skill library plus
-self-reflection. The agent improves without a human by accumulating reusable *method*, not just
-episodic memory. Review + governance stop it from poisoning itself.
+- Task state (`task-state.ts`, `TaskStateTracker`) is pure and bounded. Its rendered block is pinned
+  as system speech ahead of the summary on compaction, so the goal and plan outlive the transcript.
+- Large tool outputs are offloaded (`tool-output-store.ts`) to a handle such as `out-N` and recovered
+  with `read_output` and `grep_output`. In a check, a 54,912-character log became 981 characters in
+  context, and a buried error line was recovered with `grep_output`.
+- `tool-repair.ts` repairs malformed tool results, and the loop breaker takes over when the failure persists.
 
-**Build status (2026-07-22): shipped.** `core/src/skill-writer.ts` (`renderSkill` deterministic
-so the content hash is stable, `safeSkillName` cuts path-traversal from an LLM-chosen name,
-`writeSelfSkill` = security floor → governance) and `core/src/postmortem.ts` (`shouldRunPostmortem`
-pure heuristic + `runPostmortem` with an injected `extract` LLM caller). `skill-review.ts` grew an
-in-memory `reviewSkillContent` so a draft is vetted before it touches disk. Wired opt-in into
-`agent.ts` via `AgentOptions.postmortem`, fired best-effort at both success points; the extractor is
-the host's to inject, so a persona without it never reflects. Tested (skill-writer + postmortem) and
-dogfooded on disk across all four modes. Scope note: the shipped destination is (a), a new skill;
-routing to (b) refinement, (c) memory, (d) spec self-edit is a follow-up on the same seam.
+## The persona writes its own list: `update_tasks`
 
-## 4. Reasoning: plan first, re-evaluate, and never loop
+`tools/update-tasks.ts`: the persona sends its whole list each time, every step `pending`,
+`in_progress`, `done` or `blocked`. The loop handles the call, because a step counts as done only
+when a call that succeeded in this run backs it, and only the loop has seen those
+(`TaskStateTracker.replaceTasks`). One call backs one step. A step marked done with nothing behind it
+is kept as said done and shown as `[?]`, to the model and to the person. After every batch of calls
+the list goes back to the end of what the model reads, as one replaced message, so it never grows the
+context. The persona's record keeps the list the turn ended with as a `tasks` entry written by the
+runtime. A session that pins a tool subset reaches the list through `find_tools`.
 
-**Today.** `core/src/agent.ts` is a reactive ReAct loop: request tool, execute, verify at the
-end, retry on failure. There is no explicit plan and no repetition breaker.
+## Deciding before acting, for models that need it
 
-**Target.**
-1. **Plan phase (before acting).** The model produces an explicit plan: steps, expected tools,
-   and the security risk of each step, evaluated against the sandbox and hard limits *before*
-   touching anything. A plan that violates a hard limit is rejected without executing.
-2. **Re-evaluation.** After every tool result, update the plan: did the result change the path,
-   is the next step still valid. Light Tree-of-Thought only under uncertainty: when confidence
-   drops or a step fails, branch an alternative instead of repeating.
-3. **Loop breaker.** A detector for repetition (same tool + near-identical args failing N times)
-   or no progress over M steps forces a strategy change or a stop with a diagnosis.
-4. **Thinking budget.** Plan and critique are one cheap turn each, bounded; ToT only when
-   uncertain, to keep cost down.
+A model can be given a scaffold (`core/src/run/model-seam.ts`): `standard`, the loop as it is, or
+`small`, which adds one short step before the loop. The step is a call with no tools that asks for one
+JSON object naming the route and why: `answer`, `ask`, `consult` (read its own references or examples
+first), `skills`, `delegate` or `work` (`run/decide.ts`). The route comes back as a runtime note after
+the person's message and takes no tool away. `work` also goes through the planning gate
+(`runPlanPhase`). When no usable plan comes out, the turn acts without an anchor and says why, and the
+gate still judges each call; a run an operator configured to plan keeps the stricter rule of no
+runnable plan, no run. A reply that cannot be read leaves the turn without a route, shown on the
+activity line. The record keeps a `decision` entry in the persona's name; a `standard` turn has none.
 
-**Why.** Plan-first plus re-evaluation reduces wrong actions and the cost of undoing them; the
-breaker kills the classic failure (an infinite loop on a broken tool); selective ToT controls
-cost. Maps to `cognition.uncertainty_policy` (abstain/disclose) and metacognition. New modules:
-`core/src/planner.ts`, `core/src/loop-breaker.ts`; the plan's risk gate reuses
-`verification.ts`.
+The scaffold comes from the model's own settings, then the destination table (`scaffoldFor` in
+`run/destinations.ts`), then `standard`. The table declares no model `small` yet: a model is declared
+`small` only after the bench shows the step helps it. A request that offers no tools carries no
+`tools` and no `tool_choice`, because HuggingFace's router answers HTTP 400 to an empty list with a
+choice.
 
-## 5. Security: see `docs/security/`
+## Asking for what is missing: `ask_person`
 
-The security architecture is specified separately and normatively in `docs/security/`
-(private for now). The agent core consumes it: every tool call passes the interceptor (03),
-runs under OS isolation (02), and any policy violation aborts the process asynchronously (07,
-11). This section is a pointer, not a duplicate.
+`tools/ask-person.ts`: a question, two to four options, and the one the persona recommends. The loop
+handles the call, because only the run knows whether anybody is there.
 
-## 6. Context: a task state that outlives the transcript
+- With somebody in front of it (the TUI passes `onQuestion` when it has a terminal), the question is
+  shown numbered. A number or a label picks that option, anything else is the person's own words, and
+  nothing typed is no answer, never the recommendation.
+- With nobody (a service step, a delegated sub-task, a headless run), the turn stops at the question
+  and leaves it written, as `stopped` with the question as its result. A sub-task never receives its
+  parent's way to reach a person, so its question travels back up to whoever delegated it.
+- A service step that stops at a question leaves its run `waiting`, with the question and options as
+  the reason. It is picked up with `service.resumeService`
+  ([`service resume`](../commands/service.md#picking-a-waiting-run-up)): the step that asked runs
+  again with the question and answer in its prompt, and earlier steps are not run again.
 
-**Today.** `core/src/context.ts` auto-compacts at 0.8 with a flat LLM summary; a
-`ContextMeter` tracks fill.
+The record keeps a `question` entry in the persona's name and, when somebody answered, an `answer`
+entry in the name of whoever opened the turn.
 
-**Target.**
-1. **Structured compaction.** Preserve by section (objective, current plan, decisions, files
-   touched, task status, recent errors) and discard noise; the global task state lives in an
-   object that survives compaction, independent of the message history.
-2. **Tool-output offloading.** Large outputs (build logs, listings) are stored outside the
-   context and referenced by handle; the model pulls the relevant slice on demand. `MAX_OUTPUT`
-   already truncates; this makes it recoverable.
-3. **Auto-correction.** A tool returning an error or unexpected shape triggers `tool-repair.ts`
-   and, if it persists, the section-4 breaker.
-4. **Token economy.** Prompt cache alignment (hot/cold tiers, already in the compiled doc), tool
-   subsetting (section 2), and compaction with headroom (already).
+## Running a service: `run_service`
 
-**Why.** A global state outside the history is what prevents degradation as the transcript
-grows: the model reasons over a compact state, not over 200 messages. Offloading cuts the cost
-of logs; tool-repair + breaker give resilience. New modules: `core/src/task-state.ts`,
-`core/src/tool-output-store.ts`; structured compaction extends `context.ts`.
+`tools/run-service.ts`: the service and the client's request in their own words. Its gate asks
+whatever the posture, because the loop's verdict is the strictest of its guards and consent only
+tightens it. The question carries what is being approved: which service, how many steps, what it
+leaves, and on what request. The tool runs nothing itself; the host lends the way to run one. A turn
+whose host cannot is never shown it, and neither is a persona that delivers no service, a read-only
+persona, a delegated sub-task or a service step, which keeps a service from starting another from
+inside a run. See [`service`](../commands/service.md).
 
-**Build status (2026-07-22): shipped (1, 2), standing (3, 4).** `core/src/task-state.ts`
-(`TaskStateTracker`, pure and bounded so it can never bloat the context it protects; `render()`
-is the block that survives compaction) and `core/src/tool-output-store.ts` (`ToolOutputStore`
-offloads a large output to a handle `out-N` and recovers it by `slice`/`grep`; `outputStoreTools`
-exposes `read_output`/`grep_output`, closured over the per-run store like `memoryTools`).
-`context.ts` gained `compactMessages({ pinned })`: the task state is pinned as system speech ahead
-of the summary, so the goal + plan are authoritative rather than at the summarizer's mercy. Wired
-into `agent.ts` per run (store + tracker, offload at the tool-output push, `pinned` on compaction),
-which also fixed per-run tool resolution (`activeTools.find(...) ?? toolByName(...)` — the old
-global-only lookup could not find a per-run tool the model was shown). Dogfooded: a 54,912-char /
-4,000-line log becomes 981 chars in context, and a buried error line is recovered via
-`grep_output` (truncation would have lost it). Standing: auto-correction (3) already exists via
-`tool-repair.ts` + the section-4 breaker; structured-by-section compaction (1) is partial (the
-summarizer already emits section headers; the pin carries the load-bearing state).
+## Security
 
-## 7. Gaps proposed beyond the six pillars
+Every tool call passes the gate, and a policy violation aborts the run. The postures that decide what
+a call may do are in [sandbox](./sandbox.md).
 
-- **Continuous evaluation.** `packages/evals` measures success/cost/steps by task type; wire it
-  to the post-mortem so learning triggers on measured *regression*, not only heuristics.
-- **Causal traces.** `trace.ts` exists; expose the plan→tools→verification trace as the auditable
-  record of each task (evidence for the attestation SaaS).
-- **Multi-agent delegation.** The spec already addresses `@sub-personas`; delegate sub-tasks to
-  specialized subs with their own budget, coordinated by `blackboard.ts`. Future pillar.
-- **Reproducibility.** Seed + a decision log to replay a run (debugging and the research report).
+## Not built
 
-## Build order
-
-Per `plan/MASTER_PLAN_2026-07-21.md` (interleaved): the low-risk, high-value base (typed tools,
-plan+breaker, security enforcement base) ships first; skills→tools, the post-mortem loop, and
-structured context follow after the Command Center.
+- Continuous evaluation: `packages/evals` measures success, cost and steps by task type, but it is
+  not yet wired to trigger the post-mortem on a measured regression.
+- Delegation to other personas with their own budgets. Today `delegate` hands a piece of work to a sub-run of the same persona.
+- Seed-and-decision-log replay of a run.

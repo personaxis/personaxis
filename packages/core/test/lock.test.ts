@@ -49,6 +49,49 @@ describe("state lock", () => {
     release();
   });
 
+  it("never exists without an owner inside it", () => {
+    // The invariant the whole fix rests on. It used to be created empty and filled in
+    // afterwards, and a waiter looking in that window read "no owner" as "the holder
+    // crashed": it stole the lock and deleted the directory a live holder was using,
+    // whose own write of `owner.json` then landed on a path that no longer existed and
+    // threw. MEASURED as one failure in about six runs of six concurrent writers.
+    const target = tmpTarget();
+    const release = acquireStateLock(target);
+
+    expect(readdirSync(`${target}.lock`)).toEqual(["owner.json"]);
+    release();
+  });
+
+  it("leaves nothing beside the lock when it cannot take it", () => {
+    // The staging directory is real and must not survive a lost race, or a busy
+    // persona accumulates one per attempt next to the file they are all fighting over.
+    const target = tmpTarget();
+    const held = acquireStateLock(target);
+
+    expect(() => acquireStateLock(target)).toThrow(/could not acquire/);
+    expect(readdirSync(join(target, ".."))).toEqual(["state.json.lock"]);
+    held();
+  });
+
+  it("a released lock does not delete the one somebody else took", () => {
+    // What happens after a legitimate steal. The first holder eventually returns and
+    // releases; if release removed whatever directory happened to be there, it would
+    // take the SECOND holder's lock with it, and that holder would carry on believing
+    // it was alone. Rare, and a lock exists for the rare case.
+    const target = tmpTarget();
+    const release = acquireStateLock(target);
+
+    // Somebody else now owns it, which is what a steal leaves behind.
+    writeFileSync(
+      join(`${target}.lock`, "owner.json"),
+      JSON.stringify({ pid: process.pid, ts: Date.now() + 5_000 }),
+      "utf-8",
+    );
+    release();
+
+    expect(stateLockHeld(target)).toBe(true);
+  });
+
   it("times out against a live holder", { timeout: 10_000 }, () => {
     const target = tmpTarget();
     const release = acquireStateLock(target); // held by THIS live process, fresh ts

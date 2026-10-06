@@ -10,6 +10,8 @@
 
 import type { EvidenceLedger, GenesisResult } from "./types.js";
 import { ITEM_BANK_VERSION } from "./item-bank.js";
+import { describeImprovementMode } from "../governance.js";
+import { profileControls } from "./profiles.js";
 
 export interface ProvenanceSummary {
   /** Quantitative spec fields present in the built spec. */
@@ -98,7 +100,16 @@ export function provenanceSummary(spec: Record<string, unknown>, ledger: Evidenc
 }
 
 /** Render the human-readable creation report (markdown). */
-export function renderCreationReport(result: GenesisResult, gates: Array<{ name: string; pass: boolean; detail: string }>): string {
+export function renderCreationReport(
+  result: GenesisResult,
+  gates: Array<{ name: string; pass: boolean; detail: string }>,
+  /**
+   * What did not go as asked and was worked around: no model, a failed web search. These were
+   * pushed into `gates` as passes until 2026-10-03, so a 401 from the provider printed under a ✅.
+   * They are not gates (nothing was checked), so they get their own section and a warning mark.
+   */
+  notes: readonly string[] = [],
+): string {
   const { spec, ledger } = result;
   const meta = spec.metadata as { name: string; created: string };
   const summary = provenanceSummary(spec, ledger);
@@ -114,6 +125,7 @@ export function renderCreationReport(result: GenesisResult, gates: Array<{ name:
     "",
     ...gates.map((g) => `- ${g.pass ? "✅" : "❌"} **${g.name}**, ${g.detail}`),
     "",
+    ...(notes.length ? ["## Worked around", "", ...notes.map((n) => `- ⚠️ ${n}`), ""] : []),
     "## Provenance",
     "",
     `- Quantitative fields: ${summary.quantitativeFields.length}`,
@@ -121,22 +133,45 @@ export function renderCreationReport(result: GenesisResult, gates: Array<{ name:
     `- Synthesized (deterministic construct table, versioned): ${summary.synthesizedOnly.length}`,
     `- Defaults (labeled, review these): ${summary.defaultsOnly.length}`,
     "",
-    "| Evidence | Kind | Maps to | Rule |",
-    "|---|---|---|---|",
+    // E65: the source column exists for evidence that was FOUND rather than given. A researched line without
+    // its URL and its date is an assertion, and this report exists so that nothing in a persona is one.
+    "| Evidence | Kind | Maps to | Rule | Source |",
+    "|---|---|---|---|---|",
   ];
   for (const e of ledger.items) {
     const excerpt = e.excerpt.replace(/\|/g, "\\|").replace(/\n/g, " ").slice(0, 80);
+    const source = e.url ? `${e.url}${e.retrieved ? ` (${e.retrieved.slice(0, 10)})` : ""}` : "";
     if (e.mappedFields.length === 0) {
-      lines.push(`| ${excerpt} | ${e.kind} |, |, |`);
+      lines.push(`| ${excerpt} | ${e.kind} |, |, | ${source} |`);
       continue;
     }
     for (const m of e.mappedFields) {
-      lines.push(`| ${excerpt} | ${e.kind} | \`${m.path}\` | ${m.rule} |`);
+      lines.push(`| ${excerpt} | ${e.kind} | \`${m.path}\` | ${m.rule} | ${source} |`);
     }
   }
   lines.push("", "## Defaults to review", "");
   if (summary.defaultsOnly.length === 0) lines.push("(none, every number is evidence-backed)");
   else for (const f of summary.defaultsOnly) lines.push(`- \`${f}\``);
+
+  // Whether this persona can change at all is the first thing its owner needs to know about it,
+  // and for a day it was off in every persona Genesis made while nothing here said so.
+  const mode = String((spec.improvement_policy as { mode?: unknown } | undefined)?.mode ?? "locked");
+  lines.push(
+    "",
+    "## How it evolves",
+    "",
+    describeImprovementMode(mode),
+    "",
+    result.seed.improvementMode === undefined
+      ? "This is the Genesis default, not something the answers chose. Change it with `personaxis improve <mode>`."
+      : "Chosen when the persona was created. Change it with `personaxis improve <mode>`.",
+    "",
+    // E128: the starting values of the three controls (range, who approves what lasts, half-life).
+    profileControls(result.seed.profile).says,
+    result.seed.profile === undefined
+      ? "Standard is the default, not something the answers chose; `personaxis create --profile regulated|standard|research` picks another."
+      : "Chosen when the persona was created; every value is in the spec and can be edited there.",
+  );
   lines.push("");
   return lines.join("\n");
 }

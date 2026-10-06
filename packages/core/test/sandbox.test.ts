@@ -3,6 +3,7 @@ import {
   evaluateCommand,
   evaluateFileWrite,
   classifyCommand,
+  isProtectedPath,
   pathEscapesWorkspace,
   wrapCommand,
   policyFromFrontmatter,
@@ -32,6 +33,61 @@ describe("command classification", () => {
     expect(pathEscapesWorkspace("~/.ssh/id_rsa", root)).toBe(true);
     expect(pathEscapesWorkspace("../secrets", root)).toBe(true);
     expect(pathEscapesWorkspace("src/index.ts", root)).toBe(false);
+  });
+
+  it("sees a relative path that climbs out through the middle", () => {
+    // Found 2026-09-11: a relative path that did not START with `..` was taken as inside
+    // without being resolved, so `docs/../../x` read and wrote outside the workspace through
+    // the read gate, the file-write gate and the command scan alike.
+    expect(pathEscapesWorkspace("docs/../../x", root)).toBe(true);
+    expect(pathEscapesWorkspace("./docs/../../../etc/passwd", root)).toBe(true);
+    // Climbing and coming back is still inside, and a folder whose name starts with two dots
+    // is a folder, not a way out.
+    expect(pathEscapesWorkspace("src/../src/index.ts", root)).toBe(false);
+    expect(pathEscapesWorkspace("..cache/entry", root)).toBe(false);
+    expect(pathEscapesWorkspace(".", root)).toBe(false);
+  });
+
+  it("protects the governed folders the way it now measures a way out (E59)", () => {
+    const p = policy();
+    // A name that starts with two dots inside a protected folder is inside it. The bare prefix
+    // test read `..notes` as a way out of `.personaxis` and left it unprotected.
+    expect(isProtectedPath(".personaxis/..notes", p)).toBe(true);
+    // The whole of .git, because .git/config runs code through core.hooksPath and core.fsmonitor.
+    expect(isProtectedPath(".git/config", p)).toBe(true);
+    expect(isProtectedPath(".git/hooks/pre-commit", p)).toBe(true);
+    // At any depth, and in any case.
+    expect(isProtectedPath("packages/app/.personaxis/personaxis.md", p)).toBe(true);
+    expect(isProtectedPath(".Personaxis/state.json", p)).toBe(true);
+    // Leaving the folder is not being in it, and a lookalike name is not the folder.
+    expect(isProtectedPath(".personaxis/../src/index.ts", p)).toBe(false);
+    expect(isProtectedPath(".github/workflows/ci.yml", p)).toBe(false);
+    expect(isProtectedPath("docs/personaxis-notes.md", p)).toBe(false);
+    // The file-write gate refuses them under every posture, full access included.
+    expect(evaluateFileWrite(".git/config", policy({ sandbox: "danger-full-access" })).decision).toBe("deny");
+  });
+
+  it("classifies PowerShell and cmd, and a recursive rm, the way it classifies bash (E62)", () => {
+    const ps = classifyCommand('Remove-Item -Recurse -Force "C:\\Users"', root);
+    expect(ps.destructive).toBe(true);
+    expect(ps.writesFiles).toBe(true);
+    expect(classifyCommand("Invoke-WebRequest https://example.com", root).network).toBe(true);
+    expect(classifyCommand("Set-Content notes.md hi", root).writesFiles).toBe(true);
+    expect(classifyCommand("rd /s /q build", root).destructive).toBe(true);
+    // `rm -r` deletes a tree as surely as `rm -f`; a plain `rm` is a write and nothing more.
+    expect(classifyCommand("rm -r build", root).destructive).toBe(true);
+    expect(classifyCommand("rm notes.md", root).destructive).toBe(false);
+    // A quote in front of a path used to hide it from the scan.
+    expect(classifyCommand('cat "/etc/passwd"', root).escapesWorkspace).toBe(true);
+    // And reads stay reads.
+    expect(classifyCommand("Get-Content notes.md", root)).toEqual({ writesFiles: false, network: false, destructive: false, escapesWorkspace: false });
+  });
+
+  it("scans a command for paths that climb out through the middle", () => {
+    expect(classifyCommand("cat docs/../../secret.txt", root).escapesWorkspace).toBe(true);
+    expect(classifyCommand("cp notes.md docs/../../../elsewhere/", root).escapesWorkspace).toBe(true);
+    // And still leaves a harmless relative path alone.
+    expect(classifyCommand("cat docs/readme.md", root).escapesWorkspace).toBe(false);
   });
 
   it("does not misflag CLI switches (date /t, dir /s) as workspace escapes", () => {

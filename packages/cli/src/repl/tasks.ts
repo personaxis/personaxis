@@ -12,7 +12,7 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, openSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { readState, loadPersona, type PersonaHandle } from "@personaxis/core";
+import { ensureState, readState, loadPersona, type PersonaHandle } from "@personaxis/core";
 
 export interface TaskRecord {
   id: string;
@@ -126,7 +126,7 @@ export function readTaskDetail(personaPath: string, id: string): TaskDetail | nu
   let mutationsSince = 0;
   try {
     const handle: PersonaHandle = loadPersona(personaPath);
-    const now = readState(handle.statePath).mutation_log.length;
+    const now = ensureState(handle).mutation_log.length;
     if (typeof rec.mutationsBefore === "number") mutationsSince = Math.max(0, now - rec.mutationsBefore);
   } catch {
     /* state unavailable: report 0 */
@@ -159,7 +159,7 @@ export function startTask(personaPath: string, prompt: string): TaskRecord {
   child.unref();
   let mutationsBefore = 0;
   try {
-    mutationsBefore = readState(loadPersona(personaPath).statePath).mutation_log.length;
+    mutationsBefore = ensureState(loadPersona(personaPath)).mutation_log.length;
   } catch {
     /* fresh persona without state yet */
   }

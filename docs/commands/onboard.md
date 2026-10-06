@@ -1,13 +1,14 @@
 # `personaxis onboard`
 
-Wire a coding-agent host end to end in one command: config check, compile to the host's
-file, and the end-of-turn learning hook.
+Load a persona into a coding agent in one command: it checks the config, compiles the persona
+to the host's file and installs the end-of-turn learning hook.
 
 ```bash
 personaxis onboard                       # defaults to claude-code
 personaxis onboard --host codex          # AGENTS.md + Codex agent
 personaxis onboard --host claude-code -g # hook into the user config, not the project
+personaxis onboard --provider local      # provider for the compile step (local | byok | agent)
 ```
 
-Hosts: `claude-code | codex | openclaw | hermes`. Equivalent inside the app: `/hooks` (the
-submenu shows per-host install status and what each hook does before installing).
+Hosts: `claude-code | codex | openclaw | hermes`. Inside the app, hooks are in `/status`,
+Daemons tab.

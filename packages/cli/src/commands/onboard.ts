@@ -25,7 +25,7 @@ export const onboardCommand = new Command("onboard")
   .description(`Wire a coding-agent host end to end (config check → compile → hook). Hosts: ${HOSTS.join(" | ")}.`)
   .option("--host <host>", `Host to wire: ${HOSTS.join(" | ")}`, "claude-code")
   .option("-g, --global", "Install the hook to the user config instead of the project (claude-code/codex)", false)
-  .option("--provider <name>", "Compile provider override (local | byok | agent | remote)")
+  .option("--provider <name>", "Compile provider override (local | byok | agent)")
   .action(async (opts: { host: string; global?: boolean; provider?: string }) => {
     if (!(HOSTS as readonly string[]).includes(opts.host)) {
       console.error(chalk.red("Error:"), `unknown host "${opts.host}". Use: ${HOSTS.join(" | ")}`);

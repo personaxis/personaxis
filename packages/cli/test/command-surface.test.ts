@@ -5,16 +5,17 @@
  * The count is asserted from the code below rather than quoted from the plan (which said
  * "~12"): a headline number that nobody re-measures drifts away from the product.
  *
- * As few commands as possible, each one properly built. Everything else became a tab or
- * an action, and stays runnable as a hidden alias, so muscle memory never breaks and
- * nothing vanishes silently: `/help moved` prints the whole map.
+ * As few commands as possible, each one properly built. Everything else became a tab or an
+ * action, and typing the old verb says where its capability lives now WITHOUT running it
+ * (V8.A), so nothing vanishes silently: `/help moved` prints the whole map, and
+ * `EXTERNAL_DOOR` names the non-interactive command for the verbs that took an argument.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { paletteMatches, type SlashItem } from "@personaxis/tui/ink";
-import { COMMANDS, ABSORBED, listCommands, runCommand } from "../src/repl/commands.js";
+import { COMMANDS, ABSORBED, EXTERNAL_DOOR, listCommands, runCommand } from "../src/repl/commands.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter, POSTURES } from "../src/repl/config.js";
 import { writeStarterPersona } from "../src/starter.js";
@@ -46,7 +47,7 @@ describe("command surface (V7.B)", () => {
   });
 
   it("absorbed verbs are not commands any more, in any listing", () => {
-    // V8.A (David): "no quiero que solo esté oculto y que aun pueda usarlos". A hidden
+    // V8.A: hiding a command that still runs is not removing it. A hidden
     // command that still works is the clutter this consolidation exists to remove, and
     // two ways to do one thing is how the implementations drifted in the first place.
     const names = listCommands().map((c) => c.name);
@@ -136,22 +137,37 @@ describe("the `/` palette shows the consolidated surface (V7.B, regression)", ()
  * delegated, while `/lint` and `/validate` kept a SECOND implementation. They drifted exactly
  * as you would expect: "every finding carries its remedy" reached `doctor` and the `lint`
  * subcommand, and never reached the `/lint` slash command, so the same question answered
- * differently depending on where it was typed. David spotted it from the outside.
+ * differently depending on where it was typed, and it was visible from the outside.
  */
 describe("absorbed verbs delegate, they do not re-implement (V8.A)", () => {
-  it("every absorbed verb declares an executable destination, or why it keeps its body", () => {
+  /**
+   * Measured on 2026-09-23 (L12): this suite used to assert the MAP, not the behaviour. It
+   * read `keepsBody`, a field the product never looked at, served by `absorbedRun`, a
+   * function nothing called, so it passed while `/help moved` and the README both promised
+   * these verbs still ran and `runCommand` refused to run them. A test that asserts a
+   * declaration cannot catch a declaration that lies. So every one of them is typed here.
+   */
+  it("every absorbed verb, typed, says where it went and does not run", async () => {
     for (const [name, t] of Object.entries(ABSORBED)) {
-      expect(t.where, `/${name} must say where it went`).toBeTruthy();
-      const reachable = Boolean(t.view || t.command || t.keepsBody);
-      expect(reachable, `/${name}: declare a view, a command, or keepsBody`).toBe(true);
+      const { ctx, out } = scaffold();
+      const handled = await runCommand(`/${name}`, ctx);
+      expect(handled, `/${name} must not execute: the capability moved to ${t.where}`).toBe(false);
+      expect(out.join(String.fromCharCode(10)), `/${name} must say where it went`).toContain(t.where);
     }
   });
 
-  it("only verbs that ACT on an argument keep their own body", () => {
-    // A navigation alias with a body is the shape that drifts; a verb that takes an
-    // argument (`/goal <text>`) would silently lose the action if it became one.
-    const keepers = Object.entries(ABSORBED).filter(([, t]) => t.keepsBody).map(([n]) => n).sort();
-    expect(keepers).toEqual(["arbitrate", "goal", "improve", "init", "loop", "mode", "rewind"]);
+  /**
+   * A verb that took an argument (`/goal <text>`, `/rewind <n>`) cannot be answered with
+   * "open this view" alone: without a door that accepts the argument, the ACTION is what
+   * gets lost, quietly, and only for the people who used it.
+   */
+  it("a verb that took an argument names the command that still takes it", async () => {
+    for (const name of ["arbitrate", "goal", "improve", "init", "loop", "mode", "rewind"]) {
+      expect(Object.keys(EXTERNAL_DOOR), `/${name} took an argument`).toContain(name);
+      const { ctx, out } = scaffold();
+      await runCommand(`/${name} something`, ctx);
+      expect(out.join(String.fromCharCode(10))).toContain(`personaxis ${EXTERNAL_DOOR[name]}`);
+    }
   });
 
   it("/lint points at doctor, which owns the ONLY implementation", async () => {

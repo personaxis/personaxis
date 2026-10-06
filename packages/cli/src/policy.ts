@@ -34,7 +34,7 @@ export interface PolicyData {
     persona_version_range?: string;
   };
   improvement_policy: {
-    mode: "locked" | "suggesting" | "auto";
+    mode: "locked" | "suggesting" | "autonomous" | "auto";
     approved_by?: string;
     last_approval_at?: string;
     approval_expires_at?: string;
@@ -135,11 +135,14 @@ export function validatePolicy(
     });
   }
 
-  if (policy.improvement_policy.mode !== "locked") {
+  // E129 (2026-09-24): only a persona that may APPLY an edit to its own spec must record who allowed it.
+  // Under `suggesting` no spec edit applies without a person, so demanding a sign-off there only made
+  // every new persona be born `locked`, which is the kill-switch, not a safe default for a living one.
+  if (policy.improvement_policy.mode === "autonomous" || policy.improvement_policy.mode === "auto") {
     if (!policy.improvement_policy.approved_by) {
       errors.push({
         field: "improvement_policy.approved_by",
-        message: `Required when improvement_policy.mode != 'locked'.`,
+        message: `Required when improvement_policy.mode is 'autonomous'.`,
         category: "FAIL_POLICY",
         fix: `Add improvement_policy.approved_by with the person or team that signed off on mode '${policy.improvement_policy.mode}'. A persona allowed to change itself must record who allowed it.`,
       });
@@ -147,7 +150,7 @@ export function validatePolicy(
     if (!policy.improvement_policy.last_approval_at) {
       errors.push({
         field: "improvement_policy.last_approval_at",
-        message: `Required when improvement_policy.mode != 'locked'.`,
+        message: `Required when improvement_policy.mode is 'autonomous'.`,
         category: "FAIL_POLICY",
         fix: "Add improvement_policy.last_approval_at with the ISO date of that sign-off. It is what makes an approval expire instead of standing forever.",
       });

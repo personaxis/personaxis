@@ -88,22 +88,23 @@ export function applyAnswers(answers: InterviewAnswers): { seed: Partial<Persona
 
   // Traits: likert → mean; shared confidence item → half-width for every trait.
   const conf = num(answers["t-conf"]);
-  const halfWidth = conf !== undefined ? confidenceToHalfWidth(conf) : 0.2;
+  // Without an answer the width is left to the builder, which takes it from the starting profile (E128);
+  // writing 0.2 here made every interviewed persona Standard-width whatever profile it chose.
+  const halfWidth = conf !== undefined ? confidenceToHalfWidth(conf) : undefined;
   if (conf !== undefined) {
-    trail.push(evidence("t-conf", String(conf), [{ path: "personality.traits.*.range", value: `±${halfWidth.toFixed(2)}`, rule: "confidence-to-halfwidth" }]));
+    trail.push(evidence("t-conf", String(conf), [{ path: "personality.traits.*.range", value: `±${confidenceToHalfWidth(conf).toFixed(2)}`, rule: "confidence-to-halfwidth" }]));
   }
   for (const [itemId, trait] of Object.entries(TRAIT_BY_ITEM)) {
     const v = num(answers[itemId]);
     if (v === undefined) continue;
     const mean = likertToMean(v);
-    seed.traits![trait] = {
-      mean,
-      range: [Math.max(0, mean - halfWidth), Math.min(1, mean + halfWidth)],
-    };
+    seed.traits![trait] = halfWidth === undefined ? { mean } : { mean, range: [Math.max(0, mean - halfWidth), Math.min(1, mean + halfWidth)] };
     trail.push(
       evidence(itemId, `likert ${v}/5`, [
         { path: `personality.traits.${trait}.mean`, value: mean, rule: "likert-to-mean" },
-        { path: `personality.traits.${trait}.range`, value: `mean ± ${halfWidth.toFixed(2)}`, rule: "confidence-to-halfwidth" },
+        ...(halfWidth === undefined
+          ? []
+          : [{ path: `personality.traits.${trait}.range`, value: `mean ± ${halfWidth.toFixed(2)}`, rule: "confidence-to-halfwidth" }]),
       ]),
     );
   }
@@ -190,12 +191,13 @@ export function applyAnswers(answers: InterviewAnswers): { seed: Partial<Persona
     }
   }
 
-  // Governance: who approves change → improvement_policy.mode (V5.P2.5).
-  const gi = num(answers["g-improve"]);
-  const MODES = ["locked", "suggesting", "autonomous"] as const;
-  if (gi !== undefined && MODES[gi]) {
-    seed.improvementMode = MODES[gi];
-    trail.push(evidence("g-improve", MODES[gi], [{ path: "improvement_policy.mode", value: MODES[gi], rule: "choice-to-mode" }]));
+  // Governance: the starting profile (E128). It sets the defaults of the three controls, and everything
+  // answered above (the confidence width, the volatility half-life) still wins over it.
+  const gp = num(answers["g-profile"]);
+  const PROFILES = ["regulated", "standard", "research"] as const;
+  if (gp !== undefined && PROFILES[gp]) {
+    seed.profile = PROFILES[gp];
+    trail.push(evidence("g-profile", PROFILES[gp], [{ path: "governance.per_layer_edit_policy", value: PROFILES[gp], rule: "choice-to-profile" }]));
   }
 
   const tone = str(answers["p-tone"]);

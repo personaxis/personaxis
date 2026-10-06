@@ -11,9 +11,9 @@ import { stdout } from "node:process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import {
-  LivingLoop,
+  run,
   loadPersona,
-  ensureState,
+  stateOf,
   displayName,
   readMode,
   personaTheme,
@@ -25,14 +25,13 @@ import {
   fallbackName,
   nameSession,
   makeRecompileHook,
-  assemblePersonaDoc,
   activeOverlay,
   readState,
   readMemoryTypes,
   readWritePolicy,
   readConsolidationMode,
   readMemoryKnobs,
-  distillSession,
+  closeSessionMemory,
   consolidateSemantic,
   pruneMemory,
   listSessions,
@@ -48,10 +47,34 @@ import {
 } from "@personaxis/core";
 import chalk from "chalk";
 import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
+import { liveCompiledDocument } from "../compiled-document.js";
 import { replyLine, userLine } from "./render.js";
 import type { Ctx } from "./types.js";
 import type { LineRole } from "@personaxis/tui/screen";
 import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "./config.js";
+
+/**
+ * What the living loop runs when a band is crossed: the compiled document, rewritten in place.
+ *
+ * E92: the document `compile` writes, minus the model polish, from `compiled-document.ts`. It was
+ * assembled inline in `makeCtx` without the resource manifest, the sub-persona header or the skill
+ * list, so the first band a persona crossed erased from its identity what it could see it had.
+ * Named and exported so that promise is checked against a real compile, not against a copy of it.
+ */
+export function recompileHookFor(personaPath: string, compiledPath: string): ReturnType<typeof makeRecompileHook> {
+  return makeRecompileHook({
+    // Always pass the canonical path: the hook itself no-ops while the file does not
+    // exist, and starts keeping it fresh the moment the first /compile creates it.
+    compiledPath,
+    assemble: (h) =>
+      liveCompiledDocument(personaPath, h.frontmatter as Record<string, unknown>, {
+        appliedOverlay: activeOverlay(personaPath),
+        // Undefined when the persona has not started. Building a session must not
+        // bring one into existence as a side effect of describing it.
+        stateValues: stateOf(h)?.values,
+      }),
+  });
+}
 
 /**
  * Build a REPL context for ANY persona (root or a sub-persona), sharing the session
@@ -60,34 +83,19 @@ import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "
  * `out`/`approve`/`phase` default here; the active mode runner rebinds them to the screen.
  */
 export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: number): Ctx {
-  const handle = loadPersona(personaPath);
-  ensureState(handle);
-  const isSub = isSubagentPath(personaPath);
-  const compiled = compiledPathFor(personaPath);
-  const personaDoc = existsSync(compiled) ? readFileSync(compiled, "utf-8") : handle.body;
+  // One read, one place. The paths this implies used to be derived here and, in the
+  // SDK, derived differently: it looked for the compiled document beside the spec,
+  // which is only where a SUB-persona's lives, so an ordinary project got the raw body.
+  const assembled = run.assemble(personaPath);
+  const handle = assembled.handle;
+  const compiled = assembled.compiledPath;
+  const personaDoc = run.identityOf(assembled);
   const modelArg = { personaPath, frontmatter: handle.frontmatter as Record<string, unknown> };
-  const loop = new LivingLoop(personaPath, {
-    appraiser: pickAppraiser(modelArg),
+  const loop = run.evolverFor(modelArg, {
     // F6.5: the inline recompile is REAL, on a band crossing the stage-1
     // assembler rewrites the compiled doc deterministically (band-selected
     // expression from fresh state; F3.1's `assemble` seam, finally wired).
-    recompile: makeRecompileHook({
-      // Always pass the canonical path: the hook itself no-ops while the file does not
-      // exist, and starts keeping it fresh the moment the first /compile creates it.
-      compiledPath: compiled,
-      assemble: (h) =>
-        assemblePersonaDoc({
-          persona: h.frontmatter as Record<string, unknown>,
-          target: {
-            name: displayName(h.frontmatter),
-            isSubagent: isSub,
-            ...(isSub ? { slug: slugAddressFromPath(personaPath) } : {}),
-            resourceBase: isSub ? "./" : "./.personaxis/",
-          },
-          appliedOverlay: activeOverlay(personaPath),
-          stateValues: existsSync(h.statePath) ? readState(h.statePath).values : undefined,
-        }),
-    }),
+    recompile: recompileHookFor(personaPath, compiled),
   });
   let postureIndex = POSTURES.indexOf(policyFromFrontmatter(handle.frontmatter as Record<string, unknown>).sandbox);
   if (postureIndex < 0) postureIndex = 1;
@@ -110,6 +118,26 @@ export function makeCtx(personaPath: string, meter: ContextMeter, replyColor?: n
     usage: { turns: 0, tokens: 0, costUsd: 0, steps: 0 },
     presence: { activity: "idle" },
     replyColor,
+  };
+}
+
+/**
+ * The session's conversation, as the port whatever runs the turn reads and writes.
+ *
+ * A lens onto `ctx.conversation` rather than a copy of it, because `/compact` and
+ * `/resume` replace that array outright and a port holding its own list would keep
+ * handing the loop the conversation the session used to have.
+ *
+ * The system message is dropped on the way in. It is built fresh for each request from
+ * the persona's current identity, so carrying an old one forward would hand the model a
+ * description of who this persona used to be.
+ */
+export function conversationOf(ctx: Ctx): run.Conversation {
+  return {
+    read: () => ctx.conversation,
+    write: (messages) => {
+      ctx.conversation = messages.filter((m) => m.role !== "system");
+    },
   };
 }
 
@@ -139,21 +167,24 @@ export function ensureCtxSession(ctx: Ctx, seedMsg: string, kind?: SessionKind):
  * Idempotent per ctx (guarded by ctx.sessionClosed); best-effort by design.
  */
 export function closeSession(ctx: Ctx): void {
+  // The MCP servers, first and unconditionally.
+  //
+  // Before the early return, because a session that never wrote a turn still started
+  // whatever the operator registered, and those are processes. Not awaited, because
+  // this function is synchronous and three callers away from a `process.exit`: the
+  // transport kills its child on close, and a child that outlives us loses its stdin,
+  // which is how a server built to the protocol learns to stop.
+  void ctx.mcp?.close();
+
   if (!ctx.sessionStarted || ctx.sessionClosed) return;
   ctx.sessionClosed = true;
   const p = ctx.handle.personaPath;
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
   try {
-    const memTypes = readMemoryTypes(fm);
-    if (memTypes.episodic && readWritePolicy(fm).default !== "ephemeral") {
-      distillSession(p, ctx.sessionId);
-    }
-    if (memTypes.autobiographical && listSessions(p).length === 1) {
-      const already = readAutobiographical(p).some((e) => e.tags.includes("first-conversation"));
-      if (!already) appendAutobiographical(p, { event: "first conversation with the user", tags: ["milestone", "first-conversation"] });
-    }
-    if (memTypes.semantic && readConsolidationMode(fm) === "auto") consolidateSemantic(p);
-    pruneMemory(p, readMemoryKnobs(fm).retentionDays);
+    // E89: the five decisions live in `core` now, so a service run and an editor over ACP close a session
+    // the same way this does. They used to live here and only here, which is why a persona consolidated its
+    // memory in the terminal and consolidated nothing anywhere else, and why nothing ever tested them.
+    closeSessionMemory(p, ctx.sessionId, fm);
     // V6.10: fold this session's per-model usage into the global stats cache
     // (~/.personaxis/stats-cache.json), so Settings > Stats draws tokens/day
     // per model instantly, across every project.
@@ -276,13 +307,31 @@ export function recordEvidence(ctx: Ctx, block: string[]): void {
   }
 }
 
-/** Append a completed user/assistant exchange to the persona's session; auto-name once. */
-export async function recordTurn(ctx: Ctx, userMsg: string, assistantMsg: string, kind?: SessionKind): Promise<void> {
+/**
+ * Append a completed exchange to the persona's session; auto-name once.
+ *
+ * `spoken: false` records the reply as a NOTE instead of as the persona's words. It is
+ * for a turn that failed, where the text is the runtime saying what went wrong. Notes
+ * are dropped by `loadConversation`, so a resumed session does not hand the model
+ * "agent error: connection refused" as something this persona once said, and the
+ * transcript does not quote a component under the persona's name.
+ */
+export async function recordTurn(
+  ctx: Ctx,
+  userMsg: string,
+  assistantMsg: string,
+  kind?: SessionKind,
+  spoken = true,
+): Promise<void> {
   try {
     ensureCtxSession(ctx, userMsg, kind);
     const from = slugAddressFromPath(ctx.handle.personaPath) || "(root)";
     appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "user", content: userMsg });
-    appendTurn(ctx.handle.personaPath, ctx.sessionId, { role: "assistant", content: assistantMsg, from });
+    appendTurn(ctx.handle.personaPath, ctx.sessionId, {
+      role: spoken ? "assistant" : "note",
+      content: assistantMsg,
+      from,
+    });
     if (!ctx.sessionNamed) {
       ctx.sessionNamed = true;
       const llm = llmConfig(ctxModelArg(ctx));

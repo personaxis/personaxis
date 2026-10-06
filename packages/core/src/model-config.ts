@@ -28,6 +28,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { personaxisHome } from "./registry.js";
+import type { Scaffold } from "./run/model-seam.js";
 
 export interface ModelSettings {
   endpoint?: string;
@@ -36,6 +37,31 @@ export interface ModelSettings {
   apiKey?: string;
   /** Name of the env var that holds the key (preferred, the key never touches a file). */
   apiKeyEnv?: string;
+  /**
+   * Completion budget per call. Optional, and the default matters more than it looks.
+   *
+   * A 2026 open model thinks before it answers and the thinking is billed here. Measured
+   * on the HuggingFace router with Qwen3.5-9B: with a `response_format` set and no explicit
+   * budget the server caps the completion at 2048, the model spends all of it thinking, and
+   * returns HTTP 200 with an EMPTY answer. Raise this for a model that reasons; lower it
+   * only if a server bills by the reservation rather than by what was used.
+   */
+  maxTokens?: number;
+  /**
+   * E83: how much structure the loop gives this model. `small` adds a short decision step before acting;
+   * absent, the destination table decides, and it declares no model until the bench measured one.
+   */
+  scaffold?: Scaffold;
+  /**
+   * E86: how big this model's context window is, declared instead of discovered.
+   *
+   * Absent, the loop asks the endpoint and falls back to a table, which is right for real use. Declared, it
+   * WINS over both, because the only reason to write it down is that you want this run to behave as if the
+   * window were this size: a bench measuring what happens when the context fills, or an operator who knows
+   * the server lies about it. Measured on 2026-09-16: with `long-job`, Qwen filled 5.800 of 32.768, so the
+   * round trigger could not be exercised at all without this.
+   */
+  contextWindow?: number;
 }
 
 /** Per-persona settings: an optional reference to a named `profile` plus inline overrides. */
@@ -63,6 +89,12 @@ export interface ResolvedModel {
   profile?: string;
   /** V5.FIX.2: true when the configured default was NOT usable and a fallback was taken. */
   fallback?: boolean;
+  /** Completion budget per call, carried through from the resolved settings. */
+  maxTokens?: number;
+  /** E83: the scaffold the settings declared, carried through like `maxTokens`. */
+  scaffold?: Scaffold;
+  /** E86: the window the settings declared, carried through the same way. Absent means discover it. */
+  contextWindow?: number;
 }
 
 /** A local inference server (Ollama, LM Studio, llama.cpp, vLLM on this machine) needs no key. */
@@ -111,6 +143,11 @@ function mergeSettings(layers: Array<ModelSettings | undefined>): ModelSettings 
     if (layer.model) out.model = layer.model;
     if (layer.apiKey) out.apiKey = layer.apiKey;
     if (layer.apiKeyEnv) out.apiKeyEnv = layer.apiKeyEnv;
+    // E96: dropped here until 2026-09-15, so a budget raised for a model that thinks first reached a call
+    // only through the fallback path. A field this function forgets is a setting that silently does nothing.
+    if (layer.maxTokens !== undefined) out.maxTokens = layer.maxTokens;
+    if (layer.scaffold !== undefined) out.scaffold = layer.scaffold;
+    if (layer.contextWindow !== undefined) out.contextWindow = layer.contextWindow;
   }
   return out;
 }
@@ -162,12 +199,19 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
 
   const direct =
     merged.endpoint && merged.model
-      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged) }
+      ? { endpoint: merged.endpoint, model: merged.model, apiKey: keyFor(merged), maxTokens: merged.maxTokens, scaffold: merged.scaffold, contextWindow: merged.contextWindow }
       : undefined;
 
   // Usable = it can actually answer: a key resolves, or the endpoint is local (no key needed).
   if (direct && (direct.apiKey || isLocalEndpoint(direct.endpoint))) {
-    return { endpoint: direct.endpoint, model: direct.model, ...(direct.apiKey ? { apiKey: direct.apiKey } : {}) };
+    return {
+      endpoint: direct.endpoint,
+      model: direct.model,
+      ...(direct.apiKey ? { apiKey: direct.apiKey } : {}),
+      ...(direct.maxTokens !== undefined ? { maxTokens: direct.maxTokens } : {}),
+      ...(direct.scaffold !== undefined ? { scaffold: direct.scaffold } : {}),
+      ...(direct.contextWindow !== undefined ? { contextWindow: direct.contextWindow } : {}),
+    };
   }
 
   // V5.FIX.2 fallback: when the configured default is broken (points at a keyless
@@ -204,6 +248,14 @@ export function resolveModel(opts: ResolveModelOptions = {}): ResolvedModel | un
           endpoint: s.endpoint,
           model: s.model,
           ...(k ? { apiKey: k } : {}),
+          ...(s.maxTokens !== undefined ? { maxTokens: s.maxTokens } : {}),
+          ...(s.scaffold !== undefined ? { scaffold: s.scaffold } : {}),
+          // Copied field by field, and on 2026-09-17 that cost a field: `rounds` was carried by the direct
+          // path above and missing here, so a profile that fell back lost it in silence. `E86` retired that
+          // field on 2026-09-21 and the fault outlived it, which is the point: `E96` recorded the same one
+          // in the function next door. Whatever is added above is added here too, or it exists on one path
+          // only and nothing says so. `contextWindow` below is the one that carries that risk today.
+          ...(s.contextWindow !== undefined ? { contextWindow: s.contextWindow } : {}),
           profile: name,
           ...(direct ? { fallback: true } : {}),
         };

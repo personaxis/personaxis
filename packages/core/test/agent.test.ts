@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "no
 import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
+import { ensureState,
   PersonaAgent,
   evaluateFileWrite,
   executeCommand,
@@ -14,6 +14,9 @@ import {
   loadPersona,
   readState,
   DEFAULT_POLICY,
+  compile,
+  type CompiledPolicy,
+  type ExecutablePolicy,
   type Policy,
   type LoopEvent,
 } from "../src/index.js";
@@ -26,6 +29,37 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function policy(over: Partial<Policy> = {}): Policy {
   return { ...DEFAULT_POLICY, workspaceRoot: dir, ...over };
+}
+
+/**
+ * The persona's compiled limits, which E2 made the loop require.
+ *
+ * Only the tests that actually execute something need one, and that asymmetry is the
+ * change working rather than a gap: a run with no compiled policy now refuses every
+ * call by name, so the two tests below that write a file had to say which persona
+ * they were writing as. The ones that assert a refusal did not, because they were
+ * already getting one.
+ *
+ * `danger-full-access` on purpose. The capability axis is not what these two are
+ * about, and a posture that refused the write on its own would let them pass while
+ * proving nothing about the approval flow they exist to check.
+ */
+function capability(over: Partial<CompiledPolicy> = {}): ExecutablePolicy {
+  return compile({
+    persona_version_id: "pv_test",
+    hash: "h",
+    compiled_at: new Date().toISOString(),
+    ttl_seconds: 3600,
+    deny: [],
+    allow: [],
+    hard_limits: [],
+    prohibited_behaviors: [],
+    egress_allowlist: [],
+    sandbox: "danger-full-access",
+    approval: "never",
+    gate_rules: [],
+    ...over,
+  });
 }
 
 /** A scripted OpenAI-style /chat/completions fetch. Each call returns the next item. */
@@ -79,6 +113,7 @@ describe("PersonaAgent (governed task execution)", () => {
         { tool: "finish", args: { summary: "done" } },
       ])),
       policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
       onApproval: async () => {
         asked++;
         return "deny";
@@ -89,6 +124,64 @@ describe("PersonaAgent (governed task execution)", () => {
     expect(existsSync(join(dir, "out.txt"))).toBe(false); // denied → not written
   });
 
+  it("tells the model WHO refused, not that a user did", async () => {
+    // C6b. Every refusal on this path was written down as `user denied` and shown to
+    // the model as `denied by user`, including the paths where no user exists: an SDK
+    // embedding, a daemon, and a delegated sub-task, which refuses by rule and asks
+    // nobody. A record that names a person who was never consulted is the same fault
+    // as an ending attributed to a persona that was cut off mid-sentence.
+    const sent: string[] = [];
+    const capturing = ((async (url: string, init?: { body?: string }) => {
+      if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      if (init?.body) sent.push(init.body);
+      const step = sent.length === 1
+        ? { id: "c1", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "o.txt", content: "x" }) } }
+        : { id: "c2", type: "function", function: { name: "finish", arguments: JSON.stringify({ summary: "stopped" }) } };
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "", tool_calls: [step] } }] }) };
+    }) as unknown) as typeof fetch;
+
+    const agent = new PersonaAgent({
+      llm: llm(capturing),
+      policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
+      onApproval: async () => ({ decision: "deny", reason: "a delegated sub-task cannot ask" }),
+    });
+    await agent.run("write a file");
+
+    // The refusal reaches the model on the request AFTER the one it was refused on.
+    expect(sent.at(-1)).toContain("a delegated sub-task cannot ask");
+    expect(sent.at(-1)).not.toContain("denied by user");
+
+    // And in the forensic log, which is the half that matters more: the model is
+    // told once, the log is what somebody reads afterwards to ask who decided.
+    // Found by a negative control coming back GREEN: putting `user denied` back into
+    // the log left every test passing, because nothing looked here.
+    const blocked = agent.forensic.filter((entry) => entry.decision === "ask");
+    expect(blocked.map((entry) => entry.reason)).toEqual(["a delegated sub-task cannot ask"]);
+  });
+
+  it("says there was nobody to ask when there was no handler at all", async () => {
+    // A different sentence from somebody saying no, and the two used to be one.
+    const sent: string[] = [];
+    const capturing = ((async (url: string, init?: { body?: string }) => {
+      if (String(url).endsWith("/models")) return { ok: true, status: 200, json: async () => ({ data: [] }) };
+      if (init?.body) sent.push(init.body);
+      const step = sent.length === 1
+        ? { id: "c1", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "o.txt", content: "x" }) } }
+        : { id: "c2", type: "function", function: { name: "finish", arguments: JSON.stringify({ summary: "stopped" }) } };
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "", tool_calls: [step] } }] }) };
+    }) as unknown) as typeof fetch;
+
+    const agent = new PersonaAgent({
+      llm: llm(capturing),
+      policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
+    });
+    await agent.run("write a file");
+
+    expect(sent.at(-1)).toContain("nobody to ask");
+  });
+
   it("executes an approved write end-to-end", async () => {
     const agent = new PersonaAgent({
       llm: llm(scriptedFetch([
@@ -96,6 +189,7 @@ describe("PersonaAgent (governed task execution)", () => {
         { tool: "finish", args: { summary: "wrote note" } },
       ])),
       policy: policy({ approval: "on-request", sandbox: "workspace-write" }),
+      capability: capability(),
       onApproval: async () => "approve",
     });
     const res = await agent.run("write note");
@@ -191,9 +285,14 @@ describe("PersonaAgent (governed task execution)", () => {
     expect(existsSync(join(dir, "memory", "agent-state.jsonl"))).toBe(false);
     const mem = readMemory(personaPath);
     expect(mem.some((m) => m.tags.includes("agent-run") && m.content.includes("build a landing page"))).toBe(true);
-    // agent_session in state.json tracks the run.
-    const st = readState(loadPersona(personaPath).statePath);
-    expect(st.agent_session?.step_count).toBeGreaterThanOrEqual(1);
+    // The loop no longer writes `agent_session` itself, and this test used to pin
+    // that it did. The block is printed from the record, folded over the turns, and
+    // this agent was driven without a runner so no turn was ever recorded: there is
+    // nothing to fold and nothing to print. Two writers for one block is what it was:
+    // this one wrote `stop_reason: "goal_met"` while the projection said `answered`,
+    // and the file flip-flopped between them.
+    const st = ensureState(loadPersona(personaPath));
+    expect(st.agent_session).toBeUndefined();
   });
 });
 
@@ -226,6 +325,65 @@ describe("exec primitives", () => {
     const e = executeFileEdit("g.txt", "zzz", "x", policy());
     expect(e.ok).toBe(false);
     expect(e.error).toMatch(/not present/);
+  });
+
+  it("C4: refuses an ambiguous edit rather than picking one", () => {
+    // This replaced the FIRST occurrence and reported `edited`, so a find text that
+    // appeared twice was a coin flip nobody was told about: the model asked to change
+    // one thing, changed another, and believed the file was fixed.
+    writeFileSync(join(dir, "twice.ts"), 'const a = "x";\nconst b = "x";\n');
+    const e = executeFileEdit("twice.ts", '"x"', '"y"', policy());
+
+    expect(e.ok).toBe(false);
+    expect(e.error).toContain("appears 2 times");
+    expect(e.error).toContain("no change made");
+    // Refused means untouched, which is the half worth asserting: an "ambiguous"
+    // error over a file that was edited anyway would be worse than no check.
+    expect(readFileSync(join(dir, "twice.ts"), "utf-8")).toBe('const a = "x";\nconst b = "x";\n');
+  });
+
+  it("C4: says what it changed, and where", () => {
+    writeFileSync(join(dir, "diff.ts"), "one\ntwo\nthree\n");
+    const e = executeFileEdit("diff.ts", "two", "TWO", policy());
+
+    expect(e.ok).toBe(true);
+    expect(e.content).toContain("at line 2");
+    expect(e.content).toContain("- two");
+    expect(e.content).toContain("+ TWO");
+  });
+
+  it("C4: refuses to edit a file that is not text", () => {
+    // MEASURED on 2026-09-08: reading these bytes as UTF-8 and writing the string back
+    // turned 24 bytes into 40 different ones, and the tool reported `edited`.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x0d, 0xff, 0xfe]);
+    writeFileSync(join(dir, "image.png"), png);
+    const e = executeFileEdit("image.png", "PNG", "x", policy());
+
+    expect(e.ok).toBe(false);
+    expect(e.error).toContain("not a text file");
+    expect(readFileSync(join(dir, "image.png")).equals(png)).toBe(true);
+  });
+
+  it("C4: answers about a binary instead of handing back damaged text", () => {
+    // Eight of its twenty-four characters came back as replacement characters, and
+    // nothing in that string says "this is an image": the model pays tokens for
+    // mojibake it cannot recognise as mojibake.
+    writeFileSync(join(dir, "blob.bin"), Buffer.from([0x01, 0x00, 0x02, 0xff]));
+    const r = readFileSafe("blob.bin", policy());
+
+    expect(r.ok).toBe(true);
+    expect(r.content).toContain("not a text file");
+    expect(r.content).toContain("4 bytes");
+    expect(r.content).not.toContain("�");
+  });
+
+  it("C4: still reads a text file with accents, which is not a binary", () => {
+    // The control on the detector itself. A rule that called every non-ASCII file
+    // binary would be worse than none: most of what this product writes has accents
+    // in it.
+    writeFileSync(join(dir, "prosa.md"), "camión, ñandú, façade\n", "utf-8");
+
+    expect(readFileSafe("prosa.md", policy()).content).toBe("camión, ñandú, façade\n");
   });
 
   it("executeCommand captures stdout and exit code (mocked spawn)", async () => {
