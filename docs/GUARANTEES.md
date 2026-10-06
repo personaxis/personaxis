@@ -4,7 +4,7 @@ A persona is a set of files an agent loads to do a job: its procedures, criteria
 knowledge and what it has learned. This page lists what this repository tests about the engine that
 runs a persona, with the numbers, and what it does not test yet.
 
-You can run the main checks yourself, offline, in about a minute:
+You can run the main checks yourself, offline, in a few seconds:
 
 ```bash
 npx personaxis proof --quick
