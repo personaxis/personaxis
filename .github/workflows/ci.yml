@@ -114,7 +114,10 @@ jobs:
     # Measured: 26s for the job this replaced.
     timeout-minutes: 10
     steps:
+      # Full history: the check on what a pull request adds has to see every commit of it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -136,6 +139,16 @@ jobs:
       # point into it.
       - name: No public file points at private work
         run: pnpm run check-private
+
+      # The check above reads the tip. A file that one commit adds and the next deletes
+      # leaves the tip clean and the public history dirty, and a merge cannot take a commit
+      # back. This reads the lines every commit of the pull request adds; the control
+      # proves it can fail.
+      - name: No commit of the pull request adds personal data
+        run: node scripts/check-private-history.mjs --control
+      - name: No commit of the pull request adds personal data (this pull request)
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-private-history.mjs origin/${{ github.base_ref }}
 
       # The architecture docs explain the engine by citing source files; a citation to a
       # file that no longer exists fails here.

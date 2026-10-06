@@ -24,6 +24,7 @@
 		"sync-mirror": "node scripts/sync-spec-mirror.mjs",
 		"check-mirror": "node scripts/sync-spec-mirror.mjs --check",
 		"check-private": "node scripts/check-private.mjs",
+		"check-private-history": "node scripts/check-private-history.mjs origin/main",
 		"check-docs-refs": "node scripts/check-docs-refs.mjs",
 		"check-docs-style": "node scripts/check-docs-style.mjs",
 		"check-test-types": "node scripts/check-test-types.mjs",
