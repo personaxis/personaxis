@@ -24,7 +24,7 @@
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
           { "context": "test suite (ubuntu / node 22)" },
-          { "context": "golden test (validate CMO = PASS)" },
+          { "context": "repository gates (test types, private pointers, doc references)" },
           { "context": "governance evals (deterministic, no API keys)" },
           { "context": "build & typecheck (ubuntu-latest / node 22)" }
         ]

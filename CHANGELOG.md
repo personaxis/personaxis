@@ -23,9 +23,8 @@ A minor release with breaking changes: see the sections marked **Breaking** belo
 
 ### Breaking: this version works without the Personaxis service, and `guard` enforces on its own
 
-- `connect` (and `login`), `pull`, `push` and `runtime` are not registered: they need the Personaxis service, which is
-  not live. Typing one says what it does and what brings it back. The hosted `remote` provider is not offered either,
-  and a config that still names it is refused with that reason.
+- `connect` (and `login`), `pull`, `push` and `runtime` are not registered in this version, and the hosted `remote`
+  provider is not offered. A config that still names it is refused with that reason.
 - `personaxis guard [--dir <path>]` starts the enforcement that used to start only inside `connect`: the persona's
   policy, read from its own file, answers the `PreToolUse` hook of Claude Code and Codex before each tool call, with no
   account and no network. A call the policy says needs a person is asked in its terminal, and refused when nobody can
@@ -78,22 +77,22 @@ A minor release with breaking changes: see the sections marked **Breaking** belo
 
 ### Breaking: a turn is now a thing the runtime owns, and the old state engine is gone
 
-The next release is a **minor** bump, not a patch. Nine names left the public surface of
-`@personaxis/core`, and two reply shapes changed. Everything else is additive.
+This release is a minor bump: nine names left the public surface of `@personaxis/core`, and two
+reply shapes changed. Everything else is additive.
 
-**Gone from `@personaxis/core`** (the old state engine and the rebuild it needed):
+Gone from `@personaxis/core` (the old state engine and the rebuild it needed):
 `applyMutation`, `applyHomeostasis`, `rebuildState`, `rebuildStateValues`,
 `verifyMutationChain`, `MutationRequest`, `MutationResult`, `RebuildResult`,
 `RebuildDrift`.
 
 State was two chains over one history: the `mutation_log` inside `state.json`, and the
-record. It is one now. `state.json` is **printed from the record**, so a coordinate moves
+record. It is one now. `state.json` is printed from the record, so a coordinate moves
 through `record.adjust` (or `record.adjustAll` for a batch that has to land together), and
 what a persona is at any moment is `record.derive` folded over its entries. Editing the
 file by hand changes nothing that survives the next write, and `personaxis state rebuild`
 says so instead of trusting it.
 
-**`@personaxis/sdk`: `agentRun` answers with `outcome`, not `result`.**
+`@personaxis/sdk`: `agentRun` answers with `outcome`, not `result`.
 
 ```ts
 // before
@@ -132,39 +131,15 @@ What was asked, what came back, how it ended, how many steps it took and what it
 the same hash-chained, append-only record the coordinates live in. On every surface that
 runs a turn: the REPL, the SDK, `personaxis serve`, and the MCP host.
 
-Every entry says who wrote it, and that now includes who ASKED. A person is a person, a
-persona delegating is a persona, and a program driving one says it is a program:
+Every entry says who wrote it, and that now includes who asked. Each entry names its author: a
+person, a persona delegating, or a program, which says it is one:
 `agentRun` takes an optional `asker` so an embedder can name its own user, `serve` and the
 MCP host name themselves, and nothing infers a person from an absent field. An answer is
 always attributed to the persona, never to whoever asked for it.
 
 Reading a persona no longer costs what its whole life costs. The fold is checkpointed
 inside the chain rather than beside it, so a checkpoint is checkable instead of trusted:
-50,000 entries went from 227ms to 1.4ms.
-
-### Feature: `pull` can reach what `push` writes
-
-`personaxis push` has always written a version into the namespace of whoever
-called it. The registry served one namespace, the official catalogue, fixed in
-the source. So you could publish a persona and then nobody, including you, could
-download it.
-
-```
-personaxis pull maven           # the official catalogue, unchanged
-personaxis pull @mara/maven     # anybody's published persona
-```
-
-The bare form still resolves to the official catalogue. That is deliberate and
-not tidiness: `personaxis pull maven` exists in installs that work today, and
-quietly resolving it somewhere else would break them.
-
-The namespace is the same name that addresses the workspace and the public
-profile. One space of names across the product, so a word does not mean two
-things depending on where it was typed.
-
-Private personas are not served by this endpoint, and an unknown reference and a
-private one answer identically: telling a caller that a persona exists but is
-not theirs is an oracle for enumerating what a competitor has published.
+50,000 entries went from 227 ms to 1.4 ms to read.
 
 ---
 
@@ -1818,7 +1793,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   `field ← value · rule` mapping it will produce; skips are announced as labeled defaults.
   The interview engine stays pure in core; readline remains the fallback (no TTY, or
   `PERSONAXIS_NO_WIZARD=1`).
-- **`personaxis dash` is now interactive**: ↑/↓ selects a coordinate, Enter opens its detail, 
+- **`personaxis dash` is now interactive**: ↑/↓ selects a coordinate, Enter opens its detail,
   value/u/band, the live T3 evidence cost (`immutable` for hard-virtue-backed coordinates), a
   sparkline of its mutation history scaled to the envelope, and the last 5 audit entries; Esc
   back, q quit. Non-TTY/`--once` output unchanged.
@@ -1968,7 +1943,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   AbortSignal), jittered retry on 429/5xx/network errors, and error messages that carry the
   response-body excerpt (byok Anthropic/OpenAI + local now share one code path).
 - **Structured output** (`Provider.runStructured`): OpenAI `json_schema`, Anthropic forced
-  tool-use, local with graceful degradation (`json_schema` → `json_object` → plain+parse), 
+  tool-use, local with graceful degradation (`json_schema` → `json_object` → plain+parse),
   the schema-constrained primitive Genesis synthesizes through.
 - **`decompile` gained the error-fed repair loop** (`llm-repair.ts`, bounded 3 rounds): the
   exact failing fields/rules go back to the model instead of discarding the round; an invalid
@@ -2077,7 +2052,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
 ### Added, `state rebuild`: state.json as a checkpoint of the log (F3.4)
 - **`personaxis state rebuild`**: `state.values` is a derived checkpoint of the append-only
   `mutation_log`. `rebuild` replays the log (each entry stores its authoritative post-governance
-  result) to detect DRIFT, a stored value the log does not justify (a torn write or a hand-edit), 
+  result) to detect DRIFT, a stored value the log does not justify (a torn write or a hand-edit),
   and `--write` repairs state.json from the log, under the state lock. Safe by design: the log is
   authoritative only over the fields it mutated, so an untouched value is never reset.
 
@@ -2090,11 +2065,11 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   bundle. No behavior change locally; the fs adapter wraps the existing atomic writes + per-persona
   lock.
 
-## [Unreleased], Fase R replatform (per [`docs/architecture/TECH_STACK.md`](docs/architecture/TECH_STACK.md))
+## [Unreleased], Fase R replatform
 
 ### Added, platform (FR.1–FR.3)
-- **`docs/architecture/TECH_STACK.md`**: the definitive stack decision record (12 sections,
-  evidence from the Claude Code / Codex / OpenClaw+Hermes source studies).
+- The stack decision record (12 sections, evidence from the Claude Code / Codex / OpenClaw+Hermes
+  source studies), since moved out of the public docs.
 - **`@personaxis/protocol`**: eighth package: `Op`/`EventMsg` discriminated unions over
   JSON-RPC 2.0 (vscode-jsonrpc + node:net; UDS / Windows named pipes, deterministic per-persona
   pipe path), `ProtocolServer` with a hello handshake as registration barrier, subscribe-before-

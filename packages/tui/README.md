@@ -8,7 +8,7 @@ standalone live dashboard.
 npx -p @personaxis/tui personaxis-dash --persona .personaxis/personaxis.md
 ```
 
-The dashboard draws the persona's sigil, seeded from its identity and animated by its live state,
+The dashboard draws the persona's sigil, seeded from its spec and animated by its live state,
 with the envelope bars, the number of recorded moves and the integrity of the memory chain. It
 re-reads `state.json` every frame, so it shows changes made by another process (the app, an MCP
 host, the HTTP server) as they happen.

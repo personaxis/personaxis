@@ -37,7 +37,7 @@ export async function reconcileOnce(personaPath: string): Promise<boolean> {
 }
 
 export const watchCommand = new Command("watch")
-  .description("Keep PERSONA.md fresh: recompile on manual spec edits + a drift heartbeat. Optional local daemon (hooks do per-turn learning).")
+  .description("Keep PERSONA.md current: recompile on manual spec edits and check periodically for a stale document. Optional local daemon (hooks do per-turn learning).")
   .option("-p, --persona <path>", "Path to personaxis.md (default: <cwd>/.personaxis/personaxis.md)")
   .option("-i, --interval <seconds>", "Heartbeat interval for the drift check", "30")
   .option("--once", "Do a single reconcile pass then exit (serverless cron / CI)", false)

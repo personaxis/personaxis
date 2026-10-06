@@ -6,7 +6,7 @@ command that anybody can read before running.
 
 ## What `main-checks-must-pass.json` does
 
-**The Merge button stays grey until CI is green.** Without this, GitHub will happily
+The Merge button stays grey until CI is green. Without this, GitHub will happily
 merge a pull request whose checks failed: the red cross is information, not a gate.
 That matters most for the pull requests nobody reads closely, which is exactly what a
 Dependabot pull request is.
@@ -18,7 +18,7 @@ whichever machine did it.
 Four checks are required, chosen because they always run:
 
 - `test suite (ubuntu / node 22)`
-- `golden test (validate CMO = PASS)`
+- `repository gates (test types, private pointers, doc references)`
 - `governance evals (deterministic, no API keys)`
 - `build & typecheck (ubuntu-latest / node 22)`
 
@@ -26,22 +26,28 @@ The rest of the build matrix is not required. It runs, and its result is visible
 a required check that gets skipped blocks a pull request forever, so only the
 unconditional ones are named here.
 
-**The repository owner can bypass it.** `bypass_actors` names the admin role, so this
+The repository owner can bypass it. `bypass_actors` names the admin role, so this
 is a guard rail rather than a lock: it stops an accident, not a decision.
 
 ## What is verified here
 
-**The four check names are verified.** They were compared character by character
+The four check names are verified. They were compared character by character
 against `gh run view --json jobs` on a real run of ci.yml, which is the only place the
 true names exist. This matters more than it sounds: a required check whose name does
 not match anything GitHub ever reports leaves every pull request stuck on "Expected, waiting for status to be
 reported", forever, with no way to tell from the UI that the
 name is simply wrong.
 
-**`bypass_actors` is verified too, now.** Applied 2026-08-29 as ruleset 21834154, and
+`bypass_actors` is verified too. Applied 2026-08-29 as ruleset 21834154, and
 GitHub answered with `"current_user_can_bypass": "always"`, which is the confirmation
 that `actor_id: 5` really is the administrator role. It was documented numbering until
 then and is a measured fact now.
+
+The golden check that validated the CMO example against the sibling spec repository was replaced on
+2026-10-05 by `repository gates`, which runs the test-type ceiling, the private-pointer check and the
+doc-reference check without needing the other repository. The ruleset in force on GitHub still names the
+old check until it is deleted and re-applied, so a pull request stays blocked on it until then (the
+administrator can bypass).
 
 ## Applying it
 

@@ -197,7 +197,7 @@ function extractText(content: unknown): string {
 }
 
 export const observeCommand = new Command("observe")
-  .description("Feed one observation to the living persona: run a governed tick on the configured model, recompile PERSONA.md on drift. Fired by host hooks (--stdin) or a serverless cron.")
+  .description("Feed one observation to the persona: run a governed tick on the configured model, and recompile PERSONA.md if the tick left it stale. Fired by host hooks (--stdin) or a serverless cron.")
   .option("-o, --observation <text>", "What just happened (the host turn, user message, tool result, …)")
   .option("--stdin", "Read the observation from a host hook payload on stdin (Claude Code Stop hook JSON / transcript)", false)
   .option("-p, --persona <path>", "Path to personaxis.md (default: <cwd>/.personaxis/personaxis.md)")

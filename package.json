@@ -2,7 +2,7 @@
 	"name": "personaxis-monorepo",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Personaxis, living, governed AI persona toolchain. Monorepo: @personaxis/{core,cli,mcp,tui}.",
+	"description": "Personaxis monorepo: build a persona, the whole way a professional works, and load it into your coding agent. Packages: personaxis (cli), @personaxis/{core,spec,mcp,sdk,protocol,evals,tui}.",
 	"homepage": "https://personaxis.com",
 	"repository": {
 		"type": "git",
@@ -25,6 +25,7 @@
 		"check-mirror": "node scripts/sync-spec-mirror.mjs --check",
 		"check-private": "node scripts/check-private.mjs",
 		"check-docs-refs": "node scripts/check-docs-refs.mjs",
+		"check-docs-style": "node scripts/check-docs-style.mjs",
 		"check-test-types": "node scripts/check-test-types.mjs",
 		"cli": "node packages/cli/dist/index.js"
 	},

@@ -81,7 +81,7 @@ program.hook("preAction", () => {
 
 program
   .name("personaxis")
-  .description("Living, governed AI agent personas: define, validate, compile, and live.")
+  .description("Build a persona, the whole way a professional works, and load it into your coding agent: create, validate, compile and serve it.")
   .version(version)
   // `personaxis` with no subcommand enters the living REPL.
   .option("--persona <path>", "Path to the persona (personaxis.md / PERSONA.md) for the REPL")
