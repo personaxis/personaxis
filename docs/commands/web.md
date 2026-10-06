@@ -3,9 +3,8 @@
 Search the web with a configured provider. The same search is offered to personas as the
 `web_search` tool, so what a person sees here is what a persona would be handed.
 
-Tavily is the first provider. The provider layer (`packages/core/src/web/search.ts`) is one
-interface, so more providers can be added without the rest of the engine knowing which one
-answered.
+Tavily is the first provider. The provider layer is one interface, so more providers can be
+added without the rest of the engine knowing which one answered.
 
 ## Usage
 

@@ -1,7 +1,7 @@
 # `personaxis state`
 
 Inspect and move the persona's runtime state (`state.json`): the current value of every
-mutable field, each **clamped** to the envelope its spec declares. This is separate from
+mutable field, each clamped to the envelope its spec declares. This is separate from
 self-evolution, which edits the spec itself under governance.
 
 `state.json` is a view printed from the hash-chained record (`record.jsonl`) beside the spec,
@@ -20,13 +20,13 @@ personaxis state init                                   # seed state.json from t
 
 Every subcommand works on the persona in scope, the same one `status`, `lint` and `goal`
 use: `.personaxis/personaxis.md` in the current folder, then a pre-v1 `PERSONA.md` with
-frontmatter, then the nearest one up the tree. `-f <path-or-slug>` picks another one
+frontmatter, then the nearest one up the tree. `-f, --file <path-or-slug>` picks another one
 (`-f .personaxis/personas/cmo/personaxis.md` or `-f cmo`).
 
 | Subcommand | Flags |
 |---|---|
 | `show` | `--json` |
-| `drift` | `--json`; exits 2 when a layer drifts past its `governance.drift_thresholds`, so CI can gate on it |
+| `drift` | `--json`; exits 2 when a layer's distance from its baseline passes its `governance.drift_thresholds`, so CI can gate on it |
 | `mutate` | `--field`, `--delta`, `--reason` (required), `--actor` (default `human-operator`), `--tool-call-id` |
 | `rewind <n>` | `--dry-run` shows what would move and writes nothing; `--json` |
 | `rebuild` | `--write` reprints `state.json` from the record (default: report only); `--json` |

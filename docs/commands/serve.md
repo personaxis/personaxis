@@ -1,7 +1,7 @@
 # `personaxis serve`
 
-Expose the living persona over **plain HTTP + `agents.md`** so an external app or agent (that doesn't
-speak MCP) can drive it over the network. A **long-running server**: it blocks until stopped.
+Serve a persona over plain HTTP plus `agents.md`, so an app or agent that does not speak MCP can
+use it. The server runs until you stop it.
 
 ```bash
 personaxis serve --persona ./.personaxis/personaxis.md      # default port 7637
@@ -13,6 +13,8 @@ curl http://localhost:7637/agents.md                         # discover the endp
 |---|---|
 | `-p, --persona <path>` | Path to `personaxis.md` / `PERSONA.md` (required). |
 | `--port <n>` | Port (default `7637`). |
+| `--host <addr>` | Bind address (default `127.0.0.1`). |
+| `--token <t>` | Require `Authorization: Bearer <t>` on every request. Required when `--host` is not local. |
 
 ## Endpoints
 
@@ -28,27 +30,19 @@ curl http://localhost:7637/agents.md                         # discover the endp
 Every mutation is clamped + audited; untrusted observations are injection-scanned. Same governed engine
 as the REPL/hooks.
 
-## Not the MCP server
+## The MCP server
 
-`serve` is **HTTP** (this page). The **MCP** server is a separate binary, `personaxis-mcp` (package
-`@personaxis/mcp`), for MCP hosts (Claude Code/Codex/Cursor). See
-[integrations/claude-code.md](../integrations/claude-code.md) §2.
-
-## serve vs watch vs observe (they are NOT the same)
-
-| Command | Role | Runs |
-|---|---|---|
-| [`observe`](./observe.md) | **learns** from ONE observation (one governed tick) | once, then exits |
-| [`watch`](./watch.md) | keeps `PERSONA.md` **fresh** by watching the spec file + a drift heartbeat | long-running daemon |
-| `serve` | **exposes** the persona over HTTP for external callers | long-running server |
+For MCP hosts (Claude Code, Codex, Cursor) use `personaxis-mcp` (package `@personaxis/mcp`)
+instead; see [mcp](./mcp.md#as-a-server) and
+[the Claude Code integration](../integrations/claude-code.md). How `serve` differs from `observe`
+and `watch` is in [observe](./observe.md#observe-watch-and-serve).
 
 ## In the app
 
-Inside the REPL, `/serve [port]` runs it **in the background** (it doesn't block the session);
-`/serve stop` (or `/exit`) stops it.
+Inside the app, start and stop it from `/status`, Daemons tab. It runs in the background and
+stops with `/exit`.
 
 ## While it runs
 
-A server holds the persona for as long as it is listening, so it **announces its presence**:
-`personaxis ps` and the Command Center show it as held by `serve`, with the address it is
-serving on. It withdraws when stopped. See [presence](../architecture/presence.md).
+While `serve` runs, `personaxis ps` and the Command Center show the persona as held by `serve`,
+with its address. See [presence](../architecture/presence.md).

@@ -1,6 +1,6 @@
 # `personaxis orchestrate`
 
-Route a task to the **best-matched registered persona**, ranked by capability. Reads the personas you
+Route a task to the best-matched registered persona, ranked by capability. Reads the personas you
 registered with the [overseer](./overseer.md) (so populate that first).
 
 ```bash
@@ -20,6 +20,5 @@ With no registered personas it tells you to run `personaxis overseer register <s
 
 ## While it runs
 
-With `--run`, the assignee is being driven by somebody who is not sitting in front of it. That
-is the presence a second operator most needs to see, so the persona is **announced as held by a
-task**, naming it. See [presence](../architecture/presence.md).
+With `--run`, `personaxis ps` shows the assignee as held by a task. See
+[presence](../architecture/presence.md).

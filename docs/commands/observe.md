@@ -1,9 +1,8 @@
 # `personaxis observe`
 
-Feed **one** observation to the living persona: run a single governed Living-Loop tick on your
-configured model, and recompile `PERSONA.md` only if that tick left it stale. This is the primitive
-that keeps a persona alive **without spending the host's tokens**: fired by a host hook every turn,
-or by a serverless cron.
+Feed one observation to the persona: run a single governed tick on your configured model, and
+recompile `PERSONA.md` only if the tick left it stale. Host hooks and serverless crons call it so
+the persona learns without spending the host's tokens.
 
 ## Usage
 ```bash
@@ -27,9 +26,9 @@ personaxis observe --stdin                          # read a host-hook payload f
 1. Resolves the persona spec (explicit `--persona`, else the project root spec).
 2. Runs **one** governed tick on the resolved model (`resolveModel`, an `LlmAppraiser` when a model
    is configured, else the offline `HeuristicAppraiser`).
-3. **Drift-gated recompile:** only if the tick applied a governed self-edit that marked `PERSONA.md`
-   stale does it recompile (`--if-pending`, via the `local` provider), so the host reads a fresh
-   identity without a recompile every turn.
+3. **Recompile only when stale:** if the tick applied a governed self-edit that marked
+   `PERSONA.md` stale, it recompiles (`--if-pending`, via the `local` provider), so the host
+   reads a current document without a recompile on every turn.
 
 ## `--stdin` and the Claude Code Stop hook
 
@@ -42,30 +41,19 @@ its own output would be reacting to itself. When a payload carries only the repl
 event `context`, or raw text, that text is observed with provenance `internal`: it can move the
 persona's state, and it cannot justify a self-edit, which needs `user` trust.
 
-Until 2026-09-11 the last user and assistant messages were observed together as `user`, so the
-model's reply, and anything it had repeated from a tool or a pasted document, carried the owner's
-trust. Hooks installed before then pass `--source user`; with `--stdin` that label can only lower
-what the payload says, so they are covered without reinstalling.
-
 ## Never breaks the host
 
-By design this is **best-effort**: a tick failure, an empty payload, or a missing persona is a no-op
+By design this is best-effort: a tick failure, an empty payload, or a missing persona is a no-op
 that exits `0`, it never fails the surrounding turn. Pass `--strict` to make failures exit non-zero
 (for CI, where you *want* the signal). Stdin reads time out after 1.5s so a hook can never hang.
 
-## observe vs watch vs serve (they are NOT the same)
+## observe, watch and serve
 
 | Command | Role | Runs |
 |---|---|---|
-| `observe` | **learns** from ONE observation (one governed tick), recompiles on drift | once, then exits |
-| [`watch`](./watch.md) | keeps `PERSONA.md` **fresh** by watching the spec file + a drift heartbeat | long-running daemon |
-| [`serve`](./serve.md) | **exposes** the persona over HTTP for external callers | long-running server |
-
-## In the app
-
-The living loop already runs a governed tick **every turn** in the REPL, so there is no `/observe`.
-To feed a one-off observation manually, run `personaxis observe --observation "…"` (also works via the
-REPL passthrough).
+| `observe` | learns from one observation (one governed tick), recompiles when stale | once, then exits |
+| [`watch`](./watch.md) | keeps `PERSONA.md` current by watching the spec file and checking periodically for a stale one | long-running daemon |
+| [`serve`](./serve.md) | exposes the persona over HTTP for external callers | long-running server |
 
 ## See also
 
@@ -75,7 +63,5 @@ REPL passthrough).
 
 ## While it runs
 
-A tick runs a model and can rewrite the spec, so for its duration this process **announces its
-presence** (`running a governed tick`). Host hooks fire this on every turn, which is exactly
-when a second person needs to know somebody is already driving. See
+While a tick runs, `personaxis ps` shows the persona as held by `observe`. See
 [presence](../architecture/presence.md).

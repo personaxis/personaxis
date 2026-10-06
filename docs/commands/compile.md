@@ -1,9 +1,9 @@
 # `personaxis compile`
 
-Compile a `personaxis.md` (quantitative spec + layer-10 `persona` prompting source) into the
-LLM-facing **PERSONA.md**: a persona-prompting artifact (see
-[../architecture/compile.md](../architecture/compile.md) and
-[../architecture/self-evolution.md](../architecture/self-evolution.md)).
+Compile `personaxis.md` into `PERSONA.md`, the document an agent reads to work the way this
+persona works. `--platform` writes it where Claude Code, Codex, OpenClaw or Hermes look for
+it. See [compile](../architecture/compile.md) and
+[self-evolution](../architecture/self-evolution.md).
 
 ## Usage
 ```bash
@@ -23,6 +23,7 @@ personaxis compile [slug] [options]
 | `--stdout` | Print to stdout instead of writing. |
 | `--platform <p>` | Export the placement for a host: `claude-code \| codex \| openclaw \| hermes`. |
 | `--if-pending` | No-op unless a self-edit marked the doc stale (`.recompile-pending.json`). |
+| `--no-polish` | Write the deterministic assembled document and skip the model polish stage (works offline). |
 
 ## What it does
 - Reads `personaxis.md` + `policy.yaml`/`state.json` (reference) + a capped resource manifest.
@@ -65,6 +66,6 @@ personaxis compile --root --if-pending            # only if a self-edit made it 
 
 ## While it runs
 
-The polish stage calls a model and can take a while, so it **announces its presence**
-(`compiling PERSONA.md`). Under `watch` it nests: the activity says `compiling` and returns to
-`watching for spec edits` on its own. See [presence](../architecture/presence.md).
+The polish stage calls a model and can take a while. While it runs, `personaxis ps` shows the
+persona as compiling, and under `watch` it returns to `watching for spec edits` on its own.
+See [presence](../architecture/presence.md).

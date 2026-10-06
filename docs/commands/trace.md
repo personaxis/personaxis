@@ -6,8 +6,8 @@ verification gates).
 
 ## Usage
 ```bash
-personaxis trace [path]
+personaxis trace <file> [--json]
 ```
 
-Tracing config (jsonl/otlp endpoint, sample rate, redaction) lives in the spec's
-`observability` block; the tracer is `packages/core/src/trace.ts`.
+`<file>` is a `trace-*.jsonl` file; `--json` prints the parsed spans as JSON. Tracing config
+(jsonl/otlp endpoint, sample rate, redaction) lives in the spec's `observability` block.

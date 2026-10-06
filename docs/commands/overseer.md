@@ -1,29 +1,23 @@
 # `personaxis overseer`
 
-The overseer is an **optional local registry** that gives you one situational view of every persona,
-project, collection, team, and machine in your environment. It lives at `~/.personaxis/registry.json`
-(override the dir with `PERSONAXIS_HOME`).
+The overseer is an optional local registry that gives you one situational view of every persona,
+project, collection, team and machine in your environment. It lives at
+`~/.personaxis/registry.json` (override the dir with `PERSONAXIS_HOME`).
 
-> **Be honest about what this is.** It is **not** part of the default flow and is **empty until you
-> populate it manually**. Nothing writes to it automatically during a normal REPL session, you opt
-> in. Its payoff is `personaxis orchestrate`, which routes a task across the personas you
-> registered here.
-
-## Not the online registry
-
-This local registry is a private, machine-local index of what you have. It is not an online
-catalogue of personas, and nothing in it leaves this machine.
+Every command run inside a project registers that project, so the project list fills itself. The
+personas, collections and teams are what you add yourself, and they are what
+`personaxis orchestrate` routes a task across. Nothing in the registry leaves this machine.
 
 ## Subcommands
 
 | Command | What it does |
 |---|---|
 | `personaxis overseer show [--json]` | Print the view: counts + a list of personas, projects, collections, teams. |
-| `personaxis overseer register <slug...>` | Register the **current project** and its persona slug(s), tagged with this machine. |
+| `personaxis overseer register <slug...>` | Register the current project and its persona slug(s), tagged with this machine. |
 | `personaxis overseer collection <name> [--add-persona <slug>] [--add-project <path>]` | Create a collection (a grouping/taxonomy) and add members. |
 
 Related surfaces that write the same registry: [`personaxis personas import <path>`](./personas.md)
-registers a reusable **global** persona; the REPL's `/overseer` shows the same view.
+registers a reusable global persona; in the app, `/menu` shows the same view.
 
 ## Concrete walkthrough
 
@@ -47,10 +41,9 @@ personaxis overseer show
 personaxis orchestrate "draft the launch positioning" --run
 ```
 
-`orchestrate` reads the **registered** personas' global specs, derives each one's capabilities, and
+`orchestrate` reads the registered personas' global specs, derives each one's capabilities, and
 assigns the task to the top match (capability-ranked, optionally scoped to a `--team`). With no
-registered personas it tells you to run `overseer register` first, which is exactly why the registry
-is opt-in: it exists to power orchestration, not to track your day-to-day REPL use.
+registered personas it tells you to run `overseer register` first.
 
 ## See also
 
@@ -64,13 +57,11 @@ personaxis overseer scan --root ~/Documents/GitHub   # ad hoc
 personaxis overseer scan                             # over your configured scanRoots
 ```
 
-**This is not how the registry normally learns about your projects.** Every command
-registers the project it runs in, so a persona you create, open, compile or diagnose is
-recorded at that moment, for free and always correctly.
+The registry normally learns about your projects by use: every command registers the project
+it runs in, so a persona you create, open, compile or diagnose is recorded at that moment.
 
-The scan exists for one case: **projects that already existed before you started using the
-CLI**, which by definition were never registered by use. Run it once; from then on
-registration by use keeps up.
+The scan exists for projects that already existed before you started using the CLI, which were
+never registered by use. Run it once; from then on registration by use keeps up.
 
 It never runs automatically, only walks folders you name (`--root`, or `scanRoots` in your
 config), is depth-limited, and skips `node_modules`, `.git` and build output. On finding a

@@ -12,12 +12,9 @@ evaluated against it until it is cleared, and it rides in the runtime context, s
 persona can answer "what is my goal" without searching its memory. It is stored in
 `goal.json` beside the persona's spec.
 
-**In the app it lives in `/persona` → Evolution**, next to the loop that acts on it: the
-loop evaluates against the goal, so separating them would disconnect the two halves of one
-idea. Enter on the `goal` row sets or clears it (an empty answer clears).
-
-This command is the door for scripts and agents, which cannot drive a menu. Both doors write
-the same file.
+In the app, set it in `/persona`, Evolution tab (Enter on the `goal` row; an empty answer
+clears it). Use this command from scripts and agents; the app and the command write the same
+file.
 
 | Flag | Effect |
 |---|---|

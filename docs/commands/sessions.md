@@ -1,11 +1,8 @@
 # `/resume` and persistent conversations
 
-The REPL persists every conversation so you can leave and come back, the way Claude Code does.
-`/resume` opens the session picker; `/sessions` is a hidden alias for the same view (its
-listing was folded into `/resume`, so there is one command, not two).
-
-Source: `packages/cli/src/repl/index.ts` (`recordTurn`, the `resume` command) →
-`packages/core/src/sessions.ts`.
+The REPL persists every conversation so you can leave and come back. `/resume` opens the
+session picker (the old `/sessions` listing is part of it). From a shell, `personaxis --continue`
+resumes the latest conversation and `personaxis --resume <id>` a specific one.
 
 ## Where conversations live
 Per persona, beside its spec, and the layout recurses:
@@ -19,14 +16,14 @@ message (via the model when one is configured, else a deterministic fallback).
 
 ## Usage
 ```
-/sessions               # list saved conversations (● live = the current one)
+/resume                 # pick a saved conversation (● live = the current one)
 /resume <id|name>       # rehydrate a saved conversation (by id or name fragment)
 ```
 `/resume` reloads the messages into the live context and re-estimates the context meter.
 
 ## Relationship to `/compact`
-Orthogonal. `/compact` (see [its page](./repl.md)) summarizes older turns of the **live**
-context via the model to free the window (auto at ~80%); sessions **persist** the conversation
+Orthogonal. `/compact` (see [its page](./repl.md)) summarizes older turns of the live
+context via the model to free the window (auto at ~80%); sessions persist the conversation
 to disk. Compacting a resumed session is fine, it compacts the live copy, the file is intact.
 
 ## Delegation provenance

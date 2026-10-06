@@ -1,12 +1,15 @@
 # `personaxis validate`
 
-Validate a `personaxis.md` against the JSON Schema **and** the semantic universals. Returns one
+Validate a `personaxis.md` against the JSON Schema and the semantic universals. Returns one
 of five statuses with mapped exit codes.
 
 ## Usage
 ```bash
-personaxis validate <file>
+personaxis validate [file] [--all]
 ```
+
+With no file it validates `.personaxis/personaxis.md`; a sub-persona slug works too; `--all`
+validates the root and every sub-persona.
 
 ## Statuses → exit codes
 | Status | Code | Meaning |
@@ -18,14 +21,12 @@ personaxis validate <file>
 | `FAIL_CONCEPTUAL` | 3 | A prohibited claim or wrong universal constant. |
 
 The 12 universals (e.g. `affect.regulation_policy.never_claim_real_feeling === true`,
-safety weight ≥ 0.90, the three literal hard limits) are enforced in `src/schema.ts`. Error
-output names the exact failing field/rule.
+safety weight ≥ 0.90, the three literal hard limits) are enforced on every run. Error
+output names the exact failing field and rule.
 
 ## Every issue carries its remedy
 
-`fix` is a **required** field on `ValidationIssue`, so a check cannot ship without stating
-the edit that resolves it. It is printed under each finding, and it names the value rather
-than the rule:
+Every issue prints a `fix` line naming the value to set, not the rule:
 
 ```
 ✗ apiVersion, U1: apiVersion must be exactly 'personaxis.com/v1'.
