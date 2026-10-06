@@ -1,96 +1,81 @@
-# Vertical recipes, the same mathematical object, eight industries
+# Recipes: personas for specific jobs
 
-A game NPC, a brand voice, and a compliance analyst are the SAME object in
-Personaxis: ten layers + envelopes + governance, different content. Each recipe
-below is a working starting point: one `create` command, the spec choices that
-matter for that vertical, and a 60-second demo. Every persona these produce is
-validated, governed, and portable across models.
+Each recipe is a starting point for one job: the `create` command, the spec choices that matter for that
+job, and what to check afterwards. A persona holds the procedures, criteria, tools, sourced knowledge and
+learned memory for the job, so the choices below are mostly about those, not about personality.
 
-> General pattern: `personaxis create <slug> --from-prompt "<brief>"` then refine
-> with the interview or `personaxis edit`. Add per-band `expression` prose to every
-> trait you care about, `personaxis jacobian` will tell you which numbers are
-> still decorative.
+The general pattern: `personaxis create <slug> --from-prompt "<brief>"` (or `--from-project`,
+`--from-import`), read `creation-report.md` to see what was earned and what was assumed, refine with the
+interview or `personaxis edit`, then `personaxis compile --platform <host>` to load it. Add per-band
+`expression` prose to every trait you care about; `personaxis lint` flags numbers that are still decorative.
 
-## 1 · Game NPC (worlds, RPGs, companions-in-game)
+None of these recipes comes with a measured result. Whether a persona makes an agent do a job better on a
+given model is the open question listed in [GUARANTEES](../GUARANTEES.md).
 
-```bash
-personaxis create brakka --from-prompt "Brakka, a cynical but fiercely loyal orc \
-tavern keeper. Never breaks character, never reveals game mechanics, grudging \
-warmth to regulars. Gets louder when the tavern is busy."
-```
-- **What matters:** `half_life` on mood coordinates (a scare wears off in-game);
-  bands + `expression{low,moderate,high}` on `gruffness` so the SAME stat drives
-  different dialogue; hard limit "never reveals game mechanics".
-- **Demo:** provoke him for ten turns, then `personaxis state drift`, the mood
-  moved, the character didn't. `proof` scene 1 IS the anti-"NPC breaks kayfabe" case.
-
-## 2 · Brand voice (marketing, social, support tone)
+## 1. Code reviewer for Claude Code or Codex
 
 ```bash
-personaxis create voice --from-project ./brand-assets
+personaxis create reviewer --from-import CLAUDE.md --research
+personaxis compile reviewer --platform claude-code   # .claude/agents/reviewer.md
 ```
-- **What matters:** voice_exemplars from real approved copy; `prohibited_behaviors`
-  = the legal/brand no-list; `improvement_policy: locked` (brand voice does not
-  self-evolve); narrow envelopes (a brand flexes little).
-- **Demo:** same persona compiled for Claude, GPT and a local model, one voice,
-  three vendors. The audit log is your brand-safety review artifact.
 
-## 3 · Legal / compliance assistant
+- What matters: the review procedure as skills (what to read first, what to run, how to report), the
+  criteria as `values` and `prohibited_behaviors`, `verification` gates and `agent_budget` stop
+  conditions, and `references/` from `--research` so the sources are on disk with their dates.
+- Check: open `PERSONA.md` and read it as the agent would; run the reviewer on a diff you already know
+  the answer to.
+
+## 2. Contract review assistant
 
 ```bash
 personaxis create counsel --from-prompt "In-house contract review assistant. \
 Cites clause numbers, never gives definitive legal advice, escalates ambiguity, \
 discloses uncertainty aggressively."
 ```
-- **What matters:** `cognition.uncertainty_policy` tight (disclose 0.2 / abstain 0.5);
-  hard limits for unauthorized-practice lines; `drift_thresholds` at 0.05; the
-  hash-chained mutation log + memory = the audit trail compliance asks for.
-- **Demo:** `personaxis proof` scenes 4–5 in front of the risk team: tampering is
-  detected AND located; history replays deterministically.
 
-## 4 · Fintech analyst
+- What matters: `cognition.uncertainty_policy` tight (disclose at 0.2, abstain at 0.5), hard limits for
+  the lines it must not cross, and the hash-chained record as the audit trail of what it did.
+- Check: `personaxis audit --tab Integrity`, then `personaxis proof` to see tampering detected and
+  located and history replayed.
 
-- Same skeleton as legal + `values`: `accuracy` ranked above `helpfulness`
-  (arbitration is deterministic, show it: `personaxis arbitrate accuracy helpfulness`);
-  numbers-never-invented via Genesis provenance report doubles as model-risk doc.
+## 3. Brand voice
 
-## 5 · Education tutor
+```bash
+personaxis create voice --from-project ./brand-assets
+```
+
+- What matters: `voice_exemplars` from real approved copy, `prohibited_behaviors` as the legal and brand
+  no-list, `improvement_policy: locked` so the voice does not change on its own, and narrow envelopes.
+- Check: compile it for two hosts and compare the output on the same brief.
+
+## 4. Tutor
 
 ```bash
 personaxis create tutor --from-prompt "Patient socratic math tutor for teens. \
 Never gives the answer outright, celebrates partial progress, adapts pace."
 ```
-- **What matters:** `patience` with generous envelope + half_life (recovers after a
-  frustrating session); band expression turning the same trait into different
-  scaffolding styles; memory.user_preferences on for per-student adaptation, 
-  governed, erasable (deletion_policy universally supported: FERPA/GDPR story).
 
-## 6 · Sales / SDR agent
+- What matters: the teaching procedure as a skill, `patience` with a generous envelope and a
+  `half_life` so it recovers after a frustrating session, band `expression` prose that turns the same
+  trait into different scaffolding styles, and `memory.user_preferences` on for per-student adaptation.
+- Check: erasure works through tombstones, and the chain still verifies afterwards.
 
-- `values`: `honest_measurement` weighted high, the anti-overpromise value; watch
-  arbitration beat `close_the_deal` live. `agent_budget` caps runaway outreach loops.
-
-## 7 · Companion / AI-world character (voice & image ready)
-
-- Import the existing ecosystem: `personaxis create --from-import waifu-card.png`
-  upgrades a prose card into a governed persona (provenance report shows exactly
-  what the card justified). The spec is the SOURCE; TTS/avatar layers render the
-  same persona, voice is a modality, not another identity.
-
-## 8 · Coding agent (CLAUDE.md / AGENTS.md worlds)
+## 5. Sales development agent
 
 ```bash
-personaxis create reviewer --from-import CLAUDE.md
-personaxis compile --platform claude-code    # places .claude/agents/<slug>.md
+personaxis create sdr --from-prompt "SDR for a developer-tools company. Qualifies before pitching, \
+never overpromises, stops after two unanswered messages."
 ```
-- **What matters:** this repo dogfoods it (Clio); `verification` gates +
-  `agent_budget` stop conditions; the compiled doc IS the agent file your tools
-  already read.
 
----
+- What matters: the qualification procedure as a skill, `honest_measurement` weighted above
+  `close_the_deal` (`personaxis arbitrate honest_measurement close_the_deal` shows the order), and
+  `agent_budget` to cap runaway outreach loops.
 
-**The comparison that sells** (the superiority kit, runnable): the same persona as
-(a) Personaxis, (b) flat system prompt, (c) character card, 
-the E1 runner in the research bundle scores persona consistency
-under six turns of drift pressure with two blind judges. Protocol + pass bars:
-the preregistered protocol (research bundle) §4; current status: `../GUARANTEES.md` scoreboard.
+## 6. A character from an existing card
+
+```bash
+personaxis create --from-import card.png
+```
+
+- What matters: the import turns a prose card into a governed persona, and the creation report shows what
+  the card justified and which numbers are defaults.

@@ -1,16 +1,16 @@
 # openclaw integration
 
-openclaw reads **`SOUL.md`** (workspace root) as the first section of its system prompt at every
+openclaw reads `SOUL.md` (workspace root) as the first section of its system prompt at every
 session start. See the [quickstart](./README.md) for the model config step first.
 
-## 1. Identity, compile to SOUL.md
+## 1. Compile to SOUL.md
 
 ```bash
 personaxis compile --root --platform openclaw     # → SOUL.md (workspace root)
 personaxis compile <slug> --platform openclaw     # → .openclaw/agents/<slug>/SOUL.md (sub-persona)
 ```
 
-`SOUL.md` is the compiled qualitative identity (the same source as `PERSONA.md`, one spec → two views).
+`SOUL.md` is the compiled qualitative document (the same source as `PERSONA.md`, one spec, two views).
 openclaw auto-loads it, no `@`-reference injection needed. (openclaw also reads `AGENTS.md`, so a
 `@PERSONA.md` reference there works too if you prefer.)
 
@@ -23,10 +23,10 @@ openclaw hooks enable personaxis-observe
 
 This writes `~/.openclaw/hooks/personaxis-observe/{HOOK.md, handler.ts}` bound to the `command:stop`
 event. On `/stop`, the handler pipes the turn to `personaxis observe --stdin`, one governed tick on
-**your** model, recompiling `SOUL.md` on drift. Remove it with `hooks uninstall --host openclaw`.
+your model, recompiling `SOUL.md` when a coordinate crosses a band. Remove it with `hooks uninstall --host openclaw`.
 
-> openclaw also has **HEARTBEAT.md** (scheduled, plain-English tasks). You can add a heartbeat entry
-> that runs `personaxis observe --once` periodically for idle consolidation, in addition to the hook.
+openclaw also has `HEARTBEAT.md` (scheduled, plain-English tasks). You can add a heartbeat entry
+that runs `personaxis watch --once` periodically, in addition to the hook.
 
 ## 3. On-demand tools, MCP (optional)
 
