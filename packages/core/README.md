@@ -6,12 +6,12 @@ framework-agnostic and has no UI.
 
 What it does:
 
-- State inside envelopes: Every mutable value of a persona has a declared range; every move is
+- State inside envelopes: every mutable value of a persona has a declared range; every move is
   clamped to it, gated by the improvement mode and the per-step limit, and written to a
   hash-chained record before the state file is printed from it.
-- The living loop: Observe, appraise, evolve, remember, on a model or on the offline heuristic
+- The living loop: observe, appraise, evolve, remember, on a model or on the offline heuristic
   appraiser.
-- The agent loop: The persona works with tools (files, shell, memory, skills, services,
+- The agent loop: the persona works with tools (files, shell, memory, skills, services,
   delegation) and every call passes the gate first: the sandbox posture, the approval policy, the
   egress rules and the persona's own permissions.
 - Memory by kind (episodic, semantic, procedural), with retrieval and consolidation.
