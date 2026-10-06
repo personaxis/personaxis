@@ -47,7 +47,6 @@ docs/
     multi-device.md      the same persona on several machines
     home-layout.md       what lives in ~/.personaxis
     command-center.md    the menu
-    TECH_STACK.md        the libraries and why
   integrations/
     README.md            start here: which agent, and the three-step setup
     claude-code.md       hooks, MCP and a native subagent

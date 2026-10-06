@@ -1,92 +1,67 @@
-# How big agents adopt a personaxis persona
+# How a coding agent loads a persona
 
-*How does a coding-agent host (Claude Code, Codex, openclaw, Hermes) actually "become" a persona for a repo, or pick up
-sub-personas for specific tasks, and why is this better than hand-written agent prompts?*
+`personaxis compile --platform <host>` writes a persona where Claude Code, Codex, OpenClaw or Hermes
+read it. This page lists where each file goes and why. The code is in
+`packages/cli/src/targets/` and `packages/cli/src/commands/compile.ts`.
 
-Source: `packages/cli/src/targets/{claude-code.ts, codex.ts, placement.ts}`;
-`packages/cli/src/commands/compile.ts`.
+## Compile targets
 
-## Compile targets, the four focus hosts + their status
+The supported hosts are exactly the ones in `PLACEMENT_PLATFORMS` (`packages/cli/src/targets/placement.ts`):
 
-`personaxis compile --platform <p>` places the compiled document into a host's subagent convention.
-The product focuses on **four coding-agent hosts**: Claude Code, Codex, **openclaw**, and **Hermes**
-(Nous Research). Two are shipping; two are on the roadmap. This table is the honest status, the
-*live* targets are exactly those in `PLACEMENT_PLATFORMS` (`packages/cli/src/targets/placement.ts`):
+| Host | Root output | Sub-persona output |
+|---|---|---|
+| `claude-code` | `PERSONA.md` plus `@PERSONA.md` injected into `CLAUDE.md` | `.claude/agents/<slug>.md` |
+| `codex` | `PERSONA.md` plus an `AGENTS.md` baseline | `.codex/agents/<slug>.toml` |
+| `openclaw` | `SOUL.md` (workspace root) | `.openclaw/agents/<slug>/SOUL.md` |
+| `hermes` | `.hermes/SOUL.md` (profile) | `.hermes/agents/<slug>/SOUL.md` |
 
-| Host / target | Status | Root output | Sub-persona output |
-|---|---|---|---|
-| `claude-code` | **Live** | `PERSONA.md` + `@PERSONA.md` injected into `CLAUDE.md` | `.claude/agents/<slug>.md` |
-| `codex` | **Live** | `PERSONA.md` + `AGENTS.md` baseline | `.codex/agents/<slug>.toml` |
-| `openclaw` | **Live** | `SOUL.md` (workspace root) | `.openclaw/agents/<slug>/SOUL.md` |
-| `hermes` | **Live** | `.hermes/SOUL.md` (profile) | `.hermes/agents/<slug>/SOUL.md` |
-| `cursor` | Archived | `.cursor/rules/persona.mdc` |, |
+Other hosts that read `AGENTS.md` (Cursor and most others) pick up the Codex baseline; see
+[target-matrix](./target-matrix.md).
 
-**openclaw + Hermes (SOUL.md).** Both read `SOUL.md` as the FIRST section of the agent's system prompt
-(openclaw: workspace-root `SOUL.md`; Hermes/Nous Research: `~/.hermes/SOUL.md` or a per-profile
-`SOUL.md`). `personaxis compile --platform openclaw` (or `hermes`) writes the compiled qualitative
-identity as `SOUL.md`, the subagent frontmatter is stripped (`packages/cli/src/targets/soul-md.ts`).
-These hosts auto-load `SOUL.md`, so they skip the `@PERSONA.md` baseline injection. For Hermes, point
-your profile at the generated `.hermes/SOUL.md` (or copy it to `~/.hermes/SOUL.md`). Per-turn liveness
-for all four hosts is the same mechanism (hooks → `observe`), independent of the placement format.
+## OpenClaw and Hermes: SOUL.md
 
-**Why `SOUL.md` inlines the identity (vs. `@PERSONA.md` reference).** In Claude Code/Codex the
-*reference* `@PERSONA.md` lives in `CLAUDE.md`/`AGENTS.md`, those hosts resolve file includes, so
-`PERSONA.md` stays the single file and the host points at it. openclaw/Hermes read `SOUL.md` **as** the
-identity slot (the role `PERSONA.md` plays for Claude Code), and they don't document resolving an
-`@`-include *inside* `SOUL.md`, so `SOUL.md` must **contain** the identity, and we inline it. This is
-not a duplicated source of truth: the single source is still `personaxis.md` → compiled to `PERSONA.md`
-**and** `SOUL.md` (two views of one spec); `compile`/`observe` regenerate `SOUL.md` on change. (Both
-hosts also read `AGENTS.md`, so a `@PERSONA.md` reference there works too if you prefer that path, 
-but `SOUL.md` is their primary, always-loaded identity file.)
+Both read `SOUL.md` as the first section of the agent's system prompt (OpenClaw from the workspace
+root, Hermes from `~/.hermes/SOUL.md` or a per-profile file). `compile --platform openclaw` or
+`hermes` writes the compiled document as `SOUL.md` with the sub-agent frontmatter stripped
+(`packages/cli/src/targets/soul-md.ts`). These hosts auto-load `SOUL.md`, so they skip the
+`@PERSONA.md` baseline. For Hermes, point your profile at the generated `.hermes/SOUL.md` or copy it
+to `~/.hermes/SOUL.md`.
 
-> **Per-turn liveness comes from hooks (Mode 1).** Compiling places a fresh identity; keeping it
-> *alive* each turn is the Claude Code `Stop` hook (`personaxis hooks install --host claude-code`),
-> which runs one governed tick on your model per turn, no host tokens. See
-> [../integrations/claude-code.md](../integrations/claude-code.md) and
-> [deployment.md](./deployment.md).
+Claude Code and Codex resolve file includes, so `CLAUDE.md` and `AGENTS.md` can reference
+`PERSONA.md` and it stays the single file. OpenClaw and Hermes do not document includes inside
+`SOUL.md`, so `SOUL.md` holds the compiled document itself. The source is still one file:
+`personaxis.md` compiles to both `PERSONA.md` and `SOUL.md`, and `compile` and `observe` regenerate
+`SOUL.md` when the persona changes. Both hosts also read `AGENTS.md`, so an `@PERSONA.md` reference
+there works too.
+
+## Keeping the loaded persona current
+
+Compiling places the document. The persona learns from each turn through a hook that runs
+`personaxis observe` on your configured model, with no host tokens spent
+(`personaxis hooks install --host claude-code`). See [the Claude Code integration](../integrations/claude-code.md)
+and [deployment](./deployment.md).
 
 ## The flow
 
-1. **Define once**: a governed, versioned `personaxis.md` (quantitative layers +
-   layer-10 `persona` prompting source material). Validated by `personaxis validate`.
-2. **Compile to the host's native convention**: `personaxis compile` produces the
-   LLM-facing document and places it where the host looks:
+1. Define the persona once as `personaxis.md`, then run `personaxis validate`.
+2. `personaxis compile` produces the document and places it where the host looks.
+3. The host reads the baseline as the repo-wide behavior and sends task-specific work to the
+   sub-agents by their `description`. The canonical `.personaxis/personas/<slug>/PERSONA.md` stays
+   the source; the host file is an export.
 
-   | Host | Root persona | Sub-persona |
-   |---|---|---|
-   | Claude Code | `PERSONA.md` + a `@PERSONA.md` reference injected into `CLAUDE.md` | `.claude/agents/<slug>.md` (frontmatter `name`/`description`) |
-   | Codex | `PERSONA.md` + `AGENTS.md` baseline | `.codex/agents/<slug>.toml` |
+## What this gives you
 
-3. **The host routes**: Claude Code/Codex read the baseline as the repo-wide behavior and
-   dispatch task-specific work to the subagents by their `description`. The canonical
-   `.personaxis/personas/<slug>/PERSONA.md` stays the source; the host file is an export.
+- One source for every host. You do not rewrite the prompt for each tool, and `@slug` in the REPL
+  never collides with a host's sub-agent mechanism, because the persona is compiled into that mechanism.
+- The compiled document uses the techniques in [persona-prompting](./persona-prompting.md): role
+  adoption, a character card, scene contracts, voice exemplars and break-character guardrails.
+- A persona carries its own `permissions` (sandbox and approval), verification gates and budget
+  caps, so the limits travel with it across hosts and operating systems.
 
-## What we facilitate (the value)
-
-- **One source, many hosts.** The same persona compiles to each host's format, so you never
-  re-author the prompt per tool, and there is no format collision between `@slug` (our CLI)
-  and the host's subagent mechanism, we compile *into* that mechanism.
-- **Persona-prompting, not a profile.** The compiled doc applies evidence-based techniques
-  (role adoption, character card, scene contracts, voice exemplars, break-character
-  guardrails) so the model genuinely *adopts* the role, see
-  `persona.md/docs/PERSONA_PROMPTING.md`.
-- **Governed + living.** Versioned spec, append-only hash-chained memory, governed
-  self-improvement, reversibility, protected paths, per-persona sandbox posture. A plain
-  hand-written `CLAUDE.md`/agent prompt has none of this.
-- **Portable guarantees.** The persona carries its own `permissions` (sandbox/approval),
-  verification gates, and budget caps, so behavior is consistent across hosts and OSes.
-
-## Why it's better than the common way
-
-The common way is a static `.md` per agent that every contributor edits by hand and that
-silently drifts. personaxis makes the persona a **typed, validated, versioned, governed
-artifact** with a compile step, you get diffable identity, auditable evolution, reusable
-sub-personas, and a single definition that targets every host. The CLI is the toolchain that
-keeps all of that honest (validate / lint / compile / decompile).
-
-## Verify it yourself
+A hand-written agent file is edited by each contributor and has no check. A persona is validated by
+`personaxis validate`, compiled by `personaxis compile`, and diffable in git.
 
 ```bash
-personaxis compile --root                 # writes PERSONA.md + injects @PERSONA.md into CLAUDE.md
-personaxis compile cmo --platform codex   # writes the canonical PERSONA.md AND .codex/agents/cmo.toml
+personaxis compile --root                 # writes PERSONA.md and injects @PERSONA.md into CLAUDE.md
+personaxis compile cmo --platform codex   # writes the canonical PERSONA.md and .codex/agents/cmo.toml
 ```

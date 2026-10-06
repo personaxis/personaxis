@@ -1,119 +1,111 @@
-# Genesis, Creating an AI Persona from Zero (`personaxis create`)
+# Genesis: creating a persona from nothing (`personaxis create`)
 
-> **Status:** design document (F6.0, 2026-07-08). Implemented in F6.6 as
-> `packages/core/src/genesis/` + `packages/cli/src/commands/create.ts` + the TUI wizard.
-> Genesis is the front door of the product: every entry case a person can arrive with
-> must produce a **validated, governed, provenance-carrying** persona, never a prose blob.
+Genesis is implemented in `packages/core/src/genesis/` and `packages/cli/src/commands/create.ts`.
+Every entry case produces a validated persona that carries its provenance. The command reference is
+[`create`](../commands/create.md); this page explains how it works.
 
-## 1. Design principle: every number earned, not invented
+## Every number is earned, not invented
 
-The spec's differentiator is quantitative (means, ranges, weights, bands). LLM
-self-report of personality numbers is known-unreliable on smaller models
-(RESEARCH.md §2.5), so Genesis never lets a model "make up a 0.72". Instead every
-quantitative field must trace to an **evidence item**:
+Asking a model to report its own personality numbers is unreliable on smaller models, so Genesis never
+lets a model make up a 0.72. Every quantitative field traces to an evidence item:
 
 ```
-EvidenceItem = { id, kind: answer | document | dialogue | imported-field | default,
+EvidenceItem = { id, kind: answer | document | dialogue | imported-field | synthesis | default,
                  source (provenance), excerpt, mappedFields[{ path, value, rule }] }
 ```
 
-The **creation report** (`.personaxis/[personas/<slug>/]creation-report.md` + JSON)
-lists, for every quantitative field, the evidence chain that produced it, the C6
-contribution, and the file an auditor or a buyer reads to trust the persona.
-Provenance completeness (fields with evidence ÷ quantitative fields) is 1.0 by
-construction; the report also grades evidence strength (direct answer > document
-inference > genre default).
+The creation report (`creation-report.md`, plus JSON, beside the persona) lists the evidence chain for
+every quantitative field. It grades the evidence: a direct answer outranks a document inference, which
+outranks a default. Its "Defaults" section lists every number that was not earned from evidence, and
+anything Genesis had to work around (no model, an extractor that failed, a web search that returned
+nothing) is listed under "Worked around".
 
-## 2. The five entry modes (one command, every case)
+## The entry modes
 
 ```mermaid
 flowchart TD
-  P["--from-prompt · natural language"] --> E
-  I["interview · TUI wizard (default with no args)"] --> E
-  J["--from-project · repo/docs/brand scan"] --> E
-  M["--from-import · card V2/V3, system prompt, CLAUDE.md/AGENTS.md"] --> E
-  T["--from-transcript · exemplar conversations"] --> E
-  E["Evidence ledger"] --> S["Layer-by-layer synthesizer<br/>(constrained decoding)"]
-  S --> V["validate → lint → round-trip gates"]
-  V -->|"errors, targeted"| S
-  V --> O["personaxis.md PASS + PERSONA.md + state.json + sigil + creation report"]
+  P["--from-prompt: a brief"] --> E
+  I["interview (default with no args)"] --> E
+  J["--from-project: repo, docs, brand scan"] --> E
+  M["--from-import: card V2/V3, SOUL.md, system prompt, CLAUDE.md or AGENTS.md"] --> E
+  T["--from-transcript: exemplar conversations"] --> E
+  R["--research: sourced web references"] --> E
+  E["merged seed + evidence ledger"] --> B["spec builder (valid by construction)"]
+  B --> G["gates: validate, lint, compile, load-bearing"]
+  G --> O["personaxis.md + PERSONA.md + state.json + creation report"]
 ```
 
 | Mode | Input | Evidence extraction |
 |---|---|---|
-| `--from-prompt "<NL>"` | one NL brief | LLM elicitation pass decomposes the brief into evidence items (role, tone, boundaries, domain); unstated dimensions → interview-lite follow-ups (interactive) or labeled genre defaults (`--yes`) |
-| **interview** (default TTY) | adaptive Q&A | the psychometric item bank (§3); every answer is one evidence item |
-| `--from-project [path]` | repo / docs / brand assets | reuses `resource-manifest.ts` scan + targeted reads; extracts role, conventions, vocabulary, constraints (the CMO/Clio case, generalized) |
-| `--from-import <file>` | character card V2/V3 (PNG tEXt `chara`/`ccv3` or JSON), bare system prompt, CLAUDE.md / AGENTS.md | field adapters map card fields (`description/personality/scenario/mes_example` etc.) to layers; free prose goes through the decompile path; card numbers are never trusted blindly, mapped with rule tags |
-| `--from-transcript <file>` | conversation log | style/values induction: the synthesizer proposes the persona that best explains the exemplars; low-confidence dimensions flagged in the report |
+| `--from-prompt "<brief>"` | a natural-language brief | one constrained model call turns the brief into a seed; every number must carry an evidence quote, and dimensions without evidence are omitted |
+| interview (default in a terminal) | adaptive Q&A | the item bank below; every answer is one evidence item |
+| `--from-project [dir]` | a repo, docs or brand assets | the project's own docs (README, CLAUDE.md, ...) feed the same extraction |
+| `--from-import <file>` | a character card V2/V3 (PNG or JSON), a SOUL.md or SoulSpec package, a system prompt, CLAUDE.md or AGENTS.md | adapters map card fields to evidence deterministically; free prose goes to the extractor; card numbers are never copied blindly |
+| `--from-transcript <file>` | a conversation log | the extractor proposes the persona that best explains the exemplars; low-confidence dimensions are flagged in the report |
+| `--research` | the web, through the configured search provider | writes notes to `references/` with each source and its date |
 
-Modes compose: `--from-project --from-prompt "make it more formal"` merges ledgers
-(later evidence wins per field, recorded as an override in the report).
+Modes compose: `--from-project --from-prompt "make it more formal"` merges the contributions in order
+(`mergeSeed`). Later evidence wins per scalar field, maps and lists are unioned, and every override
+stays visible in the report because both evidence items remain. With no model, a labeled heuristic
+baseline (kind `default`) is used and recorded; Genesis never fakes inference.
 
-## 3. Psychometric grounding (the interview item bank)
+## Research writes references, nothing else
 
-Fixed, versioned item bank (`core/src/genesis/item-bank.ts`), mapped by construct, 
-not administered to the model, administered to the **human** (or answered from
-documents in non-interactive modes):
+A research contribution writes exactly one seed field, `references`, and it holds file paths
+(`genesis/research.ts`). Everything the web said becomes a note on disk and evidence in the ledger, so
+a page cannot define the persona's character, its hard limits or a number: there is no field for it to
+land in. Every result passes the untrusted-content door first (`ingestUntrusted`), because the
+injection scan that protects an agent turn does not cover `create`.
 
-- **Traits (personality layer):** short BFI-2/TIPI-style items per declared trait
-  dimension; Likert 1–5 → affine map to `mean`; answer variance/confidence → `range`
-  width (confident = narrow envelope); bands from the author's tolerance question
-  ("how far may this flex before it's a different persona?").
-- **Values (values_and_drives):** Schwartz-style ranking of the candidate value set →
-  rank-to-weight map (monotone, documented); `type: governance` reserved for
-  safety-class values (A2 scope note in MATH_CORE.md); universals U6/U7 injected
-  always (safety ≥ 0.90, governance).
-- **Virtues / hard limits (character, self_regulation):** scenario dilemmas ("a user
-  insists X; comply?") → enforcement levels and `prohibited_behaviors`; the three
-  universal hard limits are non-negotiable and pre-filled.
-- **Identity / persona layers:** role, display name, register, addressing style, 
-  direct questions; `expression` prose drafted by the synthesizer FROM the answers,
-  band variants included when bands are declared.
-- Adaptive: a dimension covered by prior evidence (project scan, card import) is
-  skipped or asked as confirmation only, the interview shortens as evidence grows.
+## The interview item bank
 
-## 4. The synthesizer (layer-by-layer, constrained, validated)
+A fixed, versioned bank (`core/src/genesis/item-bank.ts`), mapped by construct. It is administered to
+the human (or answered from documents in non-interactive modes), never to the model:
 
-- One pass per spec block (ANATOMY layers → CHANGE GOVERNANCE → RUNTIME CONTRACT),
-  each pass a **constrained-decoding** call (JSON Schema per layer, the proven
-  appraiser pattern in `appraisal.ts`) taking: the evidence ledger + already-fixed
-  layers + the layer's schema slice. Small-model friendly by design.
-- Deterministic post-pass: universals injected/verified, envelope sanity
-  (`lo ≤ mean ≤ hi`, bands ordered), cross-layer coherence (virtue `refs:` resolve).
-- **Repair loop:** `validate` + `lint` run after synthesis; each error feeds back as a
-  targeted instruction (the exact failing field + rule, Clio-style) for a bounded
-  number of repair rounds (default 3), never silent degradation; unresolved →
-  explicit failure with the report of what's missing.
-- Offline path: with the `local` provider Genesis runs fully offline; with no model at
-  all, interview mode still works (answers map deterministically; only free-prose
-  drafting falls back to templates).
+- Traits: short BFI-2 and TIPI-style items per trait dimension. A Likert 1 to 5 answer maps to the
+  mean, answer confidence maps to the range width (confident means a narrow envelope), and the
+  author's tolerance question sets the bands.
+- Values: a Schwartz-style ranking of the candidate values maps to weights with a monotone, documented
+  map. `type: governance` is reserved for safety-class values, and the universals (safety at least
+  0.90, governance) are always injected.
+- Virtues and hard limits: scenario dilemmas map to enforcement levels and `prohibited_behaviors`. The
+  three universal hard limits are pre-filled and not negotiable.
+- Role, name, register and addressing style are direct questions. The `expression` prose for each band
+  is drafted from the answers.
+- A dimension already covered by other evidence (a project scan, a card import) is skipped or asked as
+  a confirmation, so the interview shortens as evidence grows.
 
-## 5. Quality gates (all mandatory before writing)
+The default interview asks 12 questions; `--deep` asks all 20. Answers are saved as you give them
+(`genesis/draft.ts`), the next run offers to continue, and the draft is deleted when the persona exists.
 
-1. `validate` → **PASS** (five-state validator; never write a failing persona).
-2. `lint` → no MUST violations; SHOULD warnings surfaced in the report.
-3. **Round-trip stability:** compile → decompile → diff; quantitative fields must
-   survive; drift in prose fields reported.
-4. Optional behavioral smoke (`--smoke`, BYOK): N in-character probes + judge score,
-   recorded in the report (the E5 instrument, single-persona edition).
+## Valid by construction
 
-## 6. Surfaces
+The spec builder (`genesis/spec-builder.ts`) renders the document from the merged seed. It clamps every
+number and re-imposes every universal downstream of whatever the extractor proposed (envelope sanity
+`lo ≤ mean ≤ hi`, ordered bands, resolvable `refs:`). Before it does, `fillSeedExpressions`
+(`expression-synth.ts`) gives every trait that lacks per-band prose the deterministic construct table,
+so no number leaves Genesis decorative, and the ledger records that prose as `synthesis` rather than
+earned. The starting values of range, edit policy and half-life come from the profile
+(`genesis/profiles.ts`: `regulated`, `standard` or `research`); an interview answer or an extracted
+value with evidence always wins over the profile's default.
 
-- CLI: `personaxis create [slug] [--from-* …] [--yes] [--smoke] [--json]`, exit codes
-  follow the validator convention; `--json` emits the report data.
-- TUI wizard (Pillar C): the interview as a themed, responsive Ink flow, progress by
-  layer, live preview pane of the growing spec (sigil + envelope bars), review screen
-  with per-answer edit, final gate results. Degrades to plain prompts on `NO_COLOR`/
-  non-TTY.
-- `init` remains the template scaffolder (fast, no LLM); `create` is the guided/
-  evidence path; docs cross-link them (`init` for empty scaffolds, `create` for real
-  personas). `use` stays deprecated.
+## Gates
 
-## 7. Failure honesty
+All four must pass before anything is written (`create.ts`):
 
-Genesis never outputs a persona that fails validation; partial evidence yields either
-more questions (interactive) or labeled defaults (non-interactive), every default is
-visible in the creation report as `kind: default`. If the provider is unreachable
-mid-synthesis, completed layers are kept in a resumable draft
-(`.personaxis/.genesis-draft.json`), never a half-written persona file.
+1. `validate` returns PASS (the five-state validator; a failing persona is never written).
+2. `lint` has no errors; warnings go in the report.
+3. A first compile succeeds (the stage-1 assembler accepts the spec).
+4. The load-bearing check: the persona compiles at each band and no mutable coordinate is left whose
+   value cannot change the compiled document.
+
+Partial evidence produces either more questions (interactive) or labeled defaults (`--yes`), and each
+default shows in the report as `kind: default`. If the provider is unreachable, `create` still produces
+the persona from labeled defaults, and the report says so.
+
+## Surfaces
+
+- CLI: `personaxis create [slug] [--from-* ...] [--deep] [--profile <name>] [--research] [--yes] [--json]`.
+  Exit codes follow the validator convention, and `--json` emits the spec, gates and provenance.
+- The interview runs as terminal prompts; with no terminal, pass a `--from-*` flag and `--yes`.
+- `init` stays the template scaffolder (fast, no model); `create` is the evidence path.

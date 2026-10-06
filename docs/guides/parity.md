@@ -4,7 +4,7 @@ personaxis runs a persona as a working agent in the terminal, so it is measured 
 features a modern coding-agent CLI (Claude Code, Codex) exposes, plus the capabilities that are
 specific to a governed persona. Checked against the code on 2026-10-03.
 
-Legend: **done** shipped and tested · **partial** usable, with the limit stated · **not yet** absent
+Legend: done means shipped and tested, partial means usable with the limit stated, not yet means absent
 in this version.
 
 ## A. Session and context
@@ -38,7 +38,7 @@ in this version.
 |---|---|---|
 | Skills (`extensions.skills`, materialized on compile, `use_skill` at runtime) | done | `cli/src/targets/skills.ts` |
 | Custom slash commands (`.personaxis/commands/*.md`) | done | `repl/custom-commands.ts` |
-| Lifecycle hooks (`hooks.json` beside the persona: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart`) | done | `core/src/hooks.ts` |
+| Lifecycle hooks (`hooks.json` beside the persona: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SessionEnd`) | done | `core/src/hooks.ts` |
 | Delegation to sub-personas and colleagues | done | the `delegate` tool, `core/src/run/colleagues.ts` |
 | Services: a repeatable job with steps (`run_service`) | done | `personaxis service` |
 
@@ -58,9 +58,11 @@ in this version.
 | Capability | Status | Where |
 |---|---|---|
 | The Command Center (`/menu`, `personaxis menu`) | done | `cli/src/command-center.tsx` |
-| Drift on three planes, with band crossings | done | `/drift`, `personaxis drift` |
+| Distance from baseline on three planes, with band crossings | done | `/drift`, `personaxis drift` |
 | Governed self-edits with a review queue | done | `/persona → Evolution`, `personaxis review` |
 | Memory across sessions, by kind | done | `/memory`, `personaxis memory` |
 | Persona fleet: who holds each persona, through what surface | done | `personaxis ps` |
 | Hash-chained record, tamper located on replay | done | `/audit → Integrity`, `core/src/record/` |
 | Enforcing the persona's policy on Claude Code and Codex running here | done | `personaxis guard` |
+| Serving the persona to MCP hosts (16 tools) | done | `personaxis-mcp`, `packages/mcp` |
+| Running the persona as an agent for an editor over ACP | done | `personaxis-acp`, `cli/src/acp-bin.ts` |
