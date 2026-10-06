@@ -59,7 +59,7 @@
     "ink": "^7.1.0",
     "ink-text-input": "^6.0.0",
     "inquirer": "^12.5.2",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.2",
     "react": "^19.0.0"
   },
   "devDependencies": {
