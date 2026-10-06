@@ -8,7 +8,7 @@ stay inside the ranges you declare, a tool call no permission covers does not ru
 in a hash-chained record you can replay.
 
 ```bash
-npx personaxis proof --quick     # 60 s, offline: the engine's own checks on a throwaway persona
+npx personaxis proof --quick     # a few seconds, offline: the engine's own checks on a throwaway persona
 npm i -g personaxis              # puts `personaxis` on your PATH (Node 20.18.1+)
 ```
 

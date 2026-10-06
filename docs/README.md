@@ -6,8 +6,8 @@ one, start with [`guides/getting-started.md`](guides/getting-started.md), then
 [`HOW_IT_WORKS.md`](HOW_IT_WORKS.md).
 
 The spec itself lives in the `persona.md` repository:
-[docs/SPEC.md](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md) and
-[docs/PERSONA_PROMPTING.md](https://github.com/personaxis/persona.md/blob/main/docs/PERSONA_PROMPTING.md).
+[docs/SPEC.md](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md). The research behind
+the compiled document is in [architecture/persona-prompting.md](architecture/persona-prompting.md).
 What is measured, and what is not yet, is in [`GUARANTEES.md`](GUARANTEES.md).
 
 ## Map
