@@ -1,6 +1,6 @@
 # `personaxis guard`
 
-Enforce the persona's policy on the coding agents working in a directory, **before** each tool call
+Enforce the persona's policy on the coding agents working in a directory, before each tool call
 runs, on this machine only. No account, no network.
 
 ## Usage
@@ -23,7 +23,7 @@ It keeps running until you stop it (Ctrl+C). While it runs:
 
 ## A call that needs a person
 
-When the policy says a call needs approval, `guard` asks in **its own terminal**: the tool, its
+When the policy says a call needs approval, `guard` asks in its own terminal: the tool, its
 arguments, the directory, and the reason the policy gave. Only `y` or `yes` approves; anything else
 declines, and no answer within the policy's time refuses the call. When the terminal cannot answer
 (started without one), every such call is refused with that reason. A gated call is never let
@@ -38,6 +38,6 @@ directory with no persona is refused rather than given a made-up policy.
 
 Their point before a tool call is a plugin, not a settings file, so `guard` does not install anything for them. The
 package carries one plugin for each in `hosts/` (`openclaw/` for `before_tool_call`, `hermes/personaxis_guard/` for
-`pre_tool_call`), which ask this same socket through `personaxis-hook`. Both are **documented, not verified**: written
+`pre_tool_call`), which ask this same socket through `personaxis-hook`. Both are documented, not verified: written
 from each host's documentation and tested against `guard`, but not yet watched firing inside the host. How to install
 them by hand is in `hosts/README.md`.

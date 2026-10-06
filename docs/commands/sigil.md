@@ -1,14 +1,13 @@
 # `personaxis sigil` (and the aura)
 
-Two visual identities, one seed (sha-256 of the persona's canonical identity):
+Two visuals, one seed (the sha-256 of the persona's canonical id):
 
-- **The aura** is the persona's FACE in the app: a small living creature whose anatomy
+- The aura is the persona's face in the app: a small animated creature whose anatomy
   (head shape, antennae, torso, arms, legs, particle crown), colors and animation rhythm
   (breath, blink, gait, orbit) all derive deterministically and independently from the
-  seed, over 10^7 distinct beings, no two personas look or move alike (V6.3). Live state
-  shows through it: affect intensity brightens the face; drift past thresholds flares the
-  crown. You see it at startup, in `/persona`, on the card and in the Command Center.
-- **The sigil** is the abstract glyph used for hashes, cards and signatures, the compact,
+  seed. Live state shows through it: affect intensity brightens the face, and passing a drift
+  threshold flares the crown. You see it at startup, in `/persona`, on the card and in the Command Center.
+- The sigil is the abstract glyph used for hashes, cards and signatures, the compact,
   symbol-like signature that `sign`/`verify`/`card` embed.
 
 ## Usage

@@ -5,7 +5,7 @@ the pedagogical comments and empty fields stripped. Useful for publishing, index
 tool.
 
 ```bash
-personaxis export                              # ./PERSONA.md → stdout (default: json)
+personaxis export --format json                # ./PERSONA.md to stdout
 personaxis export ./PERSONA.md --format yaml
 personaxis export --format md -o dist/persona.md
 ```
@@ -13,7 +13,7 @@ personaxis export --format md -o dist/persona.md
 | Arg / flag | Meaning |
 |---|---|
 | `[file]` | Path to `PERSONA.md` (default `./PERSONA.md`). |
-| `--format <json\|md\|yaml>` | Output format. |
+| `--format <json\|md\|yaml>` | Required. One of `json`, `md`, `yaml`. |
 | `-o, --out <path>` | Write to a file instead of stdout. |
 
 For the reverse (edit → fold back into the spec) use [`decompile`](./decompile.md); to compare two

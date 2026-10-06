@@ -1,6 +1,6 @@
 # App ↔ command-line parity
 
-Every capability has two doors over the same engine: a view or command inside the app (menus,
+Most capabilities have two doors over the same engine: a view or command inside the app (menus,
 arrows, live refresh) and a command a coding agent, a script or CI can call, in plain text or
 JSON. Agents cannot drive menus, so they get flags. Inside the app, an unknown `/name` runs
 `personaxis <name>`, and an old command that became a tab says where it went (`/help moved`).
@@ -10,7 +10,7 @@ JSON. Agents cannot drive menus, so they get flags. Inside the app, an unknown `
 | Talk one turn | chat | `personaxis -p "<prompt>"` | `--output-format json \| stream-json` |
 | Status, config, usage | `/status` | `personaxis status`, `personaxis model` | `--json` on both |
 | Context breakdown | `/context` | (session-bound; `-p --output-format json` meters a turn) | stream-json events |
-| Drift | `/drift` | `personaxis drift`, `personaxis state drift` | `--json`; `state drift` exits 2 past a threshold |
+| Distance from baseline | `/drift` | `personaxis drift`, `personaxis state drift` | `--json`; `state drift` exits 2 past a threshold |
 | State history and rewind | `/audit → Timeline` | `personaxis state show`, `personaxis state rewind <n>` | `--json` |
 | Integrity and replay | `/audit → Integrity` | `personaxis audit --tab Integrity` | `--json` |
 | Sessions | `/resume` | `personaxis --resume <id>`, `--continue` | session files (JSONL) |

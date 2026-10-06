@@ -1,21 +1,21 @@
 # `personaxis menu`
 
 Open the Command Center: ONE stable fullscreen hub (alternate screen, zero scrollback
-residue) for model config, state, drift, audit, memory, proposals and the persona fleet.
+residue) for model config, state, audit, memory, proposals and the persona fleet.
 
 ```bash
-personaxis menu                    # the scope-tree navigator (default, V9)
+personaxis menu                    # the scope-tree navigator (default)
 personaxis menu --classic          # the classic sectioned hub
 personaxis menu --section model    # the classic hub, straight to a section
 ```
 
-The default (V9) is the **scope-tree navigator**: one recursive view over
+The default is the scope-tree navigator: one recursive view over
 `machine → project → persona → layer → field`, with a real breadcrumb path, per-field editing
 (envelope-clamped, `Enter` on an editable coordinate), and each action's authority shown
 (read-only / review / editable). Inside the REPL, `/menu` opens it (and `/menu classic` the old hub).
 
 The **classic sectioned hub** (`--classic` / `--section`) has the model-config wizard, the config
-matrix, and the state/drift/audit/memory/proposals views. The model wizard is also reachable via
+matrix, and the state, audit, memory and proposals views. The model wizard is also reachable via
 `/model` and `personaxis config`.
 
 - **Inside the app:** `/menu` (or Ctrl+K). It opens IN-PROCESS: no child process, instant,
@@ -25,8 +25,8 @@ matrix, and the state/drift/audit/memory/proposals views. The model wizard is al
 
 ## It always says where you are, and what it acts on
 
-Two lines, on every screen, because being three levels deep with no idea whether you are
-configuring one persona, one project or the whole machine is a way to make a mistake:
+Every screen shows two lines, so you know whether you are configuring one persona, one
+project or the whole machine:
 
 ```
   laptop › cli › Clio
@@ -48,7 +48,7 @@ second names what the current section changes.
 | `/` | Fleet only: search; `Esc` clears it |
 | `q` | quit, from the home screen |
 
-Left and right deliberately do **not** enter and leave. Horizontal keys read as "move
+Left and right deliberately do not enter and leave. Horizontal keys read as "move
 along this row", and firing an action from one turns an exploratory keypress into a
 commitment.
 
@@ -66,7 +66,8 @@ agent could read this persona (its compiled document exists where that host look
 [`docs/architecture/presence.md`](../architecture/presence.md).
 
 When the fleet is empty it explains how projects get registered rather than showing a
-zero: they register themselves as you use them, and `personaxis overseer scan` finds the
-ones that existed beforehand. See
+zero: they register themselves as you use them. See
 [`docs/architecture/project-registry.md`](../architecture/project-registry.md).
-- Headless: the Center needs a TTY; use `personaxis config` / `state show` / `dash --once`.
+
+Headless: the Center needs a TTY; use `personaxis config`, `personaxis state show` or
+`personaxis console` instead.

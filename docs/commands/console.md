@@ -5,7 +5,7 @@ same tree the interactive navigator (the default `personaxis menu` view) renders
 browse it, read a node, or run an action, without a TUI.
 
 ```bash
-personaxis console ls  <path>                 # a node's children
+personaxis console ls  <path> [--json]        # a node's children
 personaxis console get <path> [--json]        # a node's attributes + actions
 personaxis console do  <path> <action> [value]  # run an action (honors the authority)
 ```
@@ -32,7 +32,7 @@ personaxis console do  main/layers/personality/personality.traits.openness edit 
 
 ## `do` and the authority
 
-Every action carries an effect the tree resolved from governance (see the Command Center PRD):
+Every action carries an effect the tree resolved from governance:
 
 - **editable** (`direct`) → the edit applies immediately, envelope-clamped (a numeric coordinate
   becomes an `adjust`).
@@ -40,9 +40,6 @@ Every action carries an effect the tree resolved from governance (see the Comman
 - **read-only** (`blocked`) → refused. `do` exits non-zero and names why (a hard virtue backs the
   coordinate, or the safety floor covers the layer).
 
-`--json` on `get`/`do` gives machine-readable output for an agent to parse.
-
-## Related
-
-- `personaxis menu`: the same tree, interactive (the navigator is the default view).
-- [command-center.md](../architecture/command-center.md): the model and the authority rules.
+`--json` on `ls`, `get` and `do` gives machine-readable output for an agent to parse.
+`personaxis menu` opens the same tree interactively; the model and the authority rules are in
+[command-center](../architecture/command-center.md).
