@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="112" viewBox="0 0 420 112" role="img" aria-label="personaxis: Personas for coding agents">
+  <title>personaxis</title>
+  <desc>Personas for coding agents</desc>
+  <g transform="translate(0,4)"><rect x="4" y="18" width="72" height="16" rx="8" fill="#58a6ff"/><rect x="4" y="44" width="50" height="16" rx="8" fill="#58a6ff" opacity="0.7"/><rect x="4" y="70" width="62" height="16" rx="8" fill="#58a6ff" opacity="0.45"/></g>
+  <text x="100" y="58" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#f0f6fc" letter-spacing="-1">personaxis</text>
+  <text x="102" y="92" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" fill="#9198a1">Personas for coding agents</text>
+</svg>
