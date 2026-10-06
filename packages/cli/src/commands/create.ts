@@ -603,7 +603,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
 }
 
 export const createCommand = new Command("create")
-  .description("Genesis: create a governed AI Persona from zero, interview, natural language, project scan, character-card/system-prompt import, or transcripts. Always validated; provenance per number.")
+  .description("Genesis: create a persona from nothing: an interview, a brief, a project scan, an imported card or system prompt, or transcripts. Always validated; provenance per number.")
   .argument("[slug]", "Persona slug (default: derived from its name; created under .personaxis/personas/<slug>/)")
   .option("--from-prompt <brief>", "Create from a natural-language brief")
   .option("--from-project [dir]", "Infer the persona from a project's own docs (README, CLAUDE.md, …)")

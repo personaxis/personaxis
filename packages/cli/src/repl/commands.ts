@@ -162,7 +162,7 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "persona",
-    desc: "who this persona is: identity, the ten layers, its resources, its sub-personas, how it evolves",
+    desc: "the persona: its ten layers, its resources, its sub-personas, how it evolves",
     external: "list",
     run: (_a, ctx) => {
       // V5.P3.3: in the TUI this is a miniapp; pipes keep the inline summary.

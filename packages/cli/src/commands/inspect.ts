@@ -60,7 +60,7 @@ function emit(lines: string[], json: unknown, asJson: boolean): void {
 }
 
 export const statusCommand = new Command("status")
-  .description("Snapshot of a persona right now: identity, model, posture, drift, memory, mutations")
+  .description("Snapshot of a persona right now: name and role, model, posture, distance from baseline, memory, mutations")
   .option("-p, --persona <path>", "Persona to inspect (defaults to the one in scope)")
   .option("--json", "Emit machine-readable JSON")
   .action((opts: { persona?: string; json?: boolean }) => {
