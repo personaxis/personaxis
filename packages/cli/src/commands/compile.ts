@@ -6,7 +6,6 @@ import { loadPersonaFile, resolvePersonaSourcePath, compiledPathFor } from "../l
 import { validatePersona } from "../schema.js";
 import { injectBaselineIntoClaude } from "../targets/claude-code.js";
 import { injectBaselineIntoAgents } from "../targets/codex.js";
-import { buildResourceManifest } from "../resource-manifest.js";
 import {
   activeOverlay,
   readRecompilePending,
@@ -17,7 +16,6 @@ import {
   distSlices,
   DIST_HOT_FILE,
   DIST_COLD_FILE,
-  type AssembleInput,
 } from "@personaxis/core";
 import { buildPolishPrompt, type CompileTargetInfo } from "../compile-instructions.js";
 import { ProviderRequiresAgentError, type ProviderRunResult } from "../providers/types.js";
@@ -25,7 +23,9 @@ import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { runProviderOrExit } from "../provider-run.js";
 import { hashContent, saveManifest } from "../manifest.js";
 import { placeCompiledDocument, isSoulPlatform, PLACEMENT_PLATFORMS, type PlacementPlatform } from "../targets/placement.js";
-import { resolveDeclaredSkills, materializeLocalSkills, writeSkillsManifest, applySkillsToSubagent } from "../targets/skills.js";
+import { resolveDeclaredSkills, materializeLocalSkills, writeSkillsManifest } from "../targets/skills.js";
+import { assembleInputFor, dressCompiledDocument } from "../compiled-document.js";
+import { holdPresence } from "../presence-session.js";
 
 /** Values block of a state.json payload, or undefined when absent/malformed. */
 function parseStateValues(stateJson: string | undefined): Record<string, number> | undefined {
@@ -44,28 +44,6 @@ function parseStateValues(stateJson: string | undefined): Record<string, number>
 function readSibling(baseDir: string, name: string): string | undefined {
   const p = join(baseDir, name);
   return existsSync(p) ? readFileSync(p, "utf-8") : undefined;
-}
-
-/** The name the compiled document addresses: short_name (chat handle) → display_name → metadata.name. */
-function personaName(data: Record<string, unknown>): string {
-  const identity = (data.identity ?? {}) as { short_name?: string; display_name?: string; canonical_id?: string };
-  const meta = (data.metadata ?? {}) as { name?: string };
-  return identity.short_name ?? identity.display_name ?? meta.name ?? identity.canonical_id ?? "persona";
-}
-
-/**
- * Subagent placement (.claude/agents/<slug>.md, …) expects a `name`/`description`
- * frontmatter the host uses to decide when to invoke the subagent. The deterministic
- * assembler emits the body only, so we prepend it here from the spec.
- */
-function subagentFrontmatter(slug: string, data: Record<string, unknown>): string {
-  const meta = (data.metadata ?? {}) as { description?: string };
-  const identity = (data.identity ?? {}) as { system_identity?: { purpose?: string } };
-  const description =
-    (meta.description ?? identity.system_identity?.purpose ?? `The ${slug} persona.`)
-      .replace(/\s+/g, " ")
-      .trim();
-  return `---\nname: ${slug}\ndescription: ${JSON.stringify(description)}\n---\n\n`;
 }
 
 /**
@@ -280,7 +258,6 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
 
   const policyYaml = readSibling(baseDir, "policy.yaml");
   const stateJson = readSibling(baseDir, "state.json");
-  const resourceManifest = buildResourceManifest(baseDir);
 
   // Canonical compiled-document location (single owner: compiledPathFor in load.ts):
   //   root persona  -> <repo>/PERSONA.md           (one level ABOVE .personaxis/)
@@ -300,31 +277,37 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
 
   // F3.1, STAGE 1: the deterministic assembler always runs. It is the canonical,
   // hashable artifact and the ground truth the optional polish is checked against.
-  const assembleInput: AssembleInput = {
-    persona: loaded.data as Record<string, unknown>,
-    resourceManifest,
-    target: {
-      name: personaName(loaded.data),
-      isSubagent,
-      slug,
-      resourceBase: isSubagent ? "./" : "./.personaxis/",
-    },
-    appliedOverlay: Object.keys(appliedOverlay).length ? appliedOverlay : undefined,
+  // E92: the input, and below the dressing, come from `compiled-document.ts`, which the live
+  // recompile asks too. Built here by hand, they had drifted: the live path lost the resource
+  // manifest, the sub-persona header and the skill list.
+  const assembleInput = assembleInputFor(sourcePath, loaded.data as Record<string, unknown>, {
+    appliedOverlay,
     // F6.2: current state selects WHICH band's expression prose compiles in
     // (value → band → prose, deterministic). No state.json → envelope means.
     stateValues: parseStateValues(stateJson),
-  };
+  });
   const assembled = assemblePersonaDoc(assembleInput);
 
   // F3.1, STAGE 2: optional LLM polish, gated by the faithfulness check.
-  const stage2 = await polishOrFallback(assembled, raw, target, opts);
+  //
+  // D6: this is the only part of a compile that holds the persona long enough for anyone to
+  // notice, so it is the only part that announces. Stage 1 and the writes around it are
+  // milliseconds, and a presence marker nobody can read in time is noise on disk. Nested
+  // under `watch`, this shows "compiling" and restores "watching for spec edits" by itself.
+  const presence = holdPresence(sourcePath, { host: "compile", activity: "compiling PERSONA.md" });
+  let stage2;
+  try {
+    stage2 = await polishOrFallback(assembled, raw, target, opts);
+  } finally {
+    presence.release();
+  }
   const result = { source: stage2.source, via: stage2.via, model: stage2.model };
   const compiledText = stage2.content;
 
   const outPath = resolve(opts.out ?? canonicalOutPath);
 
   // Subagent placement needs a name/description frontmatter; prepend it (the assembler emits body only).
-  const withFrontmatter = isSubagent && slug ? subagentFrontmatter(slug, loaded.data as Record<string, unknown>) + compiledText : compiledText;
+  const withFrontmatter = dressCompiledDocument(compiledText, sourcePath, loaded.data as Record<string, unknown>);
 
   if (opts.stdout) {
     process.stdout.write(withFrontmatter + "\n");
@@ -366,7 +349,11 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
   }
 
   if (isSubagent) {
-    finalContent = applySkillsToSubagent(finalContent, skillsPlatform, declaredSkills, materializedSkills);
+    finalContent = dressCompiledDocument(compiledText, sourcePath, loaded.data as Record<string, unknown>, {
+      platform: skillsPlatform,
+      declared: declaredSkills,
+      materialized: materializedSkills,
+    });
   }
 
   mkdirSync(dirname(outPath), { recursive: true });
@@ -429,7 +416,7 @@ export const compileCommand = new Command("compile")
   .description("Compile personaxis.md -> canonical PERSONA.md (root) / .personaxis/personas/<slug>/persona.md (sub)")
   .argument("[slug]", "Subagent slug to compile (defaults to the root persona)")
   .option("--root", "Compile the root persona (.personaxis/personaxis.md -> repo-root PERSONA.md). Default when [slug] is omitted.")
-  .option("--provider <name>", "Override the configured provider (local | byok | agent | remote)")
+  .option("--provider <name>", "Override the configured provider (local | byok | agent)")
   .option("--from-file <path>", "Use this file's contents as the compiled output instead of calling the provider")
   .option("-o, --out <path>", "Output file path (overrides the canonical default)")
   .option("--stdout", "Print to stdout instead of writing a file")

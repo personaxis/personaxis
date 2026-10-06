@@ -1,10 +1,10 @@
 # Codex integration
 
-Codex reads `AGENTS.md` (which references `@PERSONA.md`) and has a **`Stop`** hook like Claude Code, so
-the setup mirrors it. See the [quickstart](./README.md) for the model config step (`config set
---global local.*`), do that first.
+Codex reads `AGENTS.md` (which references `@PERSONA.md`) and has a `Stop` hook like Claude Code, so
+the setup mirrors it. Do the model config step in the [quickstart](./README.md) first (`config set
+--global local.*`).
 
-## 1. Identity, always fresh
+## 1. Compile the persona
 
 ```bash
 personaxis compile --root
@@ -21,10 +21,10 @@ personaxis hooks install --host codex --global   # user   → ~/.codex/hooks.jso
 ```
 
 Each turn, Codex's `Stop` hook pipes the turn to `personaxis observe --stdin`, which runs one governed
-tick on **your** configured model and recompiles the identity on drift, zero Codex tokens. `observe`
-reads Codex's payload (`last_assistant_message`). Remove it with `hooks uninstall --host codex`.
+tick on your configured model and recompiles `PERSONA.md` when a coordinate crosses a band, with no
+Codex tokens spent. `observe` reads `last_user_message`, or `last_assistant_message` when there is none. Remove it with `hooks uninstall --host codex`.
 
-## 3. Sub-personas, native subagents
+## 3. Sub-personas as native subagents
 
 ```bash
 personaxis compile <slug> --platform codex       # → .codex/agents/<slug>.toml
@@ -37,9 +37,11 @@ Codex adopts the sub-persona as a custom agent (`developer_instructions` from th
 Codex speaks MCP. Register the server so Codex can read/adjust the persona and run a governed tick when
 it chooses to (not every turn):
 
-```jsonc
-// .codex or Codex MCP config
-{ "mcpServers": { "personaxis": { "command": "personaxis-mcp" } } }
+```toml
+# ~/.codex/config.toml
+[mcp_servers.personaxis]
+command = "npx"
+args = ["-y", "@personaxis/mcp"]
 ```
 
 Tool list + trace: [claude-code.md](./claude-code.md) §2 (the same server serves any MCP host).

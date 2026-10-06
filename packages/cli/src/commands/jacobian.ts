@@ -10,7 +10,7 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import {
+import { ensureState,
   loadPersona,
   extractEnvelopes,
   readState,
@@ -40,7 +40,7 @@ export const jacobianCommand = new Command("jacobian")
         console.error(chalk.red("Error:"), "the persona declares no envelope coordinates.");
         process.exit(1);
       }
-      const values = existsSync(handle.statePath) ? readState(handle.statePath).values : {};
+      const values = existsSync(handle.statePath) ? ensureState(handle).values : {};
 
       const report = jacobianCompile({
         envelopes: env.envelopes,

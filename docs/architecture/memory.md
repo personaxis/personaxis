@@ -1,11 +1,12 @@
 # Memory: the six `memory.types`, enforced
 
-A persona's `memory.types` declares six memory kinds. All six are real producers and
-consumers. Each kind honors its `memory.types.<kind>` flag at the producer call site, so a
-persona that does not declare a kind writes nothing for it.
+Memory is the part of a persona that records what it learned. A persona's `memory.types` declares six
+memory kinds, and `personaxis memory` shows what is stored. All six are real producers and consumers.
+Each kind honors its `memory.types.<kind>` flag at the producer call site, so a persona that does not
+declare a kind writes nothing for it.
 
 Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}` and
-`packages/core/src/memory/{knobs,facts,retrieval,consolidate}.ts` (the V2 engine).
+`packages/core/src/memory/{knobs,facts,retrieval,consolidate}.ts`.
 
 ## The six kinds
 
@@ -18,27 +19,27 @@ Source: `packages/core/src/{memory.ts, memory-kinds.ts, loop.ts, agent.ts}` and
 | `user_preferences` | `memory/preferences.json` (last-wins map) | the appraiser proposes `preferences[]`; a dotted `<subject>.<attribute>` key is an ENTITY FACT (any subject), a dot-free key is a loose preference | the `# Known facts` block (facts, grouped by subject) ALWAYS loaded first; preferences loaded after |
 | `evaluations` | `memory/evaluations.jsonl` (append-only) | `scoreMemoryEntry`, per turn in the loop | salience ranking, quality review |
 
-## The V2 recall architecture (who reads what, when)
+## Recall: who reads what, when
 
 One design rule: the raw dialog lives ONCE, in `sessions/<id>.jsonl`. Everything else is
 derived, and each artifact has a declared role:
 
-- **Always in context** (every turn, `agent.resumeContext`): the `# Known facts` block (all
+- Always in context (every turn, `agent.resumeContext`): the `# Known facts` block (all
   subject-qualified facts, grouped by subject, `+ memory.working_self + memory.anchors`), the
   previous-session recap (derived at read time from the newest other session, no summary
   artifact), the consolidated `memory.md`, and a today/yesterday episodic window bounded by
   `runtime.memory.max_items`.
-- **On demand**: the `memory_search` / `memory_get` agent tools (lexical BM25 across every
+- On demand: the `memory_search` / `memory_get` agent tools (lexical BM25 across every
   kind; `use_embeddings` ranks via the endpoint's `/embeddings` when it serves them;
   `use_reranker` re-ranks the lexical top-k with the chat model). The system prompt tells
   the model to search before claiming it does not remember.
-- **At session close** (`closeSession`): the session is DISTILLED into 3-8 persistent
+- At session close (`closeSession`): the session is DISTILLED into 3-8 persistent
   episodic entries (facts / decisions / one event line, tagged `distilled` + `kind:*` +
   `from:<session>`, idempotent), `memory.md` is re-consolidated when
   `consolidation_policy.mode: auto`, and the retention window prunes (tombstones) stale
   un-anchored entries.
 
-## Entity facts, not "the user"
+## Entity facts
 
 Facts are general: the SUBJECT of a fact is any named entity, the ambient interlocutor (a
 human, another agent, or an app), a named person / agent / app, the project, a system. A
@@ -60,10 +61,10 @@ by name, whatever the subject. The user's-name case is one instance of this gene
 - `runtime.memory.retention_days_default`: the pruning window; absent = keep forever.
 - `memory.write_policy.default`: `ephemeral` persists nothing (abstain event), `session`
   tags entries to their session (recalled only there unless distilled/typed), `persistent`
-  (and an absent block) writes untagged, the pre-V2 behavior.
+  (and an absent block) writes untagged, the original behavior.
 - `memory.consolidation_policy.mode`: `auto` consolidates inline; `assisted` emits a
   proposal (run `/memory consolidate`); `manual` only ever consolidates on command.
-  Absent = `auto` (the pre-V2 behavior).
+  Absent = `auto` (the original behavior).
 - `memory.anchors`: injected into the known-facts block and never pruned.
 - `memory.working_self`: injected as the known-facts block's self-model line.
 
@@ -93,46 +94,35 @@ The loop runs this each turn and appends to `memory/evaluations.jsonl`.
 
 ## Visibility (per turn)
 
-You can see, every turn, both the memory **created** and the memory **used to answer**: plus
-the evaluations *with their actual scores*, not an opaque counter. Three bus events drive this:
+Every turn shows both the memory created and the memory used to answer, plus the evaluations with
+their actual scores. Three bus events drive this:
 
-- **`memory`**: an episodic entry was written; the REPL shows `memory +1 episodic ([user] …)`.
-- **`memory-recall`** (`{ kind, count, detail }`, emitted by `agent.resumeContext`), a memory
-  kind was injected to answer this turn; the REPL shows `recalled episodic×2 (…)`. This answers
-  "did it *use* any memory to respond?".
-- **`evaluation`** (`{ target, dimension, score, rationale }`, one per score from the loop), the
-  REPL shows `evaluated #a1b2c3d4 usefulness 0.74 · turn safety 1.00`, instead of `+N eval(s)`.
+- `memory`: an episodic entry was written; the REPL shows `memory +1 episodic ([user] …)`.
+- `memory-recall` (`{ kind, count, detail }`, emitted by `agent.resumeContext`): a memory kind
+  was injected to answer this turn; the REPL shows `recalled episodic×2 (…)`.
+- `evaluation` (`{ target, dimension, score, rationale }`, one per score from the loop): the REPL
+  shows `evaluated #a1b2c3d4 usefulness 0.74 · turn safety 1.00`.
 
 A compact `memory-kind` rollup (`{ kind, detail }`) is still emitted for `procedural` /
-`autobiographical` / `user_preferences`. Inspect the full picture any time with **`/memory`**
-(all six kinds, with `(off)` for a disabled type) and **`/audit`** (self-edit ledger + recent
+`autobiographical` / `user_preferences`. Inspect the full picture any time with `/memory`
+(all six kinds, with `(off)` for a disabled type) and `/audit` (self-edit ledger and recent
 evaluations with scores). Tests: `packages/core/test/loop-observability.test.ts`.
 
 ## Cross-persona access: read-only
 
-A root may **read** a sub-persona's memory files at the filesystem level but never **write**
+A root may read a sub-persona's memory files at the filesystem level but never write
 them. The sandbox policy's cross-persona deny rules block any cross-persona write (deny has
 the highest precedence, see [multi-persona.md](./multi-persona.md) and
 [sandbox.md](./sandbox.md)). So a parent can consult a child's episodic/semantic memory for
 context, but each persona's memory is written only by that persona.
 
-
 ## One episodic log per device
 
-A hash chain has exactly one appender. Two machines writing the same file produce links that
-do not follow from each other, and the integrity check correctly reports tampering while
-being unable to say which side is right, so a persona used from a desktop and a laptop was
-either losing memory or failing verification.
-
-Each device therefore writes `memory/episodic.<deviceId>.jsonl`, its own chain starting at
-`""`. Recall reads the **union** of every log in time order (one history); verification runs
-**per log** and names which one broke, and where.
-
-The pre-V8 `memory/episodic.jsonl` is still read, as the chain of "the machine this persona
-lived on before devices existed". Nothing needs migrating.
-
-Redaction, tombstones and the chain migration operate on the log that HOLDS the entry, and a
-tombstone written on one machine for an entry made on another is re-linked when the chains
-are migrated: otherwise migration would resurrect exactly the entries someone chose to hide.
-
-See [`multi-device.md`](./multi-device.md) for the same principle applied to state.
+A hash chain has exactly one appender, so each device writes `memory/episodic.<deviceId>.jsonl`, its
+own chain. Recall reads the union of every log in time order, and verification runs per log and names
+which one broke, and where. The older single-file `memory/episodic.jsonl` is still read, as the chain
+of the machine the persona lived on before devices existed; nothing needs migrating.
+Redaction, tombstones and the chain migration operate on the log that holds the entry, and a
+tombstone written on one machine for an entry made on another is re-linked when the chains are
+migrated, so migration never resurrects an entry someone chose to hide. See
+[`multi-device.md`](./multi-device.md) for the same principle applied to state.

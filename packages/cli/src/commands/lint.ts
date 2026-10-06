@@ -12,17 +12,20 @@ function severityColor(f: Finding): string {
 }
 
 export const lintCommand = new Command("lint")
-  .description("Lint a PERSONA.md for structural and semantic issues")
-  .argument("[file]", "Path to PERSONA.md (defaults to ./PERSONA.md)")
+  .description("Lint a persona's personaxis.md for structural and semantic issues")
+  .argument("[file]", "Path to personaxis.md (defaults to ./.personaxis/personaxis.md)")
   .option("--format <format>", "Output format: text (default) or json", "text")
   .action((file: string | undefined, opts: { format: string }) => {
+    // The spec's source of truth first, as `validate` reads it. A root `PERSONA.md` is the compiled prose document
+    // since spec v1, with no frontmatter, so linting it by default failed every persona `create` had just made; it is
+    // still read when there is no `.personaxis/personaxis.md`, which is what a repository from before v1 has.
     const candidates = file
       ? [resolve(file)]
-      : [resolve(process.cwd(), "PERSONA.md"), resolve(process.cwd(), "persona.md")];
+      : [resolve(process.cwd(), ".personaxis", "personaxis.md"), resolve(process.cwd(), "PERSONA.md"), resolve(process.cwd(), "persona.md")];
 
     const found = candidates.find((p) => existsSync(p));
     if (!found) {
-      console.error(chalk.red("Error:"), "No PERSONA.md found.");
+      console.error(chalk.red("Error:"), "No persona found (looked for .personaxis/personaxis.md, then PERSONA.md).");
       process.exit(1);
     }
 

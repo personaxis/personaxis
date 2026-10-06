@@ -1,7 +1,7 @@
 {
   "name": "@personaxis/core",
-  "version": "0.15.0",
-  "description": "Personaxis engine: governed Living Loop, bounded memory, state/envelope mutation, persona sigil. Spec-faithful, framework-agnostic.",
+  "version": "0.17.0",
+  "description": "The Personaxis engine: state clamped to declared envelopes, the governed living loop and agent loop, the gate on every tool call, hash-chained record, memory, injection scanning and compilation. Framework-agnostic, no UI.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -15,16 +15,19 @@
   "scripts": {
     "build": "node ./scripts/gen-version.mjs && tsc",
     "lint": "node ./scripts/gen-version.mjs && tsc --noEmit",
-    "test": "node ./scripts/gen-version.mjs && vitest run"
+    "test": "node ./scripts/gen-version.mjs && vitest run",
+    "test:coverage": "node ./scripts/gen-version.mjs && vitest run --coverage"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.3.2",
+    "undici": "^7.30.0"
   },
   "devDependencies": {
     "@fast-check/vitest": "^0.4.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "3.2.6",
     "fast-check": "^4.8.0",
     "typescript": "^5.8.3",
     "vitest": "^3.0.0"

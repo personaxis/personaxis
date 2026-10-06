@@ -10,14 +10,12 @@
 import chalk from "chalk";
 import { relative, dirname, join } from "node:path";
 import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
-import {
+import { ensureState,
   readState,
-  writeState,
   extractEnvelopes,
   driftReport,
   readDriftThresholds,
   readMaxStepDelta,
-  rebuildStateValues,
   resolveField,
   readArbitrationValues,
   arbitrate,
@@ -43,8 +41,6 @@ import {
   readRecompilePending,
   displayName,
   readMode,
-  compactMessages,
-  recordCompaction,
   loadConversation,
   listSessions,
   findSession,
@@ -54,6 +50,7 @@ import { envelopeBars, auraLines } from "@personaxis/tui/visual";
 import { sigilParams, liveIntensity } from "@personaxis/core";
 import { renderFrame } from "@personaxis/tui";
 import type { SlashItem } from "@personaxis/tui/screen";
+import { compactConversation } from "./compact.js";
 import { isSubagentPath, slugAddressFromPath, loadPersonaFile, compiledPathFor } from "../load.js";
 import { runMode, isMode, MODES } from "../commands/improve.js";
 import { runCompile } from "../commands/compile.js";
@@ -70,12 +67,11 @@ import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, re
 import { fmtK, panel, meterBar, userLine } from "./render.js";
 import { version } from "../generated/assets.js";
 import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
-import { ensureCtxSession, resumeSessionInto, replayTranscript } from "./session.js";
+import { resumeSessionInto, replayTranscript } from "./session.js";
 import { maybeRecompile, handleTurn } from "./turn.js";
 import { loadCustomCommands, findCustomCommand, expandCommand } from "./custom-commands.js";
 import { resolveDeclaredSkills } from "../targets/skills.js";
 import type { PersonaData } from "../load.js";
-import { rewindState } from "../rewind.js";
 import { startTask, listTasks, readTaskDetail, markTaskSurfaced } from "./tasks.js";
 import { statusLines, configLines, usageLines } from "./views/settings-data.js";
 import { driftTextLines } from "./views/drift-view.js";
@@ -166,7 +162,7 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "persona",
-    desc: "who this persona is: identity, the ten layers, its resources, its sub-personas, how it evolves",
+    desc: "the persona: its ten layers, its resources, its sub-personas, how it evolves",
     external: "list",
     run: (_a, ctx) => {
       // V5.P3.3: in the TUI this is a miniapp; pipes keep the inline summary.
@@ -192,7 +188,7 @@ export const COMMANDS: CommandDef[] = [
       }
       // V5.P3.2: the AURA, the persona's living creature mark (unique per seed;
       // it breathes with the loop and flares when drift crosses thresholds).
-      const st = readState(ctx.handle.statePath);
+      const st = ensureState(ctx.handle);
       ctx.out(
         auraLines(sigilParams(ctx.handle.frontmatter), 0, { intensity: liveIntensity(st.values, 0) })
           .split("\n")
@@ -226,7 +222,7 @@ export const COMMANDS: CommandDef[] = [
       if (ctx.openView) {
         // Feed the live gauge in the status bar with the numeric plane, then open the app.
         try {
-          const st = readState(ctx.handle.statePath);
+          const st = ensureState(ctx.handle);
           const fm = ctx.handle.frontmatter as Record<string, unknown>;
           const env = extractEnvelopes(ctx.handle.frontmatter);
           ctx.onDrift?.(
@@ -421,22 +417,19 @@ export const COMMANDS: CommandDef[] = [
     run: async (_a, ctx) => {
       const llm = llmConfig(ctxModelArg(ctx));
       if (!llm) return void ctx.out(chalk.dim("  /compact needs a model, configure with /model."));
-      const before = ctx.meter.used;
-      const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold: 0 });
-      if (r.compacted) {
-        ctx.conversation = r.messages.filter((m) => m.role !== "system");
-        // PERSIST the checkpoint so leaving and /resume returns the COMPACTED conversation, not the
-        // raw bloat, the user shouldn't have to /compact again after re-entering the same session.
-        if (r.summary) {
-          ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
-          recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
-        }
-        const after = ctx.meter.used;
-        const freed = Math.max(0, before - after);
-        ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept · ${fmtK(before)} → ${fmtK(after)} tok${freed ? ` (freed ~${fmtK(freed)})` : ""} · persisted (survives /resume)`));
-      } else {
-        ctx.out(chalk.dim("  nothing to compact yet."));
-      }
+      // Threshold 0: a person who types this means now, not when it gets tight. E25: asking for a
+      // compaction is not performing one, so the author in the record is the runtime either way and
+      // the asking goes in the reason. Everything after the summarising is shared with the automatic
+      // door, which is why it lives in one place: these two had already drifted, and the drift was
+      // that this one never counted itself.
+      const r = await compactConversation(ctx, {
+        threshold: 0,
+        kind: "asked",
+        llm,
+        onProblem: (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`)),
+      });
+      if (!r.compacted) return void ctx.out(chalk.dim("  nothing to compact yet."));
+      ctx.out(chalk.dim(`  compacted ${r.removed} message(s) → ${ctx.conversation.length} kept · ${fmtK(r.before)} → ${fmtK(r.after)} tok${r.freed ? ` (freed ~${fmtK(r.freed)})` : ""} · persisted (survives /resume)`));
     },
   },
   {
@@ -500,7 +493,7 @@ export const COMMANDS: CommandDef[] = [
       const fm = ctx.handle.frontmatter as Record<string, unknown>;
       const p = ctx.handle.personaPath;
       const sysPrompt = `You are ${ctx.name}. Stay in character.` + (readGoalText(ctx.handle) ?? "");
-      const awareness = buildAwarenessBlock(p, { frontmatter: fm, posture: POSTURES[ctx.postureIndex], cwd: process.cwd() });
+      const awareness = buildAwarenessBlock(p, { frontmatter: fm, cwd: process.cwd() });
       const semantic = readSemanticMemory(p) ?? "";
       const knobs = readMemoryKnobs(fm);
       const episodic = readMemory(p).slice(-knobs.maxItems);
@@ -532,6 +525,29 @@ export const COMMANDS: CommandDef[] = [
       }
       if (limit) lines.push(`  ${chalk.dim("⛶")} ${"Free space".padEnd(17)} ${fmtK(free).padStart(7)}  ${pctOf(free).padStart(6)}`);
       if (limit && m.pct >= 0.8) lines.push(chalk.yellow("  ⚠ near the limit, /compact summarizes older turns to free room"));
+
+      // E18: what the prompt cache did this session. Three states, and they are not
+      // the same: the provider said nothing, it served part of the prompt, or it
+      // served none of it. The last one is the interesting one, because a stable
+      // prefix that never gets read back is a prefix being rebuilt every turn.
+      const cache = m.cacheReport();
+      if (!cache.reported) {
+        lines.push(chalk.dim(`  ⛁ Prompt cache      ${"n/a".padStart(7)}  not reported by this provider`));
+      } else {
+        const pct = `${Math.round((cache.hitRate ?? 0) * 100)}%`;
+        const detail = `${fmtK(cache.readTokens)} of ${fmtK(cache.promptTokens)} prompt tokens served from cache · ${fmtK(cache.writeTokens)} written`;
+        lines.push(
+          cache.readTokens === 0 && cache.calls > 1
+            ? chalk.yellow(`  ⚠ Prompt cache      ${pct.padStart(7)}  ${detail}; the prefix is being rebuilt every turn`)
+            : `  ${chalk.cyan("⛁")} ${"Prompt cache".padEnd(17)} ${pct.padStart(7)}  ${chalk.dim(detail)}`,
+        );
+      }
+      const compacted = m.compactionReport();
+      if (compacted.count > 0) {
+        lines.push(
+          `  ${chalk.cyan("⛁")} ${"Compactions".padEnd(17)} ${String(compacted.count).padStart(7)}  ${chalk.dim(`${fmtK(compacted.tokensFreed)} tokens freed this session`)}`,
+        );
+      }
       if (arg?.trim() === "all") {
         lines.push("", chalk.bold("  Memory files"));
         lines.push(`  ${chalk.dim("├")} memory.md: ${fmtK(est(semantic))}`);
@@ -639,7 +655,7 @@ const HELP_GROUPS: Array<{ title: string; names: string[] }> = [
 ];
 
 /**
- * Where an absorbed verb now lives, as something EXECUTABLE (V8.A1).
+ * Where an absorbed verb now lives.
  *
  * This used to be a map of prose, and prose cannot be enforced: `/state` and `/cost` really
  * did delegate, while `/lint`, `/validate`, `/overseer` and `/init` kept a SECOND
@@ -647,70 +663,48 @@ const HELP_GROUPS: Array<{ title: string; names: string[] }> = [
  * remedies added to `doctor` and to the `lint` subcommand never reached the `/lint` slash
  * command, so the same query answered differently depending on where you typed it.
  *
- * Now the destination is data the code executes, and the alias body is GENERATED from it.
+ * V8.A1 answered that by generating each alias body from an executable destination. V8.A went
+ * further and retired the aliases: the capability MOVED, and `runCommand` below says where
+ * without running anything. That left this map declaring `view`, `command` and `keepsBody`
+ * for a generator nobody called, and on 2026-09-23 the only readers left were a dead function
+ * and a test asserting the map instead of the behaviour, while `/help moved` and the README
+ * both promised these verbs still ran. A destination that nothing executes is prose again, so
+ * only the prose stays, under the name it deserves. `EXTERNAL_DOOR` below carries the door
+ * outside the REPL, which is what a verb that took an argument needs.
  */
 export interface AbsorbedTarget {
   /** Human phrasing for `/help moved` and the palette. */
   where: string;
-  /** The view it opens in the TUI. Pure navigation verbs have one. */
-  view?: { name: string; tab?: string };
-  /** The REPL command that owns the capability now; used without a TTY, and as the fallback. */
-  command?: string;
-  /**
-   * Kept its own body ON PURPOSE: it takes an argument and DOES something (`/goal <text>`,
-   * `/loop <n>`, `/improve <mode>`), so a navigation alias would silently drop the action.
-   * These still share ONE implementation with their new home (V8.A4); what they must never
-   * do is re-render the same information a second way.
-   */
-  keepsBody?: true;
 }
 
 export const ABSORBED: Record<string, AbsorbedTarget> = {
-  // ── pure navigation: the body is generated, there is nothing to duplicate ──
-  cost: { where: "/status → Usage", view: { name: "settings", tab: "Usage" }, command: "status" },
-  usage: { where: "/status → Usage", view: { name: "settings", tab: "Usage" }, command: "status" },
-  state: { where: "/status (live envelopes + self-edits)", view: { name: "settings", tab: "Status" }, command: "status" },
-  config: { where: "/status → Config", view: { name: "settings", tab: "Config" }, command: "status" },
-  dash: { where: "/drift", view: { name: "drift-planes" }, command: "drift" },
-  replay: { where: "/audit → Integrity", view: { name: "audit", tab: "Integrity" }, command: "audit" },
-  review: { where: "/persona → Evolution", view: { name: "persona", tab: "Evolution" }, command: "persona" },
-  validate: { where: "/doctor → Spec", view: { name: "doctor" }, command: "doctor" },
-  lint: { where: "/doctor → Lint", view: { name: "doctor" }, command: "doctor" },
-  sessions: { where: "/resume", view: { name: "resume" }, command: "resume" },
-  serve: { where: "/status → Daemons", view: { name: "settings", tab: "Status" }, command: "status" },
-  watch: { where: "/status → Daemons", view: { name: "settings", tab: "Status" }, command: "status" },
-  hooks: { where: "/status → Daemons", view: { name: "settings", tab: "Status" }, command: "status" },
-  tasks: { where: "/bg (and /status → Tasks)", command: "bg" },
-  overseer: { where: "/menu → All my projects", view: { name: "menu" }, command: "menu" },
-  proof: { where: "/doctor → Proof", view: { name: "doctor" }, command: "doctor" },
+  // ── pure navigation: the destination renders it, there is nothing to duplicate ──
+  cost: { where: "/status → Usage" },
+  usage: { where: "/status → Usage" },
+  state: { where: "/status (live envelopes + self-edits)" },
+  config: { where: "/status → Config" },
+  dash: { where: "/drift" },
+  replay: { where: "/audit → Integrity" },
+  review: { where: "/persona → Evolution" },
+  validate: { where: "/doctor → Spec" },
+  lint: { where: "/doctor → Lint" },
+  sessions: { where: "/resume" },
+  serve: { where: "/status → Daemons" },
+  watch: { where: "/status → Daemons" },
+  hooks: { where: "/status → Daemons" },
+  tasks: { where: "/bg (and /status → Tasks)" },
+  overseer: { where: "/menu → All my projects" },
+  proof: { where: "/doctor → Proof" },
 
-  // ── verbs that ACT on an argument: they keep their body, by design ──
-  rewind: { where: "/audit → Timeline", keepsBody: true },
-  arbitrate: { where: "/persona → Values", keepsBody: true },
-  goal: { where: "/persona → Evolution", keepsBody: true },
-  loop: { where: "/persona → Evolution", keepsBody: true },
-  improve: { where: "/persona → Evolution", keepsBody: true },
-  init: { where: "/create", keepsBody: true },
-  mode: { where: "/sandbox", keepsBody: true },
+  // ── verbs that ACT on an argument: their destination has to offer that action ──
+  rewind: { where: "/audit → Timeline" },
+  arbitrate: { where: "/persona → Values" },
+  goal: { where: "/persona → Evolution" },
+  loop: { where: "/persona → Evolution" },
+  improve: { where: "/persona → Evolution" },
+  init: { where: "/create" },
+  mode: { where: "/sandbox" },
 };
-
-/**
- * The generated body of a navigation alias: open the view when there is a TTY, otherwise run
- * the command that owns the capability. One code path, so `/lint` and `/doctor` can never
- * again answer the same question two different ways.
- */
-function absorbedRun(name: string): CommandDef["run"] {
-  return async (arg, ctx) => {
-    // Read on CALL, not on construction: the command table is built above ABSORBED,
-    // so reading it here would hit the temporal dead zone at import time.
-    const t = ABSORBED[name];
-    if (t.view && ctx.openView && !arg.trim()) {
-      return void ctx.openView(t.view.name, t.view.tab ? { tab: t.view.tab } : {});
-    }
-    if (t.command) return void (await runCommand(`/${t.command} ${arg}`.trim(), ctx));
-    ctx.out(chalk.dim(`  /${name} now lives in ${t.where}`));
-  };
-}
 
 /**
  * Aliases kept for muscle memory but never ADVERTISED, in `/help` or in the `/`
@@ -728,7 +722,7 @@ function helpText(query = ""): string {
       .map(([name, t]) => `  ${chalk.cyan(`/${name}`).padEnd(22)} ${chalk.dim(`→ ${t.where}`)}`);
     return [
       chalk.bold("Commands that became tabs or actions"),
-      chalk.dim("  they still run if you type them; this is where the capability lives now"),
+      chalk.dim("  typing one of these says where its capability lives now; it does not run it"),
       "",
       ...rows,
     ].join("\n");

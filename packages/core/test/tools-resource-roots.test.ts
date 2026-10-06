@@ -17,6 +17,7 @@ import { join, resolve, sep } from "node:path";
 import { DEFAULT_POLICY, personaResourceRoots, type Policy } from "../src/sandbox.js";
 import { readFileSafe, listDirSafe, executeFileWrite } from "../src/tools/exec.js";
 import { toolByName } from "../src/tools/registry.js";
+import { localExecution } from "../src/ports/execution.js";
 
 let work: string;
 let personaDir: string;
@@ -83,20 +84,20 @@ describe("read-side resourceRoots fallback", () => {
 
 describe("missing file is an answer, not a failure", () => {
   it("read_file returns a note (not error:) for a nonexistent path", async () => {
-    const out = await toolByName("read_file")!.execute({ path: "./nope.md" }, policyWith([]));
+    const out = await toolByName("read_file")!.execute({ path: "./nope.md" }, policyWith([]), localExecution());
     expect(out).toMatch(/^note: /);
     expect(out).toContain("does not exist");
   });
 
   it("list_dir returns a note (not error:) for a nonexistent dir", async () => {
-    const out = await toolByName("list_dir")!.execute({ path: "./nope" }, policyWith([]));
+    const out = await toolByName("list_dir")!.execute({ path: "./nope" }, policyWith([]), localExecution());
     expect(out).toMatch(/^note: /);
   });
 
   it("a genuine read failure still reports error:", async () => {
     // Reading a DIRECTORY as a file is a real I/O error (EISDIR), not a missing file.
     mkdirSync(join(work, "adir"), { recursive: true });
-    const out = await toolByName("read_file")!.execute({ path: "./adir" }, policyWith([]));
+    const out = await toolByName("read_file")!.execute({ path: "./adir" }, policyWith([]), localExecution());
     expect(out.startsWith("error:")).toBe(true);
   });
 });

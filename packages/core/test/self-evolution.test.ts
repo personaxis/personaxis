@@ -149,9 +149,24 @@ describe("multi-agent consensus before apply", () => {
       targetPath: "personality.traits.openness",
       toValue: { mean: 0.5, range: [0.4, 0.6] },
       rationale: "good reason here",
+      // E23: the value being replaced. Present-and-undefined says the caller looked and
+      // found nothing, so this creates an envelope rather than widening one. Omitting
+      // the key entirely is now refused, because an envelope edit whose predecessor was
+      // never read cannot be judged, and not judging is refusing.
+      fromValue: undefined,
     });
     expect(r.passed).toBe(true);
     expect(r.passes).toBe(r.quorum);
+  });
+
+  it("refuses an envelope edit that never looked at what it replaces (E23)", () => {
+    const r = consensusVerify({
+      targetPath: "personality.traits.openness",
+      toValue: { mean: 0.5, range: [0.4, 0.6] },
+      rationale: "good reason here",
+    });
+    expect(r.passed).toBe(false);
+    expect(r.results.find((x) => x.verifier === "envelope-step")?.reason).toMatch(/without the value it replaces/);
   });
 
   it("blocks an insane envelope edit (min >= max) and records a rejection", () => {

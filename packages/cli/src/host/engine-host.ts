@@ -11,19 +11,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  LivingLoop,
-  HeuristicAppraiser,
-  LlmAppraiser,
-  resolveModel,
-  loadPersona,
-  ensureState,
+import { ensureState,
+  run,
   readState,
-  writeState,
-  withStateLock,
   extractEnvelopes,
   resolveField,
-  applyMutation,
+  record,
+  machineId,
   readMemory,
   verifyMemoryChain,
   detectMemoryAnomalies,
@@ -53,8 +47,9 @@ export class EngineHost {
   readonly approvals = new ApprovalBroker();
 
   constructor(private readonly personaPath: string) {
-    this.handle = loadPersona(personaPath);
-    ensureState(this.handle);
+    // The same one read every other consumer does. It also leaves the state file
+    // behind, which every one of them remembered to do separately until now.
+    this.handle = run.assemble(personaPath).handle;
     this.pipePath = pipePathFor(this.handle.personaPath);
     this.server = new ProtocolServer((op) => this.dispatch(op));
   }
@@ -105,7 +100,7 @@ export class EngineHost {
   }
 
   private snapshot(): void {
-    const st = readState(this.handle.statePath);
+    const st = ensureState(this.handle);
     this.broadcast({
       event: "state.snapshot",
       values: st.values,
@@ -128,26 +123,32 @@ export class EngineHost {
         if (!(field in env.envelopes)) {
           return { ok: false, error: `no envelope declared for '${op.field}'` };
         }
-        const result = withStateLock(this.handle.statePath, () => {
-          const st = readState(this.handle.statePath);
-          const r = applyMutation(st, env.envelopes, {
-            field,
-            delta: op.delta,
-            reason: op.reason,
-            actor: "actor-llm",
-          });
-          writeState(this.handle.statePath, st);
-          return r;
-        });
+        // Through the record, the same path the SDK and the MCP server take. It
+        // locks across the read, the write and the print itself, which is why there
+        // is no `withStateLock` around it.
+        const result = (
+          await record.adjust(
+            this.handle.personaPath,
+            this.handle.statePath,
+            env.envelopes,
+            record.authorOf("actor-llm"),
+            {
+              field,
+              delta: op.delta,
+              reason: op.reason,
+              provenance: { node: machineId(), session: this.sessionId },
+            },
+          )
+        ).decision;
         this.snapshot();
         return { ok: !result.blocked, data: result };
       }
       case "state_get": {
-        const st = readState(this.handle.statePath);
+        const st = ensureState(this.handle);
         return { ok: true, data: { values: st.values, recent_mutations: st.mutation_log.slice(-5) } };
       }
       case "audit_get": {
-        const st = readState(this.handle.statePath);
+        const st = ensureState(this.handle);
         const mem = readMemory(this.handle.personaPath);
         return {
           ok: true,
@@ -161,7 +162,7 @@ export class EngineHost {
       }
       case "improve": {
         const r = runMode(this.handle.personaPath, op.mode);
-        this.handle = loadPersona(this.personaPath); // posture is identity-level: reload
+        this.handle = run.assemble(this.personaPath).handle; // posture is identity-level: reload
         return { ok: true, data: r };
       }
       case "interrupt":
@@ -184,16 +185,23 @@ export class EngineHost {
     this.interrupted = false;
     const turnId = randomUUID();
     this.broadcast({ event: "turn.started", turnId });
-    const m = resolveModel({
-      personaPath: this.handle.personaPath,
-      frontmatter: this.handle.frontmatter as Record<string, unknown>,
-    });
-    const loop = new LivingLoop(this.handle.personaPath, {
-      appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser(),
-    });
-    loop.bus.on((e: LoopEvent) => this.broadcast({ event: "engine.event", payload: e }));
+    const evolver = run.evolverFor(
+      {
+        personaPath: this.handle.personaPath,
+        frontmatter: this.handle.frontmatter as Record<string, unknown>,
+      },
+      {
+        // No inline recompile, and it is now written rather than absent. The host
+        // answers ops for whoever is on the other end of the socket, and a rewrite of
+        // the compiled document is a model call nobody on that socket asked for. The
+        // pending marker still says the document is stale, so a client that wants the
+        // rewrite asks for it.
+        recompile: null,
+        onEvent: (e: LoopEvent) => this.broadcast({ event: "engine.event", payload: e }),
+      },
+    );
     try {
-      const report = await loop.tick({ observation, source });
+      const report = await evolver.observe({ observation, source });
       this.snapshot();
       this.broadcast({ event: "turn.completed", turnId });
       return { ok: true, data: report };

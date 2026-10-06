@@ -143,17 +143,21 @@ export const ITEM_BANK: InterviewItem[] = [
     ],
   },
 
-  // ── Governance (V5.P2.5: who approves change → improvement_policy.mode) ────
+  // ── Governance (E128: the starting profile; replaced the mode question on 2026-09-24) ──
+  //
+  // It used to ask for improvement_policy.mode, and its first answer made the persona `locked`, which is
+  // the kill-switch: a persona that never evolves. Every persona is alive, and what the
+  // owner chooses are the three controls, so this asks for their starting values.
   {
-    id: "g-improve", depth: "deep",
+    id: "g-profile", depth: "deep",
     kind: "choice",
-    construct: "improvement_policy.mode",
-    rule: "choice-to-mode",
-    question: "Who approves changes to this persona over time?",
+    construct: "governance.per_layer_edit_policy",
+    rule: "choice-to-profile",
+    question: "How much room should this persona have to change as it works?",
     options: [
-      "Nobody: it stays exactly as authored (locked)",
-      "Me: it proposes edits, I review them (suggesting)",
-      "Itself, within governance: non-protected edits auto-apply (autonomous)",
+      "Regulated: half the room to move, back to baseline twice as fast, a person approves every lasting change",
+      "Standard: moderate room to move, a person approves every lasting change",
+      "Research: more room, a slower return, and it applies lasting changes to how it works by itself",
     ],
   },
 

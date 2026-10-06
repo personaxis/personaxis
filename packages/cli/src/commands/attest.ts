@@ -114,7 +114,7 @@ export function toA2aExtension(att: PersonaAttestation, label: string): Record<s
       mutations: att.behavior.mutations,
       attestedAt: att.attested_at,
       expiresAt: att.expires_at,
-      verification: "personaxis attest --check (local) or the hosted verification endpoint",
+      verification: "personaxis attest --check (local)",
     },
   };
 }
@@ -171,7 +171,7 @@ function snapshotBehavior(personaPath: string): BehaviorSnapshot {
 
 export const attestCommand = new Command("attest")
   .description(
-    "Mint (or --check) the local behavioral credential: spec signature + drift within thresholds + tamper-evident chain, with expiry. The hosted attestation service extends this seam.",
+    "Mint (or --check) the local behavioral credential: spec signature + drift within thresholds + tamper-evident chain, with expiry.",
   )
   .option("--persona <path>", "path to personaxis.md (default: resolve from cwd)")
   .option("--ttl <hours>", "credential lifetime in hours", "24")

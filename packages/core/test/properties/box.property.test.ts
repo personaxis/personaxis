@@ -7,12 +7,40 @@
  *    (the clamp is nonexpansive along the step); with the gate's cap this yields
  *    ‖S_{t+1} − S_t‖_∞ ≤ δ_max.
  *
- * These run against the REAL mutation primitive (applyMutation), not a model of it.
+ * These run against the REAL mutation primitive, not a model of it. That primitive is
+ * `decide` now: the arithmetic a recorded move actually performs. They used to drive
+ * `applyMutation`, which decided the same thing and then wrote it into `state.json`,
+ * and a property suite proving things about a path the product no longer takes reads
+ * as coverage without being it.
+ *
+ * Nothing about the properties themselves changed, and that is the useful part: T1 and
+ * T2 are statements about the clamp, the clamp did not move, only the thing that wrote
+ * the result down did.
  */
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { applyMutation, governMutations, type EnvelopeLookup } from "../../src/index.js";
-import { NUM_RUNS, envelopesArb, planArb, deltaArb, envelopeArb, freshState, PROP_TIMEOUT } from "./arbitraries.js";
+import { governMutations, record, type Envelope, type EnvelopeLookup } from "../../src/index.js";
+import { NUM_RUNS, envelopesArb, planArb, deltaArb, envelopeArb, PROP_TIMEOUT } from "./arbitraries.js";
+
+/** One move, applied to a plain set of values the way a recorded one is applied. */
+function move(
+  values: Record<string, number>,
+  envelopes: Record<string, Envelope>,
+  field: string,
+  delta: number,
+  reason: string,
+  blocked = false,
+): record.Decision {
+  const envelope = envelopes[field]!;
+  const decision = record.decide(values[field] ?? envelope.mean, envelope, {
+    field,
+    delta,
+    reason,
+    ...(blocked ? { blocked: true } : {}),
+  });
+  values[field] = decision.to;
+  return decision;
+}
 
 describe("PB-T1 invariance: the box is inescapable", () => {
   it("every value stays in [min,max] under arbitrary mutation sequences", () => {
@@ -23,18 +51,18 @@ describe("PB-T1 invariance: the box is inescapable", () => {
         ),
         ([envs, plan]) => {
           const fields = Object.keys(envs);
-          const state = freshState();
+          const values: Record<string, number> = {};
           for (const [idx, delta] of plan) {
             const field = fields[idx];
-            const r = applyMutation(state, envs, { field, delta, reason: "pb-t1" });
+            const r = move(values, envs, field, delta, "pb-t1");
             const e = envs[field];
-            // The just-written value AND the audit record are in-box.
+            // The just-written value AND the decision are in-box.
             expect(r.to).toBeGreaterThanOrEqual(e.min);
             expect(r.to).toBeLessThanOrEqual(e.max);
-            expect(state.values[field]).toBe(r.to);
+            expect(values[field]).toBe(r.to);
           }
           // Post-condition over the whole state: S ∈ B, exactly (no epsilon, min/max are FP-exact).
-          for (const [field, v] of Object.entries(state.values)) {
+          for (const [field, v] of Object.entries(values)) {
             expect(v).toBeGreaterThanOrEqual(envs[field].min);
             expect(v).toBeLessThanOrEqual(envs[field].max);
           }
@@ -48,9 +76,8 @@ describe("PB-T1 invariance: the box is inescapable", () => {
     fc.assert(
       fc.property(envelopeArb, deltaArb, deltaArb, (e, tamper, delta) => {
         const envs = { "personality.traits.x": e };
-        const state = freshState();
-        state.values["personality.traits.x"] = e.max + Math.abs(tamper) + 1; // outside
-        const r = applyMutation(state, envs, { field: "personality.traits.x", delta, reason: "pb-t1-recovery" });
+        const values = { "personality.traits.x": e.max + Math.abs(tamper) + 1 }; // outside
+        const r = move(values, envs, "personality.traits.x", delta, "pb-t1-recovery");
         expect(r.to).toBeGreaterThanOrEqual(e.min);
         expect(r.to).toBeLessThanOrEqual(e.max);
       }),
@@ -62,16 +89,12 @@ describe("PB-T1 invariance: the box is inescapable", () => {
     fc.assert(
       fc.property(envelopeArb, deltaArb, (e, delta) => {
         const envs = { "personality.traits.x": e };
-        const state = freshState();
-        const r = applyMutation(state, envs, {
-          field: "personality.traits.x",
-          delta,
-          reason: "pb-t1-blocked",
-          governanceBlocked: true,
-        });
+        const values: Record<string, number> = {};
+        const r = move(values, envs, "personality.traits.x", delta, "pb-t1-blocked", true);
         expect(r.to).toBe(r.from);
         expect(r.blocked).toBe(true);
-        expect(state.mutation_log.at(-1)?.governance_blocked).toBe(true);
+        // And it did not move, which is what a refusal recorded as a refusal means.
+        expect(values["personality.traits.x"]).toBe(r.from);
       }),
       { numRuns: NUM_RUNS },
     );
@@ -83,10 +106,9 @@ describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
     fc.assert(
       fc.property(envelopeArb, deltaArb, fc.double({ min: 0, max: 1, noNaN: true }), (e, delta, frac) => {
         const envs = { "personality.traits.x": e };
-        const state = freshState();
         // Seed strictly inside the box (convex combination of the bounds).
-        state.values["personality.traits.x"] = e.min + (e.max - e.min) * frac;
-        const r = applyMutation(state, envs, { field: "personality.traits.x", delta, reason: "pb-t2" });
+        const values = { "personality.traits.x": e.min + (e.max - e.min) * frac };
+        const r = move(values, envs, "personality.traits.x", delta, "pb-t2");
         // FP: |to−from| can exceed |delta| only by rounding of (from+delta); allow 1e-9 (engine tolerance).
         expect(Math.abs(r.to - r.from)).toBeLessThanOrEqual(Math.abs(delta) + 1e-9);
       }),
@@ -98,8 +120,8 @@ describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
     fc.assert(
       fc.property(envelopeArb, deltaArb, (e, delta) => {
         const envs = { "personality.traits.x": e };
-        const state = freshState();
-        const r = applyMutation(state, envs, { field: "personality.traits.x", delta, reason: "pb-t2-flag" });
+        const values: Record<string, number> = {};
+        const r = move(values, envs, "personality.traits.x", delta, "pb-t2-flag");
         const requested = r.from + delta;
         const exceeded = requested < e.min || requested > e.max;
         expect(r.clamped).toBe(exceeded && r.to !== requested);
@@ -134,10 +156,9 @@ describe("PB-T2 bounded step: the clamp is nonexpansive", () => {
             expect(Math.abs(a.delta)).toBeLessThanOrEqual(maxStep + 1e-12);
           }
           // Applying the composed admission moves the state by at most δ_max (T2).
-          const state = freshState();
-          state.values["personality.traits.x"] = e.mean;
+          const values = { "personality.traits.x": e.mean };
           for (const a of decision.admitted) {
-            const r = applyMutation(state, lookup.envelopes, { ...a });
+            const r = move(values, lookup.envelopes, a.field, a.delta, a.reason);
             expect(Math.abs(r.to - r.from)).toBeLessThanOrEqual(maxStep + 1e-9);
           }
         },

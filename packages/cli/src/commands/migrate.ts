@@ -371,7 +371,7 @@ function moveSpecIntoPersonaxis(legacyPath: string, personaxisDir: string, repor
 const sixToSeven = new Command("0.6-to-0.7")
   .description("Restructure a legacy root PERSONA.md (spec v0.6.0, 10-layer frontmatter) into .personaxis/personaxis.md and compile the new PERSONA.md.")
   .option("--apply", "Write changes (default: dry-run; prints report only)")
-  .option("--provider <name>", "Provider to use for the initial compile (local | byok | agent | remote)")
+  .option("--provider <name>", "Provider to use for the initial compile (local | byok | agent)")
   .action(async (options: { apply?: boolean; provider?: string }) => {
     try {
       const apply = options.apply ?? false;

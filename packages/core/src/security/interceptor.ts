@@ -13,14 +13,60 @@
 
 import { EventBus } from "../events.js";
 import { ingestUntrusted } from "./ingest.js";
+import { fromOutside, type Tainted } from "./taint.js";
+import { CredentialBroker } from "./broker.js";
+
+/**
+ * Fills every reference in a call's arguments, on a copy.
+ *
+ * On a copy because the original arguments are what the gate froze and what the record
+ * holds: rewriting them in place would make the record say the call carried a
+ * credential, which is both untrue and the exact thing this is for.
+ *
+ * Only string values are walked. A credential arriving as a number or a boolean is not
+ * a case that exists, and pretending to handle it would be code nobody can test.
+ */
+function fillArgs(
+  broker: CredentialBroker,
+  args: Record<string, unknown>,
+): { args: Record<string, unknown>; missing: string[] } {
+  const filled: Record<string, unknown> = {};
+  const missing: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value !== "string") {
+      filled[key] = value;
+      continue;
+    }
+    const result = broker.fill(value);
+    filled[key] = result.text;
+    missing.push(...result.missing);
+  }
+  return { args: filled, missing: [...new Set(missing)] };
+}
 import { runHooks, type HooksConfig } from "../hooks.js";
 import type { ToolSpec } from "../tools/registry.js";
 import type { ToolCall } from "../tool-calling.js";
 import type { Policy } from "../sandbox.js";
+import { localExecution, type ExecutionPort } from "../ports/execution.js";
 import { ForensicLog, type ForensicRecord } from "./forensic-log.js";
 
 export interface InterceptOutcome {
-  output: string;
+  /**
+   * What the tool returned, marked as having come from outside (E13).
+   *
+   * Tainted rather than a plain string, and that IS the defence. It used to be a
+   * string beside an `outputVerdict`, with the loop writing
+   * `contextTaint = maxTaint(contextTaint, r.outputVerdict)` next to it: correct, and
+   * correct in the way that lasts until somebody adds a second place that runs a tool
+   * and copies the four lines that matter and not the fifth. Nothing fails then. The
+   * taint simply stops accumulating, the consent matrix stops tightening, and a
+   * destructive call during a malicious-tainted turn is allowed by a check that ran
+   * and had nothing to check.
+   *
+   * `accept` is the only way to read it, and it returns the combined taint in the same
+   * object, so forgetting is a type error rather than an oversight.
+   */
+  output: Tainted<string>;
   ok: boolean;
   outputVerdict: "clean" | "suspicious" | "malicious";
   record: Readonly<ForensicRecord>;
@@ -32,6 +78,23 @@ export class ToolInterceptor {
     private readonly forensic: ForensicLog,
     private readonly bus: EventBus = new EventBus(),
     private readonly hooks: HooksConfig | null = null,
+    /**
+     * F2: WHERE an allowed action happens. Defaults to this machine, which is what every
+     * existing caller means; a hosted job passes the sandbox's port instead and nothing
+     * else about this class changes. The default lives here, in ONE place, rather than in
+     * each tool: a per-tool fallback is how one tool ends up running locally during a
+     * hosted job, and it would work perfectly, on the wrong machine.
+     */
+    private readonly execution: ExecutionPort = localExecution(),
+    /**
+     * E14: holds the credentials the agent may USE and may never see.
+     *
+     * Optional, and absent is the ordinary case: a persona with no credentials
+     * configured has nothing to exchange. When present, references in the arguments
+     * become values one line before execution and every value is scrubbed out of the
+     * result, so nothing downstream, including the record, ever holds one.
+     */
+    private readonly broker?: CredentialBroker,
   ) {}
 
   /**
@@ -50,8 +113,43 @@ export class ToolInterceptor {
   async run(tool: ToolSpec, call: ToolCall): Promise<InterceptOutcome> {
     let output: string;
     let ok = true;
+    // E14: references become values HERE, one line before the bytes leave, and never
+    // sooner. Anything that substituted earlier would have produced a string holding a
+    // credential, and that string gets logged by somebody eventually.
+    //
+    // The arguments the gate judged and the record kept are the ones with the
+    // reference still in them, which is the property that makes this safe to audit: a
+    // record entry can be read by anyone without leaking anything.
+    const filled = this.broker ? fillArgs(this.broker, call.args) : { args: call.args, missing: [] };
+    if (filled.missing.length > 0) {
+      // Named and refused rather than sent. Leaving the literal `{{secret:x}}` in place
+      // sends a request some servers log verbatim, and substituting an empty string
+      // sends one that reads as an authentication bug for as long as it takes somebody
+      // to find this line.
+      const record = this.forensic.append({
+        kind: "tool-call",
+        tool: tool.name,
+        decision: "deny",
+        executed: false,
+        reason: `no credential for ${filled.missing.join(", ")}`,
+      });
+      return {
+        output: fromOutside(
+          `error: this machine holds no credential named ${filled.missing.join(", ")}`,
+          "clean",
+          `tool:${tool.name}`,
+        ),
+        ok: false,
+        outputVerdict: "clean",
+        record,
+      };
+    }
     try {
-      output = await tool.execute(call.args, this.policy);
+      output = await tool.execute(filled.args, this.policy, this.execution);
+      // And back through the broker on the way out. Skipping this undoes the rest: an
+      // agent that can send a header can send something that echoes it back, and the
+      // secret arrives in output it was never meant to hold.
+      if (this.broker) output = this.broker.scrub(output);
     } catch (e) {
       output = `execution error: ${(e as Error).message}`;
       ok = false;
@@ -81,6 +179,14 @@ export class ToolInterceptor {
       ok,
       outputVerdict: ingested.verdict,
     });
-    return { output, ok, outputVerdict: ingested.verdict, record };
+    return {
+      // Marked at the boundary, and the boundary is here: this is the moment somebody
+      // else's text enters this process. Everything downstream inherits the obligation
+      // from the type rather than from a convention.
+      output: fromOutside(output, ingested.verdict, `tool:${tool.name}`),
+      ok,
+      outputVerdict: ingested.verdict,
+      record,
+    };
   }
 }

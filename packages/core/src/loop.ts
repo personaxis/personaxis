@@ -12,7 +12,7 @@
 import { extractEnvelopes } from "./envelopes.js";
 import { bandCrossing, bandOf, expressionFor } from "./math/bands.js";
 import { driftReport, readDriftThresholds } from "./math/drift.js";
-import { applyHomeostasis, decayingFields } from "./math/homeostasis.js";
+import { decayingFields, homeostaticMoves } from "./math/homeostasis.js";
 import {
   governMutations,
   readMode,
@@ -20,13 +20,13 @@ import {
   type GovernanceConfig,
   DEFAULT_GOVERNANCE,
 } from "./governance.js";
-import { applyMutation } from "./state-engine.js";
+import * as record from "./record/index.js";
 import { mirrorMutationToLog } from "./multi-device.js";
 import {
   prepareMemoryEntry,
   readMemoryTypes,
 } from "./memory.js";
-import { appendAutobiographical, getPreference, recordEvaluation, scoreMemoryEntry, setPreference } from "./memory-kinds.js";
+import { appendAutobiographical, getPreference, recordEvaluation, scoreMemoryEntry, setPreference, type EvaluationEntry } from "./memory-kinds.js";
 import { readConsolidationMode, readWritePolicy } from "./memory/knobs.js";
 import { isFactKey } from "./memory/facts.js";
 import { detectMemoryAnomalies } from "./provenance.js";
@@ -59,6 +59,18 @@ export interface TickInput {
   /** V2-F1: the conversation session this observation belongs to. Under
    * write_policy "session", memories are tagged to it (recall-scoped). */
   sessionId?: string;
+  /**
+   * E117: this observation is the runtime's own record of a turn (how it ended, what its checks
+   * found), not anybody's words. It moves the layers and may leave an episodic memory; it never
+   * writes a preference, because a report that "1 of 3 checks failed" is nobody's preference.
+   *
+   * A flag and not a source, because the source is already right (`internal`, trust 2, which
+   * keeps self-edits out) and closing preferences to every `internal` observation would also
+   * close them to a service step's brief, where a client's stated preference is real data.
+   * Found on 2026-09-23 with a real model: the first measured turn wrote two preferences out of
+   * its own experience report, and the commit that added the report had said it could not.
+   */
+  experience?: boolean;
 }
 
 export interface TickReport {
@@ -192,50 +204,74 @@ export class LivingLoop {
         // another tick): re-read fresh state under the lock, the proposed deltas
         // are relative, so applying them to fresh values is correct, and never
         // hold the lock across a model call (the appraisal already happened).
-        this.storage.lock.withLock(this.handle.statePath, () => {
-          const fresh: StateFile = this.storage.state.read(this.handle.statePath);
-          // Homeostatic step FIRST (the dynamics' decay term precedes the tick's
-          // forcing; every decay is an audited runtime-decay mutation).
-          for (const r of applyHomeostasis(fresh, env.envelopes, {
-            sessionId: this.sessionId,
-            originNode: machineId(),
-          })) {
-            bus.emit({ type: "mutate", result: r });
-            if (r.to !== r.from) {
-              mutationsApplied++;
-              recordCrossing(r.entry.field, r.from, r.to);
-            }
+        // Where every entry of this tick was written: this machine, this session.
+        const provenance = { node: machineId(), session: this.sessionId };
+
+        // Through the record, and NOT through the storage seam, which is the choice
+        // this step turned on.
+        //
+        // The seam exists so a hosted engine can keep state in Postgres instead of on
+        // a disk. In practice it has one adapter, the filesystem, and one caller, this
+        // loop: nothing else ever implemented `StateStore`. Adding a second port for
+        // the record would double a guess about a second adapter that has not
+        // appeared, and it would put the record behind an interface that also exposes
+        // `state.write`, preserving the exact duplication this step exists to end.
+        //
+        // What a hosted engine actually needs is not another state store but somewhere
+        // to put entries, and the journal already has that: `RecordSink`. It is the
+        // right level, entries rather than files, and it is a seam that is used.
+        const result = await record.adjustAll(
+          this.handle.personaPath,
+          this.handle.statePath,
+          env.envelopes,
+          // Planned inside the lock: a decay is `lambda * (mean - current)`, and
+          // deciding it beforehand computes the pull from a value another writer may
+          // already have moved.
+          (values) => [
+            // Decay first: the dynamics' decay term precedes the tick's forcing, and
+            // the order is the order the moves are written down.
+            ...homeostaticMoves(values, env.envelopes).map((m) => ({
+              author: record.authorOf("runtime-decay"),
+              request: { ...m, provenance },
+            })),
+            ...admitted.map((m) => ({
+              author: record.authorOf(input.actor ?? "actor-llm"),
+              request: { field: m.field, delta: m.delta, reason: m.reason, provenance },
+            })),
+          ],
+          // The seam, at the level the truth is at now. An engine hosted somewhere
+          // without a disk injects a record store and a state store and never touches
+          // one; the default is the filesystem, so nothing that worked stops.
+          {
+            ...(this.storage.record === undefined ? {} : { record: this.storage.record }),
+            lock: (key) => this.storage.lock.acquire(key),
+            state: {
+              read: (key) => this.storage.state.read(key),
+              write: (key, value) => this.storage.state.write(key, value),
+            },
+          },
+        );
+
+        for (const decision of result.decisions) {
+          bus.emit({ type: "mutate", result: decision });
+          if (decision.to !== decision.from) {
+            mutationsApplied++;
+            recordCrossing(decision.field, decision.from, decision.to);
           }
-          for (const m of admitted) {
-            const result = applyMutation(fresh, env.envelopes, {
-              field: m.field,
-              delta: m.delta,
-              reason: m.reason,
-              actor: input.actor ?? "actor-llm",
-              originNode: machineId(),
-              sessionId: this.sessionId,
-            });
-            bus.emit({ type: "mutate", result });
-            if (result.to !== result.from) {
-              mutationsApplied++;
-              recordCrossing(m.field, result.from, result.to);
-            }
-          }
-          this.storage.state.write(this.handle.statePath, fresh);
-          // V8.C: the same change, appended to THIS device's log. state.json stays the
-          // fast local cache; the log is what merges with another machine's without one
-          // overwriting the other. Written here, at the single point where state is
-          // persisted, so no mutation path can forget to record itself.
-          for (const m of admitted) {
-            mirrorMutationToLog(this.handle.personaPath, {
-              field: m.field,
-              delta: m.delta,
-              actor: input.actor ?? "actor-llm",
-              reason: m.reason,
-            });
-          }
-          postValues = { ...fresh.values };
-        });
+        }
+
+        // V8.C: the same change, appended to THIS device's log. Still written while
+        // state.json is still a document other machines merge; the record carries the
+        // machine on every entry now, so R8 is what removes this third copy.
+        for (const m of admitted) {
+          mirrorMutationToLog(this.handle.personaPath, {
+            field: m.field,
+            delta: m.delta,
+            actor: input.actor ?? "actor-llm",
+            reason: m.reason,
+          });
+        }
+        postValues = { ...result.state.values };
       }
 
       // Drift metric after this tick's mutations: report D, crossings, and any layer
@@ -298,18 +334,34 @@ export class LivingLoop {
       // (memory.types.user_preferences) and never under a malicious injection.
       const memTypesForPrefs = readMemoryTypes(fm);
       const prefs = signal.preferences ?? [];
-      if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
+      if (input.experience === true && prefs.length > 0) {
+        bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `refused: ${prefs.length} from the runtime's own report of a turn` });
+      } else if (!injectionBlocked && memTypesForPrefs.user_preferences && prefs.length > 0) {
         for (const pref of prefs) {
           // A subject-qualified FACT learned for the FIRST time is an autobiographical
           // milestone (any entity, not just a user): "learned interlocutor.name = Mara".
           const firstTime = isFactKey(pref.key) && getPreference(this.handle.personaPath, pref.key) === undefined;
-          setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale);
+          // E16: the owner is the TURN's provenance, not a constant. A preference read
+          // out of a tool result is tool-owned all the way down, and that is what makes
+          // the autobiographical refusal below reachable in production rather than only
+          // from a test: a milestone about who the persona is cannot be authored by
+          // something a tool said.
+          const wrote = setPreference(this.handle.personaPath, pref.key, pref.value, pref.rationale, input.source);
+          if (!wrote.ok) {
+            bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `refused: ${wrote.reason}` });
+            continue;
+          }
           if (firstTime && memTypesForPrefs.autobiographical) {
-            appendAutobiographical(this.handle.personaPath, {
+            const milestone = appendAutobiographical(this.handle.personaPath, {
               event: `learned ${pref.key} = ${pref.value}`,
               tags: ["milestone", "entity-fact"],
+              owner: input.source,
             });
-            bus.emit({ type: "memory-kind", kind: "autobiographical", detail: `milestone: ${pref.key} = ${pref.value}` });
+            bus.emit({
+              type: "memory-kind",
+              kind: "autobiographical",
+              detail: milestone.ok ? `milestone: ${pref.key} = ${pref.value}` : `refused: ${milestone.reason}`,
+            });
           }
         }
         bus.emit({ type: "memory-kind", kind: "user_preferences", detail: `+${prefs.length} pref(s)` });
@@ -342,9 +394,12 @@ export class LivingLoop {
             bus.emit({ type: "error", message: `memory chain broken at #${chain.brokenAt}; refusing write` });
             continue;
           }
-          this.storage.ledger.append(this.handle.personaPath, entry);
-          bus.emit({ type: "memory", entry });
-          written.push(entry);
+          // E33: what LANDED, not what was prepared. The commit re-anchors under a
+          // lock when another process appended first, so the prepared entry's hash can
+          // be stale, and this hash is what the evaluation below names.
+          const stored = this.storage.ledger.append(this.handle.personaPath, entry);
+          bus.emit({ type: "memory", entry: stored });
+          written.push(stored);
           memoriesWritten++;
         }
       } else if (signal.memories.length > 0) {
@@ -375,8 +430,11 @@ export class LivingLoop {
       // was judged, not an opaque "+N eval(s)"; a compact rollup is kept for the one-line summary.
       if (memTypes.evaluations) {
         let evals = 0;
-        const emitScore = (s: { target: string; dimension: string; score: number; rationale: string }): void => {
-          recordEvaluation(this.handle.personaPath, s as Parameters<typeof recordEvaluation>[1]);
+        // E16: typed, not cast. The `as Parameters<typeof recordEvaluation>[1]` this
+        // replaces widened `dimension: string` into the union and would now have
+        // invented the owner too, which is the whole point of making it required.
+        const emitScore = (s: Omit<EvaluationEntry, "ts">): void => {
+          recordEvaluation(this.handle.personaPath, s);
           bus.emit({ type: "evaluation", target: s.target, dimension: s.dimension, score: s.score, rationale: s.rationale });
           evals++;
         };
@@ -388,6 +446,7 @@ export class LivingLoop {
             dimension: "safety",
             score: injectionBlocked ? 0 : 1,
             rationale: injectionBlocked ? "injection blocked this turn" : "no injection signal",
+            owner: "internal",
           });
         }
         if (evals > 0) bus.emit({ type: "memory-kind", kind: "evaluations", detail: `+${evals} eval(s)` });
@@ -399,6 +458,8 @@ export class LivingLoop {
         appendAutobiographical(this.handle.personaPath, {
           event: `band crossing: ${bandCrossings.join(", ")}`,
           tags: ["milestone", "band-crossing"],
+          // Measured by the engine from its own coordinate move; nothing outside contributed.
+          owner: "internal",
         });
         bus.emit({ type: "memory-kind", kind: "autobiographical", detail: `milestone: band crossing (${bandCrossings.join(", ")})` });
       }

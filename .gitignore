@@ -13,8 +13,15 @@ packages/spec/src/generated/
 .codex/
 .agents/
 .cursor/
-.personaxis/*
+# The manifest `npx skills add` writes. It lives at the root beside the folders above and is
+# the same kind of thing: a developer's tooling, not part of the engine that is published.
+skills-lock.json
+# Anchored to the root as `.personaxis/*`, which does not cover a package. A test
+# whose path resolves from the working directory writes into whichever one it ran
+# from, and one did: `packages/cli/.personaxis/mcp-approvals.json` reached a commit.
+**/.personaxis/*
 !.personaxis/personaxis.md
+# Sub-personas stay local: the benchmark's persona lives here but is not a public example.
 .recompile-pending.json
 # F3.2, ephemeral derived compiler output (hot/cold consumer slices)
 **/.dist/
@@ -33,3 +40,15 @@ docs/security/
 /SOUL.md
 /.hermes/
 /time.md
+
+# Coverage reports (the floor lives in vitest.floor.ts, the output does not)
+coverage/
+
+# Session presence files. The engine writes these BESIDE a persona, so anything that
+# runs the server against a path inside the repo leaves them here. They are runtime
+# state of one process, never source.
+presence/
+
+# Python bytecode (the Hermes plugin is tested with a real interpreter)
+__pycache__/
+*.pyc

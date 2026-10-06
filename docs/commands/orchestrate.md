@@ -1,6 +1,6 @@
 # `personaxis orchestrate`
 
-Route a task to the **best-matched registered persona**, ranked by capability. Reads the personas you
+Route a task to the best-matched registered persona, ranked by capability. Reads the personas you
 registered with the [overseer](./overseer.md) (so populate that first).
 
 ```bash
@@ -17,3 +17,8 @@ personaxis orchestrate "review the auth code" --team eng         # restrict rout
 
 With no registered personas it tells you to run `personaxis overseer register <slug>` first. See
 [overseer.md](./overseer.md) for the registry model and [team.md](./team.md) for teams.
+
+## While it runs
+
+With `--run`, `personaxis ps` shows the assignee as held by a task. See
+[presence](../architecture/presence.md).

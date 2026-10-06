@@ -1,0 +1,103 @@
+/**
+ * The record.
+ *
+ * Everything the persona is at any moment is a fold over these entries. A fact that
+ * is not here did not happen, and a fact that is here cannot be unhappened, because
+ * each entry commits to the one before it.
+ *
+ * It is the source now. The engine that held a second copy in `state.json` is gone,
+ * and the file is printed from these entries by `project.ts`. `bridge.ts` is what got
+ * a persona written before this existed into the record, and it still runs on the
+ * first write to one, because a persona is not new just because the record is.
+ *
+ * ## What to read first
+ *
+ * `entry.ts` for the vocabulary and the author invariant, which is the rule the study
+ * found four times in two codebases. `chain.ts` for why the sequence number and the
+ * author are inside the hash. `derive.ts` for why folding is the only way to read
+ * state. `journal.ts` for synchronous writes with persistence behind them, and for
+ * what happens to a turn that never closed.
+ */
+
+export {
+	ENTRY_VERSION,
+	GENESIS,
+	authorId,
+	isGenesis,
+	type Author,
+	type DraftEntry,
+	type Provenance,
+	type ProviderArtifact,
+	type RecordBody,
+	type RecordEntry,
+} from "./entry.js";
+
+export { chain, digestInput, head, verify, type ChainProblem, type ChainVerdict } from "./chain.js";
+
+export { derive, deriveFrom, emptyState, type DeriveResult, type DerivedState } from "./derive.js";
+
+export {
+	Journal,
+	type DrainReport,
+	type JournalOptions,
+	type RecordSink,
+} from "./journal.js";
+
+export {
+	compareToStored,
+	recordLifecycle,
+	replayStateFile,
+	type EquivalenceReport,
+} from "./bridge.js";
+export * from "./project.js";
+
+export {
+	RecordDamaged,
+	fileRecordStorage,
+	fileSink,
+	openRecord,
+	readRecord,
+	readTail,
+	recordPathFor,
+	seedRecord,
+	stateFrom,
+	type RecordStorage,
+	type Tail,
+} from "./store.js";
+
+export {
+	currentValue,
+	decide,
+	mutate,
+	origin,
+	type Decision,
+	type MoveRequest,
+} from "./mutate.js";
+
+export {
+	adjust,
+	adjustAll,
+	type AdjustAllResult,
+	type AdjustResult,
+	type Move,
+} from "./adjust.js";
+
+export {
+	CHECKPOINT_EVERY,
+	explain,
+	writingToRecord,
+	type RecordPorts,
+} from "./transaction.js";
+
+export {
+	MECHANISM,
+	SELF,
+	UNNAMED_OPERATOR,
+	UNRECOGNISED,
+	actorFor,
+	authorOf,
+	describeAuthor,
+	isWritableAuthor,
+	requireActor,
+	type Actor,
+} from "./actor.js";

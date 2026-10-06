@@ -8,18 +8,14 @@ personaxis status -p .personaxis/personas/legal/personaxis.md
 personaxis status --json                   # machine-readable
 ```
 
-Reports identity and where its spec lives, the model that would answer for it, the session
-posture and its improvement mode, global drift `D`, which memory kinds it keeps, and how
-many governed mutations it has recorded.
+Reports the persona's name and role and where its spec lives, the model that would answer for it,
+the session posture and its improvement mode, its overall distance from its baseline (`D`),
+which memory kinds it keeps, and how many governed mutations it has recorded. For the
+coordinate-by-coordinate movement, see [`drift`](./drift.md).
 
-**Status is the snapshot, not the delta.** "How far has it moved from what it declared" is
-a different question, answered by [`drift`](./drift.md) across three planes. The two used to
-print the same envelope block, which made one of them redundant.
-
-Same collector as the TUI's `Settings > Status`, so the terminal and the pipe cannot
-disagree.
+The TUI's `/status` shows the same data.
 
 | Flag | Effect |
 |---|---|
 | `-p, --persona <path>` | which persona to inspect (default: the one in scope) |
-| `--json` | emit JSON: identity, spec path, improve mode, state values, mutation count, memory kinds |
+| `--json` | emit JSON: name and role, spec path, improve mode, state values, mutation count, memory kinds |

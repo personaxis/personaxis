@@ -1,8 +1,7 @@
 # The REPL (`personaxis` with no subcommand)
 
-Enter a living, interactive session with your persona. Natural-language input both converses
-AND uses tools (a governed agent loop); `/commands` drive the session; `@address` routes to
-sub-personas.
+Enter an interactive session with your persona. Natural-language input both converses and uses
+tools (a governed agent loop); `/commands` drive the session; `@address` routes to sub-personas.
 
 ## Addressing
 - _(plain text)_ → the MAIN persona (the header always says who you are talking to and in
@@ -14,14 +13,14 @@ sub-personas.
 ## Slash-commands
 The `/` palette lists every command (type to filter, ↑/↓ to move, Tab to complete) and
 also passes any CLI subcommand through, so everything the tool can do is reachable inside
-the session. The load-bearing ones (V5/V6 layout):
+the session. The main ones:
 
 | Command | What it does |
 |---|---|
 | `/help` | Commands by category; `/help <query>` filters; `/help moved` maps every retired verb to its new home. |
 | `/persona` | Identity (aura + summary), Anatomy (the 10 layers, Enter drills into each), Resources, Sub-personas, **Evolution** (goal · loop · improve · pending edits), Values. |
 | `/status` | Session snapshot, live envelopes, self-edits, **Config** matrix, **Usage** (spend, context, per model) and **Daemons** (serve/watch). |
-| `/drift` | Three planes: continuous (u-space), structural (field-by-field vs the spec) and behavioural (does it move the compiled document). |
+| `/drift` | How far the persona sits from its baseline, on three planes: continuous (u-space), structural (field-by-field vs the spec) and behavioural (does it move the compiled document). |
 | `/audit` | The Ledger: Timeline (with **rewind** as an action), Integrity (chain + replay), Self-edits, Evaluations. |
 | `/memory` | Two-level browser (kinds → entries; Enter opens your editor, cross-OS) + consolidate/prune/search. |
 | `/create [args]` | Genesis (interview, `--from-prompt`, `--from-import`, …). Always tries to polish with your model; offline it says so. |
@@ -39,19 +38,15 @@ the session. The load-bearing ones (V5/V6 layout):
 
 ## Verbs that were absorbed
 
-Twenty-three commands became tabs and actions inside the ones above. They are **not hidden
-aliases**: the capability moved, and typing the old name tells you where it went and how to
-reach it from a shell.
+Twenty-three older commands are now tabs and actions inside the ones above. Typing an old name
+says where it went and how to reach it from a shell.
 
 ```
 /cost is now part of /status → Usage
 outside the REPL: personaxis status
 ```
 
-`/help moved` prints the whole map. A hidden command that still works is the clutter this
-consolidation existed to remove, and two ways to do one thing is how implementations drift:
-`/lint` and `/validate` really had drifted, printing findings without the remedies that
-`doctor` had carried for months.
+`/help moved` prints the whole map.
 
 Where the notable ones live now:
 
@@ -64,32 +59,31 @@ Where the notable ones live now:
 | `/rewind` `/replay` | `/audit` | `personaxis state rewind` |
 | `/serve` `/watch` `/hooks` | `/status` → Daemons | `personaxis serve` / `watch` / `hooks` |
 | `/overseer` | `/menu` → all projects | `personaxis overseer show` |
-| `/sessions` | `/resume` | — |
+| `/sessions` | `/resume` | `personaxis --continue`, `personaxis --resume <id>` |
 | `/mode` | `/sandbox` | `personaxis config` |
 | `/init` | `/create` | `personaxis create` |
 
 > No `/do` (plain chat already uses tools) and no `/evolve` (every turn already runs a
-> governed Living-Loop tick). `/dash` is a hidden alias of `/drift`; the standalone
-> monitor lives in `personaxis dash` / `personaxis-dash` (see [dash.md](./dash.md)).
+> governed Living-Loop tick). `/dash` points to `/drift`; the standalone monitor is
+> `personaxis dash` (see [dash.md](./dash.md)).
 
 While a view is open the text input is unfocused and the view owns the keys; Esc walks back
 (drill → list → chat). Views clip every line to the terminal width (ANSI-aware) and rows are
-selectable with ↑/↓ + Enter (V6.1). The `/` palette still launches everything.
+selectable with ↑/↓ + Enter. The `/` palette launches everything.
 
 ## UI
 A persistent header (wordmark · persona name and main/@sub role · project · sandbox posture)
 sits above a native-scroll transcript, so WHERE you are is always on screen. Below the input
-a live status bar shows context tokens, reply time, improve mode, and a **compact drift
-gauge**: per-layer `D` against its declared threshold, colored by proximity and turned red
-when a layer exceeds it. The gauge reads the same numbers as
-[`state drift --json`](./drift.md). The persona's **aura** (its generated living creature,
-see [sigil.md](./sigil.md)) appears at startup and in `/persona`.
+a live status bar shows context tokens, reply time, improve mode and a compact gauge of each
+layer's distance from its baseline against its declared threshold (red when a layer exceeds
+it). The gauge reads the same numbers as [`state drift --json`](./drift.md). The persona's aura
+(a small animated creature generated from its spec, see [sigil.md](./sigil.md)) appears at
+startup and in `/persona`.
 
-**The band-crossing moment.** When a governed tick pushes a coordinate across a behavior
-band, the live region stages it: the coordinate pulses, the old band gives way, the new
-`expression` prose lands, and the T3 evidence cost paid (the count of chained mutation-log
-entries) is shown, then a one-line summary commits to the transcript. Set
-`PERSONAXIS_NO_ANIM=1` to skip straight to the summary (deterministic for CI).
+When a tick moves a coordinate into a new behavior band, the live region shows the old and new
+band and the evidence cost paid (the count of chained mutation-log entries), then commits a
+one-line summary to the transcript. Set `PERSONAXIS_NO_ANIM=1` to skip straight to the summary
+(deterministic for CI).
 
 Degradation is intact: `NO_COLOR`/ASCII, and pipe/CI (non-TTY) drops full-screen for plain
 line mode with the reports inline, printing the SAME collector text the views render (one

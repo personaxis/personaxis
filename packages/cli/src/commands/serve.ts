@@ -27,6 +27,7 @@ import {
   type ProvenanceSource,
 } from "@personaxis/core";
 import { Persona } from "@personaxis/sdk";
+import { holdPresence } from "../presence-session.js";
 
 const AGENTS_MD = (name: string) => `# ${name}, personaxis agent tools
 
@@ -38,7 +39,7 @@ persona's envelopes and appended to an immutable audit log.
 - \`GET  /persona/audit\`, mutation log + memory-chain integrity + anomalies
 - \`POST /persona/observe\`, body \`{ "observation": string, "source": "user|tool|internal|synthesis" }\`; runs one governed loop cycle
 - \`POST /persona/adjust\`, body \`{ "field": string, "delta": number, "reason": string }\`; clamped, audited mutation
-- \`POST /persona/agent\`, body \`{ "task": string }\`; runs the governed Agent Loop (sandbox-gated tool calls); needs a tool-calling model
+- \`POST /persona/agent\`, body \`{ "task": string }\`; runs the governed Agent Loop (sandbox-gated tool calls); replies \`{ outcome, events, trace }\`; needs a tool-calling model
 
 ## Notes
 - Untrusted observations are prompt-injection scanned; malicious ones do not steer evolution.
@@ -124,7 +125,11 @@ async function route(
       if (parseError) return json(res, 400, { error: "invalid JSON body" });
       const task = String(body.task ?? "");
       if (!task.trim()) return json(res, 400, { error: "task (non-empty string) is required" });
-      const result = await persona.agentRun(task);
+      // Named, because "the SDK asked" and "somebody came in over HTTP" are different
+      // facts and the record is where they must not be confused. This surface cannot
+      // say WHO came in, and it does not guess: a person's name here would be a name
+      // nobody gave.
+      const result = await persona.agentRun(task, { asker: { kind: "component", name: "serve" } });
       if ("error" in result) return json(res, 400, result);
       return json(res, 200, result);
     }
@@ -200,6 +205,10 @@ export const serveCommand = new Command("serve")
       process.exit(1);
     });
     server.listen(port, opts.host, () => {
+      // D6: a server holding the persona for hours used to show as idle in the fleet, which
+      // is the collision presence exists to reveal. Announced only once it is actually
+      // listening: a bind that failed never held anything.
+      holdPresence(personaPath, { host: "serve", activity: `serving http on ${opts.host}:${port}` });
       console.log(chalk.green("✓"), `persona serving on ${chalk.cyan(`http://${opts.host}:${port}`)}${opts.token ? chalk.dim(" (Bearer token required)") : ""}`);
       console.log(chalk.dim(`  curl ${opts.token ? `-H "Authorization: Bearer …" ` : ""}http://${opts.host}:${port}/agents.md`));
     });

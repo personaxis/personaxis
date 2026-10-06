@@ -1,8 +1,8 @@
 /**
  * V7.C: persona scopes and the configuration matrix.
  *
- * These tests exist because of Design note: "todas estas opciones la mayoria
- * funcionan sobre el ai persona main, no sobre los ai sub personas". A test that only ever
+ * These tests exist because of a design note: most of these options worked on the main
+ * AI persona and not on its sub-personas. A test that only ever
  * exercises the main persona would let that regress silently, so every case here builds a
  * project with SUB-personas and asserts they are reachable and answered for individually.
  */
@@ -131,7 +131,7 @@ describe("settings resolve per persona, with their origin (V7.C2, V7.C3)", () =>
     expect(legalMode.value).toBe("suggesting");
     expect(legalMode.own).toBe(true);
     expect(legalMode.origin).toBe("spec");
-    // The two personas genuinely differ: this is the jerarquía the design chose.
+    // The two personas genuinely differ: this is the hierarchy the design chose.
     expect(mainMode.value).not.toBe("suggesting");
   });
 
@@ -205,7 +205,7 @@ describe("host reach (V7.C5)", () => {
    * A baseline host reaches the MAIN persona INDIRECTLY: CLAUDE.md / AGENTS.md must carry
    * the managed block that points at the compiled document. The first version of this
    * check accepted any CLAUDE.md at all, which reported reach for a project that merely
-   * happened to have one — a false claim about an integration.
+   * happened to have one: a false claim about an integration.
    */
   it("does NOT claim reach from a baseline file that does not reference the persona", () => {
     const ctx = projectWithSubs();

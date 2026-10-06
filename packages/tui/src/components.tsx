@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Box, Text, Static, useApp, useInput } from "ink";
-import {
+import { stateOf,
   loadPersona,
   readState,
   extractEnvelopes,
@@ -132,7 +132,9 @@ interface DashFrame {
 
 function readFrame(personaPath: string): DashFrame {
   const handle = loadPersona(personaPath);
-  const state = readState(handle.statePath);
+  // Ensured when the dashboard starts, so nothing here creates anything: a frame that
+  // finds no state is one somebody deleted underneath a running screen.
+  const state = stateOf(handle) ?? { values: {}, mutation_log: [] as never[] };
   const lookup = extractEnvelopes(handle.frontmatter);
   const report = driftReport({
     values: state.values,

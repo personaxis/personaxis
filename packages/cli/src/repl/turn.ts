@@ -1,19 +1,45 @@
 /**
  * REPL turn execution + multi-persona routing (F3.6 split).
  *
- * `runAgentTurn` is the unified chat+tools turn: one governed Agent Loop with the
- * persistent conversation and the session context meter, plus the per-turn
- * telemetry block and the identity-evolution tick. `dispatchTurn` routes a line
- * to the ROOT persona or to addressed sub-personas (`@address`/`@all`).
+ * `runAgentTurn` is the unified chat+tools turn: one governed turn with the persistent
+ * conversation and the session context meter, plus the per-turn telemetry block and the
+ * identity-evolution tick. `dispatchTurn` routes a line to the ROOT persona or to
+ * addressed sub-personas (`@address`/`@all`).
  *
- * The interactive turn constructs `PersonaAgent` directly (it needs fine-grained
- * bus/meter/awareness/approval control the SDK façade doesn't expose); routing it
- * through @personaxis/sdk is a follow-on that needs an expanded SDK agent API.
+ * The turn goes through `run.runnerFor`, so this file no longer knows which loop
+ * answers it. It used to build a `PersonaAgent` by hand and then reach past the seam
+ * three times for facts the seam now carries: the reply off `result.summary`, the price
+ * off `result.budget`, and the next turn's conversation off `agent.lastMessages`. The
+ * first two come back in the outcome. The third is a port the session LENDS to whatever
+ * ran the turn, because a transcript in the outcome would make the result describe the
+ * shape of one particular loop and a scripted provider has no messages at all.
+ *
+ * Three of the old options are gone rather than moved. The budget, the verification
+ * block and the judge are derived from the persona now, because they are properties of
+ * who this persona is and a caller that could pass them would be changing the persona
+ * without editing it. This file re-deriving them is how the SDK's copy came to differ.
+ *
+ * ## The turn is written down, and the persona exists first
+ *
+ * `recordingTurns` puts the question, the answer, the ending and the price into the
+ * persona's record: one transaction to open and one to close, each opening the record
+ * and letting it go, because a journal held across a turn would chain onto a head the
+ * living loop moves past the moment it writes a coordinate.
+ *
+ * `ensureState` runs before any of it, and the ordering is load-bearing rather than
+ * tidy. Seeding writes the persona's starting positions as the first entries in its
+ * record, and it refuses a record that already has some. A turn recorded into an empty
+ * record would take that slot, and the persona would have a transcript and no account
+ * of where any of its coordinates began. Looking at a persona must not create it; a
+ * persona that TAKES A TURN is one that exists.
  */
 
+import { randomUUID } from "node:crypto";
+
 import chalk from "chalk";
-import {
-  PersonaAgent,
+import { ensureState,
+  run,
+  record,
   EventBus,
   Tracer,
   readState,
@@ -25,25 +51,53 @@ import {
   commitMemoryEntry,
   appendTurn,
   readRecompilePending,
-  readAgentBudget,
-  readVerification,
   readObservability,
-  compactMessages,
-  recordCompaction,
   readHooksConfig,
   runHooks,
   appendHistory,
+  answerFrom,
+  renderQuestion,
+  type PersonQuestion,
 } from "@personaxis/core";
+
+/** E84: a question as the person reads it at the prompt, numbered, with how to answer. */
+function questionPrompt(question: PersonQuestion): string {
+  return `  ${renderQuestion(question).split("\n").join("\n  ")}\n  answer with a number, an option, or your own words: `;
+}
+
+/**
+ * E73: the person at this keyboard, for a service the persona runs from a turn.
+ *
+ * The same runner as `personaxis service run`, with its terminal prompts replaced by this session's: the step
+ * that wants approval asks here, a tool call a step's policy wants a person for goes through the session's own
+ * approval, a question a step asks reaches this keyboard instead of leaving the run waiting, and every line the
+ * run would print lands in the transcript. Without a terminal nobody is asked, which is a refusal, not a yes.
+ */
+function keyboardPerson(ctx: Ctx, ask: ((prompt: string) => Promise<string>) | undefined): PersonAt {
+  return {
+    approveStep: async ({ serviceName, position }) => {
+      if (!ask) return "unavailable";
+      const said = (await ask(chalk.yellow(`  approve step ${position} of ${serviceName}? [y/N] `))).trim().toLowerCase();
+      return said === "y" || said === "yes" ? "approved" : "rejected";
+    },
+    approveTool: (call, verdict) => ctx.approve(call, verdict),
+    ...(ask ? { onQuestion: async (question: PersonQuestion) => answerFrom(question, await ask(questionPrompt(question))) } : {}),
+    say: (line) => ctx.out(line, "activity"),
+  };
+}
+
 import { slugAddressFromPath } from "../load.js";
 import { runCompile } from "../commands/compile.js";
+import { runServiceFromTurn, type PersonAt } from "../commands/service.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { discoverTree, colorForSlug, type SubPersonaRef } from "./roster.js";
 import type { Ctx } from "./types.js";
-import { llmConfig, ctxModelArg, buildPolicy, readGoalText, POSTURES } from "./config.js";
+import { compactConversation } from "./compact.js";
+import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
-import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError } from "./render.js";
+import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError, engineVerdictLines } from "./render.js";
 import { expandFileMentions } from "./mentions.js";
-import { recordTurn, recordEvidence, makeCtx, ensureCtxSession } from "./session.js";
+import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf } from "./session.js";
 
 /**
  * A turn: the persona CONVERSES and (when needed) USES TOOLS, one governed agent
@@ -51,11 +105,15 @@ import { recordTurn, recordEvidence, makeCtx, ensureCtxSession } from "./session
  * and `/do`: natural language can now call tools. Offline (no model) → the honest
  * reflective responder. Identity evolution (the Living Loop) still runs each turn.
  */
-/** Session facts for the runtime-context block (V5.P0.1). */
+/**
+ * Session facts for the runtime-context block (V5.P0.1).
+ *
+ * No posture since E79: the block sits in the cached prefix and the posture changes with shift+tab.
+ * The model still reads it every turn, in the "Right now" message the loop adds (`agent.ts`, E20).
+ */
 function awarenessOpts(ctx: Ctx, model: string | undefined): AwarenessOpts {
   return {
     frontmatter: ctx.handle.frontmatter as Record<string, unknown>,
-    posture: POSTURES[ctx.postureIndex],
     model,
     cwd: process.cwd(),
     // V7.A7: the standing goal rides the runtime context (recency slot), which the
@@ -67,7 +125,7 @@ function awarenessOpts(ctx: Ctx, model: string | undefined): AwarenessOpts {
 export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const llm = llmConfig(ctxModelArg(ctx));
   if (!llm) {
-    const cur = readState(ctx.handle.statePath);
+    const cur = ensureState(ctx.handle);
     // Offline recall (V2-F1.2): the user profile loads FIRST (name recall works with
     // no model), then the bounded recent window, never a blind last-6 of raw lines.
     const p = ctx.handle.personaPath;
@@ -82,65 +140,138 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       .catch((e) => `(responder error: ${friendlyProviderError((e as Error).message)})`);
     ctx.out(replyLine(ctx, reply), "persona");
     await recordTurn(ctx, line, reply);
-    await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
+    await ctx.loop.observe({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
     return;
   }
+
+  // Before anything is recorded. See the header: seeding claims the first entries in
+  // the record and refuses a record that is not empty, so a turn written ahead of it
+  // leaves a persona with a transcript and no origin for any of its coordinates.
+  ensureState(ctx.handle);
 
   const fm = ctx.handle.frontmatter as Record<string, unknown>;
   const bus = new EventBus();
   // Which memories were RECALLED to answer this turn (emitted by the agent's resumeContext
   // before the loop listener below exists), collected here for the concise per-turn summary.
   const recalls: string[] = [];
+  // E4: what the persona is writing, right now, in the live region.
+  //
+  // Accumulated here rather than in `phaseFor`, which sees one event and cannot know
+  // what came before it. The tail rather than the head, because the interesting end of
+  // a sentence being written is the end of it, and a label that froze on the first
+  // eight words would look like a session that had stopped.
+  let speaking = "";
+  /** E17: the last per-step latency breakdown seen this turn. */
+  let lastLatency: { modelMs: number; gateMs: number; toolMs: number; judgeMs?: number; unattributedMs: number; overBudgetMs?: number } | undefined;
   bus.on((e) => {
+    if (e.type === "agent-delta") {
+      speaking = (speaking + e.text).replace(/\s+/g, " ");
+      ctx.phase?.(speaking.slice(-56).trimStart());
+      return;
+    }
+    // Anything else means the persona moved on to doing rather than saying.
+    speaking = "";
     ctx.phase?.(phaseFor(e));
     // V5.FIX.3: human phrasing ("2 user preferences: …"), not the cryptic "kind×N".
     if (e.type === "memory-recall") recalls.push(`${e.count} ${e.kind.replace(/_/g, " ")}${e.detail ? `: ${e.detail}` : ""}`);
+    // E17: keep the last breakdown, so the turn block can say WHERE the time went
+    // rather than only how much there was of it.
+    if (e.type === "agent-budget" && e.latency) lastLatency = e.latency;
     const l = renderEvent(ctx.theme, e);
     if (l) ctx.out(l, "activity");
   });
   const obs = readObservability(fm);
   const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
-  const agent = new PersonaAgent({
-    llm,
-    policy: buildPolicy(ctx),
-    personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
-    awareness: buildAwarenessBlock(ctx.handle.personaPath, awarenessOpts(ctx, llm.model)),
-    goal: readGoalText(ctx.handle),
-    onApproval: ctx.approve,
-    budget: readAgentBudget(fm),
-    verification: readVerification(fm),
-    judge: { endpoint: llm.endpoint, model: llm.model, apiKey: llm.apiKey },
-    personaPath: ctx.handle.personaPath,
-    sessionId: ctx.sessionId,
-    meter: ctx.meter,
-    priorMessages: ctx.conversation,
-    // V7.A1: a posture change is announced as an EPHEMERAL SYSTEM MESSAGE so the model
-    // re-evaluates what it declined under a stricter posture. It used to be glued in
-    // front of the user's text, which made the model answer the environment note as if
-    // the user had written it ("thanks for restoring my access!" out of nowhere).
-    envNote: ctx.pendingEnvNote,
-    bus,
-  });
+  const ask = ctx.ask;
+  const runner = run.runnerFor(
+    { personaPath: ctx.handle.personaPath, frontmatter: fm, llm },
+    {
+      policy: buildPolicy(ctx),
+      // Mounted once when the session opened, handed to every turn. They are added to
+      // the catalogue rather than replacing it, so a persona that gained a GitHub
+      // server has not lost the ability to read a file.
+      ...(ctx.mcp && ctx.mcp.tools.length > 0 ? { extraTools: [...ctx.mcp.tools] } : {}),
+      personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
+      // E73: this turn can run one of the persona's services, so its index says so and names the tool.
+      awareness: buildAwarenessBlock(ctx.handle.personaPath, { ...awarenessOpts(ctx, llm.model), canRunServices: true }),
+      goal: readGoalText(ctx.handle),
+      onApproval: ctx.approve,
+      // E84: a question the persona asks reaches the person at this keyboard, when there is one. Without a
+      // terminal `ask` is absent, and the turn stops at the question instead, as P10 of E77 decided.
+      ...(ask ? { onQuestion: async (question: PersonQuestion) => answerFrom(question, await ask(questionPrompt(question))) } : {}),
+      // E73: the persona runs a service it delivers on this project, and the person approves every run, and the
+      // tool's gate asks before this is ever called, whatever the posture.
+      runService: (input) => runServiceFromTurn(process.cwd(), input, keyboardPerson(ctx, ask)),
+      sessionId: ctx.sessionId,
+      meter: ctx.meter,
+      conversation: conversationOf(ctx),
+      // V7.A1: a posture change is announced as an EPHEMERAL SYSTEM MESSAGE so the model
+      // re-evaluates what it declined under a stricter posture. It used to be glued in
+      // front of the user's text, which made the model answer the environment note as if
+      // the user had written it ("thanks for restoring my access!" out of nowhere).
+      envNote: ctx.pendingEnvNote,
+      // Said out loud rather than swallowed. The person keeps the answer they are
+      // already reading, and hears that it did not reach the record, because a turn
+      // that is not in the record did not happen as far as this persona is concerned.
+      observer: run.recordingTurns({
+        personaPath: ctx.handle.personaPath,
+        statePath: ctx.handle.statePath,
+        onProblem: (e) => ctx.out(chalk.yellow(`  · this turn was not recorded: ${e.message}`), "activity"),
+      }),
+      bus,
+    },
+  );
   ctx.pendingEnvNote = undefined;
-  const result = await agent.run(line);
-  ctx.conversation = (agent.lastMessages ?? []).filter((m) => m.role !== "system");
-  ctx.out(replyLine(ctx, result.summary || "…"), "persona");
-  // Cumulative session accounting (F3.D16: /cost, /usage).
+  // A real person, whose name this surface does not have. Inventing one would put a
+  // name on entries nobody can attribute, and the record's vocabulary already has the
+  // word for a person it cannot name.
+  const outcome = await runner.run({
+    turn: randomUUID(),
+    prompt: line,
+    asker: { kind: "human", id: record.UNNAMED_OPERATOR },
+  });
+  // A failed turn produced no answer, and its text is the runtime saying what went
+  // wrong. Shown as such, and recorded as a note rather than as the persona's reply:
+  // handing it on as one is how a transcript comes to quote a component under the
+  // persona's name, and how a resumed session feeds that back to the model.
+  //
+  // E94: the persona's name goes only on words the persona wrote. A turn without them used to print "…"
+  // under its name, which read as the persona still typing, and on 2026-09-15 it stood twice for a turn
+  // in which the model returned nothing at all. What happened is said instead, as the runtime's line.
+  const spoke = outcome.answer.length > 0;
+  const reply = spoke
+    ? outcome.answer
+    : outcome.failure === undefined
+      ? outcome.stopReason === "answered"
+        ? "(finished without a reply; what it did is listed above)"
+        : "(no reply)"
+      : outcome.stopReason === "empty"
+        ? "the model returned nothing, twice in a row, so this turn did nothing. Ask again, or switch the model with /model."
+        : friendlyProviderError(outcome.failure.message);
+  if (spoke) ctx.out(replyLine(ctx, reply), "persona");
+  else ctx.out(outcome.failure === undefined ? chalk.dim(`  ${reply}`) : chalk.yellow(`  ${reply}`), "activity");
+  // E134: right under the reply, what the engine found broken in what the turn delivered, whatever the reply said.
+  for (const l of engineVerdictLines(outcome.delivered, process.cwd())) ctx.out(l);
+  // Cumulative session accounting (F3.D16: /cost, /usage). Steps are always known; a
+  // price is only known when the loop talked to something that charges, and a provider
+  // that reported none adds nothing rather than adding a zero somebody reads as free.
   ctx.usage.turns += 1;
-  ctx.usage.tokens += result.budget.tokens;
-  ctx.usage.costUsd += result.budget.costUsd;
-  ctx.usage.steps += result.budget.steps;
+  ctx.usage.steps += outcome.steps;
+  ctx.usage.tokens += outcome.cost?.tokens ?? 0;
+  ctx.usage.costUsd += outcome.cost?.usd ?? 0;
   // V5.P1.2: per-model breakdown for Settings > Usage.
   const bm = (ctx.usage.byModel ??= {});
   const slot = (bm[llm.model] ??= { turns: 0, tokens: 0, costUsd: 0 });
   slot.turns += 1;
-  slot.tokens += result.budget.tokens;
-  slot.costUsd += result.budget.costUsd;
-  await recordTurn(ctx, line, result.summary || "…");
+  slot.tokens += outcome.cost?.tokens ?? 0;
+  slot.costUsd += outcome.cost?.usd ?? 0;
+  await recordTurn(ctx, line, reply, undefined, spoke);
   // Only surface the budget line when something noteworthy happened (a multi-step
   // task or an early stop), not on every one-shot chat reply.
-  if (result.budget.steps > 1 || (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met")) {
-    ctx.out(chalk.dim(`  budget: ${result.budget.steps} steps · ${result.budget.tokens} tok · $${result.budget.costUsd}` + (result.budget.stoppedBy && result.budget.stoppedBy !== "goal_met" ? ` · stopped: ${result.budget.stoppedBy}` : "")));
+  if (outcome.steps > 1 || outcome.stopReason !== "answered") {
+    const priced = outcome.cost ? ` · ${outcome.cost.tokens} tok · $${outcome.cost.usd}` : "";
+    const stopped = outcome.stopReason === "answered" ? "" : ` · stopped: ${outcome.stopReason}`;
+    ctx.out(chalk.dim(`  budget: ${outcome.steps} steps${priced}${stopped}`));
   }
   if (tracer) {
     const { paths } = tracer.write(ctx.handle.personaPath);
@@ -156,9 +287,9 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const memKinds: string[] = [];
   const evals: string[] = []; // individual quality scores (target · dimension · score)
   const selfEdits: string[] = [];
-  const off = ctx.loop.bus.on((e) => {
+  const off = ctx.loop.on((e) => {
     if (e.type === "mutate" && e.result && !e.result.blocked && e.result.from !== e.result.to) {
-      changed.push(`${e.result.entry.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
+      changed.push(`${e.result.field} ${e.result.from.toFixed(2)}→${e.result.to.toFixed(2)}${e.result.clamped ? " clamped" : ""}`);
     } else if (e.type === "memory") {
       memWrites++;
       memWriteKinds.push(`[${e.entry.source}] ${e.entry.content.slice(0, 48)}`);
@@ -181,7 +312,10 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
     }
     // NB: within-band ticks emit no recompile; the fast .live.json marker stays internal.
   });
-  await ctx.loop.tick({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch(() => {});
+  // E117: the request and then what the work was like, which until 2026-09-23 the loop never saw: a
+  // persona that broke its delivery and one that got it right evolved the same when told the same
+  // words. The same function every working surface calls, so the four cannot come to disagree.
+  await run.livedThrough(ctx.loop, { request: line, outcome, sessionId: ctx.sessionId });
   off();
   // Per-turn telemetry as a distinct, labeled BLOCK (one line per fact) so it never blends into
   // the persona's reply above. Rendered dim, with a gutter (┊) and an aligned label; only the
@@ -201,6 +335,25 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   if (memWrites) rows.push(["memory", `+${memWrites} episodic` + (memWriteKinds.length ? ` (${memWriteKinds[memWriteKinds.length - 1]})` : "")]);
   for (const k of memKinds) rows.push(["memory", k]);
   if (evals.length) pushAll("evaluated", evals, 4);
+  // E17: shown when the turn was slow enough for a person to have noticed, or when a
+  // declared ceiling was passed. Two seconds is a judgement, not a measurement, and it
+  // is here rather than in the engine because it is about what is worth reading: a
+  // breakdown printed after every fast turn is noise, and noise is what stops a slow
+  // turn's breakdown from being read on the day it matters.
+  if (lastLatency) {
+    const l = lastLatency;
+    const totalMs = l.modelMs + l.gateMs + l.toolMs + (l.judgeMs ?? 0) + l.unattributedMs;
+    if (l.overBudgetMs !== undefined || totalMs >= 2000) {
+      const s = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
+      rows.push([
+        "latency",
+        `model ${s(l.modelMs)} · gate ${s(l.gateMs)} · tools ${s(l.toolMs)} · other ${s(l.unattributedMs)}` +
+          // E160: what the turn waited for a judge, only when it waited at all.
+          ((l.judgeMs ?? 0) > 0 ? ` · judge ${s(l.judgeMs ?? 0)}` : "") +
+          (l.overBudgetMs !== undefined ? chalk.yellow(`  ⚠ slowest turn ${s(l.overBudgetMs)}, past the declared ceiling`) : ""),
+      ]);
+    }
+  }
   if (rows.length) {
     const block = [
       chalk.dim(`  ┊ ${chalk.bold("this turn")}`),
@@ -318,17 +471,21 @@ export function buildRoster(rootCtx: Ctx): Roster {
  * turns (once, with a visible notice) instead of waiting for a manual /compact.
  * Best-effort: needs a model, and never breaks the turn on failure.
  */
-export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85): Promise<void> {
-  const llm = llmConfig(ctxModelArg(ctx));
+export async function maybeAutoCompact(ctx: Ctx, threshold = 0.85, model?: { endpoint: string; model: string; apiKey?: string; fetchImpl?: typeof fetch }): Promise<void> {
+  // The model, injected or resolved. Injected only by a test: `llmConfig` answers from the persona and the
+  // project config and carries no `fetchImpl`, so nothing could drive this path without a live endpoint, and
+  // that is exactly why the compaction a person actually meets had never been exercised. The same shape as
+  // `writeSelfSkill`'s scanner and the postmortem's extractor: a default that production always takes.
+  const llm = model ?? llmConfig(ctxModelArg(ctx));
   if (!llm || ctx.meter.pct < threshold) return;
   try {
-    const r = await compactMessages([{ role: "system", content: "" }, ...ctx.conversation], ctx.meter, { llm, threshold });
+    const r = await compactConversation(ctx, {
+      threshold,
+      kind: "auto",
+      llm,
+      onProblem: (e) => ctx.out(chalk.yellow(`  · this compaction was not recorded: ${e.message}`), "activity"),
+    });
     if (!r.compacted) return;
-    ctx.conversation = r.messages.filter((m) => m.role !== "system");
-    if (r.summary) {
-      ensureCtxSession(ctx, ctx.conversation[0]?.content ?? "session");
-      recordCompaction(ctx.handle.personaPath, ctx.sessionId, r.summary);
-    }
     ctx.out(chalk.dim(`  · context auto-compacted (${r.removed} msg freed, ${Math.round(ctx.meter.pct * 100)}% full)`), "activity");
   } catch {
     /* best-effort; a failed compaction must never break the turn */
@@ -357,6 +514,10 @@ export async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, s
   const msg = rest || line;
   if (targets.length === 0) {
     await handleTurn(msg, rootCtx);
+    // AFTER the turn, never before it. The rounds of E86 decide INSIDE the turn at 0,8 and this decides
+    // between turns at 0,85, so the two never race: the turn runs against the window as it stands, and what
+    // is left is shortened once it is over. Moved ahead of `handleTurn` they would collide, because the turn
+    // would start against a window this had just emptied and a round would never find it full.
     await maybeAutoCompact(rootCtx);
     return;
   }
@@ -392,5 +553,9 @@ export async function dispatchTurn(line: string, rootCtx: Ctx, roster: Roster, s
       /* delegation logging is best-effort */
     }
   }
+  // AFTER the turn, never before it. The rounds of E86 decide INSIDE the turn at 0,8 and this decides
+  // between turns at 0,85, so the two never race: the turn runs against the window as it stands, and what
+  // is left is shortened once it is over. Moved ahead of `handleTurn` they would collide, because the turn
+  // would start against a window this had just emptied and a round would never find it full.
   await maybeAutoCompact(rootCtx);
 }

@@ -19,11 +19,9 @@
  */
 
 import {
-  LivingLoop,
-  HeuristicAppraiser,
-  LlmAppraiser,
+  run,
+  record,
   resolveModel,
-  PersonaAgent,
   EventBus,
   Tracer,
   readObservability,
@@ -34,13 +32,15 @@ import {
   ensureState,
   extractEnvelopes,
   resolveField,
-  applyMutation,
   readMemory,
   readLiveMemory,
   tombstoneMemory,
   verifyMemoryChain,
   detectMemoryAnomalies,
   readMode,
+  governMutations,
+  readMaxStepDelta,
+  DEFAULT_GOVERNANCE,
   proposeSelfEdit,
   applySelfEdit,
   rejectSelfEdit,
@@ -54,13 +54,12 @@ import {
   evaluateCommand,
   policyFromFrontmatter,
   personaResourceRoots,
-  readAgentBudget,
-  readVerification,
   DEFAULT_POLICY,
   type PersonaHandle,
   type LoopEvent,
   type ProvenanceSource,
 } from "@personaxis/core";
+import { randomUUID } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -85,9 +84,32 @@ export interface PersonaAuditView {
 }
 
 export interface AgentRunResult {
-  result: unknown;
+  /**
+   * How the turn ended, in the runtime's vocabulary: `TurnOutcome`.
+   *
+   * Named `outcome` rather than `result`, and the rename is deliberate. This used to be
+   * the whole `AgentResult` of one particular loop, so a caller reading `summary` and
+   * `budget.stoppedBy` was reading the shape of our loop and would have got silence
+   * from anybody else's. Renaming makes that a compile error where keeping the name
+   * would have made it a field that quietly stopped being there.
+   */
+  outcome: run.TurnOutcome;
   events: LoopEvent[];
   trace: unknown[];
+}
+
+
+/**
+ * A persona's own name, for the record's author field.
+ *
+ * Falls back to the canonical id and then to the literal word, because an entry with
+ * no author does not verify: the chain treats a missing author as damage, which is
+ * correct and is also why this cannot return undefined.
+ */
+function personaName(fm: Record<string, unknown>): string {
+  const metadata = fm.metadata as { name?: string } | undefined;
+  const identity = fm.identity as { canonical_id?: string } | undefined;
+  return metadata?.name ?? identity?.canonical_id ?? "persona";
 }
 
 /** A live persona bound to its `personaxis.md` spec (its state.json + memory live alongside it). */
@@ -95,21 +117,34 @@ export class Persona {
   readonly personaPath: string;
   private handle: PersonaHandle;
 
+  private assembled: run.AssembledPersona;
+
   constructor(personaPath: string) {
-    this.personaPath = resolve(personaPath);
-    this.handle = loadPersona(this.personaPath);
-    ensureState(this.handle);
+    this.assembled = run.assemble(personaPath);
+    this.personaPath = this.assembled.personaPath;
+    this.handle = this.assembled.handle;
   }
 
   private fm(): Record<string, unknown> {
     return this.handle.frontmatter as Record<string, unknown>;
   }
 
-  /** The compiled, LLM-facing identity document (system-prompt slot #1). Falls back to the spec
-   * body if PERSONA.md hasn't been compiled yet. */
+  /**
+   * The compiled, LLM-facing identity document (system-prompt slot #1). Falls back to
+   * the spec body if PERSONA.md has not been compiled yet.
+   *
+   * This looked for `PERSONA.md` beside `personaxis.md` and a ROOT persona's compiled
+   * document lives one level above, beside the `.personaxis/` folder. So for the most
+   * common layout there is, the file was never found, the fallback fired, and this
+   * returned the raw spec body under a name promising otherwise. Measured on the
+   * repository this was found in: 2,640 characters where the compiled document is
+   * 6,283, with no error and no warning.
+   *
+   * The address now has one owner, in core, which is where the REPL's correct version
+   * moved to so that this could stop having its own.
+   */
   compiledIdentity(): string {
-    const compiled = join(dirname(this.personaPath), "PERSONA.md");
-    return existsSync(compiled) ? readFileSync(compiled, "utf-8") : this.handle.body;
+    return run.identityOf(this.assembled);
   }
 
   /** The raw qualitative spec body (the compiled document as stored on the spec). */
@@ -119,7 +154,7 @@ export class Persona {
 
   /** Current runtime state: envelope values + the last few audited mutations. */
   state(): PersonaStateView {
-    const st = readState(this.handle.statePath);
+    const st = ensureState(this.handle);
     return { values: st.values, recentMutations: st.mutation_log.slice(-5) };
   }
 
@@ -135,14 +170,22 @@ export class Persona {
    * is clamped + audited; a malicious observation is injection-scanned and cannot steer evolution.
    */
   async observe(observation: string, source: ProvenanceSource = "user"): Promise<ObserveResult> {
-    const m = resolveModel({ personaPath: this.personaPath, frontmatter: this.fm() });
     const events: LoopEvent[] = [];
-    const loop = new LivingLoop(this.personaPath, {
-      appraiser: m ? new LlmAppraiser({ ...m, timeoutMs: 30_000 }) : new HeuristicAppraiser(),
-    });
-    loop.bus.on((e) => events.push(e));
+    const evolver = run.evolverFor(
+      { personaPath: this.personaPath, frontmatter: this.fm() },
+      {
+        // No inline recompile, and this is now written rather than omitted. A band
+        // crossing still marks the compiled document stale, which is what
+        // `recompilePending` below reports; what an embedded library does not do is
+        // spend the host application's model budget on a rewrite nobody asked for.
+        // The REPL, where a person is waiting and would otherwise be talking to a
+        // document that no longer matches the state, does the opposite.
+        recompile: null,
+        onEvent: (e: LoopEvent) => events.push(e),
+      },
+    );
     try {
-      const report = await loop.tick({ observation, source });
+      const report = await evolver.observe({ observation, source });
       return { report, events, recompilePending: readRecompilePending(this.personaPath).pending };
     } catch (e) {
       return {
@@ -154,23 +197,109 @@ export class Persona {
   }
 
   /** Apply a single clamped, audited mutation to an envelope field (the spec's adjust_persona_state). */
-  adjust(field: string, delta: number, reason: string): ReturnType<typeof applyMutation> {
+  /**
+   * Apply a single clamped, audited mutation to an envelope field (the spec's
+   * `adjust_persona_state`).
+   *
+   * Asynchronous now, and that is the honest price of the change underneath. The move
+   * goes into the hash-chained record and the state file is PRINTED from it, so
+   * returning before the record is durable would report a change that a crash could
+   * take back. The old version returned as soon as it had pushed a row onto a log
+   * inside the state file, which was quick and was also the second chain over the same
+   * history that this migration exists to remove.
+   */
+  async adjust(
+    field: string,
+    delta: number,
+    reason: string,
+    /**
+     * Who makes the move. `persona` by default, because this is `adjust_persona_state`, the tool a
+     * persona calls on itself. `person` is a human editing the value by hand (the Command Center):
+     * it passes the mode and the per-step cap the way `state mutate --actor human-operator` does,
+     * because under `locked` a person is exactly who may still move it, and the record says a
+     * person did.
+     */
+    opts: { readonly by?: "persona" | "person" } = {},
+  ): Promise<record.AdjustResult> {
     const env = extractEnvelopes(this.handle.frontmatter);
     const resolved = resolveField(field, env.envelopes);
-    // Locked read→apply→write: an embedding app may run ticks/adjusts concurrently (F1.4).
-    return withStateLock(this.handle.statePath, () => {
-      const st = readState(this.handle.statePath);
-      const result = applyMutation(st, env.envelopes, { field: resolved, delta, reason, actor: "actor-llm" });
-      writeState(this.handle.statePath, st);
-      return result;
+    const byPerson = opts.by === "person";
+
+    // E125: through the same gate as the living loop. Until 2026-09-23 this moved the state without
+    // looking at the mode, signed as the persona itself, so a persona stopped for an incident with
+    // `locked`, which the engine's own comment calls the master kill-switch, could be moved by any
+    // program connected over MCP. The persona authors this move, so it is judged as the persona's
+    // own proposal: stopped under `locked`, bounded per step otherwise. A refusal is written to the
+    // record as blocked, with the gate's reason, never skipped in silence.
+    const fm = this.fm();
+    const verdict = governMutations([{ field: resolved, delta, reason }], env, {
+      ...DEFAULT_GOVERNANCE,
+      mode: readMode(fm, this.personaPath),
+      maxStepDelta: readMaxStepDelta(fm),
+      humanDirected: byPerson,
     });
+    const admitted = verdict.admitted.find((m) => m.field === resolved);
+    const refused = verdict.verdicts.find((v) => v.field === resolved && !v.admitted);
+
+    return record.adjust(
+      this.personaPath,
+      this.handle.statePath,
+      env.envelopes,
+      // The persona itself is the author: this is `adjust_persona_state`, which is the
+      // tool a persona calls on itself. An author that said "the SDK" would put the
+      // library in the record where the persona belongs.
+      byPerson ? record.authorOf("human-operator") : ({ kind: "persona", id: personaName(fm) } as never),
+      admitted
+        ? { field: resolved, delta: admitted.delta, reason: admitted.reason }
+        : { field: resolved, delta: 0, reason: `${reason} (refused: ${refused?.reason ?? "not admitted by governance"})`, blocked: true },
+    );
   }
 
   /**
    * Run the governed Agent Loop on a task. Non-interactive: any tool whose verdict is `ask` is
    * denied unless the persona's permissions allow-list pre-authorizes it. Requires a configured model.
+   *
+   * The turn goes through `run.runnerFor`, so this method no longer knows which loop
+   * answers it, and it is written into the persona's record: what was asked, what came
+   * back, how it ended and what it cost.
+   *
+   * ## What the narrowing cost, measured rather than assumed
+   *
+   * It used to return the whole `AgentResult` of our own loop. Four things are not in
+   * `TurnOutcome`, and three of them were never lost: the specific ceiling that stopped
+   * it rides `agent-stop-condition`, the verification verdict rides `verify-result` and
+   * `verify-complete` with every verifier named, and the wall clock rides
+   * `agent-budget`. All three are in `events`, which this still returns whole.
+   *
+   * The fourth was real. `AgentResult.finished` says the loop completed the task, and
+   * the seam had no word for it: a turn that ran out of steps and a turn that called
+   * `finish` both came back `answered`. That was a defect in the vocabulary rather than
+   * a cost of narrowing, so it was fixed rather than worked around. `answered` now
+   * means the loop said it was done, `budget` means it ran out of room, `stopped` means
+   * a declared rule ended it, and `answered(reason)` still tells a caller whether there
+   * is something to show.
+   *
+   * `outcome.turn` is the id of the turn in the record, which the old shape had no way
+   * to give: a caller can now go and read what it wrote.
    */
-  async agentRun(task: string, opts: { maxSteps?: number; onApproval?: () => Promise<"deny" | "approve"> } = {}): Promise<AgentRunResult | { error: string }> {
+  async agentRun(
+    task: string,
+    opts: {
+      maxSteps?: number;
+      onApproval?: () => Promise<"deny" | "approve">;
+      /**
+       * Who is asking, for the record's author field.
+       *
+       * Defaults to this SDK as a component, which is what is true when nobody says:
+       * a program drove the persona. An embedder that knows its own user should pass
+       * them, because "a person asked" and "our backend asked" are different facts and
+       * the record is the place they must not be confused. It is never inferred: a
+       * default that guessed a person would put somebody's hand on a turn they never
+       * took, which is the forgery the author invariant exists to prevent.
+       */
+      asker?: run.TurnRequest["asker"];
+    } = {},
+  ): Promise<AgentRunResult | { error: string }> {
     const fm = this.fm();
     const llm = resolveModel({ personaPath: this.personaPath, frontmatter: fm });
     if (!llm) {
@@ -179,29 +308,40 @@ export class Persona {
     const events: LoopEvent[] = [];
     const bus = new EventBus();
     bus.on((e) => events.push(e));
-    const agent = new PersonaAgent({
-      llm,
-      policy: { ...policyFromFrontmatter(fm, process.cwd()), resourceRoots: personaResourceRoots(this.personaPath) },
-      personaBody: this.handle.body,
-      onApproval: opts.onApproval ?? (async () => "deny"),
-      maxSteps: opts.maxSteps ?? 12,
-      budget: readAgentBudget(fm),
-      verification: readVerification(fm),
-      judge: llm,
-      personaPath: this.personaPath,
-      bus,
-    });
     const obs = readObservability(fm);
     const tracer = obs.trace !== "off" ? new Tracer(bus, obs) : null;
-    const result = await agent.run(task);
+
+    const runner = run.runnerFor(
+      { personaPath: this.personaPath, frontmatter: fm, llm },
+      {
+        policy: { ...policyFromFrontmatter(fm, process.cwd()), resourceRoots: personaResourceRoots(this.personaPath) },
+        // The compiled identity, not the raw spec body, which is what this passed and
+        // is the same defect `compiledIdentity()` had one method above. `personaBody`
+        // becomes the "# Identity" section of the system prompt, so a persona run
+        // through this SDK was given a thinner description of itself than the same
+        // persona in the REPL, which passes its compiled document. Measured here:
+        // 2,640 characters against 6,283.
+        personaBody: run.identityOf(this.assembled),
+        onApproval: opts.onApproval ?? (async () => "deny"),
+        maxSteps: opts.maxSteps ?? 12,
+        observer: run.recordingTurns({ personaPath: this.personaPath, statePath: this.handle.statePath }),
+        bus,
+      },
+    );
+    const outcome = await runner.run({
+      turn: randomUUID(),
+      prompt: task,
+      asker: opts.asker ?? { kind: "component", name: "sdk" },
+    });
+
     const trace = tracer ? tracer.write(this.personaPath).paths : [];
     tracer?.stop();
-    return { result, events, trace };
+    return { outcome, events, trace };
   }
 
   /** Integrity view: mutation count, memory size, hash-chain validity, detected anomalies. */
   audit(): PersonaAuditView {
-    const st = readState(this.handle.statePath);
+    const st = ensureState(this.handle);
     const mem = readMemory(this.personaPath);
     const chain = verifyMemoryChain(this.personaPath);
     return {
@@ -252,7 +392,8 @@ export class Persona {
 
   /** Reload the spec from disk (e.g. after an external recompile/decompile). */
   reload(): void {
-    this.handle = loadPersona(this.personaPath);
+    this.assembled = run.assemble(this.personaPath);
+    this.handle = this.assembled.handle;
   }
 }
 

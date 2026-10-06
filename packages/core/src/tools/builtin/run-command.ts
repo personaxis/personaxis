@@ -1,7 +1,7 @@
 /** `run_command` (J.1): run a shell command in the workspace, return stdout/stderr. */
 import { defineTool } from "../define.js";
 import { evaluateCommand } from "../../sandbox.js";
-import { executeCommand } from "../exec.js";
+
 
 export const runCommandTool = defineTool({
   name: "run_command",
@@ -17,8 +17,8 @@ export const runCommandTool = defineTool({
     properties: { command: { type: "string", description: "The exact shell command to run." } },
   },
   gate: (args, policy) => evaluateCommand(args.command, policy),
-  execute: async (args, policy) => {
-    const r = await executeCommand(args.command, policy);
+  execute: async (args, policy, execution) => {
+    const r = await execution.runCommand(args.command, policy);
     const parts = [`exit_code: ${r.code}${r.timedOut ? " (timed out)" : ""}`];
     if (r.stdout.trim()) parts.push(`stdout:\n${r.stdout.trim()}`);
     if (r.stderr.trim()) parts.push(`stderr:\n${r.stderr.trim()}`);

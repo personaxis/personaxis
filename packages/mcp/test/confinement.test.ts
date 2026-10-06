@@ -47,10 +47,15 @@ describe("MCP path confinement (ADR-011 --root)", () => {
     );
   });
 
-  it("confines every persona-taking surface, not just reads", () => {
+  it("confines every persona-taking surface, not just reads", async () => {
     const { root, outside } = scaffold();
     svc.setRoot(root);
-    expect(() => svc.adjustState(outside, "traits.openness", 0.1, "x")).toThrow(/escapes/);
+    // `rejects`, not `toThrow`. `adjustState` became async when the move started
+    // going into the hash-chained record, and a synchronous `toThrow` around an async
+    // call passes on a promise that has not settled: the assertion sees a function
+    // that returned normally and reports nothing wrong. A confinement test that
+    // cannot fail is the worst kind to get wrong, so this is the shape that can.
+    await expect(svc.adjustState(outside, "traits.openness", 0.1, "x")).rejects.toThrow(/escapes/);
     expect(() => svc.audit(outside)).toThrow(/escapes/);
     expect(() => svc.listProposals(outside)).toThrow(/escapes/);
     expect(() => svc.skillReview(outside)).toThrow(/escapes/);

@@ -7,13 +7,28 @@
 import { describe, it, expect } from "vitest";
 import { TOOLS, toolByName, validateToolArgs, type ToolCategory } from "../src/tools/registry.js";
 import { DEFAULT_POLICY } from "../src/sandbox.js";
+import { noExecution } from "../src/ports/execution.js";
+
+/**
+ * E32: the third argument is the ExecutionPort, WHERE the action happens, and these
+ * calls were leaving it out. One that refuses everything rather than a live one, so
+ * the call also asserts what it should: none of these tools touches the machine.
+ */
+const INERT = noExecution("this tool must not act");
 
 const EXPECTED: Array<{ name: string; category: ToolCategory; isReadOnly: boolean }> = [
   { name: "run_command", category: "shell", isReadOnly: false },
   { name: "read_file", category: "fs", isReadOnly: true },
   { name: "list_dir", category: "fs", isReadOnly: true },
+  // C5: a read of many files at once, so it sits with the reads and carries their
+  // permission. Added here in the same commit that added the tool, because this list
+  // is what stops a catalogue changing shape without anybody deciding.
+  { name: "find_in_files", category: "fs", isReadOnly: true },
   { name: "write_file", category: "fs", isReadOnly: false },
   { name: "edit_file", category: "fs", isReadOnly: false },
+  // E98: written in E71, imported by the barrel and left out of its list, so it was offered to nobody. It
+  // reads the page through the same guard as `read_file` and writes nothing, so it sits with the reads.
+  { name: "check_page", category: "fs", isReadOnly: true },
   { name: "finish", category: "meta", isReadOnly: true },
 ];
 
@@ -40,6 +55,6 @@ describe("the built-in catalog (J.1b)", () => {
   it("preserves behavior: finish returns its summary, gates still decide", async () => {
     const finish = toolByName("finish")!;
     expect(finish.gate({ summary: "done" }, DEFAULT_POLICY).decision).toBe("allow");
-    expect(await finish.execute({ summary: "all done" }, DEFAULT_POLICY)).toBe("all done");
+    expect(await finish.execute({ summary: "all done" }, DEFAULT_POLICY, INERT)).toBe("all done");
   });
 });

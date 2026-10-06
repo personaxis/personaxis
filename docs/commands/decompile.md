@@ -1,7 +1,8 @@
 # `personaxis decompile`
 
-The reverse of `compile`: take a hand-edited compiled **PERSONA.md** and propose an updated
-`personaxis.md` that reflects the edit, then **re-validate** it before writing.
+The reverse of `compile`: take a hand-edited compiled `PERSONA.md` and propose an updated
+`personaxis.md` that reflects the edit, then re-validate it before writing. Use it when you
+changed the compiled document by hand and want the spec to match.
 
 ## Usage
 ```bash
@@ -19,8 +20,9 @@ personaxis decompile [slug] [--root] [--provider <name>] [--from-file <path>]
    nothing** (the spec is never corrupted by a bad LLM response).
 
 ## Safety
-Decompile is the only LLM path that writes the spec, so it is gated by re-validation: a
-`FAIL_SCHEMA/POLICY/CONCEPTUAL` result aborts with the exact failing field and no write.
+Decompile writes the spec only if the proposed result validates. A `FAIL_SCHEMA`,
+`FAIL_POLICY` or `FAIL_CONCEPTUAL` result aborts with the exact failing field and writes
+nothing.
 
 ## Example
 ```bash

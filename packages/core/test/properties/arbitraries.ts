@@ -10,7 +10,6 @@
  */
 import fc from "fast-check";
 import type { Envelope } from "../../src/index.js";
-import type { StateFile } from "../../src/index.js";
 
 export const NUM_RUNS = Number(process.env.FC_NUM_RUNS ?? 200);
 /** File-system-heavy properties (chain): 1/10 of FC_NUM_RUNS, capped, or set
@@ -44,16 +43,6 @@ export const envelopesArb: fc.Arbitrary<Record<string, Envelope>> = fc
 
 /** Finite deltas across 9 orders of magnitude, signed. */
 export const deltaArb = bounded(-1e9, 1e9);
-
-export function freshState(): StateFile {
-  return {
-    schema_version: "1.0",
-    persona_id: "prop-test",
-    persona_version: "0.0.0",
-    values: {},
-    mutation_log: [],
-  };
-}
 
 /** A mutation plan: sequences of (field-index, delta) over a given field list. */
 export const planArb = (fieldCount: number) =>

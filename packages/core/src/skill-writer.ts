@@ -32,7 +32,7 @@ export interface SkillDraft {
   name: string;
   /** One-line description. */
   description: string;
-  /** Task capabilities this skill matches (consumed by J.2 activeSkillsFor). */
+  /** Task capabilities this skill is for. Kept in the draft; since E72 nothing selects skills by matching them. */
   capabilities: string[];
   /** Tool names the methodology relies on (J.2 allowed_tools). */
   allowedTools: string[];

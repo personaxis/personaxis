@@ -1,0 +1,297 @@
+/**
+ * The loop as a seam, with our provider as the default one.
+ *
+ * A customer who can plug in their own loop is the difference between a platform and a
+ * product, and it costs almost nothing to have it that way now rather than to retrofit
+ * it later. Three roles, the same split as every other capability: a definition, a
+ * default provider, and consumers that never import the provider.
+ *
+ * ## The provider cannot skip the close, because it never performs the close
+ *
+ * This is the correction to the thing the reference gets wrong. Its contract says a
+ * delivered answer must close the durable turn, and twenty-five early returns skip the
+ * function that does it, each replicating a subset of the cleanup by hand. Every one of
+ * those was written by somebody who knew the rule.
+ *
+ * So the rule is not a rule here. A provider's job is to run a turn and return what it
+ * produced, or throw. It has no access to the finaliser, no way to reach the record,
+ * and no way to end a turn. **The runner closes every turn, on every path**, because
+ * the runner is the only thing that can.
+ *
+ * A provider that returns without an answer is closed as `abandoned`, which is a
+ * stop reason like any other rather than a silence. A provider that throws is closed as
+ * `failed` with the code. A provider that never returns is somebody else's problem: a
+ * deadline is a guard, and this file does not race promises, because racing one returns
+ * control to the caller while the work carries on underneath.
+ *
+ * ## What the runner does that a provider must not have to remember
+ *
+ * Charge the ledger, write the open and the close, and make the close the only exit.
+ * Everything else is the provider's.
+ */
+
+import { Ledger, describeRoom } from "./budget.js";
+import type { StopReason, TurnCall, TurnCompaction, TurnOutcome, TurnRequest } from "./vocabulary.js";
+
+/** What a provider is given. Deliberately small. */
+export interface TurnContext {
+	readonly request: TurnRequest;
+	/**
+	 * Whether there is room for another step.
+	 *
+	 * Truthful only if the provider also reports its steps as they finish, which is
+	 * what `stepDone` is for. Without that the ledger learns the count at the end and
+	 * this answers about a turn that has already spent whatever it spent.
+	 */
+	readonly hasRoom: () => boolean;
+	/**
+	 * Says a step came back, and charges for it.
+	 *
+	 * Reporting incrementally is what makes the ceiling bind **inside** a turn rather
+	 * than only between turns. A provider that never calls it is still charged, at the
+	 * end, for the total it reports; it just cannot be stopped partway.
+	 *
+	 * Like the deadline, this is cooperative and the header says so rather than
+	 * implying otherwise: a provider that ignores `hasRoom` and keeps going is not
+	 * stopped by the ledger. What the ledger guarantees is that the spend is counted
+	 * against the tree and that the next turn is refused, which is the part a tenant
+	 * ceiling actually rests on.
+	 */
+	readonly stepDone: () => void;
+	/** Cancellation, cooperative. A provider that ignores it is not stopped by it. */
+	readonly signal?: AbortSignal;
+}
+
+/** What a provider produced, before the runner turns it into an outcome. */
+export interface TurnProduct {
+	readonly answer: string;
+	readonly steps: number;
+	/**
+	 * How it ended, when the provider knows better than the runner can guess.
+	 *
+	 * Three of these were missing and each absence became a lie the translator had to
+	 * tell.
+	 *
+	 * `failed`, because a provider that caught its own error had no way to say so: a
+	 * loop returning "the model hung up" as its text was closed `answered` with that
+	 * sentence as the persona's reply. Throwing was the only route to `failed`, which
+	 * asks every provider to let its errors escape in order to be honest.
+	 *
+	 * `budget` and `stopped`, because without them a loop that ran out of room came
+	 * back `answered`, which is the one word that should mean the loop said it was
+	 * done. The runner's own ledger refuses a turn at the door, before the provider is
+	 * ever called, so a provider reporting its own ceiling is not claiming anything
+	 * about a count it cannot see: it is reporting its own.
+	 */
+	readonly stopReason?: Extract<
+		StopReason,
+		"answered" | "budget" | "stopped" | "empty" | "interrupted" | "refused" | "failed"
+	>;
+	/**
+	 * Why it failed, when it did.
+	 *
+	 * Separate from `answer` on purpose. A failure message is the runtime talking, not
+	 * the persona, and putting it where the answer goes is how a transcript ends up
+	 * quoting a component as though the persona had said it.
+	 */
+	readonly failure?: { readonly code: string; readonly message: string };
+	/** What it cost, when this provider talks to something that charges. */
+	readonly cost?: { readonly tokens: number; readonly usd: number };
+	/**
+	 * E85: what the runtime checked about what this turn left, and what it could not check.
+	 *
+	 * Reported by the provider rather than derived here, for the reason `compactions` is: the runner did not
+	 * write the files and is in no position to say what was proven about them. Absent from a turn that left
+	 * nothing, which is a different statement from a turn that left a page nobody ran.
+	 */
+	readonly delivered?: TurnOutcome["delivered"];
+	/**
+	 * E25: what it compacted, when this provider manages a context window.
+	 *
+	 * Absent from a provider that manages none, which is a different statement from an
+	 * empty array. The runner passes it through untouched: it did not compact anything
+	 * and is in no position to describe what did.
+	 */
+	readonly compactions?: readonly TurnCompaction[];
+	/** E80: every call the gate judged. Passed through untouched, for the reason compactions are. */
+	readonly calls?: readonly TurnCall[];
+	/** E81: the task list the turn ended with, when the persona kept one. Passed through untouched. */
+	readonly tasks?: TurnOutcome["tasks"];
+	/** E83: the route chosen before acting, when the decision step ran. Passed through untouched. */
+	readonly decision?: TurnOutcome["decision"];
+	/** E84: the questions put to a person, with their answers when given. Passed through untouched. */
+	readonly questions?: TurnOutcome["questions"];
+	/** E157: what the judge said about the turn, in shadow. Passed through untouched. */
+	readonly judgements?: TurnOutcome["judgements"];
+}
+
+/**
+ * A loop.
+ *
+ * One method, because a seam with one operation is a seam somebody can implement in an
+ * afternoon, and a seam nobody can implement is a seam that has one provider forever.
+ */
+export interface LoopProvider {
+	readonly name: string;
+	run(context: TurnContext): Promise<TurnProduct>;
+}
+
+/**
+ * What the runner tells the record. The runner does not write it itself.
+ *
+ * Both may be asynchronous, and the runner waits for them. Writing to a record means
+ * taking a lock and getting bytes to disk, and a turn that returned before its close
+ * was durable would leave a crash with a record that ends mid-exchange. The journal
+ * says the same thing from the other side: draining at the close of a turn is what
+ * makes whatever survives a crash a whole number of turns.
+ *
+ * An observer that throws fails the turn, and that is the contract rather than an
+ * accident. An observer with a policy for its own failures owns that policy: the one
+ * that writes to a record catches and reports instead of throwing, because a person
+ * who got an answer should keep it and hear that it was not written down.
+ */
+export interface TurnObserver {
+	opened?(request: TurnRequest): void | Promise<void>;
+	/** Called exactly once per turn, on every path, including the ones nobody planned. */
+	closed?(outcome: TurnOutcome): void | Promise<void>;
+}
+
+export interface RunnerOptions {
+	readonly provider: LoopProvider;
+	readonly ledger?: Ledger;
+	readonly observer?: TurnObserver;
+}
+
+/**
+ * Runs turns through a provider, and owns every ending.
+ *
+ * Consumers hold one of these and never see the provider, which is what makes swapping
+ * one a configuration change rather than a rewrite.
+ */
+export class TurnRunner {
+	readonly ledger: Ledger;
+	/**
+	 * Genuinely private, with `#` rather than TypeScript's `private`.
+	 *
+	 * `private` is a compile-time courtesy and the field is there at runtime for
+	 * anybody who looks. The claim here is that a consumer never sees the provider, and
+	 * a claim worth making is worth making true rather than checked.
+	 */
+	readonly #provider: LoopProvider;
+	readonly #observer: TurnObserver | undefined;
+
+	constructor(options: RunnerOptions) {
+		this.#provider = options.provider;
+		this.ledger = options.ledger ?? new Ledger();
+		this.#observer = options.observer;
+	}
+
+	/** Which loop is actually running, for a report. Consumers do not import it. */
+	get providerName(): string {
+		return this.#provider.name;
+	}
+
+	async run(request: TurnRequest, signal?: AbortSignal): Promise<TurnOutcome> {
+		// Opened before the budget is consulted, because being asked is a fact and the
+		// answer to it is a different fact. This used to sit after the refusal, so a
+		// turn with no room left wrote a close with no open: a reader met an ending for
+		// something that, as far as the record said, never started. Nothing is charged
+		// by opening, and a refusal that leaves no trace is a refusal a reader has to
+		// guess at, with the guess always being that nothing was asked.
+		await this.#observer?.opened?.(request);
+
+		const room = this.ledger.room();
+		if (!room.ok) {
+			return await this.#close({
+				turn: request.turn,
+				stopReason: "budget",
+				answer: "",
+				steps: 0,
+				failure: { code: "budget", message: describeRoom(room) },
+			});
+		}
+
+		// Steps the provider reported as they finished, so the total at the end is not
+		// charged twice for the ones already counted.
+		let reported = 0;
+		const context: TurnContext = {
+			request,
+			hasRoom: () => this.ledger.room().ok,
+			stepDone: () => {
+				reported += 1;
+				this.ledger.chargeStep();
+			},
+			...(signal ? { signal } : {}),
+		};
+
+		let product: TurnProduct;
+		try {
+			product = await this.#provider.run(context);
+		} catch (thrown) {
+			const message = thrown instanceof Error ? thrown.message : String(thrown);
+			// The turn still closes, and it closes reporting the steps that actually
+			// happened. Reporting zero because the provider threw would charge the ledger
+			// for work the outcome then denies took place, which is the same class of
+			// divergence the record exists to make impossible: two numbers about one fact,
+			// and nothing comparing them.
+			return await this.#close({
+				turn: request.turn,
+				stopReason: "failed",
+				answer: "",
+				steps: reported,
+				failure: { code: "provider_failed", message },
+			});
+		}
+
+		// Only what was not already charged. A provider that reported nothing pays for
+		// everything here; one that reported as it went pays nothing extra.
+		for (let index = reported; index < product.steps; index += 1) this.ledger.chargeStep();
+
+		const stopReason: StopReason =
+			product.stopReason ?? (product.answer.length > 0 ? "answered" : "abandoned");
+
+		return await this.#close({
+			turn: request.turn,
+			stopReason,
+			answer: product.answer,
+			steps: product.steps,
+			// Passed through untouched, absent included. A provider that gave no price
+			// gets no price in the outcome rather than a zero somebody would later read
+			// as "checked, and free".
+			...(product.cost === undefined ? {} : { cost: product.cost }),
+			...(product.compactions === undefined ? {} : { compactions: product.compactions }),
+			...(product.calls === undefined ? {} : { calls: product.calls }),
+			...(product.tasks === undefined ? {} : { tasks: product.tasks }),
+			...(product.decision === undefined ? {} : { decision: product.decision }),
+			...(product.questions === undefined ? {} : { questions: product.questions }),
+			// E157: named here for the reason E85 gives below: a field the runner does not copy is lost in silence.
+			...(product.judgements === undefined ? {} : { judgements: product.judgements }),
+			// E85: what the runtime checked about what the turn left. Copied here like the rest: this is the
+			// one place where a field a loop reported is lost by not being named, which is how `E84` lost its
+			// questions for an afternoon.
+			...(product.delivered === undefined ? {} : { delivered: product.delivered }),
+			...(product.failure === undefined ? {} : { failure: product.failure }),
+			...(stopReason === "abandoned"
+				? {
+						failure: {
+							code: "abandoned",
+							message: "the loop returned without an answer and without saying why",
+						},
+					}
+				: {}),
+		});
+	}
+
+	/**
+	 * The one exit.
+	 *
+	 * Private, and the only thing that produces a `TurnOutcome`. A provider cannot call
+	 * it because a provider does not have it, which is what turns "always close the
+	 * turn" from a rule somebody follows into a shape of the code.
+	 */
+	async #close(outcome: TurnOutcome): Promise<TurnOutcome> {
+		this.ledger.chargeTurn();
+		await this.#observer?.closed?.(outcome);
+		return outcome;
+	}
+}

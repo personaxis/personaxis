@@ -16,6 +16,7 @@
  */
 
 import { executeCommand } from "./tools/exec.js";
+import { exitCodeAttributes } from "./sandbox.js";
 import { DEFAULT_POLICY, type Policy } from "./sandbox.js";
 import type { VerifierResult, ConsensusResult } from "./self-evolution.js";
 
@@ -103,6 +104,13 @@ async function verifyCommand(gate: VerificationGate, policy: Policy): Promise<Ve
   const name = gate.name ?? `command:${(gate.run ?? "").slice(0, 24)}`;
   if (!gate.run) return { verifier: name, pass: false, reason: "no command specified" };
   const r = await executeCommand(gate.run, policy, { timeoutMs: gate.timeout_ms });
+  // E85: a zero exit code only proves something when it can be attributed to the command somebody meant. A
+  // pipeline reports its last stage, a disjunction runs the right side when the left failed, and a background
+  // job returns the shell's code, so passing on zero there is reporting a test suite green because `tee` worked.
+  const attribution = exitCodeAttributes(gate.run);
+  if (r.ok && !attribution.attributes) {
+    return { verifier: name, pass: false, reason: `exit 0 proves nothing here: ${attribution.why}` };
+  }
   return {
     verifier: name,
     pass: r.ok,

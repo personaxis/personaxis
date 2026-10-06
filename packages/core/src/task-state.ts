@@ -16,6 +16,18 @@ export interface SubTask {
   id: string;
   text: string;
   status: SubTaskStatus;
+  /**
+   * E81: for a task marked done, whether something the persona did backs it, which is a call that
+   * succeeded after the task last changed. Absent on every other status, and on a task the loop wrote.
+   */
+  verified?: boolean;
+  /** E81: the call that backs a verified done, by call id. One call backs one step. */
+  evidence?: string[];
+}
+
+/** A task's id when the persona gave none: its text, folded, so resending the same step updates it. */
+function idFor(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "task";
 }
 
 export interface TaskStateSnapshot {
@@ -43,6 +55,16 @@ const DEFAULT_LIMITS: Required<TaskStateLimits> = {
   maxSubTasks: 20,
 };
 
+/**
+ * One task as the model and the screen read it. A done that nothing backs is its own mark, with the reason
+ * in words, so it cannot be read as finished.
+ */
+export function lineFor(task: Pick<SubTask, "text" | "status" | "verified">): string {
+  if (task.status === "done" && task.verified === false) return `[?] ${task.text} (said done; nothing done backs it yet)`;
+  const mark: Record<SubTaskStatus, string> = { done: "x", active: "~", blocked: "!", pending: " " };
+  return `[${mark[task.status]}] ${task.text}`;
+}
+
 /** Keep the LAST n items (most recent), so the state reflects where the run IS now. */
 function tail<T>(xs: T[], n: number): T[] {
   return xs.length > n ? xs.slice(xs.length - n) : xs;
@@ -55,6 +77,10 @@ export class TaskStateTracker {
   private files: string[] = [];
   private errors: string[] = [];
   private subTasks: SubTask[] = [];
+  /** E81: for each task, how many calls had succeeded when its status last changed. */
+  private readonly since = new Map<string, number>();
+  /** E81: the calls already backing a done step, which cannot back a second one. */
+  private readonly claimed = new Set<string>();
   private readonly limits: Required<TaskStateLimits>;
 
   constructor(init?: { goal?: string; limits?: TaskStateLimits }) {
@@ -102,6 +128,68 @@ export class TaskStateTracker {
     return this;
   }
 
+  /**
+   * E81: the persona's own list, replaced whole, where done needs something done.
+   *
+   * The rule is LongHorizon-Harness's: the state of the work changes only with facts from the
+   * environment. `succeeded` is every call that succeeded in this run, in order. A task that becomes done
+   * is verified when a call succeeded after the task last changed and is not already backing another step,
+   * and that call is its evidence; a task the list names for the first time as done may be backed by any
+   * such call in the run, because a persona that does the work first and writes the list after is not lying. Without a call it is kept as said done and
+   * unverified: never silently accepted, and never refused, because refusing would teach the model to stop
+   * reporting. A done that was unverified is checked again the next time it is sent.
+   *
+   * Returns the tasks marked done that nothing backs, so the caller can say so.
+   */
+  replaceTasks(list: ReadonlyArray<{ id?: string; text: string; status: SubTaskStatus }>, succeeded: readonly string[]): SubTask[] {
+    const previous = new Map(this.subTasks.map((task) => [task.id, task]));
+    const next: SubTask[] = [];
+    const unbacked: SubTask[] = [];
+    const seen = new Set<string>();
+    for (const item of list) {
+      const text = item.text.replace(/\s+/g, " ").trim();
+      if (!text) continue;
+      const id = item.id?.trim() || idFor(text);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const before = previous.get(id);
+      let task: SubTask;
+      if (item.status !== "done") {
+        task = { id, text, status: item.status };
+      } else if (before?.status === "done" && before.verified !== false) {
+        task = { ...before, text };
+      } else {
+        // One call backs one step. Without this, one file written and three steps marked done read as three
+        // verified steps. The most recent call after the step last changed, not already backing another, is
+        // the one taken.
+        const backing = succeeded
+          .slice(before ? (this.since.get(id) ?? 0) : 0)
+          .filter((callId) => !this.claimed.has(callId))
+          .at(-1);
+        if (backing !== undefined) {
+          this.claimed.add(backing);
+          task = { id, text, status: "done", verified: true, evidence: [backing] };
+        } else {
+          task = { id, text, status: "done", verified: false };
+          unbacked.push(task);
+        }
+      }
+      // A step taken back from done gives its call back, so it can back the step that really used it.
+      if (before?.status === "done" && item.status !== "done") for (const callId of before.evidence ?? []) this.claimed.delete(callId);
+      if (!before || before.status !== item.status) this.since.set(id, succeeded.length);
+      next.push(task);
+    }
+    this.subTasks = tail(next, this.limits.maxSubTasks);
+    for (const id of [...this.since.keys()]) if (!seen.has(id)) this.since.delete(id);
+    return unbacked;
+  }
+
+  /** E81: only the task list, for putting back in front of the model after a batch of calls. */
+  renderTaskList(): string {
+    if (this.subTasks.length === 0) return "";
+    return ["Your task list (keep it current with update_tasks):", ...this.subTasks.map((task) => `  ${lineFor(task)}`)].join("\n");
+  }
+
   snapshot(): TaskStateSnapshot {
     return {
       goal: this.goal,
@@ -134,8 +222,7 @@ export class TaskStateTracker {
     }
     if (this.subTasks.length) {
       out.push("Sub-tasks:");
-      const mark: Record<SubTaskStatus, string> = { done: "x", active: "~", blocked: "!", pending: " " };
-      for (const s of this.subTasks) out.push(`  [${mark[s.status]}] ${s.text}`);
+      for (const s of this.subTasks) out.push(`  ${lineFor(s)}`);
     }
     if (this.decisions.length) {
       out.push("Decisions:");

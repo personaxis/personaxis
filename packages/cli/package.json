@@ -1,7 +1,7 @@
 {
   "name": "personaxis",
-  "version": "0.15.0",
-  "description": "The living, governed AI persona toolchain (personaxis.md spec v1.1.0). Run `personaxis` for an interactive REPL where your persona talks, evolves (clamped + audited), and remembers; plus create (Genesis), validate, lint, compile/decompile, state, drift, jacobian, proof, push/pull, skills, overseer, team, orchestrate, sigil, sync, serve, and migrate (up to 0.10-to-1.0). Three-artifact model: personaxis.md (10-layer spec), PERSONA.md (compiled), state.json (runtime).",
+  "version": "0.17.0",
+  "description": "Build a persona, the whole way a professional works, in versionable files, and load it into Claude Code, Codex, OpenClaw or Hermes. Values stay inside declared ranges, tool calls are gated, every change is in a hash-chained record. The personaxis.md spec v1.1 toolchain.",
   "keywords": [
     "ai",
     "agents",
@@ -26,48 +26,55 @@
   },
   "bin": {
     "personaxis": "dist/index.js",
-    "personaxis-scan": "dist/scan-bin.js"
+    "personaxis-scan": "dist/scan-bin.js",
+    "personaxis-hook": "dist/hook-bin.js",
+    "personaxis-acp": "dist/acp-bin.js"
   },
   "files": [
     "dist",
-    "templates"
+    "templates",
+    "hosts"
   ],
   "scripts": {
     "build": "node ../../scripts/embed-assets.mjs && tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "lint": "node ../../scripts/embed-assets.mjs && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@personaxis/core": "workspace:*",
     "@personaxis/protocol": "workspace:*",
     "@personaxis/sdk": "workspace:*",
     "@personaxis/spec": "workspace:*",
     "@personaxis/tui": "workspace:*",
-    "@inquirer/prompts": "^7.10.1",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "gray-matter": "^4.0.3",
-    "inquirer": "^12.5.2",
-    "js-yaml": "^4.1.0",
-    "react": "^19.0.0",
     "ink": "^7.1.0",
-    "ink-text-input": "^6.0.0"
+    "ink-text-input": "^6.0.0",
+    "inquirer": "^12.5.2",
+    "js-yaml": "^4.3.2",
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@vitest/coverage-v8": "3.2.6",
     "fast-check": "^4.8.0",
+    "ink-testing-library": "^4.0.0",
     "typescript": "^5.8.3",
     "vitest": "^3.0.0",
-    "@types/react": "^19.0.0",
-    "ink-testing-library": "^4.0.0"
+    "zod": "4.4.3"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.18.1"
   },
   "publishConfig": {
     "access": "public"

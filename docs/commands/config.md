@@ -4,13 +4,14 @@ Read/write configuration values (project `.personaxis/config.json` overrides the
 `~/.personaxis/config.json`).
 
 ```bash
-personaxis config <key> <value>    # set (e.g. local.endpoint, personas.cmo.model, provider)
-personaxis config get <key>        # print the effective value
+personaxis config set <key> <value>   # e.g. local.endpoint, personas.cmo.model, provider (-g writes the global file)
+personaxis config get <key>           # print one value (-g reads the global file only)
+personaxis config show                # project and global config, keys masked
+personaxis config use <profile>       # make a profile the default (--persona <slug> for one persona, -g for global)
 ```
 
-- **Inside the app:** `/config` opens **Settings > Config** (effective values, where each
-  one comes from, and in-place Actions: posture, improve mode, default model profile).
-  `/config model` jumps to the Command Center's provider wizard.
-- Model resolution layers: global < project < per-persona < spec frontmatter < environment
-  (`PERSONAXIS_MODEL` / `PERSONAXIS_ENDPOINT`). See `docs/guides/configuration.md` for the
-  full any-model/any-mode matrix.
+- Inside the app, `/status` has a Config tab (effective values and where each one comes from)
+  and `/model` opens the provider menu.
+- Precedence is environment, then project, then global (`PERSONAXIS_MODEL` and
+  `PERSONAXIS_ENDPOINT` are the environment variables). See
+  [configuration](../guides/configuration.md) for the full any-model, any-mode matrix.

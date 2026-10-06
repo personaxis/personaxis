@@ -1,9 +1,13 @@
 {
   "name": "@personaxis/mcp",
-  "version": "0.15.0",
-  "description": "Personaxis MCP server, expose a living, governed persona as tools any MCP host (Claude Code, Codex, Cursor) can call.",
+  "version": "0.17.0",
+  "description": "Personaxis MCP server: load a persona into an MCP host such as Claude Code or Codex, as 16 tools.",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
   "main": "dist/index.js",
   "bin": {
     "personaxis-mcp": "dist/index.js"
@@ -14,16 +18,18 @@
   "scripts": {
     "build": "tsc",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@personaxis/core": "workspace:*",
     "@personaxis/sdk": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "3.2.6",
     "typescript": "^5.8.3",
     "vitest": "^3.0.0"
   },

@@ -6,6 +6,534 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
+
+A minor release with breaking changes: see the sections marked **Breaking** below.
+
+### Known issues
+
+- `personaxis create` builds what it cannot extract from labeled defaults, and the creation report lists
+  each one. Without a working model that is most of the persona; with one, the affect baseline, the
+  ranges and the bands are still defaults, and a persona whose source names no virtue gets the
+  default one. Review `creation-report.md` before using a persona for real work.
+- `personaxis create --yes` over a persona that already exists keeps that persona's record and state, so
+  the new one starts from the old values. Delete `record.jsonl` and `state.json` beside it first.
+
+### Breaking: this version works without the Personaxis service, and `guard` enforces on its own
+
+- `connect` (and `login`), `pull`, `push` and `runtime` are not registered in this version, and the hosted `remote`
+  provider is not offered. A config that still names it is refused with that reason.
+- `personaxis guard [--dir <path>]` starts the enforcement that used to start only inside `connect`: the persona's
+  policy, read from its own file, answers the `PreToolUse` hook of Claude Code and Codex before each tool call, with no
+  account and no network. A call the policy says needs a person is asked in its terminal, and refused when nobody can
+  answer.
+- The persona template tells its reader to `compile` and `decompile`, not to `push`.
+- `@personaxis/mcp` no longer mounts `personas_search`, `personas_fetch`, `personas_apply`, `runtime_evaluate` and the
+  `personaxis://personas/{slug}` resource: they call the hosted registry. A default server offers 16 tools.
+
+### `state` works on the persona in scope, and two retired REPL verbs have their shell door
+
+- `state show | drift | mutate | rebuild | init` with no `-f` read `./PERSONA.md`, which since spec v1 is the compiled
+  prose, and reported an empty `persona@0.0.0` without an error. They now find the persona the way `status`, `lint` and
+  `goal` do; `-f` takes a path or a slug.
+- `personaxis state rewind <n> [--dry-run]` undoes the last `n` moves with new recorded moves, as `/audit → Timeline`
+  does in the app. `personaxis goal <text>` sets the standing goal and `goal --clear` removes it. Typing `/rewind` or
+  `/goal` in the app pointed at these two commands before they existed.
+
+### `create` says what it worked around
+
+- A missing model, an extractor that failed or a web search that returned nothing is printed as a warning when
+  `create` finishes, listed under **Worked around** in `creation-report.md`, and returned as `notes` with `--json`.
+  The report used to list each one as a passed gate.
+- The report counts lint warnings, not every non-error finding, so it agrees with the terminal.
+- The default tone of a persona whose brief names none compiles as "professional and direct".
+- `create --provider agent` hands the extraction to the coding agent running it, as `compile` does: it
+  writes the prompt, stops, and continues from the agent's answer on the next run. It used to fall
+  back to labeled defaults.
+
+### Every package on npm has a README and its license
+
+- Seven of the eight packages had no README, so their npm pages were empty, and none shipped the MIT license text.
+- The MCP server is its own package: the README and the Claude Code and Codex guides now say how to register it
+  (`npx -y @personaxis/mcp`), and the Codex guide uses Codex's `config.toml`.
+
+### A slow local model is waited for, up to fifteen minutes, instead of five
+
+- Every call to the model now runs under its own clock: fifteen minutes for the first header and between chunks,
+  or `PERSONAXIS_MODEL_HEADERS_TIMEOUT_MS`. It used to be Node's, which gives up after 300 seconds without a header,
+  and a small open model on a laptop's CPU behind Ollama sends none until it has read the whole prompt.
+- Requires Node 20.18.1 or newer (it was 20.0.0), for `undici` 7, the library Node's own `fetch` is built on.
+
+### Genesis starts a persona from a profile, and every new persona is alive
+
+- `personaxis create --profile regulated|standard|research`, and the same choice in the full interview,
+  set the starting range, the per-layer approval policy and the half-lives. Standard is exactly what
+  Genesis wrote before. The interview no longer offers `locked` when creating a persona.
+- `personaxis init` now writes `mode: suggesting`. Every persona it made before was born `locked`, twice
+  (inline and in its `policy.yaml`), and never evolved.
+- `policy.yaml` requires `approved_by` and `last_approval_at` only for `autonomous` (spec 1.1.0).
+
+### Breaking: a turn is now a thing the runtime owns, and the old state engine is gone
+
+This release is a minor bump: nine names left the public surface of `@personaxis/core`, and two
+reply shapes changed. Everything else is additive.
+
+Gone from `@personaxis/core` (the old state engine and the rebuild it needed):
+`applyMutation`, `applyHomeostasis`, `rebuildState`, `rebuildStateValues`,
+`verifyMutationChain`, `MutationRequest`, `MutationResult`, `RebuildResult`,
+`RebuildDrift`.
+
+State was two chains over one history: the `mutation_log` inside `state.json`, and the
+record. It is one now. `state.json` is printed from the record, so a coordinate moves
+through `record.adjust` (or `record.adjustAll` for a batch that has to land together), and
+what a persona is at any moment is `record.derive` folded over its entries. Editing the
+file by hand changes nothing that survives the next write, and `personaxis state rebuild`
+says so instead of trusting it.
+
+`@personaxis/sdk`: `agentRun` answers with `outcome`, not `result`.
+
+```ts
+// before
+const { result } = await persona.agentRun(task);
+result.summary; result.finished; result.budget.stoppedBy;
+
+// now
+const { outcome } = await persona.agentRun(task);
+outcome.answer; outcome.stopReason; outcome.cost; outcome.turn;
+```
+
+It used to hand back the whole result of one particular loop, so a caller was reading our
+loop's shape and would have got silence from anybody else's behind the same seam. The
+field is renamed rather than reshaped in place, so a caller breaks at compile time instead
+of finding a field that quietly stopped being there.
+
+Nothing was lost that was not already somewhere else. The specific ceiling that stopped a
+run rides `agent-stop-condition`, the verification verdict rides `verify-result` and
+`verify-complete` with every verifier named, and the wall clock rides `agent-budget`. All
+three are in `events`, which is still returned whole. And `outcome.turn` is something the
+old shape could not give at all: the id of the turn in the persona's record.
+
+**`POST /persona/agent` and the MCP `agent_run` reply the same way**, `{ outcome, events,
+trace }`.
+
+**`stopReason` is a closed set, and `answered` narrowed.** It used to mean both "the loop
+said it was done" and "it ran out of steps but had something to show", so whether a turn
+completed its task had no answer at all. Now `answered` means the loop finished, `budget`
+means a step, token, cost or time ceiling, and `stopped` means a stop condition the spec
+declared. All three still deliver whatever the turn had. The rest are `refused`,
+`interrupted`, `empty`, `failed`, `abandoned`.
+
+### Feature: every turn is written into the persona's record
+
+What was asked, what came back, how it ended, how many steps it took and what it cost, in
+the same hash-chained, append-only record the coordinates live in. On every surface that
+runs a turn: the REPL, the SDK, `personaxis serve`, and the MCP host.
+
+Every entry says who wrote it, and that now includes who asked. Each entry names its author: a
+person, a persona delegating, or a program, which says it is one:
+`agentRun` takes an optional `asker` so an embedder can name its own user, `serve` and the
+MCP host name themselves, and nothing infers a person from an absent field. An answer is
+always attributed to the persona, never to whoever asked for it.
+
+Reading a persona no longer costs what its whole life costs. The fold is checkpointed
+inside the chain rather than beside it, so a checkpoint is checkable instead of trusted:
+50,000 entries went from 227 ms to 1.4 ms to read.
+
+---
+
+## [0.16.10] - 2026-08-02: what the phase 2 craft gate found
+
+### Fix: five leaks, three of them months old
+- **`README.md` said `0.14.0`** in three places while the published version was `0.16.9`. It
+  is the first thing anyone reads on npm and on GitHub, and it ships inside the package. An
+  integration doc still named `0.12.0` for the MCP server.
+- `CLAUDE.md` said `0.16.5`, and **had already been corrected once** in the phase 1 gate,
+  from `0.16.0`. That reincidence is the finding: the problem was never the number, it was
+  writing it down. The README no longer states it and sends people to `personaxis --version`,
+  which is always right; `CLAUDE.md` points at the package manifests and says why it does not
+  repeat the value.
+- **Three public docs pointed at paths inside the private planning repo**
+  (`docs/architecture/agent-core.md`, `docs/architecture/command-center.md`, and the
+  threat model, which is not published), and the plan they pointed at had already been
+  superseded. A reader gets a reference they cannot open, to a document that no longer says
+  what the sentence claims. The threat model also declared `audience: private` while being
+  published.
+
+### Test: the deny regex, proved unbeatable rather than asserted
+- A DONE condition of phase 2, and one the plan states as a failure mode rather than a
+  feature: **the input nobody enumerated that lets a forbidden call through.** Example-based
+  tests cannot rule that out, because the examples are the enumeration.
+- Eleven properties quantify over what an attacker controls (argument text, the surrounding
+  policy, both postures, the gates) and hold one sentence: if a deny matches, the call does
+  not run. An explicit allow for the same pattern loses; the loosest sandbox with approval
+  set to `never` and a gate on every class loses, because the gate never opens and there is
+  nothing to approve; moving the command to another tool does not help, since a pattern
+  describes what may not happen rather than who may not ask.
+- **Verified by mutation, not by passing.** Inverting precedence fails five of them; dropping
+  the case-insensitive flag fails one. A third mutation, an invalid pattern compiling to
+  `/.*/` instead of `/(?!)/`, passed every property, so an eleventh was written: a typo would
+  have become a policy refusing all work, which looks like enforcement working very well
+  until somebody turns the persona off to get anything done.
+
+### Docs
+- The five producer commands (`serve`, `watch`, `observe`, `compile`, `orchestrate --run`)
+  say that they announce presence, what they report doing, and where that shows.
+
+---
+
+## [0.16.9] - 2026-08-02: the producers announce themselves
+
+### Feat: presence from every surface that holds a persona (D6)
+- Only the REPL ever announced itself. Everything else held a persona **in silence**: a
+  `serve` running for an hour, a `watch` daemon recompiling it, a `compile` calling a model,
+  a governed tick fired by a host hook on every turn, an MCP host driving it. All of them
+  read as **idle** in the fleet and in the Command Center. A presence view that is wrong in
+  the direction of "nobody is here" is worse than no view, because avoiding exactly that
+  collision is its whole job.
+- One rule decides who announces: **hold the persona long enough for someone else to
+  collide with you.** The daemons (`serve`, `watch`, MCP) and the operations that run a
+  model (`compile`, `observe`, `orchestrate --run`, `personaxis -p`). Read-only and instant
+  commands (`validate`, `lint`, `ps`, `dash`) announce nothing, because a marker that
+  appears and vanishes in milliseconds is noise no reader can see in time.
+- The `host` says through what the persona is being used and `activity` says what it is
+  doing, so `watch` and a one-shot `compile` share a host and are still told apart. A host
+  per command would grow a vocabulary nobody could read at a glance.
+- **One process is one holder.** Presence is keyed by device and pid, so `watch` calling
+  `compile` does not announce twice; the nested operation takes the same holder's line and
+  gives it back on release, returning the activity to `watching for spec edits` by itself.
+  Announcing twice was never something the file layout could represent, and the earlier
+  shape would have installed a fresh heartbeat and exit hooks on **every** recompile, which
+  Node starts warning about after ten.
+- Releasing covers the way long-running commands actually end. A `finally` block is not
+  enough for a process that stops because someone pressed Ctrl+C, so the exit path is
+  handled too, and it decides **when the signal arrives** whether another handler owns the
+  exit. Deciding at install time would have made `watch` unstoppable, since it registers its
+  own handler afterwards.
+- **The MCP server is driven by use, not by a timer.** It holds no persona of its own, it is
+  handed one per call, and it cannot know the host walked away. Each call refreshes
+  (throttled to one write per heartbeat) and silence lets the entry expire, which says the
+  true thing. A timer would have kept claiming otherwise while the host sat idle.
+
+### Fix
+- **`personaxis ps` reported a different question than the one its column asked.** "Awake"
+  came from the marker the loop writes when state **drifts**, so a `serve` holding a persona
+  without a single observation read as idle, and a persona whose state had just moved read
+  as awake with nothing attached to it. The column now reads live presence and says who is
+  holding it, through what surface; the state marker keeps answering what it always
+  answered, when the state last moved, under its own column.
+- The presence heartbeat is now **derived** from the staleness window instead of being a
+  second literal. The REPL beat every 20s while readers expired at 90s: two numbers that
+  must agree and lived apart, which is how a writer ends up beating slower than readers
+  expire and a running instance drops off the fleet.
+
+### Docs
+- `docs/architecture/presence.md` gained the table of who announces, who deliberately does
+  not, and why; `docs/commands/ps.md` shows the real output and separates the two questions
+  its columns answer.
+- CHANGELOG entries for **0.16.7** and **0.16.8**, which shipped without one.
+
+---
+
+## [0.16.8] - 2026-08-02: provenance for an MCP server, and the limit stated with it
+
+### Feat: K.12, the half that is a process rather than a directory
+- A skill is a directory, so its integrity is the hash of its files. An MCP server is a
+  **command**, and that difference changes what can honestly be promised. **The declaration
+  is pinned**: `npx -y @acme/mcp@1.2.3` with its arguments and its environment variable
+  names is something somebody approved, and a change to `@latest --allow-write` is caught.
+- **What the command does when it executes is not pinned**, and every surface says so. `npx`
+  fetches at run time, a binary on PATH can be replaced, a pinned version can be republished
+  on a registry that permits it. A control that overclaims teaches people to trust something
+  that was never checked, which is worse than an absent control known to be absent.
+- Environment variable **names** are hashed, never values: that is where credentials live,
+  and hashing them would put a credential's digest in a file we write to disk. Argument
+  order counts (on a command line, order is meaning); the order environment names arrived in
+  does not. An unrecognised launcher is reported as **not pinned**.
+
+---
+
+## [0.16.7] - 2026-08-02: integrity for what a persona did not author
+
+### Feat: K.12 for skills
+- A skill is code the persona runs and did not write. A persona declaring
+  `github:org/repo` received whatever was at that path when it was downloaded, and nothing
+  recorded what that was.
+- The answer is **deliberately modest**, because an ambitious one would be worse than none.
+  It does **not** verify that a skill is safe, which nothing can. It records exactly what
+  was materialized and **refuses content that no longer matches what was approved**, which
+  is the one property that turns a review into a control.
+- The hash covers **the content, not the reference**. A reference promises where something
+  lives; a hash asserts what it is. **A tag that moved is precisely the case this catches**,
+  so `github:acme/skills@v1.0.0` is reported as **not pinned**: a tag is not a pin, and
+  calling it one would defeat both controls at once.
+- Sorted and length-prefixed, so the digest does not depend on the order a directory walk
+  returned (it varies by platform) and two different file sets cannot collide by shifting a
+  byte. `skills-manifest.json` carries `contentHash`, `fileCount` and `pinned`.
+- An unpinned reference is **reported, not refused**: refusing would make the common case
+  impossible before a lockfile exists, and the message says what it means. A reference that
+  resolves to nothing is named, because a silent empty download is the failure that looks
+  like success.
+
+---
+
+## [0.16.6] - 2026-08-02: the daemon boundary, hardened
+
+### Feat: the daemon boundary, hardened (D5 + S3)
+- **The consented scope, enforced on the way out.** The hook already refuses a tool call
+  that touches an unconsented path. This catches the other direction: a path reaching an
+  event with **no call refused**, which is what happens when a model quotes a filename, a
+  library error names a config it could not open, or a stack trace carries the source tree.
+  None is a policy violation and all of them put the operator's filesystem layout into a
+  record nobody can edit afterwards.
+- It **redacts the path and lets the event through**. Dropping the event would be worse: a
+  run whose events vanish because a message mentioned `/etc/hosts` is a run nobody can
+  audit, and the record's value is that it is complete.
+- The boundary is a separator, not a prefix, so a scope of `/work` does not admit
+  `/work-of-someone-else`. Case folding follows the platform, because a scope of `C:\Work`
+  that refused `C:\work` would redact the operator's own files.
+- **Egress allowlist**, in the enforcement decision itself, before the postures. A
+  read-only sandbox does not stop a persona from POSTing what it read, and a persona doing
+  exactly what it was asked can still be sending it to an address a prompt injection chose.
+  Absence is denial: a persona with no list reaches nothing.
+- A subdomain of a listed host is allowed, because a workspace naming a vendor means the
+  vendor. `evil-googleapis.com` is not, which is the single most likely way an allowlist
+  turns out never to have been one.
+- The allowlist comes from the workspace's connector grants rather than from the persona
+  document: the same persona pulled into two workspaces gets each one's grants and neither
+  one's by default.
+
+### Fix
+- `SPEC.md` §15 pointed at a file in a private repository, and
+  SPEC.md ships inside the published package: anyone installing `personaxis` read a
+  reference to a file that cannot exist for them. It now says what is true and useful, that
+  the derivations are published separately as a research report and the checkable
+  obligations travel with the implementation as property tests over T1-T6.
+- `CLAUDE.md` claimed the lockstep version was `0.16.0`. It is `0.16.5`.
+
+### Test: red-team scenarios in the eval suite
+- Four adversarial scenarios, all C2, run against the real controls: exfiltration to an
+  address a prompt injection supplied, a lookalike host by suffix and by prefix, egress
+  denied by default, and a credential that must not survive into an event while the event
+  still says what happened. The suite is now 19 scenarios and needs no API key.
+
+### Docs
+- `CLAUDE.md` gains **the daemon boundary**: consent is local and only local, enforcement
+  happens before the call rather than after the prompt, and nothing leaves with a secret in
+  it. Each of the three names the single place it is enforced, with the measured numbers
+  rather than estimates.
+
+---
+
+## [0.16.5] - 2026-08-02: a run, end to end
+
+### Feat: `JobReporter`, the bridge from a running persona to the workspace
+- The engine speaks about a loop and the workspace about a job a team is
+  watching. `mapLoopEvent` translates; `DaemonConnection` carries. This is the
+  piece between them, and it holds the one thing neither has: **the call id**.
+- Correlating propose, verdict and result into one id is its whole job, and
+  getting it wrong means a gate freezing a different call from the one a person
+  is looking at. The id is cleared at the result rather than at the next
+  proposal, so a stray event between calls cannot borrow an id that already
+  closed.
+- Never throws. A reporter that could would take down the run it reports on, and
+  a job that dies because nobody could watch it is the worst trade available.
+- `seq` stays zero: the control plane assigns the authoritative sequence, and a
+  producer numbering its own events would give two daemons on one job two
+  conflicting orders.
+
+### Fix: the wire was quadratic in the length of a run
+- `flush` re-sent the entire pending queue on **every** emit, so a job producing
+  a thousand events before its first acknowledgement put roughly half a million
+  frames on the wire. Nothing failed and nothing was lost; it was quietly
+  quadratic, and the symptom would have been a bandwidth bill and a slow room.
+- Each event is now written once per socket. A reconnection clears the marker,
+  which is exactly what makes resume work: on a new socket everything
+  unacknowledged is unsent again. Regression test included.
+
+### Test: the daemon side, end to end
+- A contract test runs a realistic session through the **real** reporter, the
+  real adapter and the real connection, with only the network faked. It asserts
+  that every event that belongs on the wire is there in order, that sequence
+  numbers are dense from 1 so a gap means a real gap, that a token typed into a
+  tool call never leaves the machine, and that a disconnection mid-run resends
+  exactly what was not acknowledged and nothing that was.
+
+---
+
+## [0.16.4] - 2026-08-02: nothing leaves with a secret in it
+
+### Feat: secret redaction at the producer (`@personaxis/core`)
+- The protocol says free text on the wire "has already passed redaction at the
+  producer" and that "nothing downstream redacts". That sentence was true of the
+  design and not of the code. `redactSecrets`, `redactSecretsVerbose` and
+  `redactDeep` make it true.
+- It runs in **one place**, `preview()` in the wire adapter, because a promise
+  kept in five places is a promise that will be broken in one of them. Every
+  remaining free-text field on the wire (a block reason, a turn summary, an
+  error message, band prose) is redacted at its emission.
+- **Redaction happens before truncation.** Cutting first can slice a key in half
+  and leave a fragment that matches no pattern, which is how a redactor reports
+  success on a preview still carrying most of a credential.
+- `redactDeep` walks structures rather than serialising them, so a key literally
+  named `password` is caught by its name even when its value is `hunter2` and
+  matches nothing. Bounded depth, so a cyclic or pathological argument from a
+  model fails closed instead of hanging.
+- Why this matters more here than in an ordinary log: anything reaching the
+  record is hash chained and cannot be edited afterwards. A leaked key there has
+  to be rotated, and the chain still holds the old one forever.
+- Over-redaction is the chosen direction. A preview with `[redacted]` in it is
+  still readable; a leaked key is not recoverable. A test asserts the events
+  still say what happened, so the redactor cannot pass by emptying them.
+- **Not** applied to the hook's rule-matching text, deliberately and with the
+  reason in the code: that string never leaves the process, and redacting it
+  would blind enforcement to the arguments it exists to inspect.
+
+### Test
+- A contract sweep walks every `LoopEvent` that reaches the wire, plants a real
+  secret in each of its string fields, and asserts none survives. A new event
+  with a new text field fails there without anyone remembering to add a case.
+
+---
+
+## [0.16.3] - 2026-08-02: the other half of the boundary
+
+### Feat: `parseServerMsg` (`@personaxis/protocol/workspace`)
+- The symmetric counterpart of `parseBrowserMsg`, and it exists for the same
+  reason. A browser that trusts whatever JSON arrives on its socket is the same
+  gap as a server that trusts whatever a client sends: a proxy, an extension or
+  a stale deployment can put a frame on that wire, and a client that reads it
+  unchecked builds its interface out of whatever it got.
+- Never throws, for the same reason its counterpart does not: a malformed frame
+  is an ordinary event on a long-lived socket, and an uncaught exception in an
+  `onmessage` handler takes the view down with it. Takes either the JSON string
+  a WebSocket delivers or an already-parsed value.
+- Every event inside a sync frame needs a job, a kind and an **assigned**
+  sequence. `seq: 0` means "not yet assigned", and a reducer that accepted one
+  would hold a permanent gap at the head of the job.
+- A snapshot without `steering` is refused rather than defaulted: a client that
+  cannot say whether anyone is driving reads it as nobody, and lets two people
+  act at once.
+- An unknown type is named in the error rather than lumped into "malformed",
+  because a client sending one is either out of date or probing.
+
+---
+
+## [0.16.2] - 2026-08-01: the machine on the wire
+
+> `personaxis connect`, and enforcement that happens before a tool call rather
+> than after a prompt. The spec is unchanged at 1.1.0.
+
+### Feat: `personaxis connect`, linking a machine without handling a password
+- The device authorization grant (RFC 8628) with the proof key of PKCE (RFC
+  7636). The daemon invents a secret and sends only its hash; a person approves
+  the machine in a browser, seeing what it claims to be; the daemon then proves
+  it holds the original. The approval link is therefore not a credential:
+  whoever sees it can approve a machine they can already see, and cannot walk
+  away with its token.
+- `connect status` and `connect logout`. `login` is an alias of `connect`.
+- The token goes to the OS credential store where one can be read and to a 0600
+  file where none can, which today means Windows, and `status` says which of the
+  two happened. `keytar` remains forbidden here for the reasons in
+  `credentials.ts`.
+- **Consent is local and only local.** The exposed scope is the directories
+  named with `--dir`, decided at that keyboard, stored on that machine. Nothing
+  the workspace sends can widen it. Empty means empty, and the command says so
+  rather than defaulting to a home directory.
+
+### Feat: a dropped connection pauses reporting and nothing else
+- The job keeps running, its events queue locally, and on reconnect the daemon
+  replays exactly what the workspace has not acknowledged as durable.
+- This needed one addition to the wire: an `ack` in the server to daemon
+  direction carrying the daemon's own per-job counter, and an outbound `seq`
+  that is that counter rather than zero. Without it, gapless resume rests on a
+  socket write having reached storage, which is how a job ends up with a record
+  that quietly misses a minute of its life. Additive; no deployed consumer reads
+  it yet.
+- Backoff with full jitter to a 30 second ceiling, because a gateway deploy
+  disconnects every daemon in the same second. A revoked machine deletes its
+  token and stops. A wire version refusal stops for good instead of hammering a
+  server that already said no.
+
+### Feat: enforcement in front of the tool call (`personaxis-hook`)
+- A `PreToolUse` hook, installed into each consented directory, that asks the
+  daemon over a local socket before every tool call. A refused call does not
+  execute. This is the difference between a limit and a request.
+- The policy is compiled from the persona itself (`policyFromPersona` in core,
+  so the daemon and the workspace produce the identical result and the hash
+  proves it): `permissions.deny` and `allow`, `self_regulation.hard_limits`,
+  `character.prohibited_behaviors`, the sandbox and approval postures.
+- **Fail closed on every path that is not a clear allow**, each naming itself:
+  no daemon, `out_of_scope`, `no_policy`, `stale_cache`. An expired policy is
+  not "probably still right", so a machine cut off for longer than its lifetime
+  stops allowing rather than acting on limits nobody can update.
+- A gated call holds the hook open while a person decides. That is the freeze
+  the workspace shows.
+- Its own binary rather than a subcommand, because this runs in front of every
+  call: measured p50 101 ms, p95 114 ms end to end against a 150 ms budget, and
+  nearly all of it is Node starting up.
+- A contract test spawns the real binary against a real socket and asserts on
+  the two things the host acts on, the exit code and stderr, plus an inline
+  snapshot of the field names we depend on. Claude Code itself is not in that
+  loop (CI has neither the host nor a key), which is stated in the test rather
+  than implied by a green tick.
+
+### Fix
+- The CLI test suite pins `FORCE_COLOR=0`. Seven TUI tests passed or failed on
+  the colour depth of whichever terminal launched them, which is a suite that
+  cannot tell an environment apart from a regression.
+
+---
+
+## [0.16.0] - 2026-07-31: the workspace wire
+
+> The first release the workspace consumes. The spec is unchanged at 1.1.0;
+> nothing here touches the persona schema.
+
+### Feat: `@personaxis/protocol/workspace`, the shared vocabulary
+- A new subpath exporting the twenty normalised events, the nine messages a
+  browser may send, the daemon and server message unions, and wire version
+  negotiation. One vocabulary is what lets a single surface sit over two
+  execution locations: a persona on a laptop and one in a hosted sandbox emit
+  the same events, and nothing downstream knows which produced them.
+- **No `node:` imports**, verified against the build output, because it runs in
+  a Cloudflare Worker and a browser as well as here.
+- `seq` is assigned by the control plane and by nothing else. Producers send
+  zero. Order decided in one place is what makes replay, gap fill and
+  reconnection possible.
+- The nine browser messages are a security boundary rather than a convenience.
+  Anything outside the list is refused and named, because a client sending an
+  unknown type is either out of date or probing and the two are worth telling
+  apart. `parseBrowserMsg` returns a result and never throws: a malformed frame
+  is an ordinary event on a socket, not an exceptional one.
+- Version negotiation refuses by naming the versions and the upgrade command,
+  not by saying "incompatible".
+
+### Feat: `LoopEvent` maps onto the wire as a closed list (`@personaxis/core`)
+- Every engine event either maps or is dropped with a reason. The switch is
+  exhaustive, so a new event stops the build until someone decides what the
+  workspace does with it, and a test walks all thirty kinds because the
+  compiler cannot tell a deliberate drop from a hurried one. An event falling
+  through a default would vanish from the record.
+- A verdict of "ask" emits nothing: it is what opens a gate, and a gate carries
+  routing, quorum and a timeout the event does not have.
+- A mutation reaches the wire only when it was clamped, and a recompile only
+  when a band was crossed. Those are the moments a person can perceive.
+
+### Feat: the hash chained record (`@personaxis/core`)
+- Append only, chained per job, with `verify` reporting the first sequence that
+  does not add up rather than a bare false, because localising tampering is the
+  difference between an answer and an alarm.
+- Retention is handled head on: expiry drops the payload and keeps its hash, so
+  the chain still verifies end to end with the content gone. Entries are never
+  deleted, which would break verification for everything after them.
+- Twenty tests, and the ones that matter are the attacks: an edited payload, a
+  deleted row, a rewritten hash, an entry re-pointed at the wrong parent and one
+  moved to another position are each caught at the exact sequence.
+
+---
+
 ## [0.15.0] - 2026-07-31: a production agent (V11/V12) + the Command Center as a control surface (V9)
 
 > Version target for the V9-V12 arc (agent core, security, Command Center, sync backends).
@@ -121,7 +649,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Note
 - The scope-tree navigator is the default `menu`/`/menu` view; the classic sectioned hub stays
   reachable via `--classic` / `--section`. The deep design docs live in
-  `docs/architecture/agent-core.md` and `docs/security/` (the latter private for now).
+  `docs/architecture/agent-core.md`, and in the security architecture docs, which are
+  not published yet.
 
 ## [0.14.0] - 2026-07-31 (first published with 0.15.0): the self-aware session (V5 P0) + real miniapps (V5 P1)
 
@@ -356,7 +885,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fix: creation never claims a polish that did not happen (V7.G)
 - **`create` reported "compiled + LLM polished" over a template.** `runCompile` returned
-  nothing, so "it did not throw" was read as "a model rewrote it" — which is false whenever
+  nothing, so "it did not throw" was read as "a model rewrote it", which is false whenever
   the faithfulness gate rejects the model's rewrite and the deterministic assembly is kept,
   or the provider is unreachable. Compilation now returns its outcome (`polished`, `via`,
   `model`, `outPath`), creation reports what actually happened, and a template produced
@@ -374,13 +903,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   moved without saying what moved, from what, or by how much. `/drift` is now three planes,
   each reporting a magnitude on the same 0–1 scale:
   **continuous** (u-space over envelope coordinates), **structural** (the per-field diff of
-  the declared spec against the one in force — text, lists, flags, numbers, shapes, added
+  the declared spec against the one in force: text, lists, flags, numbers, shapes, added
   and removed fields alike, each tagged with its layer's edit policy), and **behavioral**
   (how far the compiled document moves because of those edits, whether the document the
   host agents are reading is still current, and how many turns have been lived since the
   last applied change).
 - **Every structural row opens.** Enter shows the literal value the spec declares and the
-  one in force, and says that the spec itself was never rewritten — applied self-edits live
+  one in force, and says that the spec itself was never rewritten; applied self-edits live
   in an overlay. That overlay is also why the comparison needs no snapshot file, no baseline
   copy and no git: both sides already exist on disk.
 - **`/status` and `/drift` stop overlapping.** The live-envelope block left `/status`, which
@@ -388,7 +917,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   ("how far have I moved from what I declared, and in what").
 - **Fix (security): an unrecognized provenance source is now untrusted BY RULE.** It made
   the computed justification trust `NaN`; the gate still refused, but only because
-  `NaN >= min` is false — fail-closed by accident rather than by design, reported as
+  `NaN >= min` is false: fail-closed by accident rather than by design, reported as
   "justification trust NaN". Sources arrive from callers we do not control (MCP clients,
   agents, JSON on disk), so an unknown label is an expected input. It now scores 0 and the
   refusal names the source it did not recognize.
@@ -400,13 +929,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   each cell marking whether that persona SET the value or inherited it, and Enter opening
   the setting for every persona with the layer that decided it (global config, project
   config, a per-persona assignment, its own spec, policy.yaml, the environment, or this
-  session) and how to change it. The jerarquía is explicit rather than implied: **improve
+  session) and how to change it. The hierarchy is explicit rather than implied: **improve
   is per persona** (it lives in each persona's own personaxis.md and can be changed for any
   of them from the drill-down), **sandbox is per session** (one posture per terminal, and
   the view says so instead of pretending otherwise).
 - **The persona selector belongs to the host.** Any miniapp that can show more than one
   persona declares its scopes and gets the same selector, in the same place, on the same
-  key (`p`) — Persona and `Settings > Status/Stats` answer for whichever persona it points
+  key (`p`): Persona and `Settings > Status/Stats` answer for whichever persona it points
   at. A scoped view is read-only by construction: it re-points the persona's files but
   never the session's loop or conversation, so it can display another persona and cannot
   make one speak or evolve by accident.
@@ -422,7 +951,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   persona and cwd: every section acts on the persona named there, and Fleet is the one that
   spans projects, saying which span it is showing.
 - **Fleet gained a host column.** Next to whether a persona is awake, you now see which
-  agents can actually READ it — all four supported hosts: claude-code, codex, openclaw and
+  agents can actually READ it, on all four supported hosts: claude-code, codex, openclaw and
   Hermes. Presence and reach are different questions. The host list is derived from the
   compile-target registry and each host's location comes from the same `place()` the
   compiler writes through, so registering a new target makes it appear here too. Reach is
@@ -1134,7 +1663,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   homeostasis is observable on the house persona (validate PASS, jacobian 0 decoratives,
   spec bumped to 1.1.0). Starter, init, CMO, and Clio now all carry mood half-life plus
   banded trait prose.
-- **Final audit recorded** in `IMPLEMENTATION_CHECKLIST.md`: build clean across 8 packages;
+- **Final audit recorded**: build clean across 8 packages;
   tests spec 4/4, core 324/325 (the one red is a timing-sensitive hooks-timeout test that
   passes in isolation, unrelated to this phase), protocol 4/4, sdk 10/10, mcp 11/11, evals
   5/5, cli 86/86, tui 33/33; conformance 15/15; golden CMO PASS with 0 decoratives; spec
@@ -1253,9 +1782,9 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   (~165 ms every CLI invocation, even `--version`); validators compile on first call with an
   identical API. `dash` lazy-loads the tui barrel (~90 ms). Module-graph cost: 400 -> 314 ms.
 - Full verdict table (38 CLI subcommands, 29 slash-commands, core modules, infra) recorded
-  in IMPLEMENTATION_CHECKLIST.
+  in the release audit.
 
-## [Unreleased], Fase 6 proven core (per `docs/MATH_CORE.md` + `docs/RESEARCH.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], Fase 6 proven core
 
 ### Added, the interview wizard + dashboard drill-down (F6.7b)
 - **Genesis interview wizard (Ink)**: `personaxis create` with no flags now opens a full-screen
@@ -1264,7 +1793,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   `field ← value · rule` mapping it will produce; skips are announced as labeled defaults.
   The interview engine stays pure in core; readline remains the fallback (no TTY, or
   `PERSONAXIS_NO_WIZARD=1`).
-- **`personaxis dash` is now interactive**: ↑/↓ selects a coordinate, Enter opens its detail, 
+- **`personaxis dash` is now interactive**: ↑/↓ selects a coordinate, Enter opens its detail,
   value/u/band, the live T3 evidence cost (`immutable` for hard-virtue-backed coordinates), a
   sparkline of its mutation history scaled to the envelope, and the last 5 audit entries; Esc
   back, q quit. Non-TTY/`--once` output unchanged.
@@ -1283,7 +1812,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
 - **CLI startup 2× faster** (audit finding → fix): the REPL (Ink/React, ~1 s of import cost)
   was imported eagerly by every subcommand; it is now lazy-loaded only on the no-subcommand
   path. `--version` 1.26 s → 0.62 s; the flaky-at-5 s multi-spawn e2e is green again.
-- Final audit recorded in IMPLEMENTATION_CHECKLIST (build 8/8, 477 unit/property tests green,
+- Final audit recorded (build 8/8, 477 unit/property tests green,
   evals 15/15, golden CMO PASS, check-mirror byte-identical, proof 12/12 under
   NO_COLOR/80 col, all relative doc links resolve, help strings speak v1.1).
 
@@ -1414,7 +1943,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   AbortSignal), jittered retry on 429/5xx/network errors, and error messages that carry the
   response-body excerpt (byok Anthropic/OpenAI + local now share one code path).
 - **Structured output** (`Provider.runStructured`): OpenAI `json_schema`, Anthropic forced
-  tool-use, local with graceful degradation (`json_schema` → `json_object` → plain+parse), 
+  tool-use, local with graceful degradation (`json_schema` → `json_object` → plain+parse),
   the schema-constrained primitive Genesis synthesizes through.
 - **`decompile` gained the error-fed repair loop** (`llm-repair.ts`, bounded 3 rounds): the
   exact failing fields/rules go back to the model instead of discarding the round; an invalid
@@ -1430,7 +1959,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   (SPEC v1.0 §L3: within-band movement is expression variance, not drift). Cheaper and
   normative; the tick still emits `mutate` + `drift` events for every change.
 
-## [Unreleased], Fase 3 living engine (per `ARCHITECTURE_REVIEW.md` §11–§13, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], Fase 3 living engine
 
 ### Fixed, v1.0 concordance sweep (F5.2): the toolchain now fully speaks v1.0
 - **`lint` was broken on v1.0 personas**: it emitted three FALSE errors (`apiVersion` must be
@@ -1523,7 +2052,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
 ### Added, `state rebuild`: state.json as a checkpoint of the log (F3.4)
 - **`personaxis state rebuild`**: `state.values` is a derived checkpoint of the append-only
   `mutation_log`. `rebuild` replays the log (each entry stores its authoritative post-governance
-  result) to detect DRIFT, a stored value the log does not justify (a torn write or a hand-edit), 
+  result) to detect DRIFT, a stored value the log does not justify (a torn write or a hand-edit),
   and `--write` repairs state.json from the log, under the state lock. Safe by design: the log is
   authoritative only over the fields it mutated, so an untouched value is never reset.
 
@@ -1536,11 +2065,11 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   bundle. No behavior change locally; the fs adapter wraps the existing atomic writes + per-persona
   lock.
 
-## [Unreleased], Fase R replatform (per `ARCHITECTURE_REVIEW.md` §15 + `docs/architecture/TECH_STACK.md`, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], Fase R replatform
 
 ### Added, platform (FR.1–FR.3)
-- **`docs/architecture/TECH_STACK.md`**: the definitive stack decision record (12 sections,
-  evidence from the Claude Code / Codex / OpenClaw+Hermes source studies).
+- The stack decision record (12 sections, evidence from the Claude Code / Codex / OpenClaw+Hermes
+  source studies), since moved out of the public docs.
 - **`@personaxis/protocol`**: eighth package: `Op`/`EventMsg` discriminated unions over
   JSON-RPC 2.0 (vscode-jsonrpc + node:net; UDS / Windows named pipes, deterministic per-persona
   pipe path), `ProtocolServer` with a hello handshake as registration barrier, subscribe-before-
@@ -1592,7 +2121,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   for supply-chain surface reasons. Binary self-updater + Windows code-signing land with the
   bun-compile release infrastructure.
 
-## [Unreleased], F2 SPEC v1.0 support (per `ARCHITECTURE_REVIEW.md` §11, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], F2 SPEC v1.0 support
 
 ### Added, spec v1.0 (breaking spec release; the CLI reads BOTH)
 - **Dual-schema validator with version dispatch**: v1.0 documents (`spec_version: "1.0.0"`)
@@ -1640,7 +2169,7 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
   into degenerate envelopes (with a widen-me follow-up). `validate` banner prefers
   `identity.display_name`.
 
-## [Unreleased], F1 hardening (per `ARCHITECTURE_REVIEW.md` §9, tracked in `IMPLEMENTATION_CHECKLIST.md`)
+## [Unreleased], F1 hardening
 
 ### Fixed, governance & integrity
 - **`state mutate` now goes through the real governance gate** (F-02): the duplicated mutation
@@ -1681,8 +2210,9 @@ polish (input queue, multiline/image, statusline wiring) and web tools are track
 - CLAUDE.md corrections: evals categories are **governance/security/spec-fidelity** (no "honesty"
   category exists), migrate codemods listed through `0.9-to-0.10`, MCP row reflects the 16 tools +
   `--root`/`--allow-decide`; evals package description no longer claims an "optional live" mode.
-- Added `ARCHITECTURE_REVIEW.md` (the master architecture audit + v1.0 design reference) and
-  `IMPLEMENTATION_CHECKLIST.md` (persistent execution state).
+- Added the architecture audit and the execution checklist that drive the phases above.
+  Both are working documents rather than published ones; what they decided is recorded
+  here and in `docs/architecture/`.
 
 ---
 

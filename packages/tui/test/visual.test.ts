@@ -29,13 +29,10 @@ describe("visual engine", () => {
     const theme = personaTheme(fm);
     const line = eventLine(theme, {
       type: "mutate",
-      result: {
-        entry: { ts: "", field: "mood.tone", from: 0, to: 0.1, delta_requested: 0.1, clamped: false, reason: "r", actor: "actor-llm" },
-        from: 0,
-        to: 0.1,
-        clamped: false,
-        blocked: false,
-      },
+      // The decision the record makes, which carries the field itself. It used to be
+      // wrapped in a whole `mutation_log` row, so a viewer had to reach through the
+      // old file's schema to find out which coordinate moved.
+      result: { field: "mood.tone", from: 0, to: 0.1, requested: 0.1, clamped: false, blocked: false },
     });
     expect(line).toContain("mood.tone");
   });

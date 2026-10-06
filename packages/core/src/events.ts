@@ -5,17 +5,18 @@
  * HTTP) render them. This keeps one core reusable across every entry point.
  */
 
-import type { MutationResult } from "./state-engine.js";
+import type { Decision } from "./record/mutate.js";
 import type { AppraisalSignal } from "./appraisal.js";
 import type { Verdict } from "./governance.js";
 import type { MemoryEntry } from "./memory.js";
 import type { DriftReport } from "./math/drift.js";
+import type { SubTask } from "./task-state.js";
 
 export type LoopEvent =
   | { type: "observe"; observation: string; source: string }
   | { type: "appraise"; signal: AppraisalSignal }
   | { type: "govern"; verdicts: Verdict[] }
-  | { type: "mutate"; result: MutationResult }
+  | { type: "mutate"; result: Decision }
   | { type: "memory"; entry: MemoryEntry }
   | { type: "memory-kind"; kind: "semantic" | "procedural" | "autobiographical" | "user_preferences" | "evaluations"; detail: string }
   // Memory consumed to answer this turn (resumeContext injected it). One per kind, with a count.
@@ -44,13 +45,31 @@ export type LoopEvent =
   // Agent loop (G1), governed task execution.
   | { type: "agent-step"; step: number }
   | { type: "agent-think"; text: string }
+  /** E4: assistant text as it arrives, so a screen shows the persona working. */
+  | { type: "agent-delta"; text: string }
   | { type: "tool-propose"; tool: string; args: Record<string, unknown> }
   | { type: "tool-verdict"; tool: string; decision: "allow" | "ask" | "deny"; reason: string }
   | { type: "tool-result"; tool: string; ok: boolean; output: string }
   | { type: "agent-finish"; summary: string; steps: number }
+  /** E81: the persona wrote its task list. Every revision, for a screen beside the turn; the record keeps the last. */
+  | { type: "task-list"; tasks: readonly SubTask[] }
   | { type: "agent-error"; message: string }
   // Agent budget + stop conditions (v0.9)
-  | { type: "agent-budget"; step: number; tokens: number; costUsd: number; wallSeconds: number }
+  /**
+   * E17: the step's cost, and now where its wall time went.
+   *
+   * The breakdown rides on the event that already reports the price rather than
+   * arriving as a new one: they answer the same question about the same step, and a
+   * second event would have to be correlated back to this one to be read.
+   */
+  | {
+      type: "agent-budget";
+      step: number;
+      tokens: number;
+      costUsd: number;
+      wallSeconds: number;
+      latency?: { modelMs: number; gateMs: number; toolMs: number; judgeMs?: number; unattributedMs: number; overBudgetMs?: number };
+    }
   | { type: "agent-stop-condition"; reason: string; step: number }
   // Objective verification (v0.9)
   | { type: "verify-start"; gates: number }
@@ -60,7 +79,10 @@ export type LoopEvent =
   | { type: "trace-exported"; format: string; path: string; spanCount: number }
   // Context-window manager
   | { type: "context-meter"; used: number; limit: number; pct: number }
-  | { type: "context-compacted"; removed: number; usedAfter: number };
+  | { type: "context-compacted"; removed: number; usedAfter: number }
+  // E36: a call the endpoint returned as TEXT was read with a dialect, once per dialect and run. It is the sign of a
+  // server without its model family's tool parser, which otherwise works in silence.
+  | { type: "dialect-read"; dialect: string };
 
 export type LoopListener = (e: LoopEvent) => void;
 

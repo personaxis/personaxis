@@ -31,7 +31,9 @@ describe("agent conversation continuity (regression)", () => {
     await a1.run("say ROJO");
     const prior = (a1.lastMessages ?? []).filter((m) => m.role !== "system") as ChatMessage[];
 
-    // Next turn starts from the prior transcript (as the REPL does via ctx.conversation).
+    // Next turn starts from the prior transcript. This is the agent's own half of it;
+    // the REPL reaches it through a `Conversation` now, and run-conversation.test.ts
+    // pins the same continuity through `runnerFor`, which is the path that ships.
     const a2 = new PersonaAgent({ llm: stubLlm("AZUL"), priorMessages: prior });
     await a2.run("say AZUL");
     const convo = (a2.lastMessages ?? []).filter((m) => m.role !== "system");

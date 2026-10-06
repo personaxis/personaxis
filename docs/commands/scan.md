@@ -1,13 +1,13 @@
 # `personaxis scan`
 
-Cross-harness config scanner, inspect an agent config (Claude Code / Codex / generic) from a
-red-team, blue-team, or auditor lens for risky settings.
+Scan agent config files (Claude Code, Codex, generic) for risky settings, excessive permissions
+and leaked credentials. Each finding is tagged red, blue or auditor, the pass that found it.
 
 ## Usage
 ```bash
-personaxis scan <path> [--team red|blue|auditor]
+personaxis scan <path...> [--json] [--strict]
 ```
 
-Detects the config kind and reports findings by severity. Backed by
-`packages/core/src/config-scan.ts`; also exposed as the MCP `scan_config` tool and the
-`personaxis-scan` bin.
+Detects the config kind and reports findings by severity. The exit code is 0 for a clean scan, 2 for a risky one and 3 for a malicious one. A "suspicious"
+finding exits 0 unless you pass `--strict`, which makes it exit 1. `--json` prints the findings as JSON. The same scan is the MCP
+`scan_config` tool and the `personaxis-scan` bin.

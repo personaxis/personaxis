@@ -1,30 +1,13 @@
 # @personaxis/sdk
 
-Embed a living, governed persona in a Node/TypeScript backend.
-
-This is the **embed SDK**: it runs the personaxis engine **in your process** (Mode 2 self-host), so
-your app owns the model, the state, and the data. It is a thin, typed wrapper over
-[`@personaxis/core`](../core), the engine already does the governance (clamp + audit + injection
-scan + hash-chained memory + the governance gate); this package gives your app a small, obvious API.
-
-## Where this fits (the SDK strategy)
-
-Like Anthropic/OpenAI, personaxis has **two kinds of SDK**, one per deployment mode:
-
-| SDK kind | What it does | Package | Status |
-|---|---|---|---|
-| **Embed SDK** | Runs the engine **in-process** (your backend, your model) | `@personaxis/sdk` (this), TS, in the monorepo | **Shipping** |
-| **API-client SDK** | Calls the **managed SaaS** HTTP API (like `anthropic`/`openai` clients) | separate repos, one per language (`personaxis-python`, …) | With the SaaS (future) |
-
-The TS embed SDK lives in this monorepo because the whole toolchain is TS and it depends directly on
-`@personaxis/core`. Per-language **API-client** SDKs are separate repos (the professional pattern:
-`anthropic-sdk-typescript`, `anthropic-sdk-python`, … are each their own repo) and wrap the SaaS
-HTTP surface, they arrive with the managed SaaS.
-
-## Install
+Run a governed [personaxis.md](https://github.com/personaxis/persona.md) persona inside your own
+Node or TypeScript backend. The engine runs in your process: your app owns the model, the state
+and the data. This package is the small, typed API over
+[`@personaxis/core`](https://www.npmjs.com/package/@personaxis/core), which does the governance
+(clamp, audit, injection scan, hash-chained record, the gate on every tool call).
 
 ```bash
-npm add @personaxis/sdk   # (or pnpm/yarn), depends on @personaxis/core
+npm i @personaxis/sdk
 ```
 
 ## Use
@@ -34,34 +17,52 @@ import { Persona } from "@personaxis/sdk";
 
 const persona = new Persona("./.personaxis/personas/support/personaxis.md");
 
-// 1) Load the identity as system-prompt slot #1 for YOUR LLM call.
+// 1. The compiled persona document, as the system prompt of YOUR model call.
 const systemPrompt = persona.compiledIdentity();
 
-// 2) Learn from an interaction on your configured model (env > project > global config).
+// 2. One governed tick of the living loop on an observation, on the configured model.
 await persona.observe("the customer is frustrated about a double charge", "user");
 
-// 3) Read / nudge the runtime dials (clamped + audited).
+// 3. Read the state, or move one value (clamped to its envelope and recorded).
 const { values } = persona.state();
-persona.adjust("mood.tone", -0.1, "customer frustrated");
+await persona.adjust("mood.tone", -0.1, "customer frustrated");
 
-// 4) Verify integrity (hash-chained memory, anomaly detection).
-const audit = persona.audit();
+// 4. Let the persona do a task with its own tools, under its policy.
+const run = await persona.agentRun("Draft a reply to the open ticket", { maxSteps: 8 });
+if ("error" in run) throw new Error(run.error);   // no model configured
+console.log(run.outcome);
+
+// 5. Check the record.
+const audit = persona.audit();   // { mutationCount, memoryEntries, memoryChainIntact, anomalies, … }
 ```
 
 ## API
 
-- `new Persona(personaPath)`, bind to a `personaxis.md` (its `state.json` + memory live alongside).
-- `compiledIdentity(): string`, the compiled `PERSONA.md` (falls back to the spec body).
-- `state(): { values, recentMutations }`, current envelope dials + recent audited mutations.
-- `observe(observation, source?): Promise<{ report, events, recompilePending }>`, one governed
-  Living-Loop tick on the resolved model (heuristic fallback offline).
-- `adjust(field, delta, reason)`, a single clamped, audited mutation.
-- `audit(): { mutationCount, memoryEntries, memoryChainIntact, anomalies }`.
-- `reload()`, re-read the spec after an external recompile/decompile.
+**`new Persona(path)`** binds to a `personaxis.md`; its `state.json` and record live beside it.
 
-## Config & secrets
+| Method | Returns |
+|---|---|
+| `compiledIdentity()` | the compiled `PERSONA.md`, or the spec body if it has not been compiled |
+| `state()` | `{ values, recentMutations }` |
+| `envelopes()` | the mutable fields with their ranges, and the hard-enforced virtues |
+| `observe(text, source?)` | `Promise<{ report, events, recompilePending }>` |
+| `adjust(field, delta, reason, { by? })` | `Promise` of the recorded move; `by: "person"` for a human edit |
+| `agentRun(task, { maxSteps?, onApproval?, asker? })` | `Promise<{ outcome, events, trace }>`, or `{ error }` when no model is configured |
+| `audit()` | `{ mutationCount, memoryEntries, memoryChainIntact, memoryChainBrokenAt, anomalies }` |
+| `forget(hash, reason)` | tombstones a memory entry; the chain stays verifiable |
+| `proposeEdit(path, value, rationale)`, `listProposals()`, `decideEdit(id, decision, approver)` | governed edits to the spec itself |
+| `recompileStatus()` | whether `PERSONA.md` is stale after a self-edit |
+| `reload()` | re-read the spec after an external edit |
 
-The model/key resolve through the same layered config the CLI uses (`resolveModel`: env > project >
-global; the key from the env var named by `apiKeyEnv`). In production the key comes from your deploy's
-secret manager, never a file. See the CLI's [configuration guide](../../docs/configuration.md) and
-[deployment modes](../../docs/architecture/deployment.md).
+Functions that need no persona: `scanText(text)`, `guardInput(text, { blockAt? })` (decide whether an
+incoming message may reach your agent), `scanConfig(content, filename?)`, `skillReview(path)`,
+`evaluateCmd(command, sandbox, approval, personaPath?)`, and `resolveModel()`.
+
+## Model and keys
+
+The model resolves through the same layered config the CLI uses: environment, then project, then
+global. The key comes from the environment variable the config names in `apiKeyEnv`, so in
+production it comes from your secret manager and never from a file. See the
+[configuration guide](https://github.com/personaxis/personaxis/blob/main/docs/guides/configuration.md).
+
+MIT licensed.

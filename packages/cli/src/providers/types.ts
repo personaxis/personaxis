@@ -34,6 +34,12 @@ export interface Provider {
  * Codex, ...) must run the prompt itself and feed the result back.
  */
 export class ProviderRequiresAgentError extends Error {
+  /**
+   * E175: a handoff, not a failure. Code that retries or falls back on any error (Genesis's
+   * extractor, `create`'s heuristic baseline) checks this and lets it through, without having
+   * to import the CLI's class.
+   */
+  readonly requiresAgent = true;
   constructor(
     public readonly prompt: string,
     public readonly promptFile: string,

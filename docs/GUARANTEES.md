@@ -1,92 +1,47 @@
-# The Personaxis Guarantee
+# What is tested, and what is not
 
-> **Your AI persona is the same persona on every model, and it provably cannot
-> drift outside the self you declared.** Bounded, audited, reversible. Here is
-> the live proof: `npx personaxis proof` (60 seconds, offline).
+A persona is a set of files an agent loads to do a job: its procedures, criteria, tools, sourced
+knowledge and what it has learned. This page lists what this repository tests about the engine that
+runs a persona, with the numbers, and what it does not test yet.
 
-## What you get, in plain language
-
-A Personaxis **AI Persona** is not a prompt. It is a complete, ten-layer definition
-of who your agent is (identity, character, personality, values and drives, affect,
-cognition, memory, metacognition, self-regulation, and social expression) written
-in plain files you can version in git, validated by an open spec, and enforced by a
-runtime with mathematical guarantees:
-
-| Guarantee | What it means for you | The math behind it |
-|---|---|---|
-| **It cannot leave its declared self** | No user pressure, prompt injection, or runaway loop can push any personality/affect coordinate outside the range you declared. Ever. | T1 invariance: state is confined to a compact box by construction |
-| **It cannot change fast** | Autonomous change is capped per step, and the gate re-bounds the net even when many proposals target one coordinate. Homeostatic recovery is exempt because it can only move a value back toward its declared baseline. | T2: gate-admitted ‖ΔS‖ ≤ max_step_delta per tick |
-| **Behavior change is never silent** | Pushing behavior away from its declared baseline costs a provable minimum number of audit entries, each attributable, each hash-chained. Recovery toward baseline can also happen through decay, and every decay step is audited too. | T3: ≥ ⌈distance/δ_max⌉ chained entries per adversarial band crossing |
-| **History cannot be faked** | State replays deterministically from its audit log; a forged value or a tampered memory is detected and located. | T4 replay + T5 ledger integrity (with GDPR-grade real erasure) |
-| **It comes back to itself** | Optional homeostasis: displaced traits decay back to baseline; sustained pressure yields bounded, computable standing drift. | T6 input-to-state stability: drift ≤ δ_max/λ |
-| **Conflicts resolve predictably** | Value conflicts resolve by a deterministic, explainable order, and safety wins every conflict with a task value, as a theorem, not a promise. | Arbitration total order; U7 derivable from U6 |
-
-Every claim above is **machine-verified**: a property-based suite hunts for
-counterexamples with thousands of adversarial cases on every CI build
-(`FC_NUM_RUNS=5000`; the recorded E3 run reached 2.3M generated cases with 0
-counterexamples), and a 15-scenario conformance suite (`personaxis-evals`)
-exercises the real engine. The theorem-to-code map is
-[`architecture/math-core.md`](./architecture/math-core.md); the full formal proofs,
-preregistered protocol, and recorded experiments are in a separate research report,
-published separately.
-
-## Why this is horizontal
-
-The spec is domain-agnostic by construction. A game NPC, a brand voice, a
-compliance-bound legal assistant, a fintech analyst, a tutor, a companion in an AI
-world, a coding agent, a voice agent: each is the **same mathematical object**
-(ten layers + envelopes + governance) with different content. Define the persona
-once; every modality and every model renders it.
-
-## Why the big labs don't replace this
-
-1. **Cross-vendor neutrality.** OpenAI's GPTs, Google's Gems, and vendor "projects"
-   are lock-in features. A persona layer that runs identically on Claude, GPT,
-   Gemini, Grok, or a local model can only come from a neutral standard: the
-   Terraform position, for personas.
-2. **An open standard, not a feature.** Versioned spec, five-state validator,
-   conformance classes (C0/C1/C2), byte-identical schema mirroring, read-compat
-   guarantees. Standards accrete ecosystems; features get deprecated.
-3. **The proof is the product.** Deterministic invariants + forensic audit trail +
-   an evidence-cost bound. Research mitigations for "persona drift" live inside a
-   single model's activations and cannot move with you; Personaxis operates at the
-   interface, so the guarantee travels.
-4. **Numbers with meaning and provenance.** Every quantitative field has an
-   operational semantics (it changes what compiles) and a recorded origin
-   (`personaxis create`'s report: every number earned, never invented). That is an
-   ontology and a discipline, not a sprint's worth of features.
-
-## For enterprises (procurement-grade answers)
-
-- **Governance:** locked / suggesting / autonomous postures; hard-virtue coordinates
-  immutable at runtime for every actor; per-layer edit policies.
-- **Audit:** hash-chained mutation log AND episodic memory; tamper detection that
-  names the entry; deterministic replay; right-to-erasure without breaking the chain.
-- **Portability:** plain files, git-versionable, no database, no mandatory daemon,
-  BYOK or fully local/offline.
-- **Verification:** run `personaxis proof` in your own environment; run the
-  conformance suite against your own deployment.
-
-## For builders
+You can run the main checks yourself, offline, in about a minute:
 
 ```bash
-npx personaxis create            # a governed persona in minutes (interview)
-npx personaxis create --from-import your-card.png   # upgrade a character card
-personaxis proof                             # watch the guarantees hold, live
-personaxis state drift                       # where is my persona right now, and what would it cost to move
+npx personaxis proof --quick
 ```
 
-## Current evidence status (honest scoreboard)
+## What the engine guarantees
+
+These hold in code, whatever the model does. Each one is a property that a test suite tries to break
+with generated adversarial input on every CI build.
+
+| Property | What it means | Theorem |
+|---|---|---|
+| Values stay in range | No input, prompt injection or runaway loop can move a value outside the range the persona declares | T1 |
+| Change is capped per step | Autonomous change per step is limited, and the gate re-bounds the total when several proposals target one value. Recovery toward the declared baseline is exempt | T2 |
+| Moving away from the baseline is recorded | Pushing a value away from its baseline takes at least a computable number of recorded entries, each one attributed and hash-chained | T3 |
+| History replays | The state replays deterministically from its record; a forged value or a tampered memory entry is detected and located | T4, T5 |
+| Values return to baseline | With homeostasis on, a displaced value decays back toward its baseline, and under sustained pressure it stays within a computable distance of it | T6 |
+| Conflicts resolve in a fixed order | Value conflicts resolve by a deterministic order, and safety wins every conflict with a task value | arbitration order |
+
+The map from each theorem to the code that implements it is
+[`architecture/math-core.md`](./architecture/math-core.md).
+
+## The scoreboard
+
+Every figure below is checked against `docs/evidence.json` by a test: a figure that disappears from
+this page, or a withdrawn one that comes back, fails the build.
 
 | Claim | Status |
 |---|---|
-| Deterministic guarantees T1–T6 | ✅ proven + property-verified; E3 recorded: 28 properties, 2,306,140 generated adversarial cases (10⁵ per CPU-bound property), **0 counterexamples** |
-| Conformance suite | ✅ 15/15 scenarios green (C0/C1/C2) |
-| Hot-path cost | ✅ E4: p99 0.06–0.12 ms per tick (n=8–64), negligible |
-| Behavioral drift reduction vs prompt-only (RQ2) | 🔬 first single-model run recorded (E1/E2 on command-a: direction favors the engine, δ below the preregistered 0.33 bar, same-model judges saturated near ceiling); headline needs ≥2 models with independent judges |
-| Genesis vs hand-written prompt (RQ5) | 🔬 single-model run recorded (E5: personaxis 8.25 vs card-style 5.42, δ 0.26; ties prompt-only) |
-| Compile-sensitivity predicts behavior (RQ3/H3) | 🔬 run recorded: band prose moves behavior (σ_behavior mean 0.56 at temperature 0) but σ_compile had no rank spread on the test persona, so ρ is undefined in practice |
-| Cross-model portability measurement (RQ6) | 🔬 runner ready; needs ≥3 models |
+| The engine's guarantees T1 to T6 | ✅ Proven and property-tested: 28 properties, 2,306,140 generated adversarial cases (100,000 per CPU-bound property), 0 counterexamples |
+| Conformance suite (`@personaxis/evals`) | ✅ 19/19 scenarios pass, with no API keys |
+| Cost of one state update | ✅ p99 of 0.074 / 0.094 / 0.245 ms per tick with 8, 16 and 64 values |
+| Genesis against a hand-written prompt | ⚠️ Split. Provenance holds by construction: 500 hostile seeds, zero decorative values. Whether the result behaves more consistently depends on the same judges as the next row, so it is not evidence yet |
+| Whether a persona makes an agent behave better than the same content as a plain prompt | ❌ Withdrawn, not measured. The condition named after the product never ran through the engine, and the two judge models disagreed with each other at r = -0.302, scoring the version that produced 27 emojis under an instruction to break character above the one that produced none |
+| Whether a value's effect on the compiled document predicts its effect on behavior | 🔬 Uncomputable on the test persona: the effect on the document was 0.012 on all eleven coordinates, and with eleven coordinates the smallest correlation that could be told from zero is 0.600 |
+| Whether the same persona behaves the same on different models | 🔬 No resolution. Four models compared: correlations from -0.473 to 0.509, and the same model against itself only 0.067 to 0.316, so every estimate is mostly noise |
 
-*Nothing on this page outruns the evidence: the 🔬 rows become ✅ only with
-published multi-model runs (protocol frozen in the preregistered research report).*
+The question that matters most for a persona you load into an agent, whether it makes the agent do a
+job better on each model, is not measured yet. When it is, the result goes in this table, whichever
+way it comes out.

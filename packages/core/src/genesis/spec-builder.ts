@@ -15,6 +15,7 @@ import { dump } from "js-yaml";
 import { synthesizeTraitExpression, synthesizeAffectExpression } from "./expression-synth.js";
 import { crossableBands } from "../math/bands.js";
 import type { PersonaSeed, SeedTrait } from "./types.js";
+import { profileControls, type ProfileControls } from "./profiles.js";
 
 const clamp01 = (n: unknown, dflt: number): number =>
   typeof n === "number" && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : dflt;
@@ -40,11 +41,21 @@ function sanitizeVerbosity(v: unknown): "adaptive" | "concise" | "detailed" {
   return "adaptive";
 }
 
-/** Sanitize one trait envelope: 0 ≤ min ≤ mean ≤ max ≤ 1 always holds. */
-function sanitizeTrait(t: SeedTrait): Record<string, unknown> {
+/**
+ * Sanitize one trait envelope: 0 ≤ min ≤ mean ≤ max ≤ 1 always holds.
+ *
+ * E128: the default width (±0.2 for Standard) and the default half-life come from the starting profile;
+ * a range or a half-life the seed declares wins over both. E127 set the personality half-life at 24 turns,
+ * one order of magnitude slower than the mood default of 4, because the spec composes personality as the
+ * slow layer and affect as the fast one; the profile scales from there.
+ */
+function sanitizeTrait(t: SeedTrait, controls: ProfileControls = profileControls(undefined)): Record<string, unknown> {
   const mean = clamp01(t.mean, 0.5);
-  let lo = clamp01(t.range?.[0], Math.max(0, mean - 0.2));
-  let hi = clamp01(t.range?.[1], Math.min(1, mean + 0.2));
+  const reach = 0.2 * controls.rangeScale;
+  // Rounded, so a default reads 0.5 and not 0.49999999999999994 in the file the owner edits.
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+  let lo = clamp01(t.range?.[0], round(Math.max(0, mean - reach)));
+  let hi = clamp01(t.range?.[1], round(Math.min(1, mean + reach)));
   if (lo > hi) [lo, hi] = [hi, lo];
   lo = Math.min(lo, mean);
   hi = Math.max(hi, mean);
@@ -61,12 +72,24 @@ function sanitizeTrait(t: SeedTrait): Record<string, unknown> {
   // decorative by geometry. Emit explicit envelope-third boundaries instead.
   const fix = crossableBands({ mean, min: lo, max: hi, bands: out.bands as { low_max?: number; moderate_max?: number } | undefined });
   if (fix) out.bands = fix;
-  if (typeof t.halfLife === "number" && t.halfLife > 0) out.half_life = t.halfLife;
+  // E127: every trait returns to its baseline. The slow layer, an order of magnitude slower than affect,
+  // unless the interview or the extraction said otherwise; the creation report labels it a default.
+  out.half_life = typeof t.halfLife === "number" && t.halfLife > 0 ? t.halfLife : controls.personalityHalfLife;
   return out;
 }
 
-/** An affect/mood coordinate with band prose and crossable boundaries. */
-function affectCoord(mean: number, min: number, max: number, key: string, halfLife?: number): Record<string, unknown> {
+/**
+ * An affect/mood coordinate with band prose and crossable boundaries.
+ *
+ * E128: `scale` stretches or shrinks the envelope around its mean, clamped to the coordinate's domain
+ * (signed for valence and tone, unsigned for the rest), so a profile moves how far the fast layer can go
+ * without moving where it rests.
+ */
+function affectCoord(mean: number, min: number, max: number, key: string, halfLife?: number, scale = 1): Record<string, unknown> {
+  const floor = min < 0 ? -1 : 0;
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+  min = round(Math.max(floor, mean - (mean - min) * scale));
+  max = round(Math.min(1, mean + (max - mean) * scale));
   const out: Record<string, unknown> = { mean, range: [min, max], expression: synthesizeAffectExpression(key) };
   const fix = crossableBands({ mean, min, max });
   if (fix) out.bands = fix;
@@ -96,18 +119,19 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
   const displayName = nonEmpty(seed.displayName, slug);
   const purpose = nonEmpty(seed.purpose, `Serve as ${displayName}.`);
   const today = new Date().toISOString().slice(0, 10);
+  // E128: the starting profile's controls; everything the seed declares below still wins over them.
+  const controls = profileControls(seed.profile);
+  // E127: the fast layer's half-life, one number for every affect coordinate (see the affect block below).
+  const affectHalfLife = typeof seed.moodHalfLife === "number" && seed.moodHalfLife > 0 ? seed.moodHalfLife : controls.affectHalfLife;
 
   // Traits: at least one is required (schema minProperties), default a balanced core.
   // FASE 7 P1: the default is born load-bearing (band prose from the construct table).
   const traitEntries = Object.entries(seed.traits ?? {}).filter(([k]) => /^[a-z][a-z0-9_]*$/.test(k));
   const traits: Record<string, unknown> = {};
-  for (const [name, t] of traitEntries) traits[name] = sanitizeTrait(t);
+  for (const [name, t] of traitEntries) traits[name] = sanitizeTrait(t, controls);
   if (Object.keys(traits).length === 0) {
-    traits.conscientiousness = sanitizeTrait({
-      mean: 0.7,
-      range: [0.5, 0.9],
-      expression: synthesizeTraitExpression("conscientiousness"),
-    });
+    // The width is the profile's default (±0.2 for Standard, the [0.5, 0.9] this used to spell out).
+    traits.conscientiousness = sanitizeTrait({ mean: 0.7, expression: synthesizeTraitExpression("conscientiousness") }, controls);
   }
 
   // Values: safety is the builder's, always (U6); others sanitized, name-guarded.
@@ -150,7 +174,7 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
 
   const persona: Record<string, unknown> = {
     voice: {
-      tone: nonEmpty(seed.tone, "professional_direct").toLowerCase().replace(/\s+/g, "_"),
+      tone: nonEmpty(seed.tone, "professional_and_direct").toLowerCase().replace(/\s+/g, "_"),
       formality: clamp01(seed.formality, 0.5),
       warmth: clamp01(seed.warmth, 0.5),
       // FASE 7 P3 (caught by the valid-by-construction gate on a REAL model run):
@@ -190,6 +214,10 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
       tags: [],
       license: "private",
     },
+    // E65: only when there is something to list. The schema declares `extensions` closed
+    // (`additionalProperties: false`) and every key optional, so an empty block would be noise in
+    // every persona created without research, and a persona's document is read by people.
+    ...((seed.references ?? []).length === 0 ? {} : { extensions: { references: [...new Set(seed.references)] } }),
     identity: {
       canonical_id: slug,
       display_name: displayName,
@@ -237,15 +265,18 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
       // half_life (T6 observable by default; seed.moodHalfLife overrides it,
       // interview rule volatility-to-halflife).
       baseline: {
+        // E127: the whole fast layer returns to baseline, not only the tone: the same half-life for every
+        // affect coordinate, the interview's (volatility-to-halflife) or the mood default of 4. Until
+        // 2026-09-23 only mood.tone had one, so whatever a failure moved in valence or dominance stayed there.
         core_affect: {
-          valence: affectCoord(0.0, -0.3, 0.3, "core_affect.valence"),
-          arousal: affectCoord(0.4, 0.2, 0.6, "core_affect.arousal"),
-          dominance: affectCoord(0.6, 0.4, 0.8, "core_affect.dominance"),
+          valence: affectCoord(0.0, -0.3, 0.3, "core_affect.valence", affectHalfLife, controls.rangeScale),
+          arousal: affectCoord(0.4, 0.2, 0.6, "core_affect.arousal", affectHalfLife, controls.rangeScale),
+          dominance: affectCoord(0.6, 0.4, 0.8, "core_affect.dominance", affectHalfLife, controls.rangeScale),
         },
         mood: {
-          tone: affectCoord(0.0, -0.25, 0.25, "mood.tone", typeof seed.moodHalfLife === "number" && seed.moodHalfLife > 0 ? seed.moodHalfLife : 4),
-          stability: affectCoord(0.7, 0.5, 0.9, "mood.stability"),
-          recovery_rate: affectCoord(0.6, 0.4, 0.8, "mood.recovery_rate"),
+          tone: affectCoord(0.0, -0.25, 0.25, "mood.tone", affectHalfLife, controls.rangeScale),
+          stability: affectCoord(0.7, 0.5, 0.9, "mood.stability", affectHalfLife, controls.rangeScale),
+          recovery_rate: affectCoord(0.6, 0.4, 0.8, "mood.recovery_rate", affectHalfLife, controls.rangeScale),
         },
       },
       regulation_policy: { express_only_if_relevant: true, never_claim_real_feeling: true },
@@ -309,18 +340,9 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
     governance: {
       autonomy_envelope: "role_fidelity",
       approval_policy: "human_for_core_changes",
-      per_layer_edit_policy: {
-        identity: "human_approval_required",
-        character: "human_approval_required",
-        personality: "review_required",
-        values_and_drives: "human_approval_required",
-        affect: "review_required",
-        cognition: "review_required",
-        memory: "review_required",
-        metacognition: "review_required",
-        self_regulation: "governance_controlled",
-        persona: "review_required",
-      },
+      // E128: who approves what lasts, layer by layer, from the starting profile (Standard is what this
+      // always wrote). Who it is needs a person in every profile; self_regulation follows governance.
+      per_layer_edit_policy: { ...controls.perLayer },
       drift_thresholds: {
         identity: 0.05,
         character: 0.1,
@@ -334,7 +356,15 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
         persona: 0.2,
       },
     },
-    improvement_policy: { mode: seed.improvementMode ?? "locked" },
+    // `suggesting`, decided 2026-09-11 after measuring what `locked` did. In `locked`
+    // governance rejects every proposal the model makes, so a freshly created persona observed,
+    // appraised and proposed and never applied anything: the living loop the product sells was
+    // off by default, and nothing said so. `suggesting` turns the numeric state on, because for
+    // envelope mutations it behaves exactly like `autonomous` (applied, bounded by max_step_delta,
+    // clamped to the envelope, audited, reversible), while durable edits to the spec's prose are
+    // queued for a person instead of applied. That split is already how governance.ts separates
+    // `judge` from `governQualitative`; this only stops the default from switching both off.
+    improvement_policy: { mode: seed.improvementMode ?? "suggesting" },
     security: { prompt_injection_defense: true, memory_poisoning_defense: true },
     runtime: { memory: { use_embeddings: true, max_items: 12, retention_days_default: 365 } },
   };

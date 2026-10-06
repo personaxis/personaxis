@@ -22,6 +22,8 @@ import { join, resolve, relative, basename } from "node:path";
 import chalk from "chalk";
 import {
   genesis,
+  isGenesisProfile,
+  GENESIS_PROFILES,
   mergeSeed,
   buildSpecDocument,
   pendingItems,
@@ -52,11 +54,24 @@ import {
   type GenesisResult,
 } from "@personaxis/core";
 import { resolveModel } from "@personaxis/core";
+import {
+	RESEARCH_QUERIES_INSTRUCTION,
+	RESEARCH_QUERIES_SCHEMA,
+	fallbackQueries,
+	findingsFrom,
+	parseQueries,
+	referenceName,
+	renderReferenceNote,
+	researchContribution,
+	resolveWebSearch,
+	type Finding,
+} from "@personaxis/core";
 import { runCompile } from "./compile.js";
 import { validatePersona, exitCodeFor } from "../schema.js";
 import { runRules } from "../linter/rules.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
+import { ProviderRequiresAgentError } from "../providers/types.js";
 
 interface CreateOpts {
   fromPrompt?: string;
@@ -72,18 +87,29 @@ interface CreateOpts {
   noPolish?: boolean;
   /** Ask the whole question bank instead of the twelve core ones. */
   deep?: boolean;
+  /** E65: research the field on the web and leave what it found behind the persona. */
+  research?: boolean;
+  /** E128: the starting profile, the defaults of the three controls (range, per-layer policy, half-life). */
+  profile?: string;
 }
 
 /** Provider adapter → core's StructuredCaller. Null when no model is usable. */
 function structuredCaller(name?: ProviderName): StructuredCaller | null {
   try {
     const provider = resolveProvider(name);
-    if (provider.name === "agent") return null; // no network on our side; heuristic path
+    // E175: `agent` used to return null here, which sent `create --provider agent` down the
+    // no-model path and built the persona from labeled defaults. It goes through the text path
+    // like any provider without structured output; the agent provider writes the prompt for the
+    // coding agent and `create` stops until the answer exists (see the action's catch).
+    // Only when asked for by name: `agent` is also the default when no model is configured, and
+    // there `create` keeps its promise of working offline, from labeled defaults it reports.
+    if (provider.name === "agent" && name !== "agent") return null;
     if (provider.runStructured) {
       return (prompt, schema, schemaName) => provider.runStructured!(prompt, schema, schemaName).then((r) => r.json);
     }
-    return async (prompt) => {
-      const r = await provider.run(prompt + "\n\nReturn ONLY a JSON object, no prose, no fences.");
+    return async (prompt, schema) => {
+      const shape = schema ? `\n\nThe object must satisfy this JSON Schema:\n${JSON.stringify(schema)}` : "";
+      const r = await provider.run(prompt + shape + "\n\nReturn ONLY a JSON object, no prose, no fences.");
       return JSON.parse(r.text.trim().replace(/^```[a-zA-Z]*\s*\n?|\n?```$/g, "")) as unknown;
     };
   } catch {
@@ -253,6 +279,10 @@ async function chooseSource(opts: CreateOpts): Promise<boolean> {
 }
 
 export async function runCreate(slugArg: string | undefined, opts: CreateOpts): Promise<void> {
+  // E128: refused before anything is asked or written, so a typo never becomes a Standard persona in silence.
+  if (opts.profile !== undefined && !isGenesisProfile(opts.profile)) {
+    throw new Error(`--profile must be one of ${GENESIS_PROFILES.join(", ")}; got '${opts.profile}'.`);
+  }
   // No source flag and a terminal to ask in: show the sources instead of assuming one.
   const noSource = !opts.fromPrompt && opts.fromProject === undefined && !opts.fromImport && !opts.fromTranscript;
   if (noSource && process.stdin.isTTY && process.stdout.isTTY && !opts.yes && !opts.json && !opts.deep) {
@@ -272,6 +302,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
         const { seed, evidence } = await extractSeed(material, label, call);
         return { label, seed, evidence };
       } catch (e) {
+        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
         llmNotes.push(`extractor failed for ${label} (${(e as Error).message}); heuristic baseline used`);
       }
     } else {
@@ -312,6 +343,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
         const { seed, evidence } = await extractSeed(material.prose, `import-prose:${material.format}`, call);
         contributions.push({ label: `import-prose:${material.format}`, seed, evidence });
       } catch (e) {
+        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
         llmNotes.push(`extractor failed for import prose (${(e as Error).message}); card fields kept as-is`);
       }
     } else if (material.prose.trim()) {
@@ -339,6 +371,73 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   if (slugArg) {
     contributions.push({ label: "cli-arg", seed: { slug: slugArg }, evidence: [] });
   }
+  // E128: last, so a profile named on the command line wins over one the interview answered.
+  if (opts.profile !== undefined) {
+    contributions.push({
+      label: "cli-arg",
+      seed: { profile: opts.profile as (typeof GENESIS_PROFILES)[number] },
+      evidence: [
+        {
+          id: "profile",
+          kind: "answer",
+          source: "user",
+          excerpt: `--profile ${opts.profile}`,
+          mappedFields: [{ path: "governance.per_layer_edit_policy", value: opts.profile, rule: "choice-to-profile" }],
+        },
+      ],
+    });
+  }
+
+  // ── E65: the web research, only when asked for ─────────────────────────────
+  //
+  // It contributes ONE seed field, the path of the note it leaves, plus its evidence. Everything the pages
+  // actually said is in the note and in the ledger, so nothing found here can define the identity, the hard
+  // limits or a number. Each result passes `ingestUntrusted` inside `findingsFrom`, because this command is
+  // not the agent loop and the loop's injection scan does not cover this path.
+  let researchNote: { name: string; content: string } | null = null;
+  if (opts.research) {
+    const provider = resolveWebSearch({ cwd: process.cwd() });
+    const brief = opts.fromPrompt ?? "";
+    if (!provider) {
+      llmNotes.push("no web search provider available (no key); nothing was researched");
+    } else if (!brief.trim()) {
+      llmNotes.push("--research needs --from-prompt to know what to search for; nothing was researched");
+    } else {
+      let queries: string[] = [];
+      if (call) {
+        try {
+          const said = (await call(`${RESEARCH_QUERIES_INSTRUCTION}\n\nBRIEF:\n${brief}`, RESEARCH_QUERIES_SCHEMA, "research_queries")) as { queries?: string[] };
+          queries = parseQueries((said?.queries ?? []).join("\n"));
+        } catch (e) {
+          if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
+          llmNotes.push(`the model could not write the research queries (${(e as Error).message}); the brief was searched as given`);
+        }
+      }
+      if (queries.length === 0) {
+        queries = fallbackQueries(brief);
+        if (queries.length > 0 && !call) llmNotes.push("no model provider available for the research queries; the brief was searched as given");
+      }
+      const findings: Finding[] = [];
+      for (const query of queries) {
+        try {
+          // `advanced` buys better excerpts, which is what makes reading a URL unnecessary here: the provider
+          // returns each page's relevant text already cleaned, and fetching a named host is refused by design.
+          findings.push(...findingsFrom(query, await provider.search(query, { maxResults: 6, depth: "advanced" })));
+        } catch (e) {
+          llmNotes.push(`the web search failed for "${query}" (${(e as Error).message})`);
+        }
+      }
+      if (findings.length === 0) {
+        llmNotes.push("the web search returned nothing usable; nothing was researched");
+      } else {
+        const now = new Date();
+        const name = referenceName(now);
+        researchNote = { name, content: renderReferenceNote(findings, { provider: provider.name, now, brief }) };
+        contributions.push(researchContribution(findings, { referencePath: `references/${name}`, now }));
+        console.log(chalk.dim(`  researched ${queries.length} quer${queries.length === 1 ? "y" : "ies"}, kept ${findings.length} source(s) in references/${name}`));
+      }
+    }
+  }
 
   // ── build + gates ──────────────────────────────────────────────────────────
   const result: GenesisResult = genesis(contributions);
@@ -355,7 +454,10 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
 
   const lint = runRules(result.spec as Record<string, unknown>).findings;
   const lintErrors = lint.filter((f) => f.severity === "error");
-  gates.push({ name: "lint", pass: lintErrors.length === 0, detail: `${lintErrors.length} error(s), ${lint.length - lintErrors.length} warning(s)` });
+  // Warnings only: this counted every non-error finding, info included, so the report said 3 where the
+  // terminal, counting warnings, said 1 (2026-10-03).
+  const lintWarnings = lint.filter((f) => f.severity === "warning").length;
+  gates.push({ name: "lint", pass: lintErrors.length === 0, detail: `${lintErrors.length} error(s), ${lintWarnings} warning(s)` });
 
   // Round-trip lite: the stage-1 assembler must accept the spec (compile gate).
   let compiled = "";
@@ -392,7 +494,6 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     console.error(chalk.red("✗ internal error:"), "load-bearing gate crashed, nothing was written.", (e as Error).message);
     process.exit(1);
   }
-  for (const n of llmNotes) gates.push({ name: "provider", pass: true, detail: n });
 
   const slug = (result.spec.metadata as { name: string }).name;
   const baseDir = opts.root ? resolve(".personaxis") : resolve(".personaxis", "personas", slug);
@@ -403,10 +504,10 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   }
 
   const summary = provenanceSummary(result.spec, result.ledger);
-  const report = renderCreationReport(result, gates);
+  const report = renderCreationReport(result, gates, llmNotes);
 
   if (opts.json) {
-    console.log(JSON.stringify({ spec: result.spec, gates, provenance: summary, path: relative(process.cwd(), personaPath) }, null, 2));
+    console.log(JSON.stringify({ spec: result.spec, gates, notes: llmNotes, provenance: summary, path: relative(process.cwd(), personaPath) }, null, 2));
     if (!opts.yes) return; // --json without --yes is a dry-run
   }
 
@@ -414,6 +515,12 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   mkdirSync(baseDir, { recursive: true });
   writeFileSync(personaPath, result.document, "utf-8");
   writeFileSync(join(baseDir, "creation-report.md"), report, "utf-8");
+  // E65: the note goes where the spec says it is. The document already lists it, because the contribution put
+  // the path in the seed and the builder rendered `extensions.references` from there.
+  if (researchNote) {
+    mkdirSync(join(baseDir, "references"), { recursive: true });
+    writeFileSync(join(baseDir, "references", researchNote.name), researchNote.content, "utf-8");
+  }
   // The persona exists: the interview draft has served its purpose and must not linger as
   // a stale offer to "resume" an interview that already produced a persona.
   clearDraft(process.cwd());
@@ -471,6 +578,8 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(provenance: ${summary.covered.length}/${summary.quantitativeFields.length} fields, ${summary.defaultsOnly.length} default(s) to review)`)}`);
     const warns = lint.filter((f) => f.severity === "warning").length;
     if (warns) console.log(chalk.dim(`  ${warns} lint warning(s), run \`personaxis lint\` for detail (decorative numbers are worth fixing).`));
+    // What was worked around (no model, a failed search) said where it happens, not only in the report.
+    for (const note of llmNotes) console.log(chalk.yellow(`  ⚠ ${note}`));
     console.log(
       chalk.dim(
         polished
@@ -494,7 +603,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
 }
 
 export const createCommand = new Command("create")
-  .description("Genesis: create a governed AI Persona from zero, interview, natural language, project scan, character-card/system-prompt import, or transcripts. Always validated; provenance per number.")
+  .description("Genesis: create a persona from nothing: an interview, a brief, a project scan, an imported card or system prompt, or transcripts. Always validated; provenance per number.")
   .argument("[slug]", "Persona slug (default: derived from its name; created under .personaxis/personas/<slug>/)")
   .option("--from-prompt <brief>", "Create from a natural-language brief")
   .option("--from-project [dir]", "Infer the persona from a project's own docs (README, CLAUDE.md, …)")
@@ -503,13 +612,20 @@ export const createCommand = new Command("create")
   .option("--root", "Create as the project's ROOT persona (.personaxis/personaxis.md + repo PERSONA.md)")
   .option("--yes", "Non-interactive: accept labeled defaults, overwrite existing files")
   .option("--json", "Emit the spec + gates + provenance as JSON (dry-run unless --yes)")
-  .option("--provider <name>", "Override the configured provider (local | byok | agent | remote)")
+  .option("--provider <name>", "Override the configured provider (local | byok | agent)")
   .option("--no-polish", "Skip the automatic LLM polish after creation (offline template, marked pending)")
   .option("--deep", "Ask the FULL question bank (envelope width, mood half-life, refusals, uncertainty, memory, improvement, a voice exemplar) instead of the twelve core questions")
+  .option("--profile <name>", "Starting profile: regulated | standard | research (the defaults of each layer's range, who approves lasting changes, and how fast it returns to baseline). Default: standard")
+  .option("--research", "Search the web for the field, and leave what it found in references/ with each source and its date (needs a web provider key)")
   .action(async (slug: string | undefined, opts: CreateOpts) => {
     try {
       await runCreate(slug, opts);
     } catch (err) {
+      // E175: the prompt is waiting for the coding agent, as with `compile`: say where, exit 0.
+      if (err instanceof ProviderRequiresAgentError) {
+        console.log(err.message.replace("Then re-run this command with --from-file " + err.resultFile + " to apply the result.", "Then re-run this same command: it reads the answer and continues."));
+        process.exit(0);
+      }
       console.error(chalk.red("Error:"), (err as Error).message);
       process.exit(1);
     }
