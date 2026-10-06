@@ -1,12 +1,28 @@
-# personaxis
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
+    <img src="docs/assets/hero-light.svg" alt="personaxis: personas for coding agents" width="420">
+  </picture>
+</p>
 
-Write down how a professional does a job as plain files, then load it into the coding agent you already use.
+<p align="center">
+  Write down how a professional does a job as plain files,<br>
+  then load it into the coding agent you already use.
+</p>
 
-[![npm](https://img.shields.io/npm/v/personaxis)](https://www.npmjs.com/package/personaxis)
-[![CI](https://github.com/personaxis/personaxis/actions/workflows/ci.yml/badge.svg)](https://github.com/personaxis/personaxis/actions/workflows/ci.yml)
-[![Node](https://img.shields.io/node/v/personaxis)](https://nodejs.org)
-[![Spec](https://img.shields.io/badge/spec-1.1.0-informational)](https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+<p align="center">
+  <a href="https://www.npmjs.com/package/personaxis"><img alt="npm" src="https://img.shields.io/npm/v/personaxis"></a>
+  <a href="https://github.com/personaxis/personaxis/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/personaxis/personaxis/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://nodejs.org"><img alt="Node" src="https://img.shields.io/node/v/personaxis"></a>
+  <a href="https://github.com/personaxis/persona.md/blob/main/docs/SPEC.md"><img alt="Spec 1.1.0" src="https://img.shields.io/badge/spec-1.1.0-informational"></a>
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/demo.svg" alt="A terminal: personaxis create writes a persona, personaxis compile writes the document Claude Code reads, and personaxis proof --quick checks the engine offline." width="820">
+</p>
+
+<p align="center"><sub>Real output from personaxis 0.17.0. Paths are shortened, and <code>proof</code> is an excerpt.</sub></p>
 
 A persona is the whole way a professional works: the procedures it follows, the criteria it applies, the
 tools it reaches, the knowledge it cites with sources, what it has learned on the job, and the limits it
@@ -25,29 +41,11 @@ flowchart LR
   E --> A
 ```
 
-## See it work in a minute
-
-No model and no account. The engine runs its own checks on a throwaway persona, offline:
-
-```console
-$ npx personaxis proof --quick
-  1 · Adversarial storm, 1,000 hostile mutations (seed 42)
-  ✓ 1000 hostile steps, 440 clamped, 0 escapes from the declared box (T1)
-  ✓ every admitted step ≤ max_step_delta 0.15 (T2)
-  ✓ all 1012 record entries hash-chained and verifiable
-  ...
-  4 · Tamper, one forged byte of memory is caught and located (T5)
-  ✓ one forged byte → verification fails AND names the spot: entry #1 (T5)
-```
-
-An excerpt from a real run; the counts depend on the persona. Every check it makes is listed in
-[`docs/GUARANTEES.md`](docs/GUARANTEES.md), next to what is not measured yet.
-
 ## Install
 
 ```bash
 npm i -g personaxis        # Node 20.18.1 or newer
-personaxis --version
+personaxis proof --quick   # a few seconds, offline: the engine's own checks on a throwaway persona
 ```
 
 Or run it without installing: `npx personaxis <command>`.
@@ -78,19 +76,15 @@ node packages/cli/dist/index.js proof --quick
 personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-```text
-.personaxis/personas/reviewer/
-  personaxis.md        the definition, in ten layers
-  PERSONA.md           the compiled document a model reads
-  state.json           the values that move as it works
-  creation-report.md   which sentence of your brief produced each number, and every default it assumed
-```
+You get a folder with the definition (`personaxis.md`, in ten layers), the compiled document a model reads
+(`PERSONA.md`), the values that move as it works (`state.json`), and `creation-report.md`: which sentence of
+your brief produced each number, and every default it assumed. Read the report. Without a working model most
+of the persona is labelled defaults, as the demo above shows, so point it at one first (step 2).
 
-Read the report. Without a working model most of the persona is labelled defaults, so point it at one
-first (step 2). Other ways in: no flag starts an interview, `--from-project` reads your repository,
-`--from-import` takes a SOUL.md, a SoulSpec package, a character card or a system prompt, and
-`--from-transcript` works from example conversations. `--research` searches the web for the field and
-keeps each source, with its date, in `references/`.
+Other ways in: no flag starts an interview, `--from-project` reads your repository, `--from-import` takes a
+SOUL.md, a SoulSpec package, a character card or a system prompt, and `--from-transcript` works from
+example conversations. `--research` searches the web for the field and keeps each source, with its date, in
+`references/`.
 
 **2. Point it at a model.** Any OpenAI-compatible endpoint, hosted or local:
 
@@ -197,14 +191,14 @@ All eight move together on one version.
 
 ## Status
 
-The spec is `1.1.0`, and a persona written for `1.0.0` still validates. This release has no
-hosted hub to publish and pull personas, no bench that measures how much a persona improves an agent on
-each model, and no web studio, and none of their commands are in the package.
+The spec is `1.1.0`, and a persona written for `1.0.0` still validates. This release has no hosted hub to
+publish and pull personas, no bench that measures how much a persona improves an agent on each model, and no
+web studio, and none of their commands are in the package.
 [`docs/GUARANTEES.md`](docs/GUARANTEES.md) lists what is measured and what is not.
 
 ## Contributing
 
-Issues and pull requests are welcome. Every pull request runs the full test suite, the repository gates,
+See [CONTRIBUTING.md](CONTRIBUTING.md). Every pull request runs the full test suite, the repository gates,
 and a check that no commit adds personal data.
 
 ## License
