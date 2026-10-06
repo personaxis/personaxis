@@ -12,3 +12,17 @@ minimumReleaseAge: 2880
 # allowlist explicitly empty so any future native/postinstall dep is a conscious,
 # reviewed decision (pnpm blocks non-allowlisted build scripts).
 onlyBuiltDependencies: []
+
+# ── Patched transitive versions ───────────────────────────────────────────────
+# `pnpm audit --prod` flagged these through parents that pin older ranges
+# (@modelcontextprotocol/sdk, ajv, ink). Each floor is the first patched release;
+# they are all older than the 48h window above. Remove an entry once its parent
+# ships a range that already resolves above the floor.
+overrides:
+  fast-uri: ">=3.1.7"
+  ip-address: ">=10.3.1"
+  proxy-addr: ">=2.0.8"
+  shell-quote: ">=1.11.0"
+  hono: ">=4.13.7"
+  "@hono/node-server": ">=1.19.15"
+  qs: ">=6.16.0"
