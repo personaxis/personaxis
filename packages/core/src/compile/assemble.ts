@@ -179,8 +179,11 @@ function sectionAlwaysNever(persona: Dict): string {
 
   out.push("**Always:**");
   for (const a of dedupe(always)) out.push(`- ${a}`);
-  out.push("", "**Never:**");
-  for (const n of dedupe(never)) out.push(`- ${n}`);
+  // A heading over nothing invites the model that polishes the document to fill it (2026-10-07).
+  if (never.length) {
+    out.push("", "**Never:**");
+    for (const n of dedupe(never)) out.push(`- ${n}`);
+  }
 
   const examples = asArr(anchors.examples).map(asStr).filter(Boolean) as string[];
   if (examples.length) {

@@ -56,8 +56,10 @@ export function bandCrossing(from: number, to: number, e: Envelope): boolean {
  * FASE 7 P1: explicit boundaries when the defaults leave the envelope inside a
  * single band (typical for narrow or signed envelopes: valence [-0.3, 0.3] sits
  * entirely inside the signed moderate band, so no crossing is ever possible and
- * every number there is decorative by geometry). Returns envelope thirds when
- * fewer than two bands are reachable; undefined when the declared or default
+ * every number there is decorative by geometry). Returns boundaries inside the
+ * envelope that keep the mean in the band its level says (below a high mean,
+ * above a low one, the thirds around a moderate one) when fewer than two bands
+ * are reachable; undefined when the declared or default
  * boundaries already work, or when the envelope has no width (a point envelope
  * cannot cross anything, by design). Reachability here counts band INTERVALS
  * that intersect the envelope (jacobian.ts owns the representative-based
@@ -69,8 +71,15 @@ export function crossableBands(e: Envelope): { low_max: number; moderate_max: nu
   const [b1, b2] = bandBoundaries(e);
   const intersecting = (e.min <= b1 ? 1 : 0) + (e.max > b1 && e.min <= b2 ? 1 : 0) + (e.max > b2 ? 1 : 0);
   if (intersecting >= 2) return undefined;
-  const low_max = e.min + width / 3;
-  const moderate_max = e.min + (2 * width) / 3;
+  // The boundaries go where the declared mean stays in the band its level says. Envelope thirds put the
+  // mean, which sits near the centre, in "moderate" whatever its level, so a trait declared at 0.9 compiled
+  // as "in measured doses" (2026-10-07). A high mean gets both boundaries below it, a low mean both above it,
+  // and a moderate mean keeps the thirds.
+  const level = bandOf(e.mean, { mean: e.mean, min: e.min, max: e.max });
+  const [from, span] =
+    level === "high" ? [e.min, e.mean - e.min] : level === "low" ? [e.mean, e.max - e.mean] : [e.min, width];
+  const low_max = from + span / 3;
+  const moderate_max = from + (2 * span) / 3;
   // FP guard (found by PB-G2 with a subnormal-width envelope, 5e-324): when the
   // width is too small for three REPRESENTABLE intervals, the thirds collapse
   // onto the endpoints and no boundary pair can exist. Such an envelope is a
