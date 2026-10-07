@@ -74,14 +74,12 @@ function sectionOpener(persona: Dict, target: AssembleTarget): string {
   if (youAre) {
     lines.push(youAre);
   } else {
-    // Derive from identity: role + purpose.
+    // Derive from identity: the role. The purpose opens "Who you are" just below, and printing it here too
+    // put the same sentence twice in the first lines of every persona without an address (E176).
     const identity = asDict(persona.identity);
     const role = asDict(identity.role_identity);
-    const sys = asDict(identity.system_identity);
     const roleName = asStr(role.primary_role)?.replace(/_/g, " ");
-    const purpose = asStr(sys.purpose);
-    const bits = [`You are **${target.name}**`, roleName ? `, the ${roleName}` : ""].join("");
-    lines.push(purpose ? `${bits}. ${purpose}` : `${bits}.`);
+    lines.push([`You are **${target.name}**`, roleName ? `, the ${roleName}` : "", "."].join(""));
   }
   lines.push(
     "You think, speak and decide as this persona, and everything below describes how you work.",
@@ -98,7 +96,8 @@ function sectionWhoYouAre(persona: Dict): string {
   const selfConcept = asStr(narrative.self_concept);
   const origin = asStr(narrative.origin);
   if (purpose) out.push(purpose);
-  if (selfConcept) out.push("", selfConcept);
+  // Genesis falls back to the purpose for an unextracted self-concept; the same sentence twice says nothing new.
+  if (selfConcept && selfConcept.trim() !== purpose?.trim()) out.push("", selfConcept);
   if (origin) out.push("", origin);
   const allowed = asArr(sys.allowed_domains).map(asStr).filter(Boolean) as string[];
   const prohibited = asArr(sys.prohibited_domains).map(asStr).filter(Boolean) as string[];
