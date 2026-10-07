@@ -60,6 +60,21 @@ export const SEED_JSON_SCHEMA = {
         },
       },
     },
+    virtues: {
+      type: "array",
+      maxItems: 6,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "description", "evidence"],
+        properties: {
+          name: { type: "string" },
+          description: { type: "string" },
+          enforcement: { type: "string", enum: ["hard", "soft"] },
+          evidence: { type: "string", maxLength: 200 },
+        },
+      },
+    },
     hardLimits: { type: "array", maxItems: 6, items: { type: "string" } },
     prohibitedBehaviors: { type: "array", maxItems: 8, items: { type: "string" } },
     goals: { type: "array", maxItems: 6, items: { type: "string" } },
@@ -99,6 +114,10 @@ export function buildExtractionPrompt(material: string, sourceLabel: string): st
     "- `halfLife` (turns, on a trait) and `moodHalfLife` (turns, top level): how fast a",
     "  displaced trait/mood returns to baseline. Include ONLY when the material shows it",
     "  (e.g. 'quick to anger, slow to forgive' implies a large moodHalfLife).",
+    "- `virtues` are the commitments the persona's work is judged by, as the material shows",
+    "  them (e.g. rigor: 'checks every claim against the code it cites'), each with `evidence`.",
+    "  `enforcement` is 'hard' only when the material treats it as non-negotiable. Write the",
+    "  description as a rule the persona follows, not as praise.",
     "- hardLimits are ABSOLUTE refusals stated or clearly implied by the material.",
     "- Do NOT include a `safety` value (the platform injects it above everything).",
     "- `displayName` is the persona's own name as the material gives it, or a plain role name",
@@ -125,6 +144,7 @@ interface ExtractedSeed {
   traits?: Array<{ name: string; mean: number; flexibility?: number; expressionLow?: string; expressionModerate?: string; expressionHigh?: string; halfLife?: number; evidence: string }>;
   moodHalfLife?: number;
   values?: Array<{ name: string; weight: number; evidence: string }>;
+  virtues?: Array<{ name: string; description: string; enforcement?: string; evidence: string }>;
   hardLimits?: string[];
   prohibitedBehaviors?: string[];
   goals?: string[];
@@ -199,6 +219,19 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
     seed.values![name] = { weight: Math.min(0.95, Math.max(0, v.weight)) };
     push(`x-value-${name}`, "inference", v.evidence, [
       { path: `values_and_drives.values.${name}.weight`, value: v.weight, rule: "llm-extraction-with-evidence" },
+    ]);
+  }
+
+  // E176: the schema had no virtues, so every persona's character held only the builder's honesty line.
+  for (const v of x.virtues ?? []) {
+    if (typeof v?.name !== "string" || typeof v.description !== "string" || !v.description.trim()) continue;
+    if (typeof v.evidence !== "string" || !v.evidence.trim()) continue;
+    const name = slugKey(v.name);
+    if (!name) continue;
+    const enforcement = v.enforcement === "hard" ? "hard" : "soft";
+    seed.virtues![name] = { description: v.description.trim(), priority: enforcement === "hard" ? 0.9 : 0.75, enforcement };
+    push(`x-virtue-${name}`, "inference", v.evidence, [
+      { path: `character.virtues.${name}.description`, value: v.description.trim(), rule: "llm-extraction-with-evidence" },
     ]);
   }
 

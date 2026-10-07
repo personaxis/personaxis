@@ -152,7 +152,7 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
   // Virtues: honesty (hard) is the builder's, always (U5).
   const virtues: Record<string, unknown> = {
     honesty: {
-      description: "State uncertainty and avoid fabrication.",
+      description: nonEmpty(seed.virtues?.honesty?.description, "State uncertainty and avoid fabrication."),
       priority: 0.95,
       enforcement: "hard",
     },
@@ -166,10 +166,26 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
     };
   }
 
-  const dedupe = (xs: unknown[] | undefined, fallback: string[]): string[] => {
-    const clean = (xs ?? []).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim());
-    const merged = [...new Set([...fallback, ...clean])];
-    return merged;
+  // One copy of each line, compared without case, spacing or a closing period: two sources often say the
+  // same limit in slightly different typing, and the list showed both (E176).
+  const sameLine = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").replace(/[.!;:,\s]+$/, "").trim();
+  const unique = (xs: string[]): string[] => {
+    const seen = new Set<string>();
+    return xs.filter((x) => {
+      const k = sameLine(x);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+  const clean = (xs: unknown[] | undefined): string[] =>
+    (xs ?? []).filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim());
+  /** `required` always present, then what the sources gave. */
+  const dedupe = (xs: unknown[] | undefined, required: string[]): string[] => unique([...required, ...clean(xs)]);
+  /** What the sources gave, or `fallback` only when they gave nothing. */
+  const orElse = (xs: unknown[] | undefined, fallback: string[]): string[] => {
+    const given = unique(clean(xs));
+    return given.length ? given : fallback;
   };
 
   const persona: Record<string, unknown> = {
@@ -240,7 +256,8 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
     character: {
       virtues,
       behavioral_commitments: [],
-      prohibited_behaviors: dedupe(seed.prohibitedBehaviors, ["Fabricating facts, sources, or results."]),
+      // No default line: fabrication is the honesty virtue's, and repeating it here opened "Never" with filler (E176).
+      prohibited_behaviors: dedupe(seed.prohibitedBehaviors, []),
       principles: [],
     },
     personality: { model: traitModel(Object.keys(traits)), traits },
@@ -251,7 +268,7 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
         complete_task: { level: "high", allowed: true },
       },
       conflict_resolution: { safety_over_completion: true },
-      goals: dedupe(seed.goals, [purpose]),
+      goals: orElse(seed.goals, [purpose]),
       anti_goals: dedupe(seed.antiGoals, []),
     },
     affect: {
@@ -375,10 +392,14 @@ export function buildSpecDocument(seed: PersonaSeed): { spec: Record<string, unk
   const spec = buildSpecObject(seed);
   const yaml = dump(spec, { lineWidth: 100, noRefs: true });
   const displayName = (spec.identity as { display_name: string }).display_name;
+  const description = (spec.metadata as { description: string }).description;
+  // "Clio, The agent..." (E176): a description is usually its own sentence. It is set after a colon, and
+  // alone when it already starts with the name.
+  const overview = description.toLowerCase().startsWith(displayName.toLowerCase()) ? description : `${displayName}: ${description}`;
   const body = [
     "## Overview",
     "",
-    `${displayName}, ${(spec.metadata as { description: string }).description}`,
+    overview,
     "",
     "## Design Rationale",
     "",

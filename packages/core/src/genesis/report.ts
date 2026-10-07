@@ -99,6 +99,31 @@ export function provenanceSummary(spec: Record<string, unknown>, ledger: Evidenc
   };
 }
 
+/**
+ * Keys that probably name the same thing, such as `verifiability` and `verified_claims` from two sources
+ * (E176). They are flagged, never merged: a rule that merges by spelling also merges `communication` and
+ * `community`, and a merge cannot be undone by reading the report, while a false flag costs a glance.
+ */
+function possiblySame(keys: readonly string[]): Array<[string, string]> {
+  const head = (k: string): string => k.split("_")[0] ?? k;
+  const lcp = (a: string, b: string): number => {
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    return i;
+  };
+  const pairs: Array<[string, string]> = [];
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const [a, b] = [keys[i], keys[j]];
+      const [ha, hb] = [head(a), head(b)];
+      const common = lcp(ha, hb);
+      const contained = Math.min(a.length, b.length) >= 5 && (a.includes(b) || b.includes(a));
+      if (contained || (common >= 6 && common / Math.min(ha.length, hb.length) >= 0.75)) pairs.push([a, b]);
+    }
+  }
+  return pairs;
+}
+
 /** Render the human-readable creation report (markdown). */
 export function renderCreationReport(
   result: GenesisResult,
@@ -152,6 +177,17 @@ export function renderCreationReport(
   lines.push("", "## Defaults to review", "");
   if (summary.defaultsOnly.length === 0) lines.push("(none, every number is evidence-backed)");
   else for (const f of summary.defaultsOnly) lines.push(`- \`${f}\``);
+
+  const keysOf = (o: unknown): string[] => Object.keys((o ?? {}) as Record<string, unknown>);
+  const similar = [
+    ...possiblySame(keysOf((spec.values_and_drives as { values?: unknown } | undefined)?.values)).map((p) => ["value", ...p]),
+    ...possiblySame(keysOf((spec.character as { virtues?: unknown } | undefined)?.virtues)).map((p) => ["virtue", ...p]),
+    ...possiblySame(keysOf((spec.personality as { traits?: unknown } | undefined)?.traits)).map((p) => ["trait", ...p]),
+  ];
+  if (similar.length) {
+    lines.push("", "## Possibly the same", "", "Kept as written. If a pair names one thing, delete one of them in the spec.", "");
+    for (const [kind, a, b] of similar) lines.push(`- ${kind}: \`${a}\` and \`${b}\``);
+  }
 
   // Whether this persona can change at all is the first thing its owner needs to know about it,
   // and for a day it was off in every persona Genesis made while nothing here said so.

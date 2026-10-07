@@ -33,6 +33,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   record, memory, sessions and self-edits stayed beside the new definition, so it started from the old
   values (the known issue listed under 0.17.0). They are now moved to `previous/<timestamp>/` beside
   the persona, not deleted, and `create` prints where.
+- Genesis writes what the source says, once. The extractor asks for virtues, each with evidence from the
+  material, so "Always" is no longer only the builder's honesty line. "Never" no longer opens with a
+  default line that repeats the honesty virtue; the goals no longer repeat the purpose when the source
+  gave goals; the compiled document states the purpose once, not two or three times; a line two sources
+  give in different typing is kept once; and the overview reads "Clio: The agent..." instead of "Clio,
+  The agent...". Values, virtues or traits that probably name the same thing, such as `verifiability`
+  and `verified_claims`, are listed under "Possibly the same" in the creation report, not merged.
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
