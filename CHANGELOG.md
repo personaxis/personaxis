@@ -29,6 +29,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `personaxis proof` without `--persona` no longer walks up the folders to the persona in your home
   directory and prints its name and full path. It uses `.personaxis/personaxis.md` in the current
   folder, or the embedded demo persona, and shows the path relative to the current folder.
+- `personaxis create --yes` over an existing persona starts a new persona. The replaced one's state,
+  record, memory, sessions and self-edits stayed beside the new definition, so it started from the old
+  values (the known issue listed under 0.17.0). They are now moved to `previous/<timestamp>/` beside
+  the persona, not deleted, and `create` prints where.
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
