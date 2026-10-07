@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EngineHost } from "../src/host/engine-host.js";
 import { ProtocolClient, type EventMsg } from "@personaxis/protocol";
+import { modelEnv, startFakeModel } from "./helpers/fake-model.js";
 
 let dir: string;
 let personaPath: string;
@@ -89,7 +90,34 @@ describe("EngineHost over the protocol seam", () => {
     expect(rejected.ok).toBe(false);
   });
 
-  it("observe runs a governed tick and broadcasts loop events + audit stays intact", async () => {
+  it("observe without a model fails, and says what is missing", async () => {
+    host = new EngineHost(personaPath);
+    await host.listen();
+    client = new ProtocolClient();
+    await client.connect(host.pipePath);
+
+    const r = await client.submit({ op: "observe", observation: "the user prefers terse answers", source: "user" });
+    expect(r.ok).toBe(false);
+    expect(String(r.error)).toMatch(/needs a model/);
+  });
+
+  it("observe runs a governed tick on the persona's model and broadcasts loop events + audit stays intact", async () => {
+    const model = await startFakeModel();
+    const env = modelEnv(model);
+    const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, env);
+    try {
+      await observeOnModel();
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      await model.close();
+    }
+  });
+
+  async function observeOnModel(): Promise<void> {
     host = new EngineHost(personaPath);
     await host.listen();
     client = new ProtocolClient();
@@ -106,5 +134,5 @@ describe("EngineHost over the protocol seam", () => {
 
     const audit = await client.submit({ op: "audit_get" });
     expect((audit.data as { memory_chain_intact: boolean }).memory_chain_intact).toBe(true);
-  });
+  }
 });

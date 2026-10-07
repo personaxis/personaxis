@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -98,12 +98,34 @@ describe("personaxis MCP server", () => {
     expect(r.decision).toBe("deny");
   });
 
-  it("persona_observe runs a governed cycle and persona_audit verifies integrity", async () => {
-    // V2-F1.3: only SALIENT observations earn a ledger entry (raw chatter stays in
-    // sessions/), so the observation carries an explicit remember cue.
-    const obs = await callJson("persona_observe", { persona, observation: "remember: great progress on the deploy", source: "user" });
-    expect(obs.report.memoriesWritten).toBeGreaterThanOrEqual(1);
-    const audit = await callJson("persona_audit", { persona });
-    expect(audit.memory_chain_intact).toBe(true);
+  it("persona_observe without a model answers with what is missing, not with an empty cycle", async () => {
+    const r = (await client.callTool({ name: "persona_observe", arguments: { persona, observation: "remember: the deploy", source: "user" } })) as {
+      content: Array<{ text: string }>;
+      isError?: boolean;
+    };
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/needs a model/);
+  });
+
+  it("persona_observe runs a governed cycle on the persona's model and persona_audit verifies integrity", async () => {
+    // The model stands in as a stub that proposes remembering the observation; writing it to the
+    // hash-chained memory and auditing the chain is the real engine.
+    const saved = { endpoint: process.env.PERSONAXIS_ENDPOINT, model: process.env.PERSONAXIS_MODEL };
+    process.env.PERSONAXIS_ENDPOINT = "http://model.invalid/v1";
+    process.env.PERSONAXIS_MODEL = "m";
+    const appraisal = { appraisal: "worth keeping", mutations: [], memories: [{ content: "great progress on the deploy", source: "user" }], confidence: 0.9 };
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(appraisal) } }] }), { status: 200, headers: { "content-type": "application/json" } }));
+    try {
+      const obs = await callJson("persona_observe", { persona, observation: "remember: great progress on the deploy", source: "user" });
+      expect(obs.report.memoriesWritten).toBeGreaterThanOrEqual(1);
+      const audit = await callJson("persona_audit", { persona });
+      expect(audit.memory_chain_intact).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+      if (saved.endpoint === undefined) delete process.env.PERSONAXIS_ENDPOINT;
+      else process.env.PERSONAXIS_ENDPOINT = saved.endpoint;
+      if (saved.model === undefined) delete process.env.PERSONAXIS_MODEL;
+      else process.env.PERSONAXIS_MODEL = saved.model;
+    }
   });
 });

@@ -51,7 +51,7 @@ export const onboardCommand = new Command("onboard")
       console.log(chalk.dim("      personaxis config set --global local.endpoint <openai-compatible-url>"));
       console.log(chalk.dim("      personaxis config set --global local.model <model-name>"));
       console.log(chalk.dim("      personaxis config set --global local.apiKeyEnv <ENV_VAR_WITH_YOUR_KEY>"));
-      console.log(chalk.dim("    (the hook falls back to the offline heuristic until a model + key are set.)"));
+      console.log(chalk.dim("    (until a model and key are set, the hook learns nothing: observing needs a model.)"));
     }
 
     // 2. Compile the identity for this host.

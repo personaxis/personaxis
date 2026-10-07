@@ -51,7 +51,7 @@ import { liveCompiledDocument } from "../compiled-document.js";
 import { replyLine, userLine } from "./render.js";
 import type { Ctx } from "./types.js";
 import type { LineRole } from "@personaxis/tui/screen";
-import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "./config.js";
+import { POSTURES, pickResponder, llmConfig, ctxModelArg } from "./config.js";
 
 /**
  * What the living loop runs when a band is crossed: the compiled document, rewritten in place.

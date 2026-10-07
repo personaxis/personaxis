@@ -160,7 +160,7 @@ export function doctorChecksOffline(personaPath: string): DoctorReport {
       frontmatter: loadPersonaFile(personaPath).data as unknown as Record<string, unknown>,
     });
     if (!llm) {
-      rows.push(warn("no model configured, running offline (heuristic)"));
+      rows.push(warn("no model configured: the persona cannot answer, evolve or remember until one is set"));
       rows.push(
         ...fix(
           "Set one with `/config` (or `personaxis config set` outside). Without a model the persona still runs, but appraisal falls back to heuristics and `compile` emits the template instead of polished prose.",
@@ -268,7 +268,7 @@ export async function runDoctorChecks(rootPersonaPath: string, arg = ""): Promis
       rows.push(warn(`provider unreachable: ${(e as Error).message}`));
       rows.push(
         ...fix(
-          `Nothing reached ${llm.endpoint}. If you are offline this is expected and the persona keeps working in heuristic mode. If not, check the endpoint URL and any proxy.`,
+          `Nothing reached ${llm.endpoint}. If you are offline this is expected, and the persona will not answer until the model is reachable. If not, check the endpoint URL and any proxy.`,
         ),
       );
     }

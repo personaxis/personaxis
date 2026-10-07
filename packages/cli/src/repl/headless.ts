@@ -5,7 +5,7 @@
  * --output-format text | json | stream-json.
  */
 
-import { ensureState, readMemoryKnobs, factsView, recallWindow, readState, readHooksConfig, runHooks } from "@personaxis/core";
+import { ensureState, readMemoryKnobs, factsView, recallWindow, readHooksConfig, runHooks, ModelRequiredError } from "@personaxis/core";
 import { resolvePersonaPath, makeMeter } from "./config.js";
 import { makeCtx, recordTurn } from "./session.js";
 import { shortName, friendlyProviderError } from "./render.js";
@@ -91,30 +91,41 @@ export async function runHeadless(opts: HeadlessOptions): Promise<number> {
       }
     : undefined;
 
-  const { reply, name, ctx } = await governedReply({
-    personaPath,
-    prompt,
-    activity: "answering",
-    onResponderError: "as-reply",
-    ...(onToken ? { onToken } : {}),
-    onReady: (n, sessionId) => {
-      if (format === "stream-json") process.stdout.write(JSON.stringify({ type: "init", persona: n, session_id: sessionId }) + "\n");
-    },
-  });
+  let answered: Awaited<ReturnType<typeof governedReply>>;
+  try {
+    answered = await governedReply({
+      personaPath,
+      prompt,
+      activity: "answering",
+      onResponderError: "as-reply",
+      ...(onToken ? { onToken } : {}),
+      onReady: (n, sessionId) => {
+        if (format === "stream-json") process.stdout.write(JSON.stringify({ type: "init", persona: n, session_id: sessionId }) + "\n");
+      },
+    });
+  } catch (e) {
+    // No model is not a reply: a script must see it fail, not read the instructions as the answer.
+    if (e instanceof ModelRequiredError) {
+      process.stderr.write(`personaxis -p: ${e.message}\n`);
+      return 2;
+    }
+    throw e;
+  }
+  const { reply, name, ctx } = answered;
 
   if (format === "json") {
     process.stdout.write(
       JSON.stringify({ type: "result", persona: name, reply, session_id: ctx.sessionId }) + "\n",
     );
   } else if (format === "stream-json") {
-    // If tokens streamed live, the deltas already carried the text; otherwise
-    // (offline responder) emit the whole message. Always close with a result.
+    // If tokens streamed live, the deltas already carried the text; otherwise emit the
+    // whole message. Always close with a result.
     if (!streamedAny) {
       process.stdout.write(JSON.stringify({ type: "message", role: "assistant", text: reply }) + "\n");
     }
     process.stdout.write(JSON.stringify({ type: "result", persona: name, session_id: ctx.sessionId }) + "\n");
   } else {
-    // text: tokens were streamed live; just end the line (or buffer if offline).
+    // text: tokens were streamed live; just end the line (or print the buffered reply).
     if (streamedAny) process.stdout.write("\n");
     else process.stdout.write(reply + "\n");
   }
@@ -185,6 +196,7 @@ async function governedReply(o: GovernedReplyOptions): Promise<{ reply: string; 
         ...(o.onToken ? { onToken: o.onToken } : {}),
       })
       .catch((e: Error) => {
+        if (e instanceof ModelRequiredError) throw e;
         const said = friendlyProviderError(e.message);
         if (o.onResponderError === "throw") throw new Error(said);
         return `(responder error: ${said})`;

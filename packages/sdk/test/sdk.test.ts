@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -91,11 +91,30 @@ describe("@personaxis/sdk, Persona embed API", () => {
     expect(decision.to).toBeCloseTo(-0.15);
   });
 
-  it("observe runs a governed tick offline (heuristic) without throwing", async () => {
+  it("observe refuses without a model, and says so", async () => {
+    // Since 2026-10-07 there is no offline appraiser: a tick is a model's judgement or it does not run.
     const p = new Persona(personaPath);
-    const r = await p.observe("the customer prefers email over phone", "user");
-    expect(r.report).toBeTruthy();
-    expect(typeof r.recompilePending).toBe("boolean");
+    await expect(p.observe("the customer prefers email over phone", "user")).rejects.toThrow(/needs a model/);
+  });
+
+  it("observe runs a governed tick on the persona's model", async () => {
+    const saved = { endpoint: process.env.PERSONAXIS_ENDPOINT, model: process.env.PERSONAXIS_MODEL };
+    process.env.PERSONAXIS_ENDPOINT = "http://model.invalid/v1";
+    process.env.PERSONAXIS_MODEL = "m";
+    const appraisal = { appraisal: "a stated preference", mutations: [], memories: [], preferences: [{ key: "customer.channel", value: "email" }], confidence: 0.9 };
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(appraisal) } }] }), { status: 200, headers: { "content-type": "application/json" } }));
+    try {
+      const p = new Persona(personaPath);
+      const r = await p.observe("the customer prefers email over phone", "user");
+      expect(r.report).toBeTruthy();
+      expect(typeof r.recompilePending).toBe("boolean");
+    } finally {
+      vi.unstubAllGlobals();
+      if (saved.endpoint === undefined) delete process.env.PERSONAXIS_ENDPOINT;
+      else process.env.PERSONAXIS_ENDPOINT = saved.endpoint;
+      if (saved.model === undefined) delete process.env.PERSONAXIS_MODEL;
+      else process.env.PERSONAXIS_MODEL = saved.model;
+    }
   });
 
   it("audit reports an intact memory chain", () => {

@@ -300,7 +300,7 @@ export function settingFor(ctx: Ctx, scope: PersonaScope, setting: MatrixSetting
     case "model": {
       const resolved = resolveModel({ personaPath: scope.personaPath, frontmatter: fm });
       const { origin, own } = modelOrigin(scope.personaPath, fm);
-      return { value: resolved ? resolved.model : "offline (heuristic)", origin: resolved ? origin : "default", own: resolved ? own : false };
+      return { value: resolved ? resolved.model : "none (nothing runs without one)", origin: resolved ? origin : "default", own: resolved ? own : false };
     }
     case "improve": {
       // improve is PER PERSONA. The EFFECTIVE mode is what `readMode`

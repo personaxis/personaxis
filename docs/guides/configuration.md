@@ -47,8 +47,8 @@ home with `PERSONAXIS_HOME` if you need to.)
 global.local  <  project.local  <  global.personas[slug]  <  project.personas[slug]  <  frontmatter.runtime  <  ENV
 ```
 
-A model resolves only when both an endpoint and a model are present; otherwise the runtime falls
-back to the offline heuristic (no real reasoning) and tells you how to configure one.
+A model resolves only when both an endpoint and a model are present. Without one, a persona does
+not answer, evolve or remember: each of those steps refuses and tells you how to configure one.
 
 ## The API key
 

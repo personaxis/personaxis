@@ -246,7 +246,7 @@ export function panel(title: string, lines: string[], width = process.stdout.col
 }
 
 export function firstRunModelHint(out: (s: string) => void): void {
-  out(chalk.yellow("  No model configured, running in offline heuristic mode (no real reasoning)."));
+  out(chalk.yellow("  No model configured. A persona answers, evolves and remembers through a model, so nothing runs until one is set."));
   out(chalk.dim("  Configure ONCE (global, all projects):"));
   out(chalk.dim("    personaxis config set --global local.endpoint <openai-compatible-url>"));
   out(chalk.dim("    personaxis config set --global local.model <model-name>"));
