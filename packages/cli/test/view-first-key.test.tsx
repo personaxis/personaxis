@@ -5,7 +5,6 @@
  * single-press, and this pins that so a future host change cannot regress it.
  */
 import { describe, it, expect } from "vitest";
-import React from "react";
 import { render } from "ink-testing-library";
 import { registerTabbedView } from "../src/repl/views/tabbed.js";
 

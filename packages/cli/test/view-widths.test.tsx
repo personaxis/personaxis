@@ -92,7 +92,6 @@ describe("miniapps fit the terminal (V8.F5)", () => {
   }
 
   it("a very long value is truncated, not wrapped", async () => {
-    const ctx = makeCtx(personaPath, makeMeter());
     const View = registerTabbedView("w-long", {
       title: "long",
       tabs: ["One"],
@@ -105,7 +104,6 @@ describe("miniapps fit the terminal (V8.F5)", () => {
   });
 
   it("a list taller than the terminal is windowed", async () => {
-    const ctx = makeCtx(personaPath, makeMeter());
     const View = registerTabbedView("w-tall", {
       title: "tall",
       tabs: ["One"],
@@ -127,7 +125,6 @@ describe("miniapps fit the terminal (V8.F5)", () => {
 describe("no view outgrows a tiny terminal (V8.F3)", () => {
   for (const rows of [8, 12]) {
     it(`a 200-row list still fits ${rows} rows, and still says how to get out`, async () => {
-      const ctx = makeCtx(personaPath, makeMeter());
       const View = registerTabbedView(`h-${rows}`, {
         title: "tall",
         tabs: ["One"],

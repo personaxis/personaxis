@@ -37,16 +37,13 @@
 import { randomUUID } from "node:crypto";
 
 import chalk from "chalk";
-import { ensureState,
+import {
+  ensureState,
   run,
   record,
   EventBus,
   Tracer,
-  readState,
   readMemoryTypes,
-  readMemoryKnobs,
-  factsView,
-  recallWindow,
   prepareMemoryEntry,
   commitMemoryEntry,
   appendTurn,
@@ -96,7 +93,6 @@ import { compactConversation } from "./compact.js";
 import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
 import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError, engineVerdictLines, firstRunModelHint } from "./render.js";
-import { expandFileMentions } from "./mentions.js";
 import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf } from "./session.js";
 
 /**

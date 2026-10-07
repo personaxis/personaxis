@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import chalk from "chalk";
 import { fitAnsi, visibleLength } from "../src/viewport.js";
 
 const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");

@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureState,
+import {
+  ensureState,
   scanForInjection,
   LivingLoop,
   loadPersona,
   extractEnvelopes,
-  readState,
   readMemory,
   writeState,
   type Appraiser,

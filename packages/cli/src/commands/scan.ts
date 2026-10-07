@@ -8,7 +8,7 @@
  */
 
 import { Command } from "commander";
-import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import chalk from "chalk";
 import { scanAgentConfig, detectKind, type ConfigScanResult, type ScanVerdict } from "@personaxis/core";

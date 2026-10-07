@@ -15,7 +15,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { paletteMatches, type SlashItem } from "@personaxis/tui/ink";
-import { COMMANDS, ABSORBED, EXTERNAL_DOOR, listCommands, runCommand } from "../src/repl/commands.js";
+import { ABSORBED, EXTERNAL_DOOR, listCommands, runCommand } from "../src/repl/commands.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter, POSTURES } from "../src/repl/config.js";
 import { writeStarterPersona } from "../src/starter.js";

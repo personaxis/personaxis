@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "no
 import { EventEmitter } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureState,
+import {
+  ensureState,
   PersonaAgent,
   evaluateFileWrite,
   executeCommand,
@@ -12,7 +13,6 @@ import { ensureState,
   readFileSafe,
   readMemory,
   loadPersona,
-  readState,
   DEFAULT_POLICY,
   compile,
   type CompiledPolicy,

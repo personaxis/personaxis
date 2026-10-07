@@ -16,7 +16,6 @@ import {
   loadPersona,
   ensureState,
   stateOf,
-  readState,
   extractEnvelopes,
   verifyMemoryChain,
   readMemory,

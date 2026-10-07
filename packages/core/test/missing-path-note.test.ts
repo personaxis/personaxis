@@ -57,7 +57,7 @@ describe("reading a file that is not there", () => {
 	it("hands over the names beside it", async () => {
 		// The exact case the model failed on: the file exists, one directory along, and
 		// the persona had to guess that. Now it does not have to.
-		const { root, policy } = workspace();
+		const { policy } = workspace();
 
 		const said = await readFileTool.execute({ path: "src/confg.ts" }, policy, execution);
 
@@ -70,7 +70,7 @@ describe("reading a file that is not there", () => {
 		// The sentence the measurement caught. It is gone, and it does not come back as a
 		// gentler one: this file's whole finding is that sentences did not move the
 		// number and content did.
-		const { root, policy } = workspace();
+		const { policy } = workspace();
 
 		const said = await readFileTool.execute({ path: "src/confg.ts" }, policy, execution);
 
@@ -79,7 +79,7 @@ describe("reading a file that is not there", () => {
 
 	it("stays a note, because an error here can abort a whole run", async () => {
 		// V3.1, and it is the one property that must survive every rewrite of this branch.
-		const { root, policy } = workspace();
+		const { policy } = workspace();
 
 		const said = await readFileTool.execute({ path: "src/confg.ts" }, policy, execution);
 

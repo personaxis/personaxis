@@ -37,7 +37,6 @@ import { applyTaskUpdate, UPDATE_TASKS_TOOL, updateTasksTool } from "./tools/upd
 import { ASK_PERSON_TOOL, askPersonTool, readQuestion, renderQuestion, type PersonQuestion } from "./tools/ask-person.js";
 import { DECIDE_INSTRUCTION, describeDecision, parseDecision, type Decision } from "./run/decide.js";
 import { scaffoldFor } from "./run/destinations.js";
-import { DELEGATE_TOOL } from "./tools/delegate.js";
 import { ToolOutputStore, outputStoreTools } from "./tool-output-store.js";
 import {
   runVerification,
@@ -49,7 +48,6 @@ import type { ConsensusResult } from "./self-evolution.js";
 import {
   prepareMemoryEntry,
   commitMemoryEntry,
-  readLiveMemory,
   readSemanticMemory,
   readMemoryTypes,
   type AgentOutcome,

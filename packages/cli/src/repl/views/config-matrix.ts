@@ -136,7 +136,6 @@ export type CellEditor = (scope: PersonaScope, setting: MatrixSetting) => (() =>
 export function settingDetailLines(ctx: Ctx, setting: MatrixSetting, edit?: CellEditor): TabLine[] {
   const scopes = personaScopes(ctx);
   const out: TabLine[] = [chalk.dim(`  ${MEANING[setting]}`), ""];
-  const nameW = Math.max(6, ...scopes.map((s) => visibleWidth(s.label)));
 
   // EVERY persona is a row, editable or not. Mixing selectable rows with plain text made
   // the two render through different code paths in the host (one padded and prefixed with

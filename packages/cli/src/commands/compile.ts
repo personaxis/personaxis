@@ -256,7 +256,6 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
     process.exit(1);
   }
 
-  const policyYaml = readSibling(baseDir, "policy.yaml");
   const stateJson = readSibling(baseDir, "state.json");
 
   // Canonical compiled-document location (single owner: compiledPathFor in load.ts):

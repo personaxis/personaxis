@@ -36,6 +36,7 @@ import matter from "gray-matter";
 
 import { readMemoryTypes } from "../memory.js";
 import { localSkillsOf } from "./local-skills.js";
+import { DELEGATE_TOOL } from "../tools/delegate.js";
 import { RUN_SERVICE_TOOL } from "../tools/run-service.js";
 
 /** One thing a persona has: its name, and the line that says what it is for. */
@@ -411,7 +412,7 @@ export function renderWorkMap(
 	// comes first and the permission to read comes after it, as the qualifier it always was.
 	section(
 		"Sub-personas you can hand work to",
-		"Specialists with their own definition, memory and limits. When a task is what one of them is made for, give it to them with delegate and their address below, rather than doing it yourself. You may read their files; you never write them.",
+		`Specialists with their own definition, memory and limits. When a task is what one of them is made for, give it to them with ${DELEGATE_TOOL} and their address below, rather than doing it yourself. You may read their files; you never write them.`,
 		map.subPersonas.map((sub) => `- @${sub.name}${sub.about ? `: ${sub.about}` : ""}`),
 		`${map.ownFolder}/personas/`,
 	);

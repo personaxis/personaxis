@@ -12,7 +12,7 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, openSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { ensureState, readState, loadPersona, type PersonaHandle } from "@personaxis/core";
+import { ensureState, loadPersona, type PersonaHandle } from "@personaxis/core";
 
 export interface TaskRecord {
   id: string;

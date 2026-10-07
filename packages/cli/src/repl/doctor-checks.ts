@@ -12,17 +12,12 @@
 
 import chalk from "chalk";
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
 import {
   ALL_TOOL_PERMISSIONS,
   DIALECTS,
   permissionsFor,
   policyFromPersona,
-  readState,
-  extractEnvelopes,
   verifyMemoryChain,
-  readMode,
-  proposals,
   readRecompilePending,
 } from "@personaxis/core";
 import { loadPersonaFile, compiledPathFor } from "../load.js";
@@ -31,7 +26,6 @@ import { lint } from "../linter/index.js";
 import { discoverTree } from "./roster.js";
 import { llmConfig } from "./config.js";
 import { version } from "../generated/assets.js";
-import { loadManifest, hashContent } from "../manifest.js";
 
 export interface DoctorReport {
   lines: string[];

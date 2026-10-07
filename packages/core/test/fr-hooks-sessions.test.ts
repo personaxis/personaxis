@@ -4,17 +4,12 @@
  * win32 and POSIX.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   runHooks,
   readHooksConfig,
-  readSession,
-  newSessionId,
-  resolveLayered,
-  resolvePolicyTier,
-  CONFIG_LAYERS,
   type HooksConfig,
 } from "../src/index.js";
 

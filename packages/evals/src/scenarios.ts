@@ -9,7 +9,7 @@
  * (no API key), uses a FixedAppraiser that stands in for the model, and scripted tool calls.
  */
 
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +24,6 @@ import {
   PersonaAgent,
   loadPersona,
   extractEnvelopes,
-  readState,
-  writeState,
   readMemory,
   prepareMemoryEntry,
   commitMemoryEntry,

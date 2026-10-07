@@ -10,10 +10,10 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { ensureState,
+import {
+  ensureState,
   loadPersona,
   extractEnvelopes,
-  readState,
   assemblePersonaDoc,
   jacobianCompile,
 } from "@personaxis/core";

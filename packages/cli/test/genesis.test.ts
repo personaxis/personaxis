@@ -18,7 +18,6 @@ import { deflateSync } from "node:zlib";
 import {
   buildSpecDocument,
   genesis,
-  mergeSeed,
   applyAnswers,
   extractCardFromPng,
   seedFromExtraction,
@@ -238,7 +237,7 @@ describe("merge + extraction defensiveness", () => {
   it("later contributions win scalars; lists union; extraction drops evidence-free numbers", () => {
     const a = { label: "a", seed: { displayName: "First", goals: ["g1"] } as Partial<PersonaSeed>, evidence: [] };
     const b = { label: "b", seed: { displayName: "Second", goals: ["g2"] } as Partial<PersonaSeed>, evidence: [] };
-    const { seed } = mergeSeed([a, b]);
+    const { seed } = genesis([a, b]);
     expect(seed.displayName).toBe("Second");
     expect(seed.goals).toEqual(["g1", "g2"]);
 
