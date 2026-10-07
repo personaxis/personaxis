@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-10-07: the schemas say what the engine does, and Genesis writes what the source says
+
 ### Security
 
 - `@modelcontextprotocol/sdk` is `^1.31.0` (GHSA-6qxp-vccf-f47h, an OAuth client sending credentials to an

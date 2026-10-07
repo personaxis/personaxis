@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/sdk",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Run a governed Personaxis persona inside your own Node or TypeScript backend: a small typed API over @personaxis/core, with your model, your state and your data.",
   "license": "MIT",
   "type": "module",
