@@ -20,6 +20,10 @@ personaxis proof --demo             # run on the embedded demo persona
 | 4 · Tamper | one forged byte of memory → verification fails and names the entry | T5 |
 | 5 · Replay | state replays from its log; a forged value is exposed as a change nothing in the log explains | T4 |
 
+Without `--persona`, the scenes run on a copy of `.personaxis/personaxis.md` in the current folder, or on
+the embedded demo persona when the folder has none. The lookup does not look in parent folders, so a
+persona in your home directory is never picked up. Your own files are never written.
+
 TTY runs animate and step through scenes (Enter next · `r` replay · `q` quit).
 `NO_COLOR` renders ASCII. The exit code is non-zero if any check fails.
 The map from each guarantee to its code is [math-core](../architecture/math-core.md); the plain-language
