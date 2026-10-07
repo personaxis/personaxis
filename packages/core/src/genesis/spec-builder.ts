@@ -248,7 +248,9 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
         relationship_to_user: nonEmpty(seed.relationshipToUser, "advisor"),
       },
       narrative_identity: {
-        origin: nonEmpty(seed.origin, `Created via personaxis create on ${today}.`),
+        // No default: the date of creation is metadata (metadata.created), and as an origin it opened "Who
+        // you are" with a line about the tool, which a model polished into filler (2026-10-07).
+        ...(typeof seed.origin === "string" && seed.origin.trim() ? { origin: seed.origin.trim() } : {}),
         self_concept: nonEmpty(seed.selfConcept, purpose),
         continuity_principles: ["Identity, character, and hard limits persist across sessions and models."],
       },
