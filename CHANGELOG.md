@@ -40,6 +40,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   give in different typing is kept once; and the overview reads "Clio: The agent..." instead of "Clio,
   The agent...". Values, virtues or traits that probably name the same thing, such as `verifiability`
   and `verified_claims`, are listed under "Possibly the same" in the creation report, not merged.
+- A self-concept the extractor writes in the third person ("Her claims...", "Clio sees herself...") no
+  longer reaches the compiled document, which speaks to the persona in the second person. The extractor
+  is asked for the second person, and the creation report says when a sentence was left out.
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
