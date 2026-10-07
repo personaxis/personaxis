@@ -118,6 +118,8 @@ export function buildExtractionPrompt(material: string, sourceLabel: string): st
     "  them (e.g. rigor: 'checks every claim against the code it cites'), each with `evidence`.",
     "  `enforcement` is 'hard' only when the material treats it as non-negotiable. Write the",
     "  description as a rule the persona follows, not as praise.",
+    "- `selfConcept` is how the persona sees itself, written in the second person ('You ...'),",
+    "  because the compiled document speaks to the persona. Never 'She ...' or its name.",
     "- hardLimits are ABSOLUTE refusals stated or clearly implied by the material.",
     "- Do NOT include a `safety` value (the platform injects it above everything).",
     "- `displayName` is the persona's own name as the material gives it, or a plain role name",
@@ -152,6 +154,14 @@ interface ExtractedSeed {
   voiceExemplars?: Array<{ context?: string; user?: string; persona: string }>;
 }
 
+/** A sentence about the persona rather than to it: a third-person pronoun, or its own name, as the subject. */
+function thirdPerson(text: string, name: string | undefined): boolean {
+  const t = text.trim();
+  if (/^(he|she|they|his|her|hers|their|its)\b/i.test(t)) return true;
+  const n = name?.trim();
+  return !!n && t.toLowerCase().startsWith(`${n.toLowerCase()} `);
+}
+
 /** Turn an extractor response into a seed patch + evidence trail. */
 export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: Partial<PersonaSeed>; evidence: EvidenceItem[] } {
   const x = (raw ?? {}) as ExtractedSeed;
@@ -171,6 +181,13 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
     // small model follows the framing it was handed over the rule it was given; so the name is
     // checked here and dropped, and the builder falls back to the role, which is honest.
     if (key === "displayName" && typeof v === "string" && LEAKED_FRAMING.test(v)) continue;
+    // E176: the compiled document speaks to the persona ("You are..."), and a self-concept written about it
+    // ("Her claims...", "Clio sees herself...") was copied under "Who you are" as it came. It is left out,
+    // and the report says so, rather than handed to the model in the wrong voice.
+    if (key === "selfConcept" && typeof v === "string" && thirdPerson(v, x.displayName)) {
+      push("x-selfConcept-left-out", "inference", `left out, written in the third person: ${v}`, []);
+      continue;
+    }
     if (typeof v === "string" && v.trim()) {
       (seed as Record<string, unknown>)[key] = v.trim();
       if (key === "displayName") seed.slug = v.trim();
