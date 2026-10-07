@@ -57,6 +57,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   below a high mean and above a low one, and the envelope still reaches a second band.
 - The compiled document prints no "Never" heading when the persona declares no prohibited behaviors; a
   model polishing the document filled the empty heading with "(No additional constraints specified.)".
+- The faithfulness check of a polished document rejects a section the assembled document does not
+  have. A polish ended with the heading of the reference block in its own prompt and the source file's
+  Overview, and was accepted, because claims were compared inside the protected sections only.
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
