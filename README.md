@@ -70,28 +70,30 @@ node packages/cli/dist/index.js proof --quick
 
 ## Create a persona and load it
 
-**1. Create it** in any folder:
+**1. Point it at a model.** Any OpenAI-compatible endpoint, hosted or local. A model writes the persona
+and runs it; without one, `create` refuses and says how to configure one:
+
+```bash
+export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama, LM Studio, llama.cpp or a hosted API
+export PERSONAXIS_MODEL=qwen3:4b                        # a small local model works; expect weaker results
+```
+
+**2. Create it** in any folder:
 
 ```bash
 personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-You get a folder with the definition (`personaxis.md`, in ten layers), the compiled document a model reads
-(`PERSONA.md`), the values that move as it works (`state.json`), and `creation-report.md`: which sentence of
-your brief produced each number, and every default it assumed. Read the report. Without a working model most
-of the persona is labelled defaults, as the demo above shows, so point it at one first (step 2).
+The model writes the persona one layer at a time, and the code checks every answer before it is kept: the
+schema, numbers that can move, and a source for every field. You get a folder with the definition
+(`personaxis.md`, in ten layers), the compiled document a model reads (`PERSONA.md`), the values that move
+as it works (`state.json`), and `creation-report.md`: the words of your brief each field quotes, and every
+field the model inferred, with what it inferred it from. Read the inferred list first.
 
 Other ways in: no flag starts an interview, `--from-project` reads your repository, `--from-import` takes a
 SOUL.md, a SoulSpec package, a character card or a system prompt, and `--from-transcript` works from
 example conversations. `--research` searches the web for the field and keeps each source, with its date, in
 `references/`.
-
-**2. Point it at a model.** Any OpenAI-compatible endpoint, hosted or local:
-
-```bash
-export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama, LM Studio, llama.cpp or a hosted API
-export PERSONAXIS_MODEL=qwen3:4b                        # a small local model works; expect weaker tool use
-```
 
 **3. Load it into your agent:**
 

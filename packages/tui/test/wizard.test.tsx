@@ -18,10 +18,10 @@ const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 25));
 // wizard driven by items that have no depth is a wizard tested against a bank that
 // cannot exist. `core` on all four, because these four are the short path.
 const ITEMS: InterviewItem[] = [
-  { id: "id-name", depth: "core", kind: "text", construct: "identity.display_name", rule: "verbatim", question: "What is this persona called?" },
-  { id: "t-open", depth: "core", kind: "likert", construct: "personality.traits.openness", rule: "likert-to-mean", question: "Explores unconventional angles." },
-  { id: "d-unknown", depth: "core", kind: "choice", construct: "cognition.default_strategy", rule: "dilemma-unknown", question: "Facing unknowns it should…", options: ["ask for evidence", "hypothesize, labeled", "best effort, disclosed"] },
-  { id: "v-rank", depth: "core", kind: "rank", construct: "values_and_drives.values", rule: "rank-to-weight", question: "Order what it values most.", candidates: ["clarity", "speed"] },
+  { id: "id-name", depth: "core", kind: "text", construct: "identity.display_name", question: "What is this persona called?" },
+  { id: "t-open", depth: "core", kind: "likert", construct: "personality.traits.openness", question: "Explores unconventional angles." },
+  { id: "d-unknown", depth: "core", kind: "choice", construct: "cognition.default_strategy", question: "Facing unknowns it should…", options: ["ask for evidence", "hypothesize, labeled", "best effort, disclosed"] },
+  { id: "v-rank", depth: "core", kind: "rank", construct: "values_and_drives.values", question: "Order what it values most.", candidates: ["clarity", "speed"] },
 ];
 
 async function drive(items: InterviewItem[], keys: string[]): Promise<{ answers: InterviewAnswers; frames: () => string }> {
@@ -54,17 +54,17 @@ describe("InterviewWizard", () => {
     expect(answers["v-rank"]).toEqual(["clarity", "speed"]);
   }, 30_000);
 
-  it("shows the field→rule mapping live (every number earned, visibly)", async () => {
+  it("shows the field each answer is about, and the answer as recorded, never a computed number", async () => {
     const { frames } = await drive(ITEMS, ["K", "\r"]); // answer text, land on likert
     const out = frames();
     expect(out).toContain("personality.traits.openness");
-    expect(out).toContain("rule likert-to-mean");
-    expect(out).toContain("mean 0.50"); // live preview at default likert 3
+    expect(out).toContain("neutral"); // live preview at default likert 3
+    expect(out).not.toContain("mean 0.50");
     expect(out).toContain("identity.display_name"); // the trail line for the recorded answer
   }, 30_000);
 
   // `s` is the ONLY skip. Esc asks whether to leave rather than skipping silently.
-  it("s skips: no answer recorded, trail marks the labeled default", async () => {
+  it("s skips: no answer recorded, and the trail says it was skipped", async () => {
     const { answers, frames } = await drive(ITEMS, ["s"]);
     expect(answers["id-name"]).toBeUndefined();
     expect(frames()).toContain("skipped");
