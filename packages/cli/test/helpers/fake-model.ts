@@ -12,8 +12,11 @@
  */
 
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface FakeModel {
 	/** The base URL to pass as PERSONAXIS_ENDPOINT. */
@@ -38,9 +41,34 @@ function knownName(messages: Message[]): string | undefined {
 	return /interlocutor(?:\.name:\s*|: name = )([\p{L}-]+)/u.exec(messages.map(text).join("\n"))?.[1];
 }
 
+/**
+ * The Genesis stage answers of a real run (command-a-03-2025, 2026-10-07, brief "A terse code reviewer
+ * that never softens findings"), each the answer the code accepted. A test with other sources gets the same
+ * answers, with every quote its prompt does not contain turned into an inference, because a quote the
+ * sources lack is the first thing `checkStage` rejects.
+ */
+const RECORDED = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "genesis-terse-reviewer.json"), "utf8")) as {
+	answers: Record<string, { reasoning: string; layer: unknown; provenance: Array<{ path: string; source?: string; quote?: string; inferred?: string }> }>;
+};
+
+function genesisAnswer(body: Record<string, unknown>, prompt: string): string | undefined {
+	const name = (body.response_format as { json_schema?: { name?: string } } | undefined)?.json_schema?.name;
+	const recorded = name?.startsWith("persona_") ? RECORDED.answers[name.slice("persona_".length)] : undefined;
+	if (!recorded) return undefined;
+	// Only the sources count: later prompts also carry what earlier stages decided, which repeats the brief.
+	const sources = [...prompt.matchAll(/<source id="([^"]+)"[^>]*>\n([\s\S]*?)\n<\/source>/g)];
+	const cited = (p: { source?: string; quote?: string }) => sources.some(([, id, body]) => id === p.source && body?.includes(p.quote ?? ""));
+	const provenance = recorded.provenance.map((p) =>
+		p.quote && !cited(p) ?{ path: p.path, inferred: "recorded answer; the quote is not in these sources" } : p,
+	);
+	return JSON.stringify({ ...recorded, provenance });
+}
+
 function answerFor(body: Record<string, unknown>): string {
 	const messages = (body.messages as Message[] | undefined) ?? [];
-	if (body.response_format || /appraise|appraisal/i.test(text(messages[0]))) {
+	const genesis = genesisAnswer(body, messages.map(text).join("\n"));
+	if (genesis) return genesis;
+	if (body.response_format ||/appraise|appraisal/i.test(text(messages[0]))) {
 		const name = introducedName(messages);
 		return JSON.stringify({
 			appraisal: "noted",

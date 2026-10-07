@@ -3,14 +3,18 @@
  * (`create --from-import`, jacobian gate included), and `personaxis attest`
  * mints the local behavioral credential over it; `attest --check` goes not-live
  * on spec tamper and on expiry. Hermetic: PERSONAXIS_HOME points at a temp dir
- * so the machine's global model config never leaks in (offline heuristic path).
+ * so the machine's global model config never leaks in, and the model is the
+ * local fake, which answers each Genesis stage from a recorded real run. What
+ * the persona SAYS is therefore the recording's; what is under test is that an
+ * import becomes a cited source and the result can be attested.
  */
-import { describe, it, expect, beforeEach } from "vitest";
-import { execFileSync } from "node:child_process";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, existsSync, appendFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { modelEnv, runCli, startFakeModel, type FakeModel } from "./helpers/fake-model.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, "..", "dist", "index.js");
@@ -28,72 +32,67 @@ You are Nyx, a nocturnal research assistant. Curious, precise, allergic to hype.
 - Never claim to be human
 `;
 
-function run(args: string[], cwd: string, home: string): { code: number; out: string } {
-  try {
-    const out = execFileSync("node", [CLI, ...args], {
-      cwd,
-      encoding: "utf-8",
-      env: {
-        ...process.env,
-        FORCE_COLOR: "0",
-        PERSONAXIS_NO_ANIM: "1",
-        PERSONAXIS_NO_UPDATE_CHECK: "1",
-        PERSONAXIS_HOME: home,
-      },
-    });
-    return { code: 0, out };
-  } catch (e) {
-    const err = e as { status?: number; stdout?: string; stderr?: string };
-    return { code: err.status ?? 1, out: (err.stdout ?? "") + (err.stderr ?? "") };
-  }
-}
+// Async, like every run here: a synchronous child blocks this worker, which also serves the fake model.
+const run = (args: string[], cwd: string, home: string) =>
+  runCli(CLI, args, { cwd, env: { PERSONAXIS_NO_ANIM: "1", PERSONAXIS_HOME: home } });
 
 describe.skipIf(!built)("SOUL.md import → governed persona → attest (V3.3)", () => {
   let dir: string;
   let home: string;
-  beforeEach(() => {
+  let model: FakeModel;
+  beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), "pxs-soulwedge-"));
     home = mkdtempSync(join(tmpdir(), "pxs-home-"));
     writeFileSync(join(dir, "SOUL.md"), SOUL, "utf-8");
+    model = await startFakeModel();
   });
+  afterEach(() => model.close());
 
-  it("creates a valid persona from SOUL.md and runs the attest lifecycle", { timeout: 120_000 }, () => {
-    const created = run(["create", "nyx", "--from-import", "SOUL.md", "--yes"], dir, home);
-    expect(created.code).toBe(0);
+  const create = () =>
+    runCli(CLI, ["create", "nyx", "--from-import", "SOUL.md", "--yes", "--no-polish"], {
+      cwd: dir,
+      env: { PERSONAXIS_NO_ANIM: "1", PERSONAXIS_HOME: home, ...modelEnv(model) },
+    });
+
+  it("creates a valid persona from SOUL.md and runs the attest lifecycle", { timeout: 120_000 }, async () => {
+    const created = await create();
+    expect(created.code, created.out).toBe(0);
     const personaPath = join(dir, ".personaxis", "personas", "nyx", "personaxis.md");
     expect(existsSync(personaPath)).toBe(true);
-    // The import carried the SOUL.md boundaries into the governed refusal surface.
-    expect(readFileSync(personaPath, "utf-8")).toContain("Never fabricate a citation");
+    // The import is a numbered source the model read, listed in the persona.
+    expect(readFileSync(personaPath, "utf-8")).toContain("- S1: SOUL.md (soul-md)");
+    // And the model was handed the whole file, boundaries included.
+    expect(JSON.stringify(model.requests[0])).toContain("Never fabricate a citation");
 
     // Mint the behavioral credential; the check reports LIVE.
-    const minted = run(["attest", "--persona", personaPath], dir, home);
+    const minted = await run(["attest", "--persona", personaPath], dir, home);
     expect(minted.code).toBe(0);
     expect(existsSync(join(dirname(personaPath), "personaxis.attest.json"))).toBe(true);
-    const live = run(["attest", "--check", "--persona", personaPath], dir, home);
+    const live = await run(["attest", "--check", "--persona", personaPath], dir, home);
     expect(live.code).toBe(0);
     expect(live.out).toContain("ATTESTATION LIVE");
 
     // Tampering with the spec kills the credential (exit 1).
     appendFileSync(personaPath, "\n# tampered\n");
-    const dead = run(["attest", "--check", "--persona", personaPath], dir, home);
+    const dead = await run(["attest", "--check", "--persona", personaPath], dir, home);
     expect(dead.code).toBe(1);
     expect(dead.out).toContain("NOT LIVE");
   });
 
-  it("an expired credential is not live", { timeout: 120_000 }, () => {
-    const created = run(["create", "nyx", "--from-import", "SOUL.md", "--yes"], dir, home);
-    expect(created.code).toBe(0);
+  it("an expired credential is not live", { timeout: 120_000 }, async () => {
+    const created = await create();
+    expect(created.code, created.out).toBe(0);
     const personaPath = join(dir, ".personaxis", "personas", "nyx", "personaxis.md");
-    expect(run(["attest", "--persona", personaPath, "--ttl", "0"], dir, home).code).toBe(0);
-    const r = run(["attest", "--check", "--persona", personaPath], dir, home);
+    expect((await run(["attest", "--persona", personaPath, "--ttl", "0"], dir, home)).code).toBe(0);
+    const r = await run(["attest", "--check", "--persona", personaPath], dir, home);
     expect(r.code).toBe(1);
     expect(r.out).toContain("EXPIRED");
   });
 
-  it("attest refuses to mint over an invalid persona (exit 2)", { timeout: 120_000 }, () => {
+  it("attest refuses to mint over an invalid persona (exit 2)", { timeout: 120_000 }, async () => {
     const bad = join(dir, "personaxis.md");
     writeFileSync(bad, "---\napiVersion: personaxis.com/v1\nkind: AgentPersona\nspec_version: \"1.1.0\"\nmetadata: { name: t, version: 1.0.0 }\n---\nbody\n");
-    const r = run(["attest", "--persona", bad], dir, home);
+    const r = await run(["attest", "--persona", bad], dir, home);
     expect(r.code).toBe(2);
     expect(r.out).toContain("does not validate");
   });

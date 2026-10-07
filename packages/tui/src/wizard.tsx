@@ -1,21 +1,13 @@
 /**
- * Genesis interview wizard (F6.7b), the Ink front-end over the PURE interview
- * engine (`@personaxis/core` genesis/interview.ts owns every answer→number
- * mapping; this file owns ONLY the keys and the pixels). The wow is honesty
- * made visible: every answer immediately shows the exact field and named rule
- * it will map to, so "every number earned" is something the user watches
- * happen. Falls back to the CLI's readline path when Ink can't run (no TTY).
+ * Genesis interview wizard (F6.7b), the Ink front-end over the interview (`@personaxis/core`
+ * genesis/interview.ts turns the answers into a source the authoring model reads; this file owns ONLY the
+ * keys and the pixels). Every answer shows the field it is about and the answer as recorded. Falls back to
+ * the CLI's readline path when Ink can't run (no TTY).
  */
 
 import React, { useEffect, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
-import {
-  likertToMean,
-  confidenceToHalfWidth,
-  rankToWeight,
-  type InterviewItem,
-  type InterviewAnswers,
-} from "@personaxis/core";
+import { type InterviewItem, type InterviewAnswers } from "@personaxis/core";
 
 const LIKERT_ANCHORS = ["strongly disagree", "disagree", "neutral", "agree", "strongly agree"];
 
@@ -31,17 +23,16 @@ function progressBar(done: number, total: number, width = 24): string {
   return "█".repeat(filled) + "░".repeat(width - filled);
 }
 
-/** The mapping preview for the CURRENT selection (mirrors interview.ts rules). */
+/**
+ * What the CURRENT selection records. Since 2026-10-07 an answer is a source the authoring model reads, not
+ * a number mapped by a fixed rule, so the preview shows the answer as recorded and never a value.
+ */
 function preview(item: InterviewItem, sel: { likert: number; choice: number; rank: string[]; text: string }): string {
   switch (item.kind) {
     case "likert":
-      return item.id === "t-conf"
-        ? `range half-width ±${confidenceToHalfWidth(sel.likert).toFixed(2)}`
-        : `mean ${likertToMean(sel.likert).toFixed(2)}`;
+      return LIKERT_ANCHORS[sel.likert - 1] ?? "";
     case "rank":
-      return sel.rank.length
-        ? sel.rank.map((v, i) => `${v}=${rankToWeight(i).toFixed(2)}`).join("  ")
-        : "weights 0.95, 0.91, 0.87, … by rank";
+      return sel.rank.length ? sel.rank.map((v, i) => `${i + 1}. ${v}`).join("  ") : "most important first";
     case "choice":
       return item.options?.[sel.choice] ?? "";
     default:
@@ -117,8 +108,8 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
       if (recorded !== undefined) answers[item.id] = recorded;
       const line: TrailLine =
         recorded === undefined
-          ? { id: item.id, text: `${item.construct}, skipped (no evidence, default will be labeled)`, skipped: true }
-          : { id: item.id, text: `${item.construct} ← ${preview(item, sel) || String(recorded)}  · rule ${item.rule}`, skipped: false };
+          ? { id: item.id, text: `${item.construct}, skipped (the model infers it, and the report says from what)`, skipped: true }
+          : { id: item.id, text: `${item.construct} ← ${preview(item, sel) || String(recorded)}`, skipped: false };
       setTrail((t) => [...t.slice(-4), line]);
       // Persist after every answer, not at the end: an interview abandoned at question 17
       // should not cost the sixteen answers already given.
@@ -220,7 +211,7 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
         <Text bold>◉ personaxis · Genesis interview, done</Text>
         <Text>
           {"  "}
-          <Text color="green">{String(answered)}</Text> answered · <Text dimColor>{String(props.items.length - answered)} skipped (skips become LABELED defaults in the creation report)</Text>
+          <Text color="green">{String(answered)}</Text> answered · <Text dimColor>{String(props.items.length - answered)} skipped (the model infers those, and the creation report lists each inference)</Text>
         </Text>
         <Text dimColor>{"  press any key to build the persona"}</Text>
       </Box>
@@ -286,7 +277,7 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
           {rankPicked.map((c, i) => (
             <Text key={c} color="green">
               {"  "}
-              {String(i + 1)}. {c} <Text dimColor>weight {rankToWeight(i).toFixed(2)}</Text>
+              {String(i + 1)}. {c}
             </Text>
           ))}
           {remaining.map((c, i) => (
@@ -310,7 +301,7 @@ export function InterviewWizard(props: InterviewWizardProps): React.JSX.Element 
       <Box marginTop={1}>
         <Text dimColor>
           {"  → "}
-          {item.construct} · rule {item.rule}
+          {item.construct}
           {item.kind === "likert" || item.kind === "rank" ? `  →  ${preview(item, sel)}` : ""}
         </Text>
       </Box>

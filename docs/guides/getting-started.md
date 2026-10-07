@@ -21,8 +21,8 @@ From source: `pnpm install && pnpm run build`, then run `node packages/cli/dist/
 personaxis config            # a local server (Ollama, LM Studio, llama.cpp) or your own API key
 ```
 
-Do this before creating a persona. Without a model, `create` still produces a valid persona, but most
-of it is labelled defaults.
+Do this before creating a persona. A model writes every field of it, so without one `create` refuses
+and says how to configure one.
 
 ## 3. Create a persona
 
@@ -30,9 +30,9 @@ of it is labelled defaults.
 personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-Then open `.personaxis/personas/reviewer/creation-report.md`. It shows which sentence of the brief
-produced each value, and its Defaults section lists everything Genesis assumed: that list is what you
-review. [`creating-personas.md`](./creating-personas.md) covers the other ways in (an interview, your
+Then open `.personaxis/personas/reviewer/creation-report.md`. It shows the words of the brief each
+field quotes, and its Inferred section lists every field the model filled without a source saying it, with
+what it inferred it from: that list is what you review. [`creating-personas.md`](./creating-personas.md) covers the other ways in (an interview, your
 repository, a SOUL.md or character card, transcripts) and `--research`, which adds sourced references.
 
 ## 4. Load it into your agent

@@ -19,6 +19,7 @@
     "test:coverage": "node ./scripts/gen-version.mjs && vitest run --coverage"
   },
   "dependencies": {
+    "@personaxis/spec": "workspace:*",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.3.2",
     "undici": "^7.30.0"

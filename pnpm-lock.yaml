@@ -111,6 +111,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@personaxis/spec':
+        specifier: workspace:*
+        version: link:../spec
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3

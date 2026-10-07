@@ -1,18 +1,19 @@
 /**
- * `personaxis create`, Genesis: a governed AI Persona from zero, every entry
- * case covered (docs/architecture/genesis.md):
+ * `personaxis create`, Genesis: a governed AI Persona authored by a model from its sources
+ * (docs/architecture/genesis.md):
  *
- *   personaxis create                          # psychometric interview (TTY)
+ *   personaxis create                          # the interview (TTY)
  *   personaxis create --from-prompt "<brief>"  # natural language
- *   personaxis create --from-project [dir]     # infer from the project's docs
+ *   personaxis create --from-project [dir]     # the project's own docs
  *   personaxis create --from-import <file>     # SOUL.md / SoulSpec dir, character card V2/V3 (.json/.png),
  *                                              # system prompt, CLAUDE.md/AGENTS.md
  *   personaxis create --from-transcript <file> # exemplar conversations
+ *   --research                                 # plus the field, read on the web, with URLs and dates
  *
- * Modes COMPOSE (later evidence wins per field; the report shows overrides).
- * Output is never a prose blob: personaxis.md (validated PASS, Genesis never
- * writes an invalid persona), state.json, compiled PERSONA.md (stage-1
- * assembler), and creation-report.md with per-number provenance.
+ * Every mode is a source; the modes compose. A model authors the persona stage by stage and every field
+ * says which source it came from or what it was inferred from (`authorPersona`). Without a model, nothing
+ * is created: since 2026-10-07 there is no template and no labeled default to fall back on. Output:
+ * personaxis.md (validated), state.json, the compiled PERSONA.md, and creation-report.md.
  */
 
 import { Command } from "commander";
@@ -21,11 +22,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, relative, basename } from "node:path";
 import chalk from "chalk";
 import {
-  genesis,
   isGenesisProfile,
   GENESIS_PROFILES,
   pendingItems,
-  applyAnswers,
+  answersAsSource,
   loadDraft,
   saveDraft,
   clearDraft,
@@ -35,35 +35,32 @@ import {
   importPrompt,
   importSoulMd,
   isSoulImport,
-  extractSeed,
-  heuristicSeed,
+  numberSources,
+  authorPersona,
   renderCreationReport,
-  provenanceSummary,
   loadPersona,
   ensureState,
   assemblePersonaDoc,
   extractEnvelopes,
   staticallyDecorative,
   canCross,
+  resolveModel,
+  ModelRequiredError,
+  RESEARCH_QUERIES_INSTRUCTION,
+  RESEARCH_QUERIES_SCHEMA,
+  findingsFrom,
+  parseQueries,
+  referenceName,
+  renderReferenceNote,
+  researchSources,
+  resolveWebSearch,
+  type Finding,
   type PersonaFrontmatter,
-  type SeedContribution,
+  type Source,
   type StructuredCaller,
   type InterviewAnswers,
-  type GenesisResult,
 } from "@personaxis/core";
-import { resolveModel } from "@personaxis/core";
-import {
-	RESEARCH_QUERIES_INSTRUCTION,
-	RESEARCH_QUERIES_SCHEMA,
-	fallbackQueries,
-	findingsFrom,
-	parseQueries,
-	referenceName,
-	renderReferenceNote,
-	researchContribution,
-	resolveWebSearch,
-	type Finding,
-} from "@personaxis/core";
+import { dump } from "js-yaml";
 import { runCompile } from "./compile.js";
 import { validatePersona, exitCodeFor } from "../schema.js";
 import { runRules } from "../linter/rules.js";
@@ -100,8 +97,8 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
     // no-model path and built the persona from labeled defaults. It goes through the text path
     // like any provider without structured output; the agent provider writes the prompt for the
     // coding agent and `create` stops until the answer exists (see the action's catch).
-    // Only when asked for by name: `agent` is also the default when no model is configured, and
-    // there `create` keeps its promise of working offline, from labeled defaults it reports.
+    // Only when asked for by name: `agent` is also what resolves when no model is configured, and a
+    // persona nobody asked a coding agent to author is a persona that needs a model configured.
     if (provider.name === "agent" && name !== "agent") return null;
     if (provider.runStructured) {
       return (prompt, schema, schemaName) => provider.runStructured!(prompt, schema, schemaName).then((r) => r.json);
@@ -117,12 +114,11 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
 }
 
 /**
- * The interview, in one of two depths, resumable.
+ * The interview, in one of two depths, resumable. Its answers become one source the model reads (the
+ * fixed bank is replaced by questions the model writes in step 3 of the redesign).
  *
  *   core  twelve questions: who it is, the five trait axes, what it values, how it sounds,
- *         and what it must never do. Everything else falls back to a LABELED default whose
- *         provenance says "not stated", so the creation report separates what the author
- *         decided from what the tool assumed.
+ *         and what it must never do.
  *   deep  the whole bank, adding envelope width, mood half-life, refusal detail,
  *         uncertainty thresholds, memory policy, improvement posture and a voice exemplar.
  *
@@ -130,7 +126,7 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
  * question 17 does not cost the sixteen already answered. The draft is deleted once the
  * persona exists.
  */
-async function runInterview(depth: "core" | "deep", dir: string): Promise<SeedContribution> {
+async function runInterview(depth: "core" | "deep", dir: string): Promise<Omit<Source, "id"> | undefined> {
   const resumed = loadDraft(dir, ITEM_BANK_VERSION);
   let answers: InterviewAnswers = {};
   if (resumed && resumed.depth === depth) {
@@ -163,8 +159,7 @@ async function runInterview(depth: "core" | "deep", dir: string): Promise<SeedCo
     try {
       const { runInterviewWizard } = await import("@personaxis/tui");
       const wizardAnswers = await runInterviewWizard(remaining, save);
-      const { seed, evidence } = applyAnswers({ ...answers, ...wizardAnswers });
-      return { label: "interview", seed, evidence };
+      return answersAsSource({ ...answers, ...wizardAnswers });
     } catch {
       /* fall through to readline */
     }
@@ -172,7 +167,7 @@ async function runInterview(depth: "core" | "deep", dir: string): Promise<SeedCo
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   console.log(
     chalk.bold("\nGenesis interview") +
-      chalk.dim(` (${depth === "core" ? "core: the twelve that decide who it is" : "deep: the full bank"}), every answer becomes auditable evidence; Enter skips a question.\n`),
+      chalk.dim(` (${depth === "core" ? "core: the twelve that decide who it is" : "deep: the full bank"}), every answer is a source the model cites; Enter skips a question.\n`),
   );
   try {
     for (const item of remaining) {
@@ -201,8 +196,7 @@ async function runInterview(depth: "core" | "deep", dir: string): Promise<SeedCo
   } finally {
     rl.close();
   }
-  const { seed, evidence } = applyAnswers(answers);
-  return { label: "interview", seed, evidence };
+  return answersAsSource(answers);
 }
 
 /**
@@ -291,27 +285,13 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     }
   }
 
-  const contributions: SeedContribution[] = [];
   const call = structuredCaller(opts.provider);
+  // A persona is a model's work or it is not made: refused before anything is read or asked.
+  if (!call) throw new ModelRequiredError("Creating a persona");
+  const gathered: Array<Omit<Source, "id">> = [];
   const llmNotes: string[] = [];
 
-  const extractOr = async (material: string, label: string, fallbackBrief?: string): Promise<SeedContribution> => {
-    if (call) {
-      try {
-        const { seed, evidence } = await extractSeed(material, label, call);
-        return { label, seed, evidence };
-      } catch (e) {
-        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
-        llmNotes.push(`extractor failed for ${label} (${(e as Error).message}); heuristic baseline used`);
-      }
-    } else {
-      llmNotes.push(`no model provider available for ${label}; heuristic baseline used (labeled defaults)`);
-    }
-    const { seed, evidence } = heuristicSeed(fallbackBrief ?? material.slice(0, 400));
-    return { label: `${label}-heuristic`, seed, evidence };
-  };
-
-  // ── collect contributions (modes compose; order = precedence, later wins) ──
+  // ── collect the sources (they compose) ─────────────────────────────────────
   if (opts.fromProject !== undefined) {
     const dir = resolve(typeof opts.fromProject === "string" ? opts.fromProject : ".");
     const pm = projectMaterial(dir);
@@ -322,11 +302,10 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
         ),
       );
     }
-    contributions.push(await extractOr(pm.material, `project:${basename(dir)}`));
+    gathered.push({ kind: "project", label: `project ${basename(dir)}`, text: pm.material });
   }
   if (opts.fromImport) {
     const path = resolve(opts.fromImport);
-    // SOUL.md / a SoulSpec package dir (V3.3 embrace-extend) > character card > bare prompt.
     const isSoul = isSoulImport(path);
     const isCard = !isSoul && /\.(json|png)$/i.test(path);
     const material = isSoul
@@ -334,88 +313,39 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
       : isCard
         ? importCharacterCard(path)
         : importPrompt(path);
-    contributions.push({ label: `import:${material.format}`, seed: material.seed, evidence: material.evidence });
-    // Prose refinement is LLM-only: the deterministic import fields are already
-    // the trustworthy baseline, a no-model heuristic must never override them.
-    if (material.prose.trim() && call) {
-      try {
-        const { seed, evidence } = await extractSeed(material.prose, `import-prose:${material.format}`, call);
-        contributions.push({ label: `import-prose:${material.format}`, seed, evidence });
-      } catch (e) {
-        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
-        llmNotes.push(`extractor failed for import prose (${(e as Error).message}); card fields kept as-is`);
-      }
-    } else if (material.prose.trim()) {
-      llmNotes.push("no model provider: card prose (personality/example dialogue) kept for later `personaxis decompile` refinement; deterministic fields used");
-    }
+    gathered.push({ kind: "import", label: `${basename(path)} (${material.format})`, text: material.text });
   }
   if (opts.fromTranscript) {
-    const text = readFileSync(resolve(opts.fromTranscript), "utf-8");
-    contributions.push(await extractOr(text, `transcript:${basename(opts.fromTranscript)}`));
+    gathered.push({ kind: "transcript", label: basename(opts.fromTranscript), text: readFileSync(resolve(opts.fromTranscript), "utf-8") });
   }
-  if (opts.fromPrompt) {
-    contributions.push(await extractOr(opts.fromPrompt, "prompt", opts.fromPrompt));
-  }
-  if (contributions.length === 0) {
+  if (opts.fromPrompt) gathered.push({ kind: "brief", label: "the brief", text: opts.fromPrompt });
+  if (gathered.length === 0) {
     if (!process.stdin.isTTY || opts.yes) {
-      console.error(chalk.red("Error:"), "no input mode given and no TTY for the interview. Use --from-prompt/--from-project/--from-import/--from-transcript.");
+      console.error(chalk.red("Error:"), "no source given and no TTY for the interview. Use --from-prompt/--from-project/--from-import/--from-transcript.");
       process.exit(1);
     }
-    contributions.push(await runInterview(opts.deep ? "deep" : "core", process.cwd()));
-  } else if (process.stdin.isTTY && !opts.yes && !opts.fromPrompt && contributions.every((c) => c.label.endsWith("heuristic"))) {
-    // Nothing but defaults collected, offer the interview so numbers get earned.
-    contributions.push(await runInterview(opts.deep ? "deep" : "core", process.cwd()));
-  }
-
-  if (slugArg) {
-    contributions.push({ label: "cli-arg", seed: { slug: slugArg }, evidence: [] });
-  }
-  // E128: last, so a profile named on the command line wins over one the interview answered.
-  if (opts.profile !== undefined) {
-    contributions.push({
-      label: "cli-arg",
-      seed: { profile: opts.profile as (typeof GENESIS_PROFILES)[number] },
-      evidence: [
-        {
-          id: "profile",
-          kind: "answer",
-          source: "user",
-          excerpt: `--profile ${opts.profile}`,
-          mappedFields: [{ path: "governance.per_layer_edit_policy", value: opts.profile, rule: "choice-to-profile" }],
-        },
-      ],
-    });
+    const answers = await runInterview(opts.deep ? "deep" : "core", process.cwd());
+    if (answers) gathered.push(answers);
+    if (gathered.length === 0) {
+      console.error(chalk.red("Error:"), "the interview was left empty; there is nothing to author a persona from.");
+      process.exit(1);
+    }
   }
 
   // ── E65: the web research, only when asked for ─────────────────────────────
   //
-  // It contributes ONE seed field, the path of the note it leaves, plus its evidence. Everything the pages
-  // actually said is in the note and in the ledger, so nothing found here can define the identity, the hard
-  // limits or a number. Each result passes `ingestUntrusted` inside `findingsFrom`, because this command is
-  // not the agent loop and the loop's injection scan does not cover this path.
+  // What the pages said becomes sources the model may cite for knowledge and procedures; `checkStage`
+  // rejects a web source as the origin of the identity, the character or a hard limit. Each result passes
+  // `ingestUntrusted` inside `findingsFrom`, because this command is not the agent loop.
   let researchNote: { name: string; content: string } | null = null;
   if (opts.research) {
     const provider = resolveWebSearch({ cwd: process.cwd() });
-    const brief = opts.fromPrompt ?? "";
+    const brief = gathered.map((g) => g.text).join("\n\n").slice(0, 4000);
     if (!provider) {
       llmNotes.push("no web search provider available (no key); nothing was researched");
-    } else if (!brief.trim()) {
-      llmNotes.push("--research needs --from-prompt to know what to search for; nothing was researched");
     } else {
-      let queries: string[] = [];
-      if (call) {
-        try {
-          const said = (await call(`${RESEARCH_QUERIES_INSTRUCTION}\n\nBRIEF:\n${brief}`, RESEARCH_QUERIES_SCHEMA, "research_queries")) as { queries?: string[] };
-          queries = parseQueries((said?.queries ?? []).join("\n"));
-        } catch (e) {
-          if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
-          llmNotes.push(`the model could not write the research queries (${(e as Error).message}); the brief was searched as given`);
-        }
-      }
-      if (queries.length === 0) {
-        queries = fallbackQueries(brief);
-        if (queries.length > 0 && !call) llmNotes.push("no model provider available for the research queries; the brief was searched as given");
-      }
+      const said = (await call(`${RESEARCH_QUERIES_INSTRUCTION}\n\nBRIEF:\n${brief}`, RESEARCH_QUERIES_SCHEMA, "research_queries")) as { queries?: string[] };
+      const queries = parseQueries((said?.queries ?? []).join("\n"));
       const findings: Finding[] = [];
       for (const query of queries) {
         try {
@@ -431,27 +361,33 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
       } else {
         const now = new Date();
         const name = referenceName(now);
-        researchNote = { name, content: renderReferenceNote(findings, { provider: provider.name, now, brief }) };
-        contributions.push(researchContribution(findings, { referencePath: `references/${name}`, now }));
+        researchNote = { name, content: renderReferenceNote(findings, { provider: provider.name, now, brief: opts.fromPrompt }) };
+        gathered.push(...researchSources(findings, now));
         console.log(chalk.dim(`  researched ${queries.length} quer${queries.length === 1 ? "y" : "ies"}, kept ${findings.length} source(s) in references/${name}`));
       }
     }
   }
 
-  // ── build + gates ──────────────────────────────────────────────────────────
-  const result: GenesisResult = genesis(contributions);
+  // ── author: one model call per stage, every field with its provenance ──────
+  const sources = numberSources(gathered);
+  if (!opts.json) console.log(chalk.dim(`  authoring from ${sources.length} source(s), one model call per stage…`));
+  const authored = await authorPersona({ sources, call, profile: opts.profile ?? "standard", ...(slugArg ? { canonicalId: slugArg } : {}) });
+  const spec = authored.spec;
+  if (researchNote) spec.extensions = { ...((spec.extensions as Record<string, unknown>) ?? {}), references: [`references/${researchNote.name}`] };
+  const document = `---\n${dump(spec, { lineWidth: 100, noRefs: true })}---\n\n## Overview\n\n${(spec.metadata as { description: string }).description}\n\n## Sources\n\n${sources.map((s) => `- ${s.id}: ${s.label}${s.url ? ` (${s.url})` : ""}`).join("\n")}\n\nWhere every field came from is in \`creation-report.md\`.\n`;
   const gates: Array<{ name: string; pass: boolean; detail: string }> = [];
 
-  const validation = validatePersona(result.spec);
+  const validation = validatePersona(spec);
   gates.push({ name: "validate", pass: validation.valid, detail: validation.status });
   if (!validation.valid) {
-    // Valid-by-construction is property-tested; reaching here is a bug, not a user error.
+    // The author validates every stage and the whole document; reaching here is a bug, not a user error.
     console.error(chalk.red("✗ internal error:"), "Genesis produced an invalid spec, nothing was written. Please report this.");
     for (const e of validation.errors) console.error(`  ${chalk.red("✗")} ${e.field ?? ""} ${e.message}`);
-    process.exit(exitCodeFor(validation.status));
+    process.exitCode = exitCodeFor(validation.status);
+    return;
   }
 
-  const lint = runRules(result.spec as Record<string, unknown>).findings;
+  const lint = runRules(spec as Record<string, unknown>).findings;
   const lintErrors = lint.filter((f) => f.severity === "error");
   // Warnings only: this counted every non-error finding, info included, so the report said 3 where the
   // terminal, counting warnings, said 1 (2026-10-03).
@@ -462,18 +398,17 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   let compiled = "";
   try {
     compiled = assemblePersonaDoc({
-      persona: result.spec,
-      target: { name: (result.spec.identity as { display_name: string }).display_name, isSubagent: false, resourceBase: "./.personaxis/" },
+      persona: spec,
+      target: { name: (spec.identity as { display_name: string }).display_name, isSubagent: false, resourceBase: "./.personaxis/" },
     });
     gates.push({ name: "compile (stage-1)", pass: compiled.length > 0, detail: `${compiled.split("\n").length} lines` });
   } catch (e) {
     gates.push({ name: "compile (stage-1)", pass: false, detail: (e as Error).message });
   }
-  // FASE 7 P1 hard gate (gap G1): no number leaves Genesis decorative. The
-  // synthesis pass guarantees band prose; sigma = 0 here means a pipeline bug,
-  // not a user error, exactly like valid-by-construction.
+  // FASE 7 P1 hard gate (gap G1): no number leaves Genesis decorative. Every stage checks that its
+  // numbers can cross a band and carries band prose; sigma = 0 here means a pipeline bug.
   try {
-    const lookup = extractEnvelopes(result.spec as PersonaFrontmatter);
+    const lookup = extractEnvelopes(spec as PersonaFrontmatter);
     // Zero-width envelopes are immutable by geometry: excluded, nothing to express.
     const decorative = Object.entries(lookup.envelopes)
       .filter(([, e]) => canCross(e) && staticallyDecorative(e))
@@ -486,27 +421,30 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     if (decorative.length > 0) {
       console.error(chalk.red("✗ internal error:"), "Genesis produced decorative coordinates, nothing was written. Please report this.");
       for (const f of decorative) console.error(`  ${chalk.red("✗")} ${f} (σ=0: value cannot change the compiled artifact)`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   } catch (e) {
     gates.push({ name: "load-bearing (jacobian)", pass: false, detail: (e as Error).message });
     console.error(chalk.red("✗ internal error:"), "load-bearing gate crashed, nothing was written.", (e as Error).message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
-  const slug = (result.spec.metadata as { name: string }).name;
+  const slug = (spec.metadata as { name: string }).name;
   const baseDir = opts.root ? resolve(".personaxis") : resolve(".personaxis", "personas", slug);
   const personaPath = join(baseDir, "personaxis.md");
   if (existsSync(personaPath) && !opts.yes) {
     console.error(chalk.red("Error:"), `${relative(process.cwd(), personaPath)} already exists. Re-run with --yes to overwrite, or pass a different [slug].`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
-  const summary = provenanceSummary(result.spec, result.ledger);
-  const report = renderCreationReport(result, gates, llmNotes);
+  const report = renderCreationReport(authored, sources, gates, llmNotes);
+  const inferredCount = authored.stages.flatMap((st) => st.provenance).filter((p) => !p.quote && p.inferred).length;
 
   if (opts.json) {
-    console.log(JSON.stringify({ spec: result.spec, gates, notes: llmNotes, provenance: summary, path: relative(process.cwd(), personaPath) }, null, 2));
+    console.log(JSON.stringify({ spec, gates, notes: llmNotes, sources, stages: authored.stages, path: relative(process.cwd(), personaPath) }, null, 2));
     if (!opts.yes) return; // --json without --yes is a dry-run
   }
 
@@ -515,10 +453,9 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   // sessions, self-edits) is moved aside, or the new definition would start from the old values (E176).
   const previousHistory = existsSync(personaPath) ? movePersonaHistoryAside(personaPath) : undefined;
   mkdirSync(baseDir, { recursive: true });
-  writeFileSync(personaPath, result.document, "utf-8");
+  writeFileSync(personaPath, document, "utf-8");
   writeFileSync(join(baseDir, "creation-report.md"), report, "utf-8");
-  // E65: the note goes where the spec says it is. The document already lists it, because the contribution put
-  // the path in the seed and the builder rendered `extensions.references` from there.
+  // E65: the note goes where `extensions.references` says it is.
   if (researchNote) {
     mkdirSync(join(baseDir, "references"), { recursive: true });
     writeFileSync(join(baseDir, "references", researchNote.name), researchNote.content, "utf-8");
@@ -545,12 +482,18 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   const wantPolish = opts.polish !== false && !opts.noPolish;
   const hasModel = !!resolveModel({ cwd: process.cwd(), personaPath });
   if (wantPolish && hasModel) {
+    // With --json, stdout is the JSON already printed: compile's progress goes to stderr, or a script
+    // parsing the output reads the JSON followed by a line of text (seen 2026-10-07).
+    const log = console.log;
+    if (opts.json) console.log = console.error;
     try {
       const outcome = await runCompile(opts.root ? { root: true } : { slug });
       polished = outcome.polished;
       if (!polished) unpolishedReason = outcome.via;
     } catch (e) {
       unpolishedReason = (e as Error).message;
+    } finally {
+      console.log = log;
     }
   }
   if (!polished && compiled) {
@@ -577,7 +520,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
         : chalk.dim("(compiled, stage-1 offline; next compile with a model polishes it)");
     console.log(`  ${chalk.cyan(relative(process.cwd(), compiledPath))} ${docNote}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), handle.statePath))} ${chalk.dim("(runtime state)")}`);
-    console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(provenance: ${summary.covered.length}/${summary.quantitativeFields.length} fields, ${summary.defaultsOnly.length} default(s) to review)`)}`);
+    console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(where every field came from; ${inferredCount} inferred, read those first)`)}`);
     if (previousHistory) {
       console.log(`  ${chalk.cyan(relative(process.cwd(), previousHistory))} ${chalk.dim("(the replaced persona's state, record and memory, moved aside; the new one starts fresh)")}`);
     }
@@ -615,7 +558,7 @@ export const createCommand = new Command("create")
   .option("--from-import <file>", "Import a SOUL.md / SoulSpec package dir, character card (.json/.png V2/V3), system prompt, or CLAUDE.md/AGENTS.md")
   .option("--from-transcript <file>", "Induce the persona that best explains exemplar conversations")
   .option("--root", "Create as the project's ROOT persona (.personaxis/personaxis.md + repo PERSONA.md)")
-  .option("--yes", "Non-interactive: accept labeled defaults, overwrite existing files")
+  .option("--yes", "Non-interactive: never ask, and overwrite existing files")
   .option("--json", "Emit the spec + gates + provenance as JSON (dry-run unless --yes)")
   .option("--provider <name>", "Override the configured provider (local | byok | agent)")
   .option("--no-polish", "Skip the automatic LLM polish after creation (offline template, marked pending)")
@@ -632,6 +575,8 @@ export const createCommand = new Command("create")
         process.exit(0);
       }
       console.error(chalk.red("Error:"), (err as Error).message);
-      process.exit(1);
+      // Not process.exit: a failure right after a model call leaves its socket closing, and exiting under
+      // it aborts the process on Windows (libuv UV_HANDLE_CLOSING, 0xC0000409) instead of returning 1.
+      process.exitCode = 1;
     }
   });
