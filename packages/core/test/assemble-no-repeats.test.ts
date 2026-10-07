@@ -83,6 +83,29 @@ describe("an empty Never list", () => {
   });
 });
 
+describe("voice exemplars in How you speak", () => {
+  function withExemplar(e: Record<string, string>): string {
+    return assemblePersonaDoc({
+      persona: { identity: { display_name: "Lens" }, persona: { voice_exemplars: [e] }, self_regulation: { hard_limits: SAFETY } },
+      target: { name: "Lens", isSubagent: false, resourceBase: "./.personaxis/" },
+    });
+  }
+
+  it("does not print the builder's placeholder as a question", () => {
+    const text = withExemplar({ user: "(a typical exchange)", persona: "I ran it; here is the output." });
+    expect(text).not.toContain("(a typical exchange)");
+    expect(text).toContain('- "I ran it; here is the output."');
+  });
+
+  it("prints a real question", () => {
+    expect(withExemplar({ user: "Does it pass?", persona: "Yes, 12 of 12." })).toContain('- Asked "Does it pass?", you say: "Yes, 12 of 12."');
+  });
+
+  it("prints a context", () => {
+    expect(withExemplar({ context: "a test fails", user: "x", persona: "I say which one." })).toContain('- When a test fails, you say: "I say which one."');
+  });
+});
+
 describe("humor in How you speak", () => {
   it("does not end a humor sentence with two periods", () => {
     const text = doc(SAFETY, { humor: "Dry, and rare." });

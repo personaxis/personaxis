@@ -141,8 +141,11 @@ function sectionHowYouSpeak(persona: Dict): string {
       const user = asStr(e.user);
       const resp = asStr(e.persona);
       if (!resp) continue;
-      const lead = ctx ? `When ${ctx}` : user ? `Asked "${user}"` : "You";
-      out.push(`- ${lead}, you say: "${resp}"`);
+      // A user turn in parentheses is the builder's placeholder for a source that gave only the persona's
+      // line; printed as a question it read 'Asked "(a typical exchange)"' (2026-10-07).
+      const asked = user && !/^\(.*\)$/.test(user.trim()) ? user : undefined;
+      const lead = ctx ? `When ${ctx}, you say` : asked ? `Asked "${asked}", you say` : "";
+      out.push(lead ? `- ${lead}: "${resp}"` : `- "${resp}"`);
     }
   }
   return out.join("\n");
