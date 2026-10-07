@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `policy.schema.json` accepts `self_regulation` in `assertions[].layer`. It only listed the 0.x name
+  `reflexive_self_regulation`, so a policy written with the current layer name failed to validate. The
+  old name is still accepted.
+- The schema descriptions say what each field is and does today. They carried version-history notes,
+  internal labels, and, in `policy.schema.json`, claims about a hosted platform: that it reverts the
+  mode when an approval expires, evaluates the assertions and sends alerts. The open engine acts on
+  `improvement_policy.mode` only; the descriptions now say so, and the `$id` and title of the policy
+  schema no longer name version 0.10.
+- `policy_template.yaml` said that `personaxis compile` writes derived assertions to
+  `.dist/judge.config.json`, which it does not, and suggested a `provider:` key that the schema
+  rejects. The `policy.yaml` that `init` writes no longer names a Personaxis backend.
+- The templates no longer carry version-history labels.
+
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
 A minor release with breaking changes: see the sections marked **Breaking** below.
