@@ -22,6 +22,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `.dist/judge.config.json`, which it does not, and suggested a `provider:` key that the schema
   rejects. The `policy.yaml` that `init` writes no longer names a Personaxis backend.
 - The templates no longer carry version-history labels.
+- The compiled document lists each stay-in-character rule once, under "Staying in character". It also
+  listed them under "Hard limits". The closing "Above all" section still echoes the other hard limits on
+  purpose, in the last position of the prompt.
+- A `persona.voice.humor` value written as a sentence no longer compiles with two periods.
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 

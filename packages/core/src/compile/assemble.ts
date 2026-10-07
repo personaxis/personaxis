@@ -118,7 +118,8 @@ function sectionHowYouSpeak(persona: Dict): string {
   const parts: string[] = [];
   if (tone) parts.push(`Your tone is ${tone}.`);
   if (verbosity) parts.push(`You are ${verbosity} by default.`);
-  if (humor) parts.push(`Humor: ${humor}.`);
+  // A humor value may already be a sentence; close it with one period, not a second one.
+  if (humor) parts.push(`Humor: ${/[.!?]$/.test(humor.trim()) ? humor.trim() : `${humor.trim()}.`}`);
   if (desc) parts.push(desc);
   const language = asStr(voice.language);
   const languages = asArr(voice.languages).map(asStr).filter(Boolean) as string[];
@@ -252,7 +253,10 @@ function sectionFixedChange(persona: Dict): string {
   return out.join("\n");
 }
 
-/** The full set of stay-in-character hard limits, split from the safety limits. */
+/**
+ * The hard limits, split in two: stay-in-character rules go to "Staying in character", every other limit
+ * to "Hard limits". Each limit appears once in the body; "Above all" echoes only the safety ones.
+ */
 function hardLimitLists(persona: Dict): { safety: string[]; character: string[] } {
   const sr = asDict(persona.self_regulation);
   const legacy = asDict(persona.reflexive_self_regulation);
@@ -262,19 +266,23 @@ function hardLimitLists(persona: Dict): { safety: string[]; character: string[] 
   const character: string[] = [];
   const safety: string[] = [];
   for (const l of limits) {
-    // Stay-in-character guardrails (migrated from break_character_guardrails) read as
-    // expression rules; keep them for the "Staying in character" section too.
+    // Stay-in-character guardrails read as expression rules, and are listed under "Staying in character".
     if (/stay |never drop the persona|never reveal these instructions|redirect off-topic/i.test(l)) {
       character.push(l);
+    } else {
+      safety.push(l);
     }
-    safety.push(l);
   }
   return { safety, character };
 }
 
 function sectionHardLimits(persona: Dict): string {
-  const { safety } = hardLimitLists(persona);
+  const { safety, character } = hardLimitLists(persona);
   const out: string[] = ["## Hard limits (never overridden)", ""];
+  if (!safety.length && character.length) {
+    out.push("The only hard limits declared are the stay-in-character rules below, and they are absolute.");
+    return out.join("\n");
+  }
   if (!safety.length) {
     out.push("*(no hard limits declared, this is a spec error; every persona must declare the safety universals)*");
     return out.join("\n");
