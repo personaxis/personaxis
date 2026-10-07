@@ -162,12 +162,38 @@ function thirdPerson(text: string, name: string | undefined): boolean {
   return !!n && t.toLowerCase().startsWith(`${n.toLowerCase()} `);
 }
 
-/** Turn an extractor response into a seed patch + evidence trail. */
-export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: Partial<PersonaSeed>; evidence: EvidenceItem[] } {
+/**
+ * Whether a line the extractor attributes to the persona is in the material: most of its words of four
+ * letters or more appear there. A voice exemplar teaches the model how to talk AND what to say, so an
+ * invented one teaches invented facts (2026-10-07: a command that does not exist, and "I have tested this").
+ */
+function grounded(line: string, material: string): boolean {
+  const words = line.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
+  if (words.length === 0) return false;
+  const source = material.toLowerCase();
+  return words.filter((w) => source.includes(w)).length / words.length >= 0.6;
+}
+
+/**
+ * Turn an extractor response into a seed patch + evidence trail. With `material`, voice exemplars that are
+ * not in it are left out and the trail says so; without it (an imported card already is the material),
+ * they are taken as given.
+ */
+export function seedFromExtraction(
+  raw: unknown,
+  sourceLabel: string,
+  material?: string,
+): { seed: Partial<PersonaSeed>; evidence: EvidenceItem[] } {
   const x = (raw ?? {}) as ExtractedSeed;
   const seed: Partial<PersonaSeed> = { traits: {}, values: {}, virtues: {}, hardLimits: [], prohibitedBehaviors: [], goals: [], antiGoals: [] };
   const trail: EvidenceItem[] = [];
-  const slugKey = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  // CamelCase is split first: a model that answers "AttentionToDetail" meant three words (2026-10-07).
+  const slugKey = (s: string): string =>
+    s
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
   const push = (id: string, kind: EvidenceItem["kind"], excerpt: string, mapped: EvidenceItem["mappedFields"]): void => {
     trail.push({ id, kind, source: "synthesis", excerpt: excerpt.slice(0, 200), mappedFields: mapped });
   };
@@ -267,7 +293,11 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
     }
   }
 
-  const exemplars = (x.voiceExemplars ?? []).filter((e) => typeof e?.persona === "string" && e.persona.trim());
+  const offered = (x.voiceExemplars ?? []).filter((e) => typeof e?.persona === "string" && e.persona.trim());
+  const exemplars = material === undefined ? offered : offered.filter((e) => grounded(e.persona, material));
+  for (const e of offered) {
+    if (!exemplars.includes(e)) push("x-exemplar-left-out", "inference", `voice exemplar left out, not in the material: ${e.persona}`, []);
+  }
   if (exemplars.length) {
     seed.voiceExemplars = exemplars;
     push("x-exemplars", "inference", exemplars[0].persona, [{ path: "persona.voice_exemplars", value: `${exemplars.length} exemplar(s)`, rule: "llm-extraction" }]);
@@ -301,7 +331,7 @@ export async function extractSeed(
   let failure = "";
   try {
     const raw = await call(prompt, SEED_JSON_SCHEMA, "persona_seed");
-    const first = seedFromExtraction(raw, sourceLabel);
+    const first = seedFromExtraction(raw, sourceLabel, material);
     if (usableExtraction(first.seed)) return first;
     failure = "the response parsed but carried no displayName, traits, or values";
   } catch (e) {
@@ -317,7 +347,7 @@ export async function extractSeed(
     "\nReturn a corrected JSON object that satisfies the schema. At minimum include" +
     " displayName, role, and purpose grounded in the material.";
   const raw = await call(repairPrompt, SEED_JSON_SCHEMA, "persona_seed");
-  const second = seedFromExtraction(raw, sourceLabel);
+  const second = seedFromExtraction(raw, sourceLabel, material);
   if (!usableExtraction(second.seed)) {
     throw new Error(`extractor produced no usable seed after one repair attempt (${failure})`);
   }

@@ -43,6 +43,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - A self-concept the extractor writes in the third person ("Her claims...", "Clio sees herself...") no
   longer reaches the compiled document, which speaks to the persona in the second person. The extractor
   is asked for the second person, and the creation report says when a sentence was left out.
+- A voice exemplar the extractor returns that is not in the source material is left out, and the
+  creation report lists it. Rebuilding a persona from a brief that quoted nothing it says, the model
+  returned an exemplar announcing a command that does not exist and claiming it had run the tests, and
+  the compiled document taught that as the persona's voice.
+- A trait, value or virtue name given in CamelCase (`AttentionToDetail`) becomes `attention_to_detail`,
+  not `attentiontodetail`.
+- Genesis no longer writes "Created via personaxis create on <date>" as the persona's origin when the
+  source gives none; the date is already in `metadata.created`.
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
