@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/core",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "The Personaxis engine: state clamped to declared envelopes, the governed living loop and agent loop, the gate on every tool call, hash-chained record, memory, injection scanning and compilation. Framework-agnostic, no UI.",
   "license": "MIT",
   "type": "module",

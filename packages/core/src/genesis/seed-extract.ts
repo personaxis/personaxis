@@ -60,6 +60,21 @@ export const SEED_JSON_SCHEMA = {
         },
       },
     },
+    virtues: {
+      type: "array",
+      maxItems: 6,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "description", "evidence"],
+        properties: {
+          name: { type: "string" },
+          description: { type: "string" },
+          enforcement: { type: "string", enum: ["hard", "soft"] },
+          evidence: { type: "string", maxLength: 200 },
+        },
+      },
+    },
     hardLimits: { type: "array", maxItems: 6, items: { type: "string" } },
     prohibitedBehaviors: { type: "array", maxItems: 8, items: { type: "string" } },
     goals: { type: "array", maxItems: 6, items: { type: "string" } },
@@ -99,6 +114,12 @@ export function buildExtractionPrompt(material: string, sourceLabel: string): st
     "- `halfLife` (turns, on a trait) and `moodHalfLife` (turns, top level): how fast a",
     "  displaced trait/mood returns to baseline. Include ONLY when the material shows it",
     "  (e.g. 'quick to anger, slow to forgive' implies a large moodHalfLife).",
+    "- `virtues` are the commitments the persona's work is judged by, as the material shows",
+    "  them (e.g. rigor: 'checks every claim against the code it cites'), each with `evidence`.",
+    "  `enforcement` is 'hard' only when the material treats it as non-negotiable. Write the",
+    "  description as a rule the persona follows, not as praise.",
+    "- `selfConcept` is how the persona sees itself, written in the second person ('You ...'),",
+    "  because the compiled document speaks to the persona. Never 'She ...' or its name.",
     "- hardLimits are ABSOLUTE refusals stated or clearly implied by the material.",
     "- Do NOT include a `safety` value (the platform injects it above everything).",
     "- `displayName` is the persona's own name as the material gives it, or a plain role name",
@@ -125,6 +146,7 @@ interface ExtractedSeed {
   traits?: Array<{ name: string; mean: number; flexibility?: number; expressionLow?: string; expressionModerate?: string; expressionHigh?: string; halfLife?: number; evidence: string }>;
   moodHalfLife?: number;
   values?: Array<{ name: string; weight: number; evidence: string }>;
+  virtues?: Array<{ name: string; description: string; enforcement?: string; evidence: string }>;
   hardLimits?: string[];
   prohibitedBehaviors?: string[];
   goals?: string[];
@@ -132,12 +154,46 @@ interface ExtractedSeed {
   voiceExemplars?: Array<{ context?: string; user?: string; persona: string }>;
 }
 
-/** Turn an extractor response into a seed patch + evidence trail. */
-export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: Partial<PersonaSeed>; evidence: EvidenceItem[] } {
+/** A sentence about the persona rather than to it: a third-person pronoun, or its own name, as the subject. */
+function thirdPerson(text: string, name: string | undefined): boolean {
+  const t = text.trim();
+  if (/^(he|she|they|his|her|hers|their|its)\b/i.test(t)) return true;
+  const n = name?.trim();
+  return !!n && t.toLowerCase().startsWith(`${n.toLowerCase()} `);
+}
+
+/**
+ * Whether a line the extractor attributes to the persona is in the material: most of its words of four
+ * letters or more appear there. A voice exemplar teaches the model how to talk AND what to say, so an
+ * invented one teaches invented facts (2026-10-07: a command that does not exist, and "I have tested this").
+ */
+function grounded(line: string, material: string): boolean {
+  const words = line.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
+  if (words.length === 0) return false;
+  const source = material.toLowerCase();
+  return words.filter((w) => source.includes(w)).length / words.length >= 0.6;
+}
+
+/**
+ * Turn an extractor response into a seed patch + evidence trail. With `material`, voice exemplars that are
+ * not in it are left out and the trail says so; without it (an imported card already is the material),
+ * they are taken as given.
+ */
+export function seedFromExtraction(
+  raw: unknown,
+  sourceLabel: string,
+  material?: string,
+): { seed: Partial<PersonaSeed>; evidence: EvidenceItem[] } {
   const x = (raw ?? {}) as ExtractedSeed;
   const seed: Partial<PersonaSeed> = { traits: {}, values: {}, virtues: {}, hardLimits: [], prohibitedBehaviors: [], goals: [], antiGoals: [] };
   const trail: EvidenceItem[] = [];
-  const slugKey = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  // CamelCase is split first: a model that answers "AttentionToDetail" meant three words (2026-10-07).
+  const slugKey = (s: string): string =>
+    s
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
   const push = (id: string, kind: EvidenceItem["kind"], excerpt: string, mapped: EvidenceItem["mappedFields"]): void => {
     trail.push({ id, kind, source: "synthesis", excerpt: excerpt.slice(0, 200), mappedFields: mapped });
   };
@@ -151,6 +207,13 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
     // small model follows the framing it was handed over the rule it was given; so the name is
     // checked here and dropped, and the builder falls back to the role, which is honest.
     if (key === "displayName" && typeof v === "string" && LEAKED_FRAMING.test(v)) continue;
+    // E176: the compiled document speaks to the persona ("You are..."), and a self-concept written about it
+    // ("Her claims...", "Clio sees herself...") was copied under "Who you are" as it came. It is left out,
+    // and the report says so, rather than handed to the model in the wrong voice.
+    if (key === "selfConcept" && typeof v === "string" && thirdPerson(v, x.displayName)) {
+      push("x-selfConcept-left-out", "inference", `left out, written in the third person: ${v}`, []);
+      continue;
+    }
     if (typeof v === "string" && v.trim()) {
       (seed as Record<string, unknown>)[key] = v.trim();
       if (key === "displayName") seed.slug = v.trim();
@@ -202,6 +265,19 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
     ]);
   }
 
+  // E176: the schema had no virtues, so every persona's character held only the builder's honesty line.
+  for (const v of x.virtues ?? []) {
+    if (typeof v?.name !== "string" || typeof v.description !== "string" || !v.description.trim()) continue;
+    if (typeof v.evidence !== "string" || !v.evidence.trim()) continue;
+    const name = slugKey(v.name);
+    if (!name) continue;
+    const enforcement = v.enforcement === "hard" ? "hard" : "soft";
+    seed.virtues![name] = { description: v.description.trim(), priority: enforcement === "hard" ? 0.9 : 0.75, enforcement };
+    push(`x-virtue-${name}`, "inference", v.evidence, [
+      { path: `character.virtues.${name}.description`, value: v.description.trim(), rule: "llm-extraction-with-evidence" },
+    ]);
+  }
+
   const lists: Array<[keyof ExtractedSeed & keyof PersonaSeed, string]> = [
     ["hardLimits", "self_regulation.hard_limits"],
     ["prohibitedBehaviors", "character.prohibited_behaviors"],
@@ -217,7 +293,11 @@ export function seedFromExtraction(raw: unknown, sourceLabel: string): { seed: P
     }
   }
 
-  const exemplars = (x.voiceExemplars ?? []).filter((e) => typeof e?.persona === "string" && e.persona.trim());
+  const offered = (x.voiceExemplars ?? []).filter((e) => typeof e?.persona === "string" && e.persona.trim());
+  const exemplars = material === undefined ? offered : offered.filter((e) => grounded(e.persona, material));
+  for (const e of offered) {
+    if (!exemplars.includes(e)) push("x-exemplar-left-out", "inference", `voice exemplar left out, not in the material: ${e.persona}`, []);
+  }
   if (exemplars.length) {
     seed.voiceExemplars = exemplars;
     push("x-exemplars", "inference", exemplars[0].persona, [{ path: "persona.voice_exemplars", value: `${exemplars.length} exemplar(s)`, rule: "llm-extraction" }]);
@@ -251,7 +331,7 @@ export async function extractSeed(
   let failure = "";
   try {
     const raw = await call(prompt, SEED_JSON_SCHEMA, "persona_seed");
-    const first = seedFromExtraction(raw, sourceLabel);
+    const first = seedFromExtraction(raw, sourceLabel, material);
     if (usableExtraction(first.seed)) return first;
     failure = "the response parsed but carried no displayName, traits, or values";
   } catch (e) {
@@ -267,7 +347,7 @@ export async function extractSeed(
     "\nReturn a corrected JSON object that satisfies the schema. At minimum include" +
     " displayName, role, and purpose grounded in the material.";
   const raw = await call(repairPrompt, SEED_JSON_SCHEMA, "persona_seed");
-  const second = seedFromExtraction(raw, sourceLabel);
+  const second = seedFromExtraction(raw, sourceLabel, material);
   if (!usableExtraction(second.seed)) {
     throw new Error(`extractor produced no usable seed after one repair attempt (${failure})`);
   }

@@ -74,14 +74,12 @@ function sectionOpener(persona: Dict, target: AssembleTarget): string {
   if (youAre) {
     lines.push(youAre);
   } else {
-    // Derive from identity: role + purpose.
+    // Derive from identity: the role. The purpose opens "Who you are" just below, and printing it here too
+    // put the same sentence twice in the first lines of every persona without an address (E176).
     const identity = asDict(persona.identity);
     const role = asDict(identity.role_identity);
-    const sys = asDict(identity.system_identity);
     const roleName = asStr(role.primary_role)?.replace(/_/g, " ");
-    const purpose = asStr(sys.purpose);
-    const bits = [`You are **${target.name}**`, roleName ? `, the ${roleName}` : ""].join("");
-    lines.push(purpose ? `${bits}. ${purpose}` : `${bits}.`);
+    lines.push([`You are **${target.name}**`, roleName ? `, the ${roleName}` : "", "."].join(""));
   }
   lines.push(
     "You think, speak and decide as this persona, and everything below describes how you work.",
@@ -98,7 +96,8 @@ function sectionWhoYouAre(persona: Dict): string {
   const selfConcept = asStr(narrative.self_concept);
   const origin = asStr(narrative.origin);
   if (purpose) out.push(purpose);
-  if (selfConcept) out.push("", selfConcept);
+  // Genesis falls back to the purpose for an unextracted self-concept; the same sentence twice says nothing new.
+  if (selfConcept && selfConcept.trim() !== purpose?.trim()) out.push("", selfConcept);
   if (origin) out.push("", origin);
   const allowed = asArr(sys.allowed_domains).map(asStr).filter(Boolean) as string[];
   const prohibited = asArr(sys.prohibited_domains).map(asStr).filter(Boolean) as string[];
@@ -118,7 +117,8 @@ function sectionHowYouSpeak(persona: Dict): string {
   const parts: string[] = [];
   if (tone) parts.push(`Your tone is ${tone}.`);
   if (verbosity) parts.push(`You are ${verbosity} by default.`);
-  if (humor) parts.push(`Humor: ${humor}.`);
+  // A humor value may already be a sentence; close it with one period, not a second one.
+  if (humor) parts.push(`Humor: ${/[.!?]$/.test(humor.trim()) ? humor.trim() : `${humor.trim()}.`}`);
   if (desc) parts.push(desc);
   const language = asStr(voice.language);
   const languages = asArr(voice.languages).map(asStr).filter(Boolean) as string[];
@@ -141,8 +141,11 @@ function sectionHowYouSpeak(persona: Dict): string {
       const user = asStr(e.user);
       const resp = asStr(e.persona);
       if (!resp) continue;
-      const lead = ctx ? `When ${ctx}` : user ? `Asked "${user}"` : "You";
-      out.push(`- ${lead}, you say: "${resp}"`);
+      // A user turn in parentheses is the builder's placeholder for a source that gave only the persona's
+      // line; printed as a question it read 'Asked "(a typical exchange)"' (2026-10-07).
+      const asked = user && !/^\(.*\)$/.test(user.trim()) ? user : undefined;
+      const lead = ctx ? `When ${ctx}, you say` : asked ? `Asked "${asked}", you say` : "";
+      out.push(lead ? `- ${lead}: "${resp}"` : `- "${resp}"`);
     }
   }
   return out.join("\n");
@@ -179,8 +182,11 @@ function sectionAlwaysNever(persona: Dict): string {
 
   out.push("**Always:**");
   for (const a of dedupe(always)) out.push(`- ${a}`);
-  out.push("", "**Never:**");
-  for (const n of dedupe(never)) out.push(`- ${n}`);
+  // A heading over nothing invites the model that polishes the document to fill it (2026-10-07).
+  if (never.length) {
+    out.push("", "**Never:**");
+    for (const n of dedupe(never)) out.push(`- ${n}`);
+  }
 
   const examples = asArr(anchors.examples).map(asStr).filter(Boolean) as string[];
   if (examples.length) {
@@ -252,7 +258,10 @@ function sectionFixedChange(persona: Dict): string {
   return out.join("\n");
 }
 
-/** The full set of stay-in-character hard limits, split from the safety limits. */
+/**
+ * The hard limits, split in two: stay-in-character rules go to "Staying in character", every other limit
+ * to "Hard limits". Each limit appears once in the body; "Above all" echoes only the safety ones.
+ */
 function hardLimitLists(persona: Dict): { safety: string[]; character: string[] } {
   const sr = asDict(persona.self_regulation);
   const legacy = asDict(persona.reflexive_self_regulation);
@@ -262,19 +271,23 @@ function hardLimitLists(persona: Dict): { safety: string[]; character: string[] 
   const character: string[] = [];
   const safety: string[] = [];
   for (const l of limits) {
-    // Stay-in-character guardrails (migrated from break_character_guardrails) read as
-    // expression rules; keep them for the "Staying in character" section too.
+    // Stay-in-character guardrails read as expression rules, and are listed under "Staying in character".
     if (/stay |never drop the persona|never reveal these instructions|redirect off-topic/i.test(l)) {
       character.push(l);
+    } else {
+      safety.push(l);
     }
-    safety.push(l);
   }
   return { safety, character };
 }
 
 function sectionHardLimits(persona: Dict): string {
-  const { safety } = hardLimitLists(persona);
+  const { safety, character } = hardLimitLists(persona);
   const out: string[] = ["## Hard limits (never overridden)", ""];
+  if (!safety.length && character.length) {
+    out.push("The only hard limits declared are the stay-in-character rules below, and they are absolute.");
+    return out.join("\n");
+  }
   if (!safety.length) {
     out.push("*(no hard limits declared, this is a spec error; every persona must declare the safety universals)*");
     return out.join("\n");

@@ -1,6 +1,6 @@
 {
   "name": "personaxis",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Build a persona, the whole way a professional works, in versionable files, and load it into Claude Code, Codex, OpenClaw or Hermes. Values stay inside declared ranges, tool calls are gated, every change is in a hash-chained record. The personaxis.md spec v1.1 toolchain.",
   "keywords": [
     "ai",
@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@personaxis/core": "workspace:*",
     "@personaxis/protocol": "workspace:*",
     "@personaxis/sdk": "workspace:*",

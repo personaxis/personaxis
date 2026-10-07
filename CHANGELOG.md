@@ -8,6 +8,72 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-10-07: the schemas say what the engine does, and Genesis writes what the source says
+
+### Security
+
+- `@modelcontextprotocol/sdk` is `^1.31.0` (GHSA-6qxp-vccf-f47h, an OAuth client sending credentials to an
+  authorization server the MCP server names). Personaxis was not affected: it uses the SDK as a server
+  and as a stdio client, and the advisory covers OAuth clients over HTTP.
+- Transitive development dependencies (`brace-expansion`, `nanoid`, `postcss`, `source-map-js`) are
+  updated within their ranges. The advisories still open come from `vitest` 3, which runs the tests and
+  is not published, and from `sprintf-js`, which only the command-line binary of `js-yaml` 3 loads.
+
+### Fixed
+
+- `policy.schema.json` accepts `self_regulation` in `assertions[].layer`. It only listed the 0.x name
+  `reflexive_self_regulation`, so a policy written with the current layer name failed to validate. The
+  old name is still accepted.
+- The schema descriptions say what each field is and does today. They carried version-history notes,
+  internal labels, and, in `policy.schema.json`, claims about a hosted platform: that it reverts the
+  mode when an approval expires, evaluates the assertions and sends alerts. The open engine acts on
+  `improvement_policy.mode` only; the descriptions now say so, and the `$id` and title of the policy
+  schema no longer name version 0.10.
+- `policy_template.yaml` said that `personaxis compile` writes derived assertions to
+  `.dist/judge.config.json`, which it does not, and suggested a `provider:` key that the schema
+  rejects. The `policy.yaml` that `init` writes no longer names a Personaxis backend.
+- The templates no longer carry version-history labels.
+- The compiled document lists each stay-in-character rule once, under "Staying in character". It also
+  listed them under "Hard limits". The closing "Above all" section still echoes the other hard limits on
+  purpose, in the last position of the prompt.
+- A `persona.voice.humor` value written as a sentence no longer compiles with two periods.
+- `personaxis proof` without `--persona` no longer walks up the folders to the persona in your home
+  directory and prints its name and full path. It uses `.personaxis/personaxis.md` in the current
+  folder, or the embedded demo persona, and shows the path relative to the current folder.
+- `personaxis create --yes` over an existing persona starts a new persona. The replaced one's state,
+  record, memory, sessions and self-edits stayed beside the new definition, so it started from the old
+  values (the known issue listed under 0.17.0). They are now moved to `previous/<timestamp>/` beside
+  the persona, not deleted, and `create` prints where.
+- Genesis writes what the source says, once. The extractor asks for virtues, each with evidence from the
+  material, so "Always" is no longer only the builder's honesty line. "Never" no longer opens with a
+  default line that repeats the honesty virtue; the goals no longer repeat the purpose when the source
+  gave goals; the compiled document states the purpose once, not two or three times; a line two sources
+  give in different typing is kept once; and the overview reads "Clio: The agent..." instead of "Clio,
+  The agent...". Values, virtues or traits that probably name the same thing, such as `verifiability`
+  and `verified_claims`, are listed under "Possibly the same" in the creation report, not merged.
+- A self-concept the extractor writes in the third person ("Her claims...", "Clio sees herself...") no
+  longer reaches the compiled document, which speaks to the persona in the second person. The extractor
+  is asked for the second person, and the creation report says when a sentence was left out.
+- A voice exemplar the extractor returns that is not in the source material is left out, and the
+  creation report lists it. Rebuilding a persona from a brief that quoted nothing it says, the model
+  returned an exemplar announcing a command that does not exist and claiming it had run the tests, and
+  the compiled document taught that as the persona's voice.
+- A trait, value or virtue name given in CamelCase (`AttentionToDetail`) becomes `attention_to_detail`,
+  not `attentiontodetail`.
+- Genesis no longer writes "Created via personaxis create on <date>" as the persona's origin when the
+  source gives none; the date is already in `metadata.created`.
+- A trait declared high or low compiles as high or low. When the default bands left an envelope inside
+  one band, the boundaries were placed at the envelope's thirds, so the mean, near the centre, always
+  fell in "moderate": a trait declared at 0.9 compiled as "in measured doses". The boundaries now sit
+  below a high mean and above a low one, and the envelope still reaches a second band.
+- The compiled document prints no "Never" heading when the persona declares no prohibited behaviors; a
+  model polishing the document filled the empty heading with "(No additional constraints specified.)".
+- The faithfulness check of a polished document rejects a section the assembled document does not
+  have. A polish ended with the heading of the reference block in its own prompt and the source file's
+  Overview, and was accepted, because claims were compared inside the protected sections only.
+- A voice exemplar with no question no longer compiles as `Asked "(a typical exchange)", you say:`,
+  and one with neither a question nor a context no longer reads "You, you say".
+
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
 A minor release with breaking changes: see the sections marked **Breaking** below.

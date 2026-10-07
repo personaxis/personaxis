@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/protocol",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "The boundary between a Personaxis front-end and the engine: typed operations and events over JSON-RPC 2.0 on Unix sockets and Windows named pipes, plus the Agent Client Protocol bridge in both directions.",
   "license": "MIT",
   "type": "module",
