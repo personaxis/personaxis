@@ -26,6 +26,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   listed them under "Hard limits". The closing "Above all" section still echoes the other hard limits on
   purpose, in the last position of the prompt.
 - A `persona.voice.humor` value written as a sentence no longer compiles with two periods.
+- `personaxis proof` without `--persona` no longer walks up the folders to the persona in your home
+  directory and prints its name and full path. It uses `.personaxis/personaxis.md` in the current
+  folder, or the embedded demo persona, and shows the path relative to the current folder.
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
