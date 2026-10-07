@@ -138,7 +138,13 @@ export function checkFaithfulness(
   // with the heading of its own prompt's reference block and the source file's Overview, and passed,
   // because the claims above are compared inside the protected sections only.
   const heading = (h: string): string => h.toLowerCase().replace(/\s+/g, " ").trim();
-  const headingsOf = (doc: string): string[] => [...doc.matchAll(/^##\s+(.+?)\s*$/gm)].map((m) => m[1]);
+  // Line by line, without a regex: CodeQL flagged /^##\s+(.+?)\s*$/ as polynomial on tab-heavy input.
+  const headingsOf = (doc: string): string[] =>
+    doc
+      .split("\n")
+      .filter((line) => line.startsWith("##") && !line.startsWith("###"))
+      .map((line) => line.slice(2).trim())
+      .filter((h) => h.length > 0);
   const known = new Set(headingsOf(assembled).map(heading));
   for (const h of headingsOf(polished)) {
     if (!known.has(heading(h))) findings.push({ kind: "invented", section: "(sections)", text: h, bestCoverage: 0 });

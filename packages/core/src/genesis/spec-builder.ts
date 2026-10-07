@@ -168,7 +168,12 @@ export function buildSpecObject(seed: PersonaSeed): Record<string, unknown> {
 
   // One copy of each line, compared without case, spacing or a closing period: two sources often say the
   // same limit in slightly different typing, and the list showed both (E176).
-  const sameLine = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").replace(/[.!;:,\s]+$/, "").trim();
+  // The closing punctuation is stripped with a loop, not /[.!;:,\s]+$/, which CodeQL flagged as polynomial.
+  const sameLine = (s: string): string => {
+    let t = s.toLowerCase().split(/\s/).filter(Boolean).join(" ");
+    while (t.length > 0 && ".!;:, ".includes(t[t.length - 1])) t = t.slice(0, -1);
+    return t;
+  };
   const unique = (xs: string[]): string[] => {
     const seen = new Set<string>();
     return xs.filter((x) => {
