@@ -72,6 +72,7 @@ import { runRules } from "../linter/rules.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { ProviderRequiresAgentError } from "../providers/types.js";
+import { movePersonaHistoryAside } from "../persona-history.js";
 
 interface CreateOpts {
   fromPrompt?: string;
@@ -512,6 +513,9 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   }
 
   // ── write artifacts ────────────────────────────────────────────────────────
+  // Replacing an existing persona starts a new one: what the old one lived (state, record, memory,
+  // sessions, self-edits) is moved aside, or the new definition would start from the old values (E176).
+  const previousHistory = existsSync(personaPath) ? movePersonaHistoryAside(personaPath) : undefined;
   mkdirSync(baseDir, { recursive: true });
   writeFileSync(personaPath, result.document, "utf-8");
   writeFileSync(join(baseDir, "creation-report.md"), report, "utf-8");
@@ -576,6 +580,9 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     console.log(`  ${chalk.cyan(relative(process.cwd(), compiledPath))} ${docNote}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), handle.statePath))} ${chalk.dim("(runtime state)")}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(provenance: ${summary.covered.length}/${summary.quantitativeFields.length} fields, ${summary.defaultsOnly.length} default(s) to review)`)}`);
+    if (previousHistory) {
+      console.log(`  ${chalk.cyan(relative(process.cwd(), previousHistory))} ${chalk.dim("(the replaced persona's state, record and memory, moved aside; the new one starts fresh)")}`);
+    }
     const warns = lint.filter((f) => f.severity === "warning").length;
     if (warns) console.log(chalk.dim(`  ${warns} lint warning(s), run \`personaxis lint\` for detail (decorative numbers are worth fixing).`));
     // What was worked around (no model, a failed search) said where it happens, not only in the report.

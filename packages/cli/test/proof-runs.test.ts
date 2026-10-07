@@ -16,7 +16,8 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -52,5 +53,32 @@ describe("the live proof", () => {
 		expect(output).toMatch(/all \d+ checks passed/);
 		// The proof is a thousand hostile steps through the real engine and takes about
 		// six seconds, so the five second default would fail it for being what it is.
+	}, 180_000);
+});
+
+describe("whose persona the proof runs on", () => {
+	// Without --persona, the lookup used to walk up the folders and stop at the user's own persona in the
+	// home directory, then print its name and full path on the first line of a demonstration.
+	it.skipIf(!existsSync(cli))("never reaches a persona above the current folder", () => {
+		const home = mkdtempSync(join(tmpdir(), "pxs-proof-home-"));
+		try {
+			mkdirSync(join(home, ".personaxis"), { recursive: true });
+			writeFileSync(
+				join(home, ".personaxis", "personaxis.md"),
+				"---\nidentity:\n  display_name: Private Home Persona\n---\n",
+			);
+			const work = join(home, "work");
+			mkdirSync(work);
+			const output = execFileSync(process.execPath, [cli, "proof", "--quick", "--auto"], {
+				cwd: work,
+				encoding: "utf-8",
+				timeout: 120_000,
+			});
+			expect(output).not.toContain("Private Home Persona");
+			expect(output).not.toContain(home);
+			expect(output).toContain("the embedded demo persona");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
 	}, 180_000);
 });

@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/tui",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Terminal UI for Personaxis: the Ink components the personaxis app is built from, and personaxis-dash, a live dashboard of a persona's sigil, envelopes and memory-chain integrity.",
   "license": "MIT",
   "type": "module",

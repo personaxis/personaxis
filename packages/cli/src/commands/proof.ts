@@ -366,7 +366,7 @@ export const proofCommand = new Command("proof")
   .option("--quick", "Short storm (1,000 steps instead of 10,000)")
   .option("--seed <n>", "PRNG seed for the storm (default 42), same seed, same run", "42")
   .option("--auto", "No pauses/animation (CI, piping); implied when not a TTY")
-  .option("--persona <path>", "Run the scenes on THIS persona's spec (default: the active persona here)")
+  .option("--persona <path>", "Run the scenes on a copy of this persona (default: .personaxis/personaxis.md in this folder, else the embedded demo)")
   .option("--demo", "Use the embedded demo persona instead of the active one", false)
   .action(async (opts: { quick?: boolean; seed: string; auto?: boolean; persona?: string; demo?: boolean }) => {
     const tty = Boolean(process.stdout.isTTY) && !opts.auto;
@@ -374,19 +374,24 @@ export const proofCommand = new Command("proof")
     const steps = opts.quick ? 1_000 : 10_000;
     const seed = Number(opts.seed) || 42;
 
-    // V5.P2.2: default to the ACTIVE persona (its real coordinates, on a copy);
-    // --demo keeps the embedded one. The header always says whose proof this is.
+    // Default to the persona of THIS folder (its real coordinates, on a copy), or the embedded demo
+    // persona when the folder has none; --demo forces the embedded one. The lookup does not walk up the
+    // folders: it used to stop at the user's own persona in the home directory and print its name and
+    // full path on the first line of what is meant to be a demonstration. The header says whose proof
+    // this is, with the path relative to the current folder.
     let proofOn = "the embedded demo persona";
     if (!opts.demo) {
       const { existsSync: exists } = await import("node:fs");
-      const { resolvePersonaOption } = await import("../load.js");
-      const source = resolvePersonaOption(opts.persona ?? ".personaxis/personaxis.md");
+      const { resolve: resolvePath, relative } = await import("node:path");
+      const source = resolvePath(opts.persona ?? ".personaxis/personaxis.md");
       if (exists(source)) {
         setProofSource(source);
+        const shown = relative(process.cwd(), source).replace(/\\/g, "/") || source;
         try {
-          proofOn = `${loadPersona(source).frontmatter && (loadPersona(source).frontmatter as { identity?: { display_name?: string } }).identity?.display_name || "your persona"} (${source})`;
+          const name = (loadPersona(source).frontmatter as { identity?: { display_name?: string } }).identity?.display_name;
+          proofOn = `${name || "your persona"} (${shown})`;
         } catch {
-          proofOn = source;
+          proofOn = shown;
         }
       }
     } else {

@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/mcp",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Personaxis MCP server: load a persona into an MCP host such as Claude Code or Codex, as 16 tools.",
   "license": "MIT",
   "type": "module",
@@ -22,7 +22,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@personaxis/core": "workspace:*",
     "@personaxis/sdk": "workspace:*",
     "zod": "^4.4.3"

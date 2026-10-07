@@ -1127,13 +1127,10 @@ TODO: Explain the key choices in the YAML above.
 }
 
 /**
- * Sibling policy.yaml template (spec v0.5.0). Created next to each PERSONA.md
- * by `init`. Contains the operational metadata that does NOT belong in the
- * LLM system prompt: improvement_policy, runtime, evaluation suites,
- * behavioral assertions.
- *
- * Default mode is "locked" - safest for any new persona until the author
- * explicitly opts into suggesting/auto modes.
+ * Sibling policy.yaml, created next to each personaxis.md by `init`. Holds the
+ * operational metadata that does NOT belong in the model's prompt:
+ * improvement_policy, runtime, evaluation suites, behavioral assertions.
+ * New personas are born `suggesting` (alive); `locked` is the kill-switch.
  */
 export function buildPolicyYaml(metaSlug: string, includeStarterSuites = true): string {
   const evaluation = includeStarterSuites
@@ -1146,9 +1143,9 @@ export function buildPolicyYaml(metaSlug: string, includeStarterSuites = true): 
     : "";
 
   return `# policy.yaml - operational policy for ${metaSlug}
-# Sibling of personaxis.md (spec v1.0.0). NEVER inlined into the LLM system
-# prompt. Read by the Personaxis backend for observability + mutation
-# governance.
+# Sibling of personaxis.md. NEVER placed in the model's prompt. The engine
+# acts on improvement_policy.mode; the other blocks are declarations that
+# \`personaxis validate\` checks, for a host or evaluator that implements them.
 
 spec_version: "1.0.0"
 
@@ -1171,8 +1168,8 @@ runtime:
   min_consistency: 0.7
   allowed_consumers: [agent, human, mcp]
 
-${evaluation}# Behavioral assertions evaluated at runtime by the Personaxis observability
-# layer. Recommended: 3 per layer (~30 total). Each one names the layer it
+${evaluation}# Behavioral assertions, for a judge or evaluator that runs them against the
+# persona's answers; the engine does not evaluate them during a run. Each one names the layer it
 # covers, a type (regex | semantic | llm_judge | activation_projection),
 # its definition, and a severity of info | warn | block. The full shape
 # is in policy.schema.json, which is what validates this file.
