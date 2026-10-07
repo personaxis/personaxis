@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+
+- `@modelcontextprotocol/sdk` is `^1.31.0` (GHSA-6qxp-vccf-f47h, an OAuth client sending credentials to an
+  authorization server the MCP server names). Personaxis was not affected: it uses the SDK as a server
+  and as a stdio client, and the advisory covers OAuth clients over HTTP.
+- Transitive development dependencies (`brace-expansion`, `nanoid`, `postcss`, `source-map-js`) are
+  updated within their ranges. The advisories still open come from `vitest` 3, which runs the tests and
+  is not published, and from `sprintf-js`, which only the command-line binary of `js-yaml` 3 loads.
+
 ### Fixed
 
 - `policy.schema.json` accepts `self_regulation` in `assertions[].layer`. It only listed the 0.x name
