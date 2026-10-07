@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@personaxis/core": "workspace:*",
     "@personaxis/protocol": "workspace:*",
     "@personaxis/sdk": "workspace:*",
