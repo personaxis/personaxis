@@ -9,12 +9,12 @@
  *
  * ## What is derived here
  *
- * **The appraiser.** Every caller wrote `model ? new LlmAppraiser(...) : new
- * HeuristicAppraiser()`, which is not a choice any of them was making: it is the
- * persona's model, resolved, with the offline fallback that exists so a persona with no
- * model configured still runs. A caller that could pass a different appraiser would be
- * appraising this persona with something it never declared, and nobody reading the
- * spec could tell.
+ * **The appraiser.** It is the persona's model, resolved when it appraises, so a model
+ * configured in the middle of a session is the one that judges the next turn. With no
+ * model it refuses (`ModelRequiredError`): since 2026-10-07 there is no offline stand-in,
+ * because the keyword counter that used to play that part moved state on words like
+ * "good" and "fail". A caller that could pass a different appraiser would be appraising
+ * this persona with something it never declared, and nobody reading the spec could tell.
  *
  * ## What stays the caller's, and the one that had to stop being optional
  *
@@ -43,10 +43,9 @@
 import type { Appraiser } from "../appraisal.js";
 import type { LoopEvent } from "../events.js";
 import type { GovernanceConfig } from "../governance.js";
-import { HeuristicAppraiser } from "../heuristic-appraiser.js";
 import { LlmAppraiser } from "../llm-appraiser.js";
 import { LivingLoop, type TickInput, type TickReport } from "../loop.js";
-import { resolveModel } from "../model-config.js";
+import { ModelRequiredError, resolveModel } from "../model-config.js";
 import type { PersonaHandle } from "../persona.js";
 import type { Storage } from "../ports/index.js";
 
@@ -89,16 +88,17 @@ export interface EvolvingSession {
  * be asserting it through everything else that a tick does.
  */
 export function appraiserFor(persona: EvolvingFacts): Appraiser {
-	const model = resolveModel({
-		personaPath: persona.personaPath,
-		frontmatter: persona.frontmatter,
-		...(persona.cwd === undefined ? {} : { cwd: persona.cwd }),
-	});
-
-	// The offline fallback is not a lesser mode, it is the reason a persona with no
-	// model configured is still governed: the heuristic appraiser proposes, and every
-	// clamp, gate and audit downstream is identical either way.
-	return model ? new LlmAppraiser({ ...model, timeoutMs: 30_000 }) : new HeuristicAppraiser();
+	return {
+		appraise: async (input) => {
+			const model = resolveModel({
+				personaPath: persona.personaPath,
+				frontmatter: persona.frontmatter,
+				...(persona.cwd === undefined ? {} : { cwd: persona.cwd }),
+			});
+			if (!model) throw new ModelRequiredError("Appraising what this persona lived");
+			return new LlmAppraiser({ ...model, timeoutMs: 30_000 }).appraise(input);
+		},
+	};
 }
 
 /**

@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { buildSpecDocument, buildSpecObject } from "../src/genesis/spec-builder.js";
-import { ensureState, extractEnvelopes, HeuristicAppraiser, LivingLoop, loadPersona, record } from "../src/index.js";
+import { ensureState, extractEnvelopes, LivingLoop, loadPersona, record } from "../src/index.js";
 
 type Dict = Record<string, any>;
 const spec = (seed: Dict = {}): Dict => buildSpecObject({ displayName: "Tester", purpose: "test", ...seed } as never) as Dict;
@@ -65,9 +65,10 @@ describe("a persona Genesis created comes back from a bad run by itself (E127)",
 		const moved = ensureState(loadPersona(personaPath)).values["affect.baseline.core_affect.valence"]!;
 		expect(moved).toBeCloseTo(-0.3);
 
-		// Four quiet turns, the half-life Genesis gave it: the offline appraiser proposes nothing on a
-		// neutral line, so only homeostasis moves it.
-		const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
+		// Four quiet turns, the half-life Genesis gave it: the appraiser proposes nothing, so only
+		// homeostasis moves it.
+		const quiet = { appraise: async () => ({ appraisal: "", mutations: [], memories: [], confidence: 1 }) };
+		const loop = new LivingLoop(personaPath, { appraiser: quiet });
 		for (let i = 0; i < 4; i += 1) await loop.tick({ observation: "Noted.", source: "user" });
 
 		const after = ensureState(loadPersona(personaPath)).values["affect.baseline.core_affect.valence"]!;

@@ -160,7 +160,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
         }
       }
     } else {
-      stdout.write(chalk.dim("  Skipped, running offline (heuristic). Configure anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
+      stdout.write(chalk.dim("  Skipped. Nothing answers until a model is set; configure it anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
     }
   }
 
@@ -643,4 +643,4 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   await farewell(ctx.handle.frontmatter);
 }
 
-/** Guide a first-time user to configure a model instead of silently falling back to heuristic mode. */
+/** Guide a first-time user to configure a model, which every turn needs. */

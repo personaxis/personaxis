@@ -162,7 +162,29 @@ export interface ResolveModelOptions {
 }
 
 /**
- * Resolve the effective model for a persona. Returns undefined (→ heuristic/offline) unless BOTH an
+ * What every model-shaped step throws when no model is configured.
+ *
+ * Decided by David on 2026-10-07: creating a persona, writing its compiled document, appraising what it
+ * lived and answering as it are a model's work or they are not done. The offline stand-ins (a keyword
+ * appraiser, a reply assembled from the definition, a seed guessed by regex) made a template look like a
+ * persona, so they were removed and this says what to do instead.
+ */
+export class ModelRequiredError extends Error {
+  readonly modelRequired = true;
+  constructor(public readonly step: string) {
+    super(
+      `${step} needs a model, and none is configured. Point Personaxis at any OpenAI-compatible endpoint:\n` +
+        `  personaxis config set --global local.endpoint <url>\n` +
+        `  personaxis config set --global local.model <model>\n` +
+        `  personaxis config set --global local.apiKeyEnv <ENV_VAR_WITH_YOUR_KEY>\n` +
+        `or set PERSONAXIS_ENDPOINT and PERSONAXIS_MODEL (and PERSONAXIS_API_KEY).`,
+    );
+    this.name = "ModelRequiredError";
+  }
+}
+
+/**
+ * Resolve the effective model for a persona. Returns undefined unless BOTH an
  * endpoint and a model are configured. The API key is resolved from the env var named by
  * `apiKeyEnv`, else PERSONAXIS_API_KEY, else an inline `apiKey`, in that order.
  */

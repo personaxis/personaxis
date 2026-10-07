@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { modelEnv, runCli, startFakeModel, type FakeModel } from "./helpers/fake-model.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, "..", "dist", "index.js");
@@ -35,27 +37,39 @@ function run(args: string[], env: Record<string, string> = {}): { code: number; 
 describe.skipIf(!built)("headless -p (V2-F3.A6)", () => {
   let home: string;
   let persona: string;
-  beforeAll(() => {
+  let model: FakeModel;
+  beforeAll(async () => {
     const dir = mkdtempSync(join(tmpdir(), "pxs-headless-"));
     home = join(dir, "home");
     mkdirSync(home, { recursive: true });
     persona = join(dir, "personaxis.md");
     writeFileSync(persona, FIX);
+    model = await startFakeModel();
+  });
+  afterAll(() => model.close());
+
+  it("prints the model's reply and exits 0", { timeout: 90_000 }, async () => {
+    const r = await runCli(CLI, ["-p", "hi", "--persona", persona], { env: { PERSONAXIS_HOME: home, ...modelEnv(model) } });
+    expect(r.code, r.out).toBe(0);
+    expect(r.stdout.trim()).toBe("Hello.");
   });
 
-  it("prints a text reply and exits 0", { timeout: 90_000 }, () => {
-    const r = run(["-p", "hi", "--persona", persona], { PERSONAXIS_HOME: home });
-    expect(r.code).toBe(0);
-    expect(r.out.trim().length).toBeGreaterThan(0);
-  });
-
-  it("emits valid JSON with --output-format json", { timeout: 90_000 }, () => {
-    const r = run(["-p", "hi", "--output-format", "json", "--persona", persona], { PERSONAXIS_HOME: home });
-    expect(r.code).toBe(0);
-    const line = r.out.trim().split("\n").filter(Boolean).pop() ?? "";
+  it("emits valid JSON with --output-format json", { timeout: 90_000 }, async () => {
+    const r = await runCli(CLI, ["-p", "hi", "--output-format", "json", "--persona", persona], { env: { PERSONAXIS_HOME: home, ...modelEnv(model) } });
+    expect(r.code, r.out).toBe(0);
+    const line = r.stdout.trim().split("\n").filter(Boolean).pop() ?? "";
     const obj = JSON.parse(line) as { type: string; reply: unknown };
     expect(obj.type).toBe("result");
-    expect(typeof obj.reply).toBe("string");
+    expect(obj.reply).toBe("Hello.");
+  });
+
+  it("with no model, fails with exit 2 and says how to configure one, instead of printing that as the answer", { timeout: 90_000 }, async () => {
+    const r = await runCli(CLI, ["-p", "hi", "--persona", persona], {
+      env: { PERSONAXIS_HOME: home, PERSONAXIS_ENDPOINT: "", PERSONAXIS_MODEL: "", PERSONAXIS_API_KEY: "" },
+    });
+    expect(r.code).toBe(2);
+    expect(r.stdout.trim()).toBe("");
+    expect(r.stderr).toMatch(/needs a model/);
   });
 
   it("rejects an unknown --output-format (exit 2)", { timeout: 90_000 }, () => {

@@ -13,12 +13,12 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import chalk from "chalk";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
 import { writeStarterPersona } from "../src/starter.js";
 import { daemonLines } from "../src/repl/views/settings-data.js";
+import { modelEnv, runCli, startFakeModel } from "./helpers/fake-model.js";
 
 chalk.level = 0;
 const CLI = join(process.cwd(), "dist", "index.js");
@@ -77,13 +77,13 @@ describe("the Daemons view explains itself (V7.H2)", () => {
 });
 
 describe("a background run is a REAL session (V7.H3)", () => {
-  it("writes a transcript, labelled `background`, under the id it reported", () => {
+  it("writes a transcript, labelled `background`, under the id it reported", async () => {
     const persona = writeStarterPersona(dir, "Clio", "rev");
-    const r = spawnSync(
-      process.execPath,
-      [CLI, "-p", "what is your role?", "--persona", persona, "--output-format", "stream-json"],
-      { cwd: dir, encoding: "utf-8", env: { ...process.env, PERSONAXIS_HOME: home } },
-    );
+    const model = await startFakeModel();
+    const r = await runCli(CLI, ["-p", "what is your role?", "--persona", persona, "--output-format", "stream-json"], {
+      cwd: dir,
+      env: { PERSONAXIS_HOME: home, ...modelEnv(model) },
+    }).finally(() => model.close());
     const init = (r.stdout ?? "")
       .split("\n")
       .map((l) => {

@@ -162,6 +162,9 @@ export class LivingLoop {
           evolutionView,
         });
       } catch (err) {
+        // No model is not a blip to ride out: there is no offline appraiser, so abstaining would leave a
+        // persona that never evolves and a caller that never hears why (2026-10-07).
+        if ((err as { modelRequired?: boolean }).modelRequired) throw err;
         bus.emit({ type: "error", message: `appraiser unavailable: ${(err as Error).message}` });
         bus.emit({ type: "abstain", reason: "appraiser error" });
         return { mutationsApplied: 0, memoriesWritten: 0, abstained: true };

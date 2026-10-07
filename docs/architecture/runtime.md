@@ -75,8 +75,8 @@ auditable event on the bus; nothing is a black box.
    live as an **overlay** merged onto the frontmatter at tick time; the spec file
    (`personaxis.md`) is never mutated in place. Envelopes (`{mean, range}`) are extracted from the
    merged view.
-3. Appraise. The appraiser (your model via `LlmAppraiser`, or the offline
-   `HeuristicAppraiser`) receives the observation, the persona body, the mutable fields, and a
+3. Appraise. The appraiser (your model, via `LlmAppraiser`; there is no offline appraiser, and
+   with no model the tick refuses with `ModelRequiredError`) receives the observation, the persona body, the mutable fields, and a
    grounded evolution view, and returns **structured signals only**:
    `{ confidence, mutations, selfEdits, preferences, memories }`. The model proposes; it never
    writes free text into state. An appraiser error degrades to "no evolution this turn" and the
@@ -165,7 +165,7 @@ Sessions belong to the REPL. Learning through hooks happens without any session,
 | Reasoning / thinking | not captured by the hook; pass it explicitly if you want it appraised |
 | Malicious / injection | `injectionBlocked`: no mutations, no self-edits; content may be remembered, tagged |
 | Low confidence (`< 0.2`) | abstain; nothing changes |
-| Offline / no model | `HeuristicAppraiser` runs; the loop still governs, clamps, and remembers |
+| No model configured | the tick refuses with `ModelRequiredError` and says how to configure one; nothing changes |
 | Appraiser unreachable | degrade to "no evolution this turn"; the persona still replied |
 | Drift over a layer threshold | `drift-threshold` anomaly emitted; the clamp already held the value |
 | `locked` / `suggesting` / `autonomous` | self-edits are dropped / queued / auto-applied under gates (§3.6) |
