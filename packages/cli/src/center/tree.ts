@@ -17,16 +17,17 @@
  * persona on disk; each level is computed when it is entered.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { hostname } from "node:os";
-import { stateOf, loadPersona,
+import {
+  stateOf,
+  loadPersona,
   loadRegistry,
   livePresence,
   describePresence,
   extractEnvelopes,
   displayName,
-  readState,
   proposals,
   readMode,
   type PersonaFrontmatter,

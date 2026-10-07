@@ -53,7 +53,6 @@ import { describe, expect, it } from "vitest";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACKAGES = join(HERE, "..", "..");
-const CORE_SRC = join(PACKAGES, "core", "src");
 
 /**
  * Waiting on something named, rather than forgotten.
@@ -182,8 +181,6 @@ const WAITING: { readonly name: string; readonly until: string }[] = [
 		until: "a caller outside `sessions.ts` needs it; its last one was the deleted writer",
 	},
 ];
-
-const EXEMPT = new Set(WAITING.map((entry) => entry.name));
 
 /**
  * Every source under a root, tests included: a test in another package is a real

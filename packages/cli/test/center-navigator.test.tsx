@@ -5,7 +5,6 @@
  * "read-only").
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React from "react";
 import { render } from "ink-testing-library";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -14,7 +14,7 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { ensureState, readState, proposals, applySelfEdit, rejectSelfEdit, readMemoryTypes } from "@personaxis/core";
+import { ensureState, proposals, applySelfEdit, rejectSelfEdit, readMemoryTypes } from "@personaxis/core";
 import { resolve } from "node:path";
 import { resolvePersonaSourcePath } from "../load.js";
 import { makeCtx } from "../repl/session.js";

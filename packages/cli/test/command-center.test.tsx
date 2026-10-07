@@ -5,7 +5,6 @@
  * in a temp dir, not the developer's ~/.personaxis.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React from "react";
 import { render } from "ink-testing-library";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

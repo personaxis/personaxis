@@ -26,9 +26,6 @@ import {
   Tracer,
   readObservability,
   loadPersona,
-  readState,
-  writeState,
-  withStateLock,
   ensureState,
   extractEnvelopes,
   resolveField,
@@ -60,8 +57,7 @@ import {
   type ProvenanceSource,
 } from "@personaxis/core";
 import { randomUUID } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 export interface ObserveResult {
   report: { mutationsApplied: number; memoriesWritten: number; abstained: boolean };

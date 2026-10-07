@@ -230,7 +230,6 @@ export function auraRows(seed: number, frame = 0, state: AuraState = {}): string
 
   const lock = f.lock;
   const [earL, earR] = f.ears;
-  const face = (inner: string, left = " ", right = " "): string => `${left}${lock}│${inner}│${lock}${right}`;
 
   // ── the figure is ALIVE (V7.D8) ──────────────────────────────────────────
   // Motion has to be noticed quickly. One slow animation is invisible; five,

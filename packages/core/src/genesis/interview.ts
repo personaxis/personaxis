@@ -7,7 +7,6 @@
 
 import {
   ITEM_BANK,
-  ITEM_BANK_VERSION,
   likertToMean,
   confidenceToHalfWidth,
   rankToWeight,

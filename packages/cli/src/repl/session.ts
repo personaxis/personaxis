@@ -8,11 +8,8 @@
  */
 
 import { stdout } from "node:process";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve, join, dirname } from "node:path";
 import {
   run,
-  loadPersona,
   stateOf,
   displayName,
   readMode,
@@ -26,27 +23,18 @@ import {
   nameSession,
   makeRecompileHook,
   activeOverlay,
-  readState,
-  readMemoryTypes,
-  readWritePolicy,
-  readConsolidationMode,
-  readMemoryKnobs,
   closeSessionMemory,
-  consolidateSemantic,
-  pruneMemory,
   listSessions,
   findSession,
   loadConversation,
   readSession,
-  readAutobiographical,
-  appendAutobiographical,
   recordSessionStats,
   type ContextMeter,
   type SessionSummary,
   type SessionKind,
 } from "@personaxis/core";
 import chalk from "chalk";
-import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
+import { isSubagentPath, slugAddressFromPath } from "../load.js";
 import { liveCompiledDocument } from "../compiled-document.js";
 import { replyLine, userLine } from "./render.js";
 import type { Ctx } from "./types.js";

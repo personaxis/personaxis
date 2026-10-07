@@ -24,8 +24,6 @@ import {
   genesis,
   isGenesisProfile,
   GENESIS_PROFILES,
-  mergeSeed,
-  buildSpecDocument,
   pendingItems,
   applyAnswers,
   loadDraft,

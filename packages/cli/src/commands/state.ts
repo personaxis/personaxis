@@ -320,7 +320,7 @@ const driftSubcommand = new Command("drift")
   .option("--json", "Output the report as JSON")
   .action((options: { file?: string; json?: boolean }) => {
     try {
-      const { personaPath, statePath } = resolvePersonaAndState(options.file);
+      const { personaPath } = resolvePersonaAndState(options.file);
       const handle = loadPersona(personaPath);
       const fm = handle.frontmatter as Record<string, unknown>;
       const env = extractEnvelopes(handle.frontmatter);

@@ -12,11 +12,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter, buildPolicy, POSTURES, notePostureChange, readGoalText, goalPathFor, writeGoalAt } from "../src/repl/config.js";
 import { buildAwarenessBlock } from "../src/repl/awareness.js";
-import { runCommand } from "../src/repl/commands.js";
 import { writeStarterPersona } from "../src/starter.js";
 
 let dir: string;

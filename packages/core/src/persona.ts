@@ -213,7 +213,6 @@ export function ensureState(handle: PersonaHandle): StateFile {
   return withStateLock(handle.statePath, () => {
     if (existsSync(handle.statePath)) return readState(handle.statePath);
     const env = extractEnvelopes(handle.frontmatter);
-    const meta = (handle.frontmatter.metadata ?? {}) as { name?: string; version?: string };
     const values: Record<string, number> = {};
     for (const [k, e] of Object.entries(env.envelopes)) values[k] = e.mean;
     // The origins first, so the file is printed from a record rather than asserted.

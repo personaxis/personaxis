@@ -17,7 +17,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { ensureState, readState, type PersonaHandle, type StateFile } from "./persona.js";
+import { ensureState, type PersonaHandle, type StateFile } from "./persona.js";
 
 export const LIVE_START = "<!-- PERSONAXIS:LIVE-STATE start -->";
 export const LIVE_END = "<!-- PERSONAXIS:LIVE-STATE end -->";

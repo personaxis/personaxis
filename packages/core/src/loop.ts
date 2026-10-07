@@ -35,7 +35,7 @@ import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers,
 import { buildEvolutionView } from "./evolution-view.js";
 import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
-import { loadPersona, type PersonaHandle, type StateFile } from "./persona.js";
+import { loadPersona, type PersonaHandle } from "./persona.js";
 import { defaultFsStorage, type Storage } from "./ports/index.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, AppraisalSignal, ProvenanceSource } from "./appraisal.js";

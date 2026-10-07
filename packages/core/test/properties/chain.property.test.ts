@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fc from "fast-check";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import {

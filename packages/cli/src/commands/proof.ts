@@ -18,15 +18,15 @@
 import { Command } from "commander";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import chalk from "chalk";
-import { ensureState,
+import {
+  ensureState,
   loadPersona,
   memoryPath,
   record,
   type Envelope,
-  readState,
   extractEnvelopes,
   governMutations,
   scanForInjection,

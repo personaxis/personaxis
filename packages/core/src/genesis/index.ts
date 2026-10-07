@@ -45,7 +45,7 @@ const EMPTY_SEED: PersonaSeed = {
 };
 
 /** Merge contributions in order (later wins per scalar; maps/lists union). */
-export function mergeSeed(contributions: SeedContribution[]): { seed: PersonaSeed; ledger: EvidenceLedger } {
+function mergeSeed(contributions: SeedContribution[]): { seed: PersonaSeed; ledger: EvidenceLedger } {
   const seed: PersonaSeed = structuredClone(EMPTY_SEED);
   const ledger: EvidenceLedger = { items: [] };
   for (const c of contributions) {

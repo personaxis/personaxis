@@ -11,10 +11,10 @@
 
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { join, relative, resolve, dirname, basename } from "node:path";
+import { relative, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import chalk from "chalk";
-import { ensureState, record, readState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
+import { ensureState, record, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
@@ -52,8 +52,7 @@ import { qualitativeDriftLines } from "./views/drift-data.js";
 import { AUDIT_TABS, auditLines } from "./views/audit-data.js";
 import { registerHistoryView } from "./views/history.js";
 import { rewind, rewindPlan } from "../rewind.js";
-import { resolveDeclaredSkills } from "../targets/skills.js";
-import { loadPersonaFile, slugAddressFromPath } from "../load.js";
+import { slugAddressFromPath } from "../load.js";
 
 // Re-exported for the REPL's public surface (tests + the CLI entry import these). The whole
 // REPL was split into modules (F3.6): types, config, render, daemons, session, turn, commands.

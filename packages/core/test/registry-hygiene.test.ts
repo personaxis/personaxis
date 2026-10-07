@@ -5,7 +5,7 @@
  * count only looked at GLOBAL personas.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,7 +14,6 @@ import {
 
   registerProject,
   pruneRegistry,
-  liveProjects,
   overseerView,
   isEphemeralProjectPath,
   loadRegistry,
@@ -71,7 +70,7 @@ describe("registry hygiene (V7.A8)", () => {
     const result = pruneRegistry();
     expect(result.removed).toContain(gone);
     expect(result.kept).toBe(1);
-    expect(liveProjects().map((p) => p.root)).toEqual([LIVE_PROJECT]);
+    expect(Object.keys(loadRegistry().projects)).toEqual([LIVE_PROJECT]);
   });
 
   it("counts personas ACROSS projects, not just global ones", () => {

@@ -26,7 +26,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { render, Box, Text, useApp, useInput, type Instance } from "ink";
+import { render, Box, Text, useInput, type Instance } from "ink";
 import TextInput from "ink-text-input";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";

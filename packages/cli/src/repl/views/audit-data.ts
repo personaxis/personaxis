@@ -14,10 +14,10 @@
  */
 
 import chalk from "chalk";
-import { ensureState,
+import {
+  ensureState,
   stateOf,
   record,
-  readState,
   verifyMemoryChain,
   readMemory,
   proposals,
@@ -133,7 +133,6 @@ export function integrityLines(ctx: Ctx): string[] {
   if (!st) return [];
   const chain = verifyMemoryChain(p);
   const entries = readMemory(p);
-  const env = extractEnvelopes(ctx.handle.frontmatter);
   const lines: string[] = [
     chalk.dim("  what this proves: memory cannot be altered unnoticed (T5), and the state is exactly"),
     chalk.dim("  what its own log says it should be (T4). Both are re-derived right now, not cached."),

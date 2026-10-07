@@ -8,20 +8,14 @@
  */
 
 import chalk from "chalk";
-import { relative, dirname, join } from "node:path";
-import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
-import { ensureState,
-  readState,
+import { dirname, join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  ensureState,
   extractEnvelopes,
   driftReport,
   readDriftThresholds,
   readMaxStepDelta,
-  resolveField,
-  readArbitrationValues,
-  arbitrate,
-  rankValues,
-  activeOverlay,
-  proposals,
   readMemory,
   readMemoryTypes,
   readMemoryKnobs,
@@ -33,47 +27,30 @@ import { ensureState,
   consolidateSemantic,
   pruneMemory,
   searchMemory,
-  applySelfEdit,
-  rejectSelfEdit,
-  verifyMemoryChain,
-  overseerView,
-  liveProjects,
   readRecompilePending,
-  displayName,
-  readMode,
-  loadConversation,
   listSessions,
-  findSession,
-  renameSession,
 } from "@personaxis/core";
-import { envelopeBars, auraLines } from "@personaxis/tui/visual";
+import { auraLines } from "@personaxis/tui/visual";
 import { sigilParams, liveIntensity } from "@personaxis/core";
-import { renderFrame } from "@personaxis/tui";
 import type { SlashItem } from "@personaxis/tui/screen";
 import { compactConversation } from "./compact.js";
-import { isSubagentPath, slugAddressFromPath, loadPersonaFile, compiledPathFor } from "../load.js";
-import { runMode, isMode, MODES } from "../commands/improve.js";
+import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
 import { runCompile } from "../commands/compile.js";
 import { setModelSetting } from "../config.js";
-import { installHook, HOSTS } from "../commands/hooks.js";
-import { validatePersona } from "../schema.js";
-import { lint } from "../linter/index.js";
-import { writeStarterPersona } from "../starter.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { discoverTree } from "./roster.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import type { Ctx, CommandDef } from "./types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, readGoalText } from "./config.js";
-import { fmtK, panel, meterBar, userLine } from "./render.js";
-import { version } from "../generated/assets.js";
-import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
+import { fmtK, panel, meterBar } from "./render.js";
+import { stopDaemons, runCliPassthrough, runCliInteractive } from "./daemons.js";
 import { resumeSessionInto, replayTranscript } from "./session.js";
-import { maybeRecompile, handleTurn } from "./turn.js";
+import { handleTurn } from "./turn.js";
 import { loadCustomCommands, findCustomCommand, expandCommand } from "./custom-commands.js";
 import { resolveDeclaredSkills } from "../targets/skills.js";
 import type { PersonaData } from "../load.js";
-import { startTask, listTasks, readTaskDetail, markTaskSurfaced } from "./tasks.js";
-import { statusLines, configLines, usageLines } from "./views/settings-data.js";
+import { startTask } from "./tasks.js";
+import { statusLines } from "./views/settings-data.js";
 import { driftTextLines } from "./views/drift-view.js";
 import { runDoctorChecks } from "./doctor-checks.js";
 import { lineText } from "./views/tabbed.js";

@@ -6,7 +6,6 @@
  * mapping (the honesty surface).
  */
 import { describe, it, expect } from "vitest";
-import React from "react";
 import { render } from "ink-testing-library";
 import { InterviewWizard } from "../src/wizard.js";
 import { sparkline, envelopeRow } from "../src/visual.js";
@@ -39,7 +38,6 @@ async function drive(items: InterviewItem[], keys: string[]): Promise<{ answers:
 }
 
 const CR = String.fromCharCode(13);
-const LEFT = String.fromCharCode(27) + "[D";
 
 describe("InterviewWizard", () => {
   it("collects text, likert, choice, and rank answers end to end", async () => {
