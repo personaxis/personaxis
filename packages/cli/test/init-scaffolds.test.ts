@@ -46,3 +46,12 @@ describe("init scaffolds are valid v1.0 documents", () => {
     expect((y.improvement_policy as Record<string, unknown>).mode).toBeDefined();
   });
 });
+
+describe("the policy.yaml that init writes", () => {
+  it("does not promise a hosted backend the local engine is not", () => {
+    const text = buildPolicyYaml("my-project");
+    expect(text).not.toMatch(/Personaxis (backend|observability|platform|dashboard)/i);
+    // and it says who acts on what: the engine on the mode, an evaluator on the assertions
+    expect(text).toMatch(/engine/i);
+  });
+});
