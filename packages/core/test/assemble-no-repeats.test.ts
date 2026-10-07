@@ -61,6 +61,28 @@ describe("hard limits in the compiled document", () => {
   });
 });
 
+describe("an empty Never list", () => {
+  // Measured 2026-10-07: with no prohibited behaviors the document printed "**Never:**" over nothing, and
+  // the model polishing it wrote "(No additional constraints specified.)" under it.
+  it("prints no Never heading when there is nothing under it", () => {
+    expect(doc(SAFETY)).not.toContain("**Never:**");
+  });
+
+  it("prints the Never list when there is one", () => {
+    const input: AssembleInput = {
+      persona: {
+        identity: { display_name: "Lens" },
+        character: { prohibited_behaviors: ["Approving code without tests."] },
+        self_regulation: { hard_limits: SAFETY },
+      },
+      target: { name: "Lens", isSubagent: false, resourceBase: "./.personaxis/" },
+    };
+    const text = assemblePersonaDoc(input);
+    expect(text).toContain("**Never:**");
+    expect(text).toContain("- Approving code without tests.");
+  });
+});
+
 describe("humor in How you speak", () => {
   it("does not end a humor sentence with two periods", () => {
     const text = doc(SAFETY, { humor: "Dry, and rare." });

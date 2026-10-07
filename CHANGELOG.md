@@ -51,6 +51,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   not `attentiontodetail`.
 - Genesis no longer writes "Created via personaxis create on <date>" as the persona's origin when the
   source gives none; the date is already in `metadata.created`.
+- A trait declared high or low compiles as high or low. When the default bands left an envelope inside
+  one band, the boundaries were placed at the envelope's thirds, so the mean, near the centre, always
+  fell in "moderate": a trait declared at 0.9 compiled as "in measured doses". The boundaries now sit
+  below a high mean and above a low one, and the envelope still reaches a second band.
+- The compiled document prints no "Never" heading when the persona declares no prohibited behaviors; a
+  model polishing the document filled the empty heading with "(No additional constraints specified.)".
 
 ## [0.17.0] - 2026-10-03: works whole on your machine, and `guard` enforces on its own
 
