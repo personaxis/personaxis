@@ -1,6 +1,6 @@
 {
   "name": "@personaxis/mcp",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Personaxis MCP server: load a persona into an MCP host such as Claude Code or Codex, as 16 tools.",
   "license": "MIT",
   "type": "module",
