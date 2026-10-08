@@ -12,6 +12,7 @@ import {
   clearRecompilePending,
   assemblePersonaDoc,
   checkFaithfulness,
+  enforceProtected,
   distSlices,
   ModelRequiredError,
   DIST_HOT_FILE,
@@ -217,6 +218,17 @@ async function writeDocument(
     if (report.ok) return { content, via: `written by ${result.source}`, source: result.source, model: result.model, attempts: attempt };
     const findings = report.findings.map(describe);
     if (attempt > REPAIRS) {
+      // The protected rules are the definition's, not the model's wording: put back what it dropped, take out
+      // what it added to a protected section, keep its prose, and say so. A new heading cannot be put right
+      // that way, so the document is checked again and refused if it still fails.
+      const enforced = enforceProtected(reference, content, report);
+      // A few fixes, not a rewrite: past a quarter of the protected rules (or two), the model did not write this persona.
+      const few = enforced.restored + enforced.removed <= Math.max(2, Math.floor(enforced.protectedClaims / 4));
+      if (few && checkFaithfulness(reference, enforced.document).ok) {
+        const note = [enforced.restored ? `${enforced.restored} rule(s) restored` : "", enforced.removed ? `${enforced.removed} added line(s) removed` : ""].filter(Boolean).join(", ");
+        if (!opts.quiet) console.log(chalk.yellow("!"), `the model's document kept failing the check; the definition's protected rules were enforced (${note})`);
+        return { content: enforced.document, via: `written by ${result.source}, ${note} from the definition`, source: result.source, model: result.model, attempts: attempt };
+      }
       // Kept beside the agent's prompts, never where a host would load it as the persona.
       const kept = join(".personaxis", ".tmp", "rejected-PERSONA.md");
       mkdirSync(dirname(resolve(kept)), { recursive: true });

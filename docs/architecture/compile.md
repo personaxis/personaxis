@@ -16,8 +16,11 @@ work is done and never as labels or levels, the reason for a rule where the spec
 spec's voice exemplars word for word, a normal tone, and only the reference's headings. The
 faithfulness check (`packages/core/src/compile/faithfulness.ts`) then holds the document to the
 reference: no protected bullet dropped, none added, no new heading. A rejected document goes back
-with its findings and its own text, twice; after that `compile` stops, writes nothing, and keeps the
-last attempt in `.personaxis/.tmp/rejected-PERSONA.md`. The reference itself is never written as a
+with its findings and its own text, twice. If it still fails on a few protected rules (at most a quarter
+of them, or two), those rules are the definition's to enforce: the dropped ones go back verbatim under
+their label, the added ones come out, the model's prose stays, and the output says how many
+(`enforceProtected`). Anything else (a missing protected section, a new heading, many rules) stops
+`compile`: it writes nothing and keeps the last attempt in `.personaxis/.tmp/rejected-PERSONA.md`. The reference itself is never written as a
 persona's document.
 
 **Canonical output paths** (see [multi-persona.md](./multi-persona.md)):

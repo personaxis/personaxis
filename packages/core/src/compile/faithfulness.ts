@@ -157,3 +157,80 @@ export function checkFaithfulness(
 
   return { ok: findings.length === 0, findings };
 }
+
+/**
+ * Put a written document back in line with the reference on the protected claims alone: every dropped
+ * bullet goes back verbatim into its section (under the same **Always:** or **Never:** label when the
+ * reference has one), every invented bullet in a protected section is taken out. Everything else, the
+ * model's prose included, is left as written. A heading the reference does not have cannot be fixed here,
+ * so the caller checks again and still refuses such a document.
+ *
+ * Why it exists: the protected claims are the definition's, not the model's wording. Measured 2026-10-08
+ * with command-a on a folder persona, the model turned two "Never" rules into positive phrasing merged with
+ * others and did not restore them in two repairs; without this, compile wrote nothing. The caller says how
+ * many it restored, so a restored rule is never presented as the model's.
+ */
+export function enforceProtected(
+  reference: string,
+  written: string,
+  report: FaithfulnessReport,
+): { document: string; restored: number; removed: number; protectedClaims: number } {
+  const ref = claimsBySection(reference);
+  const protectedClaims = DEFAULT_SECTIONS.reduce((n, section) => n + (ref.get(section)?.length ?? 0), 0);
+  const lines = written.split(/\r?\n/);
+  const refLines = reference.split(/\r?\n/);
+  const sectionStart = (all: string[], section: string): number => all.findIndex((l) => /^##\s+/.test(l) && l.replace(/^##\s+/, "").trim().toLowerCase() === section);
+  const sectionEnd = (all: string[], start: number): number => {
+    const next = all.findIndex((l, i) => i > start && /^##\s+/.test(l));
+    return next === -1 ? all.length : next;
+  };
+  const bulletText = (l: string): string | undefined => l.match(/^\s*[-*]\s+(.*)$/)?.[1]?.replace(/^\*\*[^*]+\*\*:?\s*/, "").trim();
+  const labelOf = (l: string): string | undefined => l.match(/^\s*\*\*([^*]+?):?\*\*\s*$/)?.[1]?.trim().toLowerCase();
+  let removed = 0;
+  let restored = 0;
+
+  for (const f of report.findings) {
+    if (f.kind !== "invented" || f.section === "(sections)") continue;
+    const start = sectionStart(lines, f.section);
+    if (start === -1) continue;
+    const end = sectionEnd(lines, start);
+    const at = lines.findIndex((l, i) => i > start && i < end && bulletText(l) === f.text);
+    if (at !== -1) {
+      lines.splice(at, 1);
+      removed += 1;
+    }
+  }
+
+  for (const f of report.findings) {
+    if (f.kind !== "dropped") continue;
+    // The label the reference puts it under, if any (**Always:** / **Never:**).
+    const refStart = sectionStart(refLines, f.section);
+    const refAt = refLines.findIndex((l, i) => i > refStart && bulletText(l) === f.text);
+    let label: string | undefined;
+    for (let i = refAt - 1; i > refStart && label === undefined; i -= 1) label = labelOf(refLines[i] ?? "");
+
+    // Only inside a section the model wrote: a document missing whole protected sections is not a version
+    // of this persona to correct, and stays refused.
+    const start = sectionStart(lines, f.section);
+    if (start === -1) continue;
+    const end = sectionEnd(lines, start);
+    let insertAt = end;
+    const labelAt = label === undefined ? -1 : lines.findIndex((l, i) => i > start && i < end && labelOf(l) === label);
+    if (labelAt !== -1) {
+      insertAt = labelAt + 1;
+      while (insertAt < end && bulletText(lines[insertAt] ?? "") !== undefined) insertAt += 1;
+    } else {
+      // After the section's last bullet, or right after its heading when it has none.
+      let last = -1;
+      for (let i = start + 1; i < end; i += 1) if (bulletText(lines[i] ?? "") !== undefined) last = i;
+      insertAt = last === -1 ? start + 1 : last + 1;
+      if (label !== undefined) {
+        lines.splice(insertAt, 0, `**${label.charAt(0).toUpperCase()}${label.slice(1)}:**`);
+        insertAt += 1;
+      }
+    }
+    lines.splice(insertAt, 0, `- ${f.text}`);
+    restored += 1;
+  }
+  return { document: lines.join("\n"), restored, removed, protectedClaims };
+}

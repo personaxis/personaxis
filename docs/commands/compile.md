@@ -33,8 +33,10 @@ personaxis compile [slug] [options]
   first, traits as behaviour, the spec's voice exemplars word for word, hard limits,
   stay-in-character rules, memory and resources.
 - Checks it against the reference (nothing protected dropped or added, no new heading). A rejected
-  document goes back to the model with its findings, twice; then `compile` stops, writes nothing,
-  and keeps the last attempt in `.personaxis/.tmp/rejected-PERSONA.md`. Without a model it refuses.
+  document goes back to the model with its findings, twice. A few protected rules still missing or
+  added are then put right from the definition, and the output says how many; more than that, or a
+  missing section or a new heading, and `compile` stops, writes nothing, and keeps the last attempt in
+  `.personaxis/.tmp/rejected-PERSONA.md`. Without a model it refuses.
 - Records the version in the persona's record (`compiled`: the document's hash, the cause, the hash of
   the definition, the model) and keeps its text once per hash in `compiled/<hash>.md`, so the document an
   agent read on a given day can be read back. `--history` lists them.
