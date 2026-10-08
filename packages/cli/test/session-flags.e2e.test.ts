@@ -4,6 +4,7 @@
  * PERSONAXIS_HOME + HOME are sandboxed and PERSONAXIS_NO_INHERIT stops the
  * git-like walk-up from attaching to the developer's real persona.
  */
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +19,8 @@ let cwd: string;
 let model: FakeModel;
 beforeAll(async () => {
   cwd = mkdtempSync(join(tmpdir(), "pxs-flags-"));
+  // The product writes no starter persona any more (2026-10-08): the session gets the test one.
+  writeTestPersona(cwd, "Aria");
   model = await startFakeModel();
 });
 afterAll(async () => {

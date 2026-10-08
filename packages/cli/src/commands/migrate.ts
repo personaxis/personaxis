@@ -174,7 +174,7 @@ function rewriteFrontmatter(yamlText: string, report: MigrationReport): string {
     /^\s*actions:\s*\[/m.test(next)
   ) {
     report.manualFollowups.push(
-      "Replace `reflexive_self_regulation.actions[]` flat list with `decisions{}` structured groups (response_decision, interaction_decision, governance_decision, cognition_decision). See templates/personaxis_template.md v0.6.",
+      "Replace `reflexive_self_regulation.actions[]` flat list with `decisions{}` structured groups (response_decision, interaction_decision, governance_decision, cognition_decision). See personaxis_template.md in the persona.md specification.",
     );
   }
 

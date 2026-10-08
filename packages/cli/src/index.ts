@@ -11,7 +11,6 @@ import { diffCommand } from "./commands/diff.js";
 import { exportCommand } from "./commands/export.js";
 import { noteProject } from "./project-registration.js";
 import { specCommand } from "./commands/spec.js";
-import { templateCommand } from "./commands/template.js";
 import { pullCommand } from "./commands/pull.js";
 import { runtimeCommand } from "./commands/runtime.js";
 import { connectCommand } from "./commands/connect.js";
@@ -133,7 +132,6 @@ const COMMANDS = [
   diffCommand,
   specCommand,
   listCommand,
-  templateCommand,
   pullCommand,
   runtimeCommand,
   connectCommand,

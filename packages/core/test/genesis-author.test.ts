@@ -2,6 +2,9 @@
  * Authoring a persona stage by stage: what the code checks in every answer, and what it does when an
  * answer fails. The model is a stub here; real answers are recorded elsewhere from real runs.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 
 import {
@@ -18,6 +21,10 @@ import {
 const sources = numberSources([
 	{ kind: "brief", label: "brief", text: "A code reviewer who blocks merges without tests and explains every rejection. Rigor is not negotiable." },
 ]);
+/** A real run's stage answers (the CLI's recorded fixture). */
+const FIXTURE = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "cli", "test", "fixtures", "genesis-terse-reviewer.json"), "utf8")) as {
+	answers: Record<string, unknown>;
+};
 const personality = STAGES.find((s) => s.id === "personality")!;
 const today = "2026-10-07";
 
@@ -173,6 +180,15 @@ describe("what earlier runs taught (E176, 2026-09-11, 2026-10-07)", () => {
 			],
 		};
 		expect(checkStage(persona, answer, sources, {}, today).join(" ")).toMatch(/voice exemplar .* is not in any source/);
+	});
+});
+
+describe("a new persona is born alive (E129)", () => {
+	it("refuses a governance answer that creates it locked", () => {
+		const governance = STAGES.find((s) => s.id === "governance")!;
+		const answer = structuredClone(FIXTURE.answers.governance) as { layer: { improvement_policy: { mode: string } } };
+		answer.layer.improvement_policy.mode = "locked";
+		expect(checkStage(governance, answer, sources, {}, today).join(" ")).toMatch(/`improvement_policy\.mode` is `locked`, the kill-switch/);
 	});
 });
 

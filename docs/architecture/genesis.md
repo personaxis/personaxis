@@ -21,17 +21,20 @@ Everything the model may use is a numbered source (`genesis/sources.ts`):
 Source = { id: S1.., kind: brief | project | import | transcript | research | answer, label, text, url?, retrieved? }
 ```
 
-| Flag | Becomes |
+| Source, in this order | Becomes |
 |---|---|
-| `--from-prompt "<brief>"` | one `brief` source |
-| the interview (in a terminal, after the other sources) | one `answer` source with every question answered |
-| `--from-project [dir]` | one `project` source with the files it read (README, CLAUDE.md, AGENTS.md, SOUL.md, package.json, docs) |
+| this folder, always (`folderContext` in `commands/create.ts`): its tree, the files that explain it and the personas already in it, bounded; nothing in the home folder or an empty one | one `project` source |
+| what you want it for: the command's argument, or one question in a terminal | one `brief` source |
 | `--from-import <file>` | one `import` source: a character card V2/V3 (PNG or JSON) with its fields labelled, a SOUL.md or SoulSpec package with `IDENTITY.md` and `soul.json`, or a system prompt, CLAUDE.md or AGENTS.md as written (`genesis/imports.ts`) |
 | `--from-transcript <file>` | one `transcript` source |
 | `--research` | one `research` source per page kept, with its URL and the day it was read |
+| the interview (in a terminal, after the other sources) | one `answer` source with every question answered |
 
-Flags compose: every source is numbered and handed to the model together. No field is mapped from a
-file's layout; the model reads the file and cites it.
+Every source is numbered and handed to the model together; what the person says wins over the folder
+when they disagree, and the interview resolves what is still unclear. No field is mapped from a file's
+layout; the model reads the file and cites it. The folder read leaves out the persona being created (an
+agent's re-run would otherwise list its own earlier write as a colleague) and a file given with
+`--from-import`, which is read once, as the import.
 
 ## The interview
 
@@ -142,7 +145,9 @@ approve changes to. The model sets each number with that stance; the profile wri
 
 ## Surfaces
 
-- CLI: `personaxis create [slug] [--from-* ...] [--profile <name>] [--research] [--yes] [--json]`.
-  Exit codes follow the validator convention, and `--json` emits the spec, gates, sources and stages.
+- CLI: `personaxis init [intent]` for this folder's persona and `personaxis create <name> [intent]` for
+  another beside it, with `--from-import`, `--from-transcript`, `--research`, `--profile`, `--yes`,
+  `--json`, `--provider`, `--no-compile`. Exit codes follow the validator convention.
 - `--provider agent` hands each stage to the coding agent running the command, one prompt file at a time.
-- `init` stays the template scaffolder (fast, no model); `create` is the authored path.
+- The first time `personaxis` opens in a folder without a persona, it offers `init` (after setting up a
+  model if there is none). There is no template and no starter persona.

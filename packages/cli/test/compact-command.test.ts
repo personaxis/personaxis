@@ -31,7 +31,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ContextMeter } from "@personaxis/core";
 import { runCommand } from "../src/repl/commands.js";
 import { makeCtx } from "../src/repl/session.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 /** The window this works against. Small, so an ordinary conversation fills it. */
 const WINDOW = 1_000;
@@ -88,7 +88,7 @@ function conversing(turns: number): { role: string; content: string }[] {
 
 function sessionOf(fraction: number, turns: number) {
 	const meter = new ContextMeter(WINDOW);
-	const ctx = makeCtx(writeStarterPersona(dir, "Clio"), meter);
+	const ctx = makeCtx(writeTestPersona(dir, "Clio"), meter);
 	ctx.conversation = conversing(turns) as never;
 	meter.used = Math.round(WINDOW * fraction);
 	const shown: string[] = [];

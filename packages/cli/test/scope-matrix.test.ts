@@ -18,7 +18,7 @@ import { runMode } from "../src/commands/improve.js";
 import { BASELINE_SECTION } from "../src/targets/claude-code.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import {
   personaScopes,
   scopeByAddress,
@@ -43,9 +43,9 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 /** A project with a main persona and two sub-personas, one of them nested. */
 function projectWithSubs(): ReturnType<typeof makeCtx> {
-  const main = writeStarterPersona(dir, "Main");
-  writeStarterPersona(dir, "Legal", "legal");
-  writeStarterPersona(dir, "Ventas", "ventas");
+  const main = writeTestPersona(dir, "Main");
+  writeTestPersona(dir, "Legal", "legal");
+  writeTestPersona(dir, "Ventas", "ventas");
   return makeCtx(main, makeMeter());
 }
 
@@ -64,7 +64,7 @@ describe("persona scopes (V7.C1)", () => {
   });
 
   it("a lone persona still yields exactly one scope (no phantom subs)", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Solo"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Solo"), makeMeter());
     expect(personaScopes(ctx)).toHaveLength(1);
   });
 

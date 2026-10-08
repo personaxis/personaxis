@@ -11,6 +11,7 @@
  * USERPROFILE/HOME point at the sandbox so the walk-up (which stops at the home
  * dir) never inherits the developer's real ~/.personaxis.
  */
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +26,8 @@ let cwd: string;
 let model: FakeModel;
 beforeAll(async () => {
   cwd = mkdtempSync(join(tmpdir(), "pxs-recall-"));
+  // The product writes no starter persona any more (2026-10-08): the session gets the test one.
+  writeTestPersona(cwd, "Aria");
   model = await startFakeModel();
 });
 afterAll(async () => {

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { ensureSession, appendTurn, newSessionId, listSessions } from "@personaxis/core";
 import { makeCtx, resumeSessionInto, replayTranscript } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 let dir: string;
 beforeEach(() => {
@@ -39,7 +39,7 @@ function seedSession(personaPath: string, name: string, turns: Array<[string, st
 
 describe("resume rebuilds the conversation (V7.A6)", () => {
   it("loads the chosen session's full history into the context", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     const id = seedSession(personaPath, "planning", [
       ["cuál es el plan", "primero validamos el spec"],
@@ -53,7 +53,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
   });
 
   it("replayTranscript returns every turn, in order, with the right roles", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     const id = seedSession(personaPath, "planning", [
       ["cuál es el plan", "primero validamos el spec"],
@@ -77,7 +77,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
    * undifferentiated block.
    */
   it("reprints the chrome a live turn gets: a divider opens each exchange", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     resumeSessionInto(
       ctx,
@@ -98,7 +98,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
    * reprinted, so resuming shows the WORK too.
    */
   it("reprints what the persona DID on each turn, not only what it said", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     const id = newSessionId();
     ensureSession(personaPath, {
@@ -126,7 +126,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
   });
 
   it("the evidence note never reaches the model's context", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     const id = newSessionId();
     ensureSession(personaPath, {
@@ -146,7 +146,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
   });
 
   it("a session recorded before evidence existed still replays (no crash, no gap)", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     resumeSessionInto(ctx, seedSession(personaPath, "legacy", [["hola", "hola"]]));
     const lines = replayTranscript(ctx);
@@ -155,7 +155,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
   });
 
   it("switching sessions replaces the conversation instead of merging it", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     const a = seedSession(personaPath, "alpha", [["uno", "respuesta uno"]]);
     const b = seedSession(personaPath, "beta", [["dos", "respuesta dos"], ["tres", "respuesta tres"]]);
@@ -171,7 +171,7 @@ describe("resume rebuilds the conversation (V7.A6)", () => {
   });
 
   it("an unknown query resumes nothing and leaves the context untouched", () => {
-    const personaPath = writeStarterPersona(dir, "Vega");
+    const personaPath = writeTestPersona(dir, "Vega");
     const ctx = makeCtx(personaPath, makeMeter());
     const before = ctx.sessionId;
     expect(resumeSessionInto(ctx, "no-such-session")).toBeUndefined();

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
 import { personaLines, PERSONA_TABS, anatomyLines } from "../src/repl/views/persona-data.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 // The aura advances with the clock, so the portrait differs from frame to frame by design.
 // This suite asserts against a persona's drawn features, which only holds on a fixed frame;
@@ -21,13 +21,13 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("Persona miniapp collectors (V5.P3.3)", () => {
   it("every tab renders lines without crashing on a fresh persona", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Vista"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Vista"), makeMeter());
     expect(PERSONA_TABS).toHaveLength(6);
     for (let t = 0; t < PERSONA_TABS.length; t++) expect(personaLines(ctx, t).length).toBeGreaterThan(0);
   });
 
   it("anatomy names the TEN canonical layers in order", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Diez"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Diez"), makeMeter());
     const text = anatomyLines(ctx).join("\n");
     for (const layer of [
       "1 identity",
@@ -46,7 +46,7 @@ describe("Persona miniapp collectors (V5.P3.3)", () => {
   });
 
   it("identity tab carries the aura portrait and the spec version, side by side", async () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Aura"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Aura"), makeMeter());
     const text = personaLines(ctx, 0).join("\n");
     // The portrait, with its data in a column to the RIGHT. Parts vary per persona, so
     // assert against this persona own drawn features, not any fixed glyph.

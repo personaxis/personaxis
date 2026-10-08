@@ -71,7 +71,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         severity: "error",
         path: field,
         message: `Required top-level field '${field}' is missing.`,
-        fix: `Add '${field}' at the top level of the frontmatter. \`personaxis template\` prints a scaffold with all four (apiVersion, kind, spec_version, metadata).`,
+        fix: `Add '${field}' at the top level of the frontmatter. \`personaxis spec\` shows what each of the four (apiVersion, kind, spec_version, metadata) holds.`,
       });
     }
   }
@@ -141,7 +141,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
           isAgent
             ? "An AgentPersona declares all ten; the layer is the contract, an absent one is not a neutral default but an undefined behavior."
             : "A UserPersona still needs identity, values_and_drives, cognition and persona."
-        } \`personaxis template\` prints the scaffold for it.`,
+        } \`personaxis spec\` shows what it holds.`,
       });
     }
   }

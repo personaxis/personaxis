@@ -45,8 +45,9 @@ does not, the gate is the only one. Detail: [`architecture/sandbox.md`](./archit
 
 ## `create` or `init`
 
-`create` builds a persona from evidence: an interview, a brief (`--from-prompt`), your repository
-(`--from-project`), an import (`--from-import`) or transcripts (`--from-transcript`), and writes a
-creation report that says where every value came from. `init` writes the commented template with no
-values filled in, for when you want to write the definition yourself. Detail:
+Both run one process, in one order: a model reads the folder you are in, takes what you say the persona
+is for, reads what you point at (`--from-import`, `--from-transcript`, `--research`), asks what all of
+that leaves open, and writes the persona with a report of where every value came from. `init` makes this
+folder's persona; `create <name>` makes another one beside it. There is no template to fill in by hand.
+Detail:
 [`commands/create.md`](./commands/create.md), [`commands/init.md`](./commands/init.md).

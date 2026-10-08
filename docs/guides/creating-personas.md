@@ -1,36 +1,38 @@
 # Creating personas
 
-How to pick the right way in, review what the model quoted versus what it inferred, and improve a persona
-without throwing that record away. Every flag is in [`docs/commands/create.md`](../commands/create.md);
-the design is in [`docs/architecture/genesis.md`](../architecture/genesis.md).
+How a persona is made, what to give it, how to review what the model quoted versus what it inferred, and
+how to improve a persona without throwing that record away. The commands are
+[`init`](../commands/init.md) and [`create`](../commands/create.md); the design is in
+[`docs/architecture/genesis.md`](../architecture/genesis.md).
 
-Configure a model first (`personaxis config`). A model writes every field, so without one `create`
-refuses and says how to configure one.
+Configure a model first (`personaxis config`). A model writes every field, so without one nothing is
+created.
 
-## Pick the way in
+## One process, in one order
 
-| What you have | Use | What Genesis does with it |
-|---|---|---|
-| Nothing written yet | `personaxis create` (interview) | A model asks about the job, at most fifteen questions; the answers are the source it writes from |
-| A description of the job | `--from-prompt "<brief>"` | The brief is the source; each field quotes the words it came from, or says what it was inferred from |
-| A repository or a set of docs | `--from-project [dir]` | Reads the README, `CLAUDE.md`, `AGENTS.md` and docs as one source for the project's own persona |
-| A SOUL.md or SoulSpec package, a character card, a system prompt | `--from-import <file>` | The whole file is one source, card fields labelled; the model reads and cites it |
-| Good example conversations | `--from-transcript <file>` | The conversations are the source; the model infers the persona that explains them |
+Open a terminal in the folder the persona will work in and run `personaxis init` (this folder's persona)
+or `personaxis create <name>` (another one beside it). Whatever the case, it goes in this order:
 
-Add `--research` to any of them to search the web for the field and keep what it found in
-`references/`, each source with its date (needs a web provider key). `--profile regulated | standard |
-research` sets how wide the ranges start, who approves lasting changes and how fast values return to
-baseline.
+1. **The folder**: the model reads its tree, the files that explain it and the personas already there.
+2. **What you want it for**, optional: say it in the command (`personaxis init "..."`) or when asked.
+   It wins over the folder when they disagree.
+3. **What you point at**, optional: `--from-import` (a SOUL.md, a character card, a system prompt),
+   `--from-transcript` (conversations of how it should work), `--research` (the field, read on the web).
+4. **The interview**: the model asks only what all of that leaves open, about real work; skip any question
+   and it infers the answer and says from what.
+5. **The persona**, its coherence reading, and its `PERSONA.md`.
 
-The ways in combine: `--from-project --from-prompt "more formal"` hands the model both sources, numbered,
-and the report shows which one each field cites.
+The more of the real work the sources hold (how a review is done, what was rejected and why, what must
+never happen), the less the model has to infer. `--profile regulated | standard | research` sets the
+stance on how wide values move, who approves lasting changes and how fast values return to baseline.
 
 ## Worked example
 
 ```bash
-personaxis create auditor --research --from-prompt "A security reviewer for web APIs. Checks
-authentication, authorization and input validation first; never approves a change that logs
-secrets; cites the OWASP item behind every finding; asks for the threat model when it is missing."
+cd payments-api
+personaxis create auditor --research "A security reviewer for this API. Checks authentication,
+authorization and input validation first; never approves a change that logs secrets; cites the OWASP item
+behind every finding; asks for the threat model when it is missing."
 personaxis validate .personaxis/personas/auditor/personaxis.md     # PASS
 ```
 

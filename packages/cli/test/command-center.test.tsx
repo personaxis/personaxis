@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommandCenter, fleetRows } from "../src/command-center.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { loadConfig } from "../src/config.js";
 
 const DOWN = "[B";
@@ -108,7 +108,7 @@ describe("the Command Center says where you are and what you are acting on (V8.B
   let personaPath: string;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "pxs-cc-proj-"));
-    personaPath = writeStarterPersona(dir, "Vega");
+    personaPath = writeTestPersona(dir, "Vega");
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -133,7 +133,7 @@ describe("the Command Center says where you are and what you are acting on (V8.B
   });
 
   it("`/` searches the fleet, and `q` typed into it does not quit", async () => {
-    writeStarterPersona(dir, "Helper", "helper");
+    writeTestPersona(dir, "Helper", "helper");
     const { stdin, lastFrame } = render(
       <CommandCenter personaPath={personaPath} personas={["helper"]} cwd={dir} initialSection="fleet" />,
     );

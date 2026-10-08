@@ -15,7 +15,7 @@ import { doctorProvider } from "../src/repl/views/doctor-view.js";
 import { doctorChecksOffline } from "../src/repl/doctor-checks.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 process.env.PERSONAXIS_NO_ANIM = "1";
 
@@ -28,7 +28,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("the Doctor miniapp (V7.B4)", () => {
   it("leads with what it is, and states a verdict in plain words", async () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
     const View = registerTabbedView("doctor-test-1", doctorProvider(ctx));
     const { lastFrame } = render(<View personaPath={ctx.handle.personaPath} active={true} onBack={() => {}} />);
     await flush();
@@ -40,8 +40,8 @@ describe("the Doctor miniapp (V7.B4)", () => {
   });
 
   it("`p` switches persona and the checks re-run against that one", async () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
-    writeStarterPersona(dir, "Helper", "helper");
+    const ctx = makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
+    writeTestPersona(dir, "Helper", "helper");
     const View = registerTabbedView("doctor-test-2", doctorProvider(ctx));
     const { stdin, lastFrame } = render(
       <View personaPath={ctx.handle.personaPath} active={true} onBack={() => {}} />,
@@ -80,7 +80,7 @@ describe("no finding without a remedy, end to end (V7.B4)", () => {
   it("counts findings from the checks, not by grepping its own prose", () => {
     // A remedy containing an exclamation mark used to inflate the warning count,
     // because the tally was a regex over rendered lines.
-    const ctx = makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
     const report = doctorChecksOffline(ctx.handle.personaPath);
     const rendered = report.lines.filter((l) => l.includes("✗")).length;
     expect(report.failures).toBe(rendered);

@@ -31,7 +31,7 @@ afterEach(() => {
 // Async on purpose: eleven synchronous runs in a row block this worker's event loop for twenty seconds, and
 // vitest reports the worker as unresponsive (seen 2026-10-07).
 const create = () =>
-	runCli(CLI, ["create", "rev", "--from-prompt", RECORDED.brief, "--provider", "agent", "--yes"], {
+	runCli(CLI, ["create", "rev", RECORDED.brief, "--provider", "agent", "--yes"], {
 		cwd: dir,
 		env: { PERSONAXIS_HOME: join(dir, "home"), NO_COLOR: "1", PERSONAXIS_ENDPOINT: "", PERSONAXIS_MODEL: "", PERSONAXIS_API_KEY: "" },
 	});

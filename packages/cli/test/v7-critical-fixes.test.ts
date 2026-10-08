@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter, buildPolicy, POSTURES, notePostureChange, readGoalText, goalPathFor, writeGoalAt } from "../src/repl/config.js";
 import { buildAwarenessBlock } from "../src/repl/awareness.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 let dir: string;
 beforeEach(() => {
@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const scaffold = () => makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
+const scaffold = () => makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
 
 describe("V7.A1: the environment note is system speech, not the user's", () => {
   it("notePostureChange stores the note on ctx, never merged into the user line", () => {

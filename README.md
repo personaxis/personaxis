@@ -75,43 +75,47 @@ node packages/cli/dist/index.js proof --quick
 ## Create a persona and load it
 
 **1. Point it at a model.** Any OpenAI-compatible endpoint, hosted or local. A model writes the persona
-and runs it; without one, `create` refuses and says how to configure one:
+and runs it; without one, nothing is created, and it says how to configure one:
 
 ```bash
 export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama, LM Studio, llama.cpp or a hosted API
 export PERSONAXIS_MODEL=qwen3:4b                        # a small local model works; expect weaker results
 ```
 
-**2. Create it** in any folder:
+**2. Create it** in the folder it will work in, the way `/init` gives a repository its `CLAUDE.md`:
 
 ```bash
-personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
+cd your-project
+personaxis init "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-In a terminal, the model first asks about what your brief leaves open: questions about the work, at most
-fifteen, any of them skippable (`--yes` skips the interview). Then it writes the persona one layer at a
-time, and the code checks every answer before it is kept: the
-schema, numbers that can move, and a source for every field. You get a folder with the definition
-(`personaxis.md`, in ten layers), the compiled document a model reads (`PERSONA.md`), the values that move
-as it works (`state.json`), and `creation-report.md`: the words of your brief each field quotes, and every
-field the model inferred, with what it inferred it from. Read the inferred list first.
+The model reads the folder (its tree, the files that explain it, the personas already there), takes what
+you said it is for (optional: without it, it asks, or infers it from the folder), asks about what that
+leaves open, at most fifteen questions about the work, any of them skippable (`--yes` never asks), and
+writes the persona one layer at a time. The code checks every answer before it is kept: the schema,
+numbers that can move, a source for every field, and every rule your sources state kept somewhere. You get
+the definition (`.personaxis/personaxis.md`, in ten layers), the document a model reads (`PERSONA.md`,
+written by the model and checked against the definition), the values that move as it works
+(`state.json`), and `creation-report.md`: what each field quotes, and every field the model inferred, with
+what it inferred it from. Read the inferred list first.
 
-Other ways in: no flag lets you pick a source or start from questions alone, `--from-project` reads your repository, `--from-import` takes a
-SOUL.md, a SoulSpec package, a character card or a system prompt, and `--from-transcript` works from
-example conversations. `--research` searches the web for the field and keeps each source, with its date, in
-`references/`.
+`personaxis create <name> "..."` makes another persona beside it by the same process. Either one also
+reads what you point at: `--from-import` (a SOUL.md, a SoulSpec package, a character card or a system
+prompt), `--from-transcript` (example conversations) and `--research` (the field on the web, each source
+kept with its date in `references/`).
 
-**3. Load it into your agent:**
+**3. Your agent already reads it.** `init` points `CLAUDE.md` and `AGENTS.md` at `PERSONA.md`, so Claude
+Code and Codex load it in this folder. For another host, or for a persona made with `create`:
 
 ```bash
-personaxis compile reviewer --platform claude-code   # writes .claude/agents/reviewer.md
+personaxis compile --platform hermes                 # or openclaw; a persona from create: compile <name>
 npx -y @personaxis/mcp                               # or serve it to any MCP host (16 tools)
 ```
 
 **4. Talk to it directly**, to see it work outside your agent:
 
 ```bash
-personaxis --persona .personaxis/personas/reviewer/personaxis.md
+personaxis                                           # in the folder: its persona
 ```
 
 ## How each agent loads a persona

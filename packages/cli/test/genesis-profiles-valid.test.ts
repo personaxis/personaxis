@@ -36,6 +36,6 @@ describe("every Genesis profile reaches the author and yields a valid persona (E
 	});
 
 	it("create refuses an unknown profile before asking or writing anything", async () => {
-		await expect(runCreate(undefined, { profile: "strict", fromPrompt: "x", yes: true })).rejects.toThrow(/--profile must be one of regulated, standard, research/);
+		await expect(runCreate(undefined, { profile: "strict", intent: "x", yes: true })).rejects.toThrow(/--profile must be one of regulated, standard, research/);
 	});
 });

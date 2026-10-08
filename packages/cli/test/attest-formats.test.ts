@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { loadPersonaFile } from "../src/load.js";
 import { buildAttestation, toVerifiableCredential, toA2aExtension } from "../src/commands/attest.js";
 
@@ -19,7 +19,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function mint() {
-  const path = writeStarterPersona(dir, "Vega");
+  const path = writeTestPersona(dir, "Vega");
   const { data, raw } = loadPersonaFile(path);
   return { att: buildAttestation(data as Record<string, unknown>, raw, path, 24), path };
 }

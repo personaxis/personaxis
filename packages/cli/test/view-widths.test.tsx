@@ -25,7 +25,7 @@ import { doctorProvider } from "../src/repl/views/doctor-view.js";
 import { CommandCenter } from "../src/command-center.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 process.env.PERSONAXIS_NO_ANIM = "1";
 
@@ -37,7 +37,7 @@ let personaPath: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-widths-"));
-  personaPath = writeStarterPersona(dir, "Vega");
+  personaPath = writeTestPersona(dir, "Vega");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -151,7 +151,7 @@ describe("the Command Center fits too (V8.F5)", () => {
 
   it("a long fleet is windowed and says what is hidden", async () => {
     const subs = Array.from({ length: 20 }, (_, i) => `helper${i}`);
-    for (const s of subs) writeStarterPersona(dir, s, s);
+    for (const s of subs) writeTestPersona(dir, s, s);
     const painted = await paint(
       <CommandCenter personaPath={personaPath} personas={subs} cwd={dir} initialSection="fleet" />,
       80,

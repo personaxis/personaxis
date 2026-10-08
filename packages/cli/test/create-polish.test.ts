@@ -35,7 +35,7 @@ afterEach(async () => {
 
 const personaDir = () => join(dir, ".personaxis", "personas", "rev");
 const create = (env: Record<string, string>) =>
-  runCli(CLI, ["create", "rev", "--from-prompt", BRIEF, "--yes"], { cwd: dir, env: { PERSONAXIS_HOME: home, ...env } });
+  runCli(CLI, ["create", "rev", BRIEF, "--yes"], { cwd: dir, env: { PERSONAXIS_HOME: home, ...env } });
 
 describe("create tells the truth about the model", () => {
   it("with NO model: refuses, says how to configure one, and writes nothing", async () => {
