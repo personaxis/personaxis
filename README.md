@@ -18,11 +18,15 @@
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
 </p>
 
+<!-- Demo hidden until the final version: it shows 0.17.0 output (a persona created without a model), which
+     no longer matches what create does. Restore this block once docs/assets/demo.svg is regenerated.
 <p align="center">
   <img src="docs/assets/demo.svg" alt="A terminal: personaxis create writes a persona, personaxis compile writes the document Claude Code reads, and personaxis proof --quick checks the engine offline." width="820">
 </p>
 
 <p align="center"><sub>Real output from personaxis 0.17.0. Paths are shortened, and <code>proof</code> is an excerpt.</sub></p>
+-->
+
 
 A persona is the whole way a professional works: the procedures it follows, the criteria it applies, the
 tools it reaches, the knowledge it cites with sources, what it has learned on the job, and the limits it
