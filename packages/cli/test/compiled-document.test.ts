@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import matter from "gray-matter";
 
-import { assemblePersonaDoc, checkFaithfulness, ensureState, markRecompilePending, readRecompilePending, run } from "@personaxis/core";
+import { assemblePersonaDoc, checkFaithfulness, compiledHistory, ensureState, markRecompilePending, readRecompilePending, run } from "@personaxis/core";
 
 import { compiledPathFor, loadPersonaFile } from "../src/load.js";
 import { writeStarterPersona } from "../src/starter.js";
@@ -138,6 +138,8 @@ describe("the compiled document keeps what the persona has (E92)", () => {
 		expect(readRecompilePending(path).pending).toBe(false);
 		expect(readFileSync(compiledPath, "utf-8")).toContain("Written by the model.");
 		expect(model!.requests.length).toBeGreaterThan(0);
+		// And the version says why it was written.
+		expect(compiledHistory(path).at(-1)?.cause).toBe("a band was crossed in a session");
 	});
 
 	it("a failed rewrite leaves the mark for the next try", async () => {

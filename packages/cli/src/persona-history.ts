@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 /**
  * Everything a persona writes beside its definition while it lives. Each name is owned elsewhere
  * (`record/store.ts`, `memory.ts`, `sessions.ts`, `multi-device.ts`, `self-evolution.ts`,
- * `recompile-marker.ts`, `compile/dist.ts`); a new runtime file has to be added here too.
+ * `recompile-marker.ts`, `compile/dist.ts`, `compile/history.ts`); a new runtime file has to be added here too.
  */
 export const LIVED_HISTORY = [
   "state.json",
@@ -26,6 +26,7 @@ export const LIVED_HISTORY = [
   "sessions",
   "devices",
   ".dist",
+  "compiled",
 ] as const;
 
 /**

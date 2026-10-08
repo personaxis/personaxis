@@ -63,6 +63,10 @@ describe("create tells the truth about the model", () => {
     const compiled = readFileSync(join(personaDir(), "PERSONA.md"), "utf-8");
     expect(compiled).toContain("# You are Terse Code Reviewer");
     expect(compiled).not.toContain("stage-1");
+    // The version is in the persona's history, with why it was written.
+    const history = await runCli(CLI, ["compile", "rev", "--history"], { cwd: dir, env: { PERSONAXIS_HOME: home } });
+    expect(history.out).toContain("creation");
+    expect(history.out).toContain("fake");
   }, 60_000);
 
   it("with a model whose document is rejected: no PERSONA.md, the reason said, exit 1, the definition valid", async () => {

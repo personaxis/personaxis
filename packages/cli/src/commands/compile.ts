@@ -16,6 +16,10 @@ import {
   ModelRequiredError,
   DIST_HOT_FILE,
   DIST_COLD_FILE,
+  recordCompiled,
+  compiledHistory,
+  ensureState,
+  loadPersona,
 } from "@personaxis/core";
 import { buildWritePrompt, type CompileTargetInfo } from "../compile-instructions.js";
 import { ProviderRequiresAgentError, type ProviderRunResult } from "../providers/types.js";
@@ -137,6 +141,8 @@ export interface RunCompileOptions {
   platform?: PlacementPlatform;
   /** Skip (no-op) unless the persona's compiled doc is marked stale by a self-edit. */
   ifPending?: boolean;
+  /** Why this document is written, for its history; otherwise the stale mark's reason, or "compile". */
+  cause?: string;
   /** Print nothing: the in-session recompile runs behind a screen it must not write over. */
   quiet?: boolean;
   /** The persona's personaxis.md, when the caller already has it (the in-session recompile). */
@@ -371,6 +377,15 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
 
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, finalContent.trimEnd() + "\n", "utf-8");
+  // Every version goes into the persona's record with why it was written and from which definition: a
+  // model wrote it, so the definition alone no longer says what an agent read on a given day.
+  const pending = readRecompilePending(sourcePath);
+  const cause = opts.cause ?? (pending.pending && pending.reason ? pending.reason : "compile");
+  if (!opts.out) {
+    const handle = loadPersona(sourcePath);
+    ensureState(handle);
+    await recordCompiled(sourcePath, handle.statePath, { document: finalContent.trimEnd() + "\n", specText: raw, cause, model: result.model });
+  }
   clearRecompilePending(sourcePath); // the compiled doc now reflects the spec
 
   say(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
@@ -435,7 +450,19 @@ export const compileCommand = new Command("compile")
   .option("--stdout", "Print to stdout instead of writing a file")
   .option("--platform <platform>", `Also EXPORT a host placement for a sub-persona (.claude/agents or .codex): ${PLACEMENT_PLATFORMS.join(" | ")}`)
   .option("--if-pending", "No-op unless a self-edit marked the compiled doc stale (.recompile-pending.json)")
-  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string; ifPending?: boolean }) => {
+  .option("--history", "List every version of the compiled document: when, why, from which definition, by which model")
+  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string; ifPending?: boolean; history?: boolean }) => {
+    if (opts.history) {
+      const sourcePath = resolvePersonaSourcePath(slug && !opts.root ? slug : undefined);
+      const versions = compiledHistory(sourcePath);
+      if (!versions.length) return void console.log(chalk.dim("  No compiled version recorded yet."));
+      for (const v of versions) {
+        const kept = v.path ? relative(process.cwd(), v.path).replace(/\\/g, "/") : chalk.dim("(text not kept)");
+        console.log(`  ${v.at.slice(0, 19).replace("T", " ")}  ${v.hash.slice(0, 12)}  ${v.cause ?? "compile"}${v.model ? chalk.dim(` · ${v.model}`) : ""}`);
+        console.log(chalk.dim(`    from definition ${v.spec?.slice(0, 12) ?? "?"} · ${kept}`));
+      }
+      return;
+    }
     if (opts.platform && !(PLACEMENT_PLATFORMS as readonly string[]).includes(opts.platform)) {
       console.error(chalk.red("Unknown platform:"), opts.platform);
       console.error(chalk.dim("Valid platforms:"), PLACEMENT_PLATFORMS.join(", "));
