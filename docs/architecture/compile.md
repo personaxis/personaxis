@@ -48,6 +48,11 @@ The strip is idempotent.
 See [self-evolution.md](./self-evolution.md) for how the active overlay (applied governed
 self-edits) folds into compile as authoritative overrides.
 
+Every written version goes into the persona's record as a `compiled` entry (the document's hash, why
+it was written, the hash of the definition it came from, the model), and its text is kept once per hash
+in `compiled/<hash>.md` (`packages/core/src/compile/history.ts`). A model writes the document, so two
+compiles of one definition differ, and only this says which one an agent read.
+
 When a coordinate crosses a band mid-session, the session marks `PERSONA.md` stale and starts the
 same `compile` in the background, quiet and one at a time (`packages/cli/src/repl/session.ts`); the
 turn does not wait, and every turn reads the document from disk, so the next one sees the rewrite. A

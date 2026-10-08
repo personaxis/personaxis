@@ -23,6 +23,7 @@ personaxis compile [slug] [options]
 | `--stdout` | Print to stdout instead of writing. |
 | `--platform <p>` | Export the placement for a host: `claude-code \| codex \| openclaw \| hermes`. |
 | `--if-pending` | No-op unless a self-edit marked the doc stale (`.recompile-pending.json`). |
+| `--history` | List every version of the compiled document: when, why (creation, a band crossed in a session, a self-edit, a manual compile), from which definition, by which model. |
 
 ## What it does
 - Assembles a **reference** from `personaxis.md` (with applied governed self-edits folded in as
@@ -34,6 +35,9 @@ personaxis compile [slug] [options]
 - Checks it against the reference (nothing protected dropped or added, no new heading). A rejected
   document goes back to the model with its findings, twice; then `compile` stops, writes nothing,
   and keeps the last attempt in `.personaxis/.tmp/rejected-PERSONA.md`. Without a model it refuses.
+- Records the version in the persona's record (`compiled`: the document's hash, the cause, the hash of
+  the definition, the model) and keeps its text once per hash in `compiled/<hash>.md`, so the document an
+  agent read on a given day can be read back. `--history` lists them.
 - Clears the recompile-pending marker on success.
 - Root compile also injects the `@PERSONA.md` baseline block for the hosts that read one.
 

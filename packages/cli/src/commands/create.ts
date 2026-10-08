@@ -465,7 +465,7 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     const log = console.log;
     if (opts.json) console.log = console.error;
     try {
-      await runCompile({ ...(opts.root ? { root: true } : { slug }), ...(opts.provider ? { provider: opts.provider } : {}) });
+      await runCompile({ ...(opts.root ? { root: true } : { slug }), ...(opts.provider ? { provider: opts.provider } : {}), cause: "creation" });
     } catch (e) {
       if (e instanceof ProviderRequiresAgentError) throw e; // the agent answers, then `create` runs again
       compileError = (e as Error).message;
