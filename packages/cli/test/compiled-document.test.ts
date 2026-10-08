@@ -21,7 +21,7 @@ import matter from "gray-matter";
 import { assemblePersonaDoc, checkFaithfulness, compiledHistory, ensureState, markRecompilePending, readRecompilePending, run } from "@personaxis/core";
 
 import { compiledPathFor, loadPersonaFile } from "../src/load.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { runCompile } from "../src/commands/compile.js";
 import { assembleInputFor } from "../src/compiled-document.js";
 import { recompileHookFor } from "../src/repl/session.js";
@@ -55,7 +55,7 @@ afterEach(async () => {
 
 /** A persona that declares one local skill and one reference, with both on disk. */
 function withSkillAndReference(repo: string, subSlug?: string): string {
-	const path = subSlug ? writeStarterPersona(repo, "Wright", subSlug) : writeStarterPersona(repo, "Wright");
+	const path = subSlug ? writeTestPersona(repo, "Wright", subSlug) : writeTestPersona(repo, "Wright");
 	const spec = readFileSync(path, "utf-8")
 		.replace("  skills: []", '  skills:\n    - "./skills/level-pacing"')
 		.replace("  references: []", '  references:\n    - "references/pacing-notes.md"');
@@ -115,6 +115,19 @@ describe("the compiled document keeps what the persona has (E92)", () => {
 		expect(data.name).toBe("wright");
 		expect(data.skills).toEqual(["level-pacing"]);
 		expect(content).toContain("`pacing-notes.md`");
+	});
+
+	it("a model that keeps dropping one rule: the rule is put back from the definition, and the outcome says so", async () => {
+		const repo = join(base, "repo");
+		const path = withSkillAndReference(repo, "wright");
+		process.chdir(repo);
+		const reference = referenceOf(path);
+		const hardLimit = reference.split("\n").find((l) => l.startsWith("- ") && reference.indexOf(l) > reference.indexOf("## Hard limits"))!;
+		await modelWriting(reference.replace(`${hardLimit}\n`, ""));
+
+		const outcome = await runCompile({ slug: "wright", quiet: true });
+		expect(outcome.via).toContain("1 rule(s) restored from the definition");
+		expect(readFileSync(compiledPathFor(path), "utf-8")).toContain(hardLimit);
 	});
 
 	it("a crossing in session marks the document stale and the model rewrites it, never the template", async () => {
