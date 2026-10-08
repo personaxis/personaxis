@@ -41,7 +41,7 @@ async function run(args: string[]): Promise<string> {
 // The same brief both times: the fake model answers from one recorded run, and what is under test is what
 // happens to the old persona's history, not what the new one says.
 function create(): Promise<string> {
-  return run(["create", "rev", "--from-prompt", BRIEF, "--yes", "--no-compile"]);
+  return run(["create", "rev", BRIEF, "--yes", "--no-compile"]);
 }
 
 function valueIn(path: string): number {

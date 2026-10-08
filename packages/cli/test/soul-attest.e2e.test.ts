@@ -60,7 +60,9 @@ describe.skipIf(!built)("SOUL.md import → governed persona → attest (V3.3)",
     const personaPath = join(dir, ".personaxis", "personas", "nyx", "personaxis.md");
     expect(existsSync(personaPath)).toBe(true);
     // The import is a numbered source the model read, listed in the persona.
-    expect(readFileSync(personaPath, "utf-8")).toContain("- S1: SOUL.md (soul-md)");
+    // The folder (S1) lists SOUL.md in its tree; its text is read once, as the import (S2).
+    expect(readFileSync(personaPath, "utf-8")).toContain("- S2: SOUL.md (soul-md)");
+    expect(JSON.stringify(model.requests[0]).split("Never fabricate a citation").length - 1).toBe(1);
     // And the model was handed the whole file, boundaries included.
     expect(JSON.stringify(model.requests[0])).toContain("Never fabricate a citation");
 

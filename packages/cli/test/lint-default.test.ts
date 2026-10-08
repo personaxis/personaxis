@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "dist", "index.js");
@@ -31,7 +31,7 @@ const lintJson = (cwd: string) => {
 describe.skipIf(!existsSync(CLI))("lint with no file (E169)", () => {
 	it("lints .personaxis/personaxis.md, not the compiled PERSONA.md beside it", () => {
 		dir = mkdtempSync(join(tmpdir(), "pxs-lint-"));
-		writeStarterPersona(dir, "Vega");
+		writeTestPersona(dir, "Vega");
 		// What `compile` writes at the root: prose, no frontmatter.
 		writeFileSync(join(dir, "PERSONA.md"), "# Vega\n\nVega is a careful designer who checks before shipping.\n");
 
@@ -43,7 +43,7 @@ describe.skipIf(!existsSync(CLI))("lint with no file (E169)", () => {
 
 	it("still lints a repository from before spec v1, whose only persona file is PERSONA.md with frontmatter", () => {
 		dir = mkdtempSync(join(tmpdir(), "pxs-lint-legacy-"));
-		const source = writeStarterPersona(dir, "Vega");
+		const source = writeTestPersona(dir, "Vega");
 		writeFileSync(join(dir, "PERSONA.md"), readFileSync(source, "utf8"));
 		rmSync(join(dir, ".personaxis"), { recursive: true, force: true });
 

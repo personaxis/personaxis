@@ -177,7 +177,7 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "create",
-    desc: "create or rewrite a persona: interview, a prompt, an import, a transcript",
+    desc: "create another persona in this folder: /create <name> [what it is for]; a model reads the folder and asks what is missing",
     external: "create",
     run: async (arg, ctx) => {
       if (!ctx.suspend) {
@@ -746,7 +746,7 @@ export const EXTERNAL_DOOR: Record<string, string> = {
   cost: "status", usage: "status", state: "status", config: "config",
   dash: "state drift", replay: "audit --tab Integrity", rewind: "state rewind <n>",
   review: "review", goal: "goal <text>", loop: "observe", improve: "improve <mode>",
-  init: "create", validate: "validate", lint: "lint", sessions: "status",
+  init: "init", validate: "validate", lint: "lint", sessions: "status",
   serve: "serve", watch: "watch", hooks: "hooks", tasks: "status",
   overseer: "overseer show", proof: "proof", arbitrate: "arbitrate", mode: "config",
 };

@@ -1,38 +1,25 @@
 # `personaxis create`: Genesis
 
-Create a persona from what you have. A model writes it one layer at a time from your sources, and the
-code checks every answer before it is kept. Every way in produces the same four files: a validated
-`personaxis.md`, `state.json`, a first compiled `PERSONA.md`, and `creation-report.md`, which records
-where each field came from.
+Create another persona in this folder, beside the one [`init`](./init.md) makes: a reviewer next to the
+project's main persona, for instance. It runs the same process as `init`, in the same order: this folder,
+always; what you want it for, optional; material you point at; the interview; then the persona and its
+`PERSONA.md`. Every run produces the same four files: a validated `personaxis.md`, `state.json`,
+`PERSONA.md`, and `creation-report.md`, which records where each field came from.
 
 A model is required. Without one, `create` refuses, says how to configure one, and writes nothing.
 
-A persona is the whole way a professional works: procedures, criteria, tools, sourced knowledge and
-character. The interview asks about the work the sources leave out; `--research` adds sourced knowledge
-(see below).
-
 ```bash
-personaxis create                              # asks WHICH source to use (TTY)
-personaxis create --from-prompt "<brief>"      # natural language
-personaxis create --from-project [dir]         # the project's own docs
-personaxis create --from-import card.png       # character card V2/V3 (.json/.png)
-personaxis create --from-import CLAUDE.md      # system prompt, CLAUDE.md, AGENTS.md, SOUL.md
-personaxis create --research                   # also search the web and keep the sources
-personaxis create --from-transcript chat.txt   # exemplar conversations
+personaxis create reviewer                                   # read the folder, ask what it is for, interview
+personaxis create reviewer "blocks merges without tests"     # what it is for, given up front
+personaxis create voice --from-import SOUL.md                # also read a SOUL.md, a card or a system prompt
+personaxis create tutor --from-transcript sessions.txt       # also read example conversations
+personaxis create auditor --research "API security review"   # also read the field on the web
 ```
 
-Sources **compose**: each one is numbered (S1, S2, ...) and the model reads them together. `[slug]` names
-the persona (default: under `.personaxis/personas/<slug>/`; `--root` writes the project's root persona).
-
-| Flag | Effect |
-|---|---|
-| `--profile <name>` | starting profile, `regulated`, `standard` (default) or `research`: see below |
-| `--yes` | never ask (no interview), and overwrite existing files |
-| `--json` | emit spec + gates + notes + sources + stages as JSON on stdout (dry-run unless `--yes`) |
-| `--provider <p>` | override the provider (`local\|byok\|agent`) |
-| `--research` | search the web for the field and keep what it found in `references/`, with each source and its date (needs a web provider key, see [web](./web.md)) |
-| `--no-compile` | write the definition only; `PERSONA.md` comes later with `personaxis compile` |
-| `--root` | create the project's root persona |
+`<name>` is its folder: `.personaxis/personas/<name>/`. Every source is numbered (S1, S2, ...) and the
+model reads them together; what you say it is for wins over the folder when they disagree. The options are
+the same as `init`'s: `--from-import`, `--from-transcript`, `--research`, `--profile`, `--yes`, `--json`,
+`--provider` and `--no-compile` (see [`init`](./init.md)).
 
 ## How it is written
 
@@ -48,10 +35,6 @@ load-bearing check (no mutable coordinate whose value cannot change the compiled
 persona with [`personaxis jacobian`](./jacobian.md)). Exit codes follow the validator convention.
 
 ## The interview
-
-Running `create` with no `--from-*` flag opens on the five ways to start a persona, so the sources are
-visible rather than hidden in `--help`. Passing any flag skips that screen, which is what scripts and
-agents do.
 
 In a terminal, after reading the sources, a model asks about what they leave open: at most five questions
 a round and fifteen in all, written for this job, each with a line saying what is missing. It asks about

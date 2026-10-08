@@ -22,7 +22,7 @@ import { validatePersona } from "@personaxis/spec";
 import { runRules } from "../src/linter/rules.js";
 import { lint } from "../src/linter/index.js";
 import { validatePolicy } from "../src/policy.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { doctorChecksOffline } from "../src/repl/doctor-checks.js";
 import { offered } from "../src/saas-gating.js";
 
@@ -39,7 +39,7 @@ function validThenBroken(): Record<string, unknown> {
     // string, so two reads of identical content share ONE data object and the
     // mutations below would leak into the next call.
     const data = structuredClone(
-      matter(readFileSync(writeStarterPersona(dir, "Vega"), "utf-8")).data,
+      matter(readFileSync(writeTestPersona(dir, "Vega"), "utf-8")).data,
     ) as Record<string, unknown>;
     // Sanity: the starting point must really be valid, otherwise this suite
     // silently degrades into "schema errors have remedies" and stops covering
@@ -216,7 +216,7 @@ describe("every command a remedy names actually exists (V7.B4)", () => {
   it("holds across the doctor's own remedies", () => {
     const dir2 = mkdtempSync(join(tmpdir(), "pxs-doc-cite-"));
     try {
-      const report = doctorChecksOffline(writeStarterPersona(dir2, "Vega"));
+      const report = doctorChecksOffline(writeTestPersona(dir2, "Vega"));
       assertCitedCommandsExist(report.lines.join("\n"), "doctor");
     } finally {
       rmSync(dir2, { recursive: true, force: true });

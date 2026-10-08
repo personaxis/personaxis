@@ -21,24 +21,30 @@ From source: `pnpm install && pnpm run build`, then run `node packages/cli/dist/
 personaxis config            # a local server (Ollama, LM Studio, llama.cpp) or your own API key
 ```
 
-Do this before creating a persona. A model writes every field of it, so without one `create` refuses
-and says how to configure one.
+Do this before creating a persona. A model writes every field of it, so without one nothing is created,
+and it says how to configure one.
 
 ## 3. Create a persona
 
+In the folder it will work in:
+
 ```bash
-personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
+personaxis init "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-Then open `.personaxis/personas/reviewer/creation-report.md`. It shows the words of the brief each
-field quotes, and its Inferred section lists every field the model filled without a source saying it, with
-what it inferred it from: that list is what you review. [`creating-personas.md`](./creating-personas.md) covers the other ways in (an interview, your
-repository, a SOUL.md or character card, transcripts) and `--research`, which adds sourced references.
+The model reads the folder, takes what you said, asks what is still missing and writes the persona. Then
+open `.personaxis/creation-report.md`. It shows what each field quotes, and its Inferred section lists every
+field the model filled without a source saying it, with what it inferred it from: that list is what you
+review. [`creating-personas.md`](./creating-personas.md) covers what to give it and how to review it;
+`personaxis create <name>` makes another persona beside this one.
 
 ## 4. Load it into your agent
 
+`init` already points `CLAUDE.md` and `AGENTS.md` at `PERSONA.md`, so Claude Code and Codex read it here.
+For another host:
+
 ```bash
-personaxis compile reviewer --platform claude-code    # or codex, openclaw, hermes
+personaxis compile --platform hermes                  # or openclaw
 ```
 
 Or serve it to any MCP host with `npx -y @personaxis/mcp`. The table of how each agent loads a
@@ -47,7 +53,7 @@ persona is in the [README](../../README.md#how-each-agent-loads-a-persona).
 ## 5. See it work
 
 ```bash
-personaxis --persona .personaxis/personas/reviewer/personaxis.md
+personaxis
 ```
 
 Talk to it in plain language. `/persona` shows its definition, `/status` what it is now, `/audit` the

@@ -1,12 +1,14 @@
 # Recipes: personas for specific jobs
 
-Each recipe is a starting point for one job: the `create` command, the spec choices that matter for that
-job, and what to check afterwards. A persona holds the procedures, criteria, tools, sourced knowledge and
+Each recipe is a starting point for one job: the command, the spec choices that matter for that job, and
+what to check afterwards. Run each one in the folder the persona will work in: the model reads it first. A persona holds the procedures, criteria, tools, sourced knowledge and
 learned memory for the job, so the choices below are mostly about those, not about personality.
 
-The general pattern: `personaxis create <slug> --from-prompt "<brief>"` (or `--from-project`,
-`--from-import`), read `creation-report.md` to see what was earned and what was assumed, refine with the
-interview or `personaxis edit`, then `personaxis compile --platform <host>` to load it. Add per-band
+The general pattern: `personaxis init "<what it is for>"` for the folder's own persona, or
+`personaxis create <name> "<what it is for>"` for another beside it (add `--from-import` or
+`--from-transcript` when you have that material), answer the interview, read `creation-report.md` to see
+what was quoted and what was inferred, refine with `personaxis edit`, then `personaxis compile --platform
+<host>` to load it. Add per-band
 `expression` prose to every trait you care about; `personaxis lint` flags numbers that are still decorative.
 
 None of these recipes comes with a measured result. Whether a persona makes an agent do a job better on a
@@ -28,7 +30,7 @@ personaxis compile reviewer --platform claude-code   # .claude/agents/reviewer.m
 ## 2. Contract review assistant
 
 ```bash
-personaxis create counsel --from-prompt "In-house contract review assistant. \
+personaxis create counsel "In-house contract review assistant. \
 Cites clause numbers, never gives definitive legal advice, escalates ambiguity, \
 discloses uncertainty aggressively."
 ```
@@ -41,17 +43,19 @@ discloses uncertainty aggressively."
 ## 3. Brand voice
 
 ```bash
-personaxis create voice --from-project ./brand-assets
+cd brand-assets
+personaxis init "The brand's voice, from our approved copy"
 ```
 
 - What matters: `voice_exemplars` from real approved copy, `prohibited_behaviors` as the legal and brand
-  no-list, `improvement_policy: locked` so the voice does not change on its own, and narrow envelopes.
+  no-list, `improvement_policy: suggesting` so nothing about the voice changes without your approval
+  (`locked` is the kill-switch, not a starting mode), and narrow envelopes.
 - Check: compile it for two hosts and compare the output on the same brief.
 
 ## 4. Tutor
 
 ```bash
-personaxis create tutor --from-prompt "Patient socratic math tutor for teens. \
+personaxis create tutor "Patient socratic math tutor for teens. \
 Never gives the answer outright, celebrates partial progress, adapts pace."
 ```
 
@@ -63,7 +67,7 @@ Never gives the answer outright, celebrates partial progress, adapts pace."
 ## 5. Sales development agent
 
 ```bash
-personaxis create sdr --from-prompt "SDR for a developer-tools company. Qualifies before pitching, \
+personaxis create sdr "SDR for a developer-tools company. Qualifies before pitching, \
 never overpromises, stops after two unanswered messages."
 ```
 
@@ -74,8 +78,8 @@ never overpromises, stops after two unanswered messages."
 ## 6. A character from an existing card
 
 ```bash
-personaxis create --from-import card.png
+personaxis create character --from-import card.png
 ```
 
-- What matters: the import turns a prose card into a governed persona, and the creation report shows what
-  the card justified and which numbers are defaults.
+- What matters: the model reads the card as a source and cites it, and the creation report shows what the
+  card states and what was inferred from it.

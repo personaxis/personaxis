@@ -20,7 +20,7 @@ vi.mock("os", async (importOriginal) => {
 
 import { compiledPathFor, loadPersonaFile, resolvePersonaSourcePath } from "../src/load.js";
 import { assemblePersonaDoc, readRecompilePending } from "@personaxis/core";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { runCompile } from "../src/commands/compile.js";
 import { assembleInputFor } from "../src/compiled-document.js";
 import { modelEnv, startFakeModel, type FakeModel } from "./helpers/fake-model.js";
@@ -84,7 +84,7 @@ describe("compiledPathFor (single owner of the compiled-doc location)", () => {
 describe("resolvePersonaSourcePath walk-up (git-like)", () => {
   it("finds the root spec from a nested subdirectory", () => {
     const repo = join(base, "repo");
-    writeStarterPersona(repo, "Aria");
+    writeTestPersona(repo, "Aria");
     const nested = join(repo, "src", "deep");
     mkdirSync(nested, { recursive: true });
     process.chdir(nested);
@@ -93,9 +93,9 @@ describe("resolvePersonaSourcePath walk-up (git-like)", () => {
 
   it("still prefers the cwd's own persona over an ancestor's", () => {
     const outer = join(base, "outer");
-    writeStarterPersona(outer, "Outer");
+    writeTestPersona(outer, "Outer");
     const inner = join(outer, "inner");
-    writeStarterPersona(inner, "Inner");
+    writeTestPersona(inner, "Inner");
     process.chdir(inner);
     expect(resolvePersonaSourcePath()).toBe(join(inner, ".personaxis", "personaxis.md"));
   });
@@ -118,14 +118,14 @@ describe("resolvePersonaSourcePath walk-up (git-like)", () => {
 describe("starter + first compile (the phantom-compile bug)", () => {
   it("a fresh starter is marked recompile-pending", () => {
     const repo = join(base, "repo2");
-    const p = writeStarterPersona(repo, "Aria");
+    const p = writeTestPersona(repo, "Aria");
     expect(readRecompilePending(p).pending).toBe(true);
     expect(readRecompilePending(p).reason).toContain("initial compile");
   });
 
   it("the first compile writes PERSONA.md exactly where compiledPathFor says", async () => {
     const repo = join(base, "repo3");
-    const p = writeStarterPersona(repo, "Aria");
+    const p = writeTestPersona(repo, "Aria");
     process.chdir(repo);
     await modelWritingItsReference(p);
     await runCompile({ root: true, quiet: true });
@@ -138,7 +138,7 @@ describe("starter + first compile (the phantom-compile bug)", () => {
 
   it("a HOME-root persona compiles INSIDE ~/.personaxis/", async () => {
     fake.home = join(base, "home2");
-    const p = writeStarterPersona(fake.home, "Aria");
+    const p = writeTestPersona(fake.home, "Aria");
     process.chdir(fake.home);
     await modelWritingItsReference(p);
     await runCompile({ root: true, quiet: true });

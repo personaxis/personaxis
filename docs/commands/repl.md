@@ -23,7 +23,7 @@ the session. The main ones:
 | `/drift` | How far the persona sits from its baseline, on three planes: continuous (u-space), structural (field-by-field vs the spec) and behavioural (does it move the compiled document). |
 | `/audit` | The Ledger: Timeline (with **rewind** as an action), Integrity (chain + replay), Self-edits, Evaluations. |
 | `/memory` | Two-level browser (kinds → entries; Enter opens your editor, cross-OS) + consolidate/prune/search. |
-| `/create [args]` | Genesis (interview, `--from-prompt`, `--from-import`, …). Needs a model; without one it says how to configure it. |
+| `/create <name> [intent]` | Another persona in this folder, by the same process as `init`. Needs a model; without one it says how to configure it. |
 | `/compile` | Recompile the persona into the files your agents read. |
 | `/skill` | Skills per persona: add, materialise (`m`), update, remove; `p` switches persona. |
 | `/model` | The resolved model, and the provider menu. |

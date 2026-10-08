@@ -246,6 +246,12 @@ export function checkStage(stage: Stage, answer: unknown, sources: readonly Sour
 	const keys = Object.keys(layer);
 	for (const k of stage.keys) if (!keys.includes(k)) issues.push(`\`layer.${k}\` is missing; this stage decides it.`);
 	for (const k of keys) if (!stage.keys.includes(k)) issues.push(`\`layer.${k}\` belongs to another stage; leave it out.`);
+	// E129: a new persona is born alive. `locked` is the kill-switch for an incident or an audit (`personaxis
+	// improve locked`); a persona created locked never moves on anything it lives through. Until 2026-10-08
+	// `init`'s templates held this, and now that a model writes every persona, this check does.
+	if (isObj(layer.improvement_policy) && layer.improvement_policy.mode === "locked") {
+		issues.push("`improvement_policy.mode` is `locked`, the kill-switch for an incident or an audit: a new persona is born able to evolve. Pick the mode the sources and the profile call for.");
+	}
 
 	// The schema, on the document as it would be with this stage merged in.
 	const draft = bookkeeping({ ...decided, ...layer }, today);

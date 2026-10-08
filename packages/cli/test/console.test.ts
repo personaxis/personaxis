@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 // Each test spawns the CLI synchronously (execFileSync). A cold start is ~1.8s in isolation,
 // but under the full suite's parallel spawns it can exceed the default 5s per-test timeout
@@ -25,7 +25,7 @@ let mainPath: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-console-"));
-  mainPath = writeStarterPersona(dir, "Vega");
+  mainPath = writeTestPersona(dir, "Vega");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

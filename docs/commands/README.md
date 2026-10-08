@@ -11,9 +11,8 @@ interactive session. Commands with their own page are linked below.
 
 | Command | What it does |
 |---|---|
-| [`create [slug]`](./create.md) | Build a persona from an interview, a prompt (`--from-prompt`), a project (`--from-project`), an import (`--from-import`: character cards V2/V3, SOUL.md, system prompts, CLAUDE.md or AGENTS.md) or a transcript (`--from-transcript`). `--research` keeps sourced web references. The result passes validation and ships with a creation report that says where each number came from. |
-| [`init`](./init.md) | Scaffold a persona from the commented template. `--agent` makes an agent persona, `--user` a user persona, `-f` overwrites. Use `create` to build one from evidence. |
-| [`template`](./template.md) | `list`, `show` and `get` the authoring templates. |
+| [`create <name> [intent]`](./create.md) | Another persona in this folder, by the same process as `init`; also reads an import (`--from-import`: character cards V2/V3, SOUL.md, system prompts, CLAUDE.md or AGENTS.md) or a transcript (`--from-transcript`). `--research` keeps sourced web references. The result passes validation and ships with a creation report that says where each number came from. |
+| [`init [intent]`](./init.md) | This folder's persona: a model reads the folder, takes what you say it is for, asks what is missing and writes it, with its `PERSONA.md`. |
 | [`validate [file]`](./validate.md) | Five-status validator (PASS, PASS_WITH_WARNINGS, FAIL_SCHEMA, FAIL_POLICY, FAIL_CONCEPTUAL); `--all` checks the root and every sub-persona. |
 | [`lint [file]`](./lint.md) | Tier-aware semantic findings against the layer and field contract (`--format json`). |
 | [`edit <dot-path> <value>`](./edit.md) | Governed edit of one spec value; re-validates and refuses any edit that would break a universal. |
@@ -107,7 +106,7 @@ Inside the session, the larger commands open full-height views with tabs and arr
 | `/drift` | Three planes: continuous (u-space), structural (field by field against the spec) and behavioral (does it move the compiled document). |
 | `/audit` | Timeline (rewind is an action here), Integrity (chain and replay), Self-edits, Evaluations. |
 | `/memory` | Kinds, then entries; Enter opens the file in your editor; consolidate, prune, search. |
-| `/create [args]` | Genesis (interview, `--from-prompt`, `--from-import`, ...); needs a model, which also writes its PERSONA.md. |
+| `/create <name> [intent]` | Another persona in this folder, by the same process as `init`; needs a model, which also writes its PERSONA.md. |
 | `/compile` | Recompile the files your agents read, from the evolved spec. |
 | `/skill` | Skills per persona: add, materialize (`m`), update, remove, apply; `p` switches persona. |
 | `/model` | The resolved model and the provider menu. |
