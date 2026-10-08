@@ -1,13 +1,13 @@
 /**
- * F3.1, the DETERMINISTIC compile assembler (stage 1 of the two-stage pipeline).
+ * F3.1, the DETERMINISTIC compile assembler: the REFERENCE a model's document is held to.
  *
- * This is the canonical, LLM-free path from a parsed persona spec to the
- * compiled PERSONA-prompting document. It ALWAYS runs; it is:
- *   - what gets hashed (stable provenance, same spec ⇒ same bytes);
- *   - what the Living Loop writes on an inline recompile (cheap, no provider);
- *   - the fallback when no model provider is configured;
- *   - the ground-truth artifact the faithfulness check diffs a polished
- *     document against (see faithfulness.ts).
+ * The LLM-free path from a parsed persona spec to the list of everything a compiled
+ * document must carry. Since 2026-10-07 it is never written as a persona's document
+ * (a model writes that; without one nothing is written), and it is:
+ *   - the ground-truth artifact the faithfulness check diffs a model-written
+ *     document against (see faithfulness.ts);
+ *   - the instrument `jacobian` and the drift view compile at each band, to
+ *     show which numbers change the document.
  *
  * It follows the section contract of PERSONA_template.md and writes the whole
  * document in the SECOND PERSON. It NEVER emits runtime numbers (trait/affect

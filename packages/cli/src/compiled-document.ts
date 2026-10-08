@@ -14,20 +14,20 @@
  * recompile called the same assembler with none of the three. Each was consistent with itself;
  * they disagreed about what a compiled document is, and nothing compared them.
  *
- * So there is one answer, here, and both paths ask it. What stays with `compile` is what only
- * `compile` can do: polish the text with a model, and copy skills into a host's discovery
- * directory. The in-session recompile writes the deterministic document, which is the canonical
- * one a polish is checked against, and names the skills a compile would copy without copying
- * anything.
+ * So there is one answer, here. Since 2026-10-07 there is also one path: a model writes every
+ * compiled document, in session too (the session's hook starts `compile` in the background), and
+ * what is here is the input of the reference that document is checked against, and the dressing
+ * (sub-persona header, skill list) put in front of it. The faithfulness check now holds the
+ * "Memory & resources" lines too, which is what the 2026-09-14 document lost.
  */
 
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
-import { assemblePersonaDoc, type AssembleInput } from "@personaxis/core";
+import type { AssembleInput } from "@personaxis/core";
 
 import { isSubagentPath, slugAddressFromPath } from "./load.js";
 import { buildResourceManifest } from "./resource-manifest.js";
-import { applySkillsToSubagent, resolveDeclaredSkills, type DeclaredSkill, type MaterializedSkill } from "./targets/skills.js";
+import { applySkillsToSubagent, type DeclaredSkill, type MaterializedSkill } from "./targets/skills.js";
 import type { PlacementPlatform } from "./targets/placement.js";
 
 type PersonaDocument = Record<string, unknown>;
@@ -101,35 +101,3 @@ export function dressCompiledDocument(text: string, sourcePath: string, data: Pe
 	return skills === undefined ? withHeader : applySkillsToSubagent(withHeader, skills.platform, [...skills.declared], [...skills.materialized]);
 }
 
-/**
- * The skills a compile would copy for a host, named without copying anything.
- *
- * The same selection `materializeLocalSkills` makes, a declared local skill whose `SKILL.md` exists,
- * so the list a live recompile writes is the list the last compile wrote.
- */
-function skillsForHost(sourcePath: string, data: PersonaDocument, platform: PlacementPlatform): SkillPlacement {
-	const declared = resolveDeclaredSkills(data as Parameters<typeof resolveDeclaredSkills>[0], dirname(sourcePath));
-	const root = platform === "claude-code" ? join(".claude", "skills") : join(".agents", "skills");
-	const materialized = declared
-		.filter((skill) => skill.kind === "local" && !skill.missing && skill.sourceDir !== undefined)
-		.map((skill) => ({ name: skill.name, destDir: join(root, skill.name) }));
-	return { platform, declared, materialized };
-}
-
-/**
- * The document the living loop writes when a band is crossed mid-session.
- *
- * Deterministic, because a turn must not wait on a model to rewrite who it is talking to. The
- * host platform defaults to `claude-code`, which is the convention `compile` uses when no
- * `--platform` is given; a persona compiled for another host gets that host's skill list back
- * at its next `compile`.
- */
-export function liveCompiledDocument(
-	sourcePath: string,
-	data: PersonaDocument,
-	facts: DocumentFacts = {},
-	platform: PlacementPlatform = "claude-code",
-): string {
-	const body = assemblePersonaDoc(assembleInputFor(sourcePath, data, facts));
-	return dressCompiledDocument(body, sourcePath, data, skillsForHost(sourcePath, data, platform));
-}

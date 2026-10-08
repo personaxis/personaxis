@@ -28,7 +28,7 @@ interactive session. Commands with their own page are linked below.
 
 | Command | What it does |
 |---|---|
-| [`compile [slug]`](./compile.md) | Compile `personaxis.md` into `PERSONA.md`; `--platform` writes it where Claude Code, Codex, OpenClaw or Hermes read it; `--no-polish` works offline. |
+| [`compile [slug]`](./compile.md) | Compile `personaxis.md` into `PERSONA.md`; a model writes it, held to the definition; `--platform` writes it where Claude Code, Codex, OpenClaw or Hermes read it. |
 | [`decompile`](./decompile.md) | Fold a hand-edited `PERSONA.md` back into a proposed `personaxis.md` (re-validates before writing). |
 | [`export`](./export.md) | Export the compiled document to JSON, YAML or Markdown (`--format` is required). |
 | [`diff <a> <b>`](./diff.md) | Field-by-field diff of two `PERSONA.md` files; exits 1 on a breaking change. |
@@ -107,7 +107,7 @@ Inside the session, the larger commands open full-height views with tabs and arr
 | `/drift` | Three planes: continuous (u-space), structural (field by field against the spec) and behavioral (does it move the compiled document). |
 | `/audit` | Timeline (rewind is an action here), Integrity (chain and replay), Self-edits, Evaluations. |
 | `/memory` | Kinds, then entries; Enter opens the file in your editor; consolidate, prune, search. |
-| `/create [args]` | Genesis (interview, `--from-prompt`, `--from-import`, ...); polish runs automatically when a model is configured. |
+| `/create [args]` | Genesis (interview, `--from-prompt`, `--from-import`, ...); needs a model, which also writes its PERSONA.md. |
 | `/compile` | Recompile the files your agents read, from the evolved spec. |
 | `/skill` | Skills per persona: add, materialize (`m`), update, remove, apply; `p` switches persona. |
 | `/model` | The resolved model and the provider menu. |

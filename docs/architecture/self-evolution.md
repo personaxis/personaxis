@@ -127,9 +127,10 @@ role adoption, character card, voice exemplars, scene contracts, guardrails (see
 
 - Numeric path: band crossing, and only band crossing (v1.1, the normative trigger, SPEC §15).
   Envelope movement within a behavior band is expression variance and does not recompile. When a
-  governed tick makes a coordinate cross a band, the loop emits a `recompile` event and rewrites the compiled doc via the deterministic stage-1 assembler
-  with fresh `stateValues` (the crossing selects new per-band `expression` prose, no LLM in
-  this path). See `loop.ts` + `compile/assemble.ts sectionExpression`;
+  governed tick makes a coordinate cross a band, the loop emits a `recompile` event, the compiled doc is
+  marked stale, and a model rewrites it in the background from a reference assembled with fresh
+  `stateValues` (the crossing selects new per-band `expression` prose, which the check holds the
+  document to). See `loop.ts` + `compile/assemble.ts sectionExpression`;
   [math-core.md](./math-core.md) maps it to the theorems.
 - Stale-marking, not inline recompile. A full LLM recompile on every turn would hang the turn, so
   the loop does not block to recompile. When a self-edit

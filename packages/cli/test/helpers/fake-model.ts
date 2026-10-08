@@ -49,6 +49,8 @@ function knownName(messages: Message[]): string | undefined {
  */
 const RECORDED = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "genesis-terse-reviewer.json"), "utf8")) as {
 	answers: Record<string, { reasoning: string; layer: unknown; provenance: Array<{ path: string; source?: string; quote?: string; inferred?: string }> }>;
+	/** The PERSONA.md the same model wrote for that persona, accepted by the faithfulness check. */
+	document: string;
 };
 
 function genesisAnswer(body: Record<string, unknown>, prompt: string): string | undefined {
@@ -59,16 +61,22 @@ function genesisAnswer(body: Record<string, unknown>, prompt: string): string | 
 	const sources = [...prompt.matchAll(/<source id="([^"]+)"[^>]*>\n([\s\S]*?)\n<\/source>/g)];
 	const cited = (p: { source?: string; quote?: string }) => sources.some(([, id, body]) => id === p.source && body?.includes(p.quote ?? ""));
 	const provenance = recorded.provenance.map((p) =>
-		p.quote && !cited(p) ?{ path: p.path, inferred: "recorded answer; the quote is not in these sources" } : p,
+		p.quote && !cited(p) ? { path: p.path, inferred: "recorded answer; the quote is not in these sources" } : p,
 	);
 	return JSON.stringify({ ...recorded, provenance });
 }
 
-function answerFor(body: Record<string, unknown>): string {
+export interface FakeModelOptions {
+	/** What the model answers when asked to write a PERSONA.md; the recorded document by default. */
+	document?: string;
+}
+
+function answerFor(body: Record<string, unknown>, options: FakeModelOptions): string {
 	const messages = (body.messages as Message[] | undefined) ?? [];
 	const genesis = genesisAnswer(body, messages.map(text).join("\n"));
 	if (genesis) return genesis;
-	if (body.response_format ||/appraise|appraisal/i.test(text(messages[0]))) {
+	if (text(messages[messages.length - 1]).startsWith("You write the compiled document for")) return options.document ?? RECORDED.document;
+	if (body.response_format || /appraise|appraisal/i.test(text(messages[0]))) {
 		const name = introducedName(messages);
 		return JSON.stringify({
 			appraisal: "noted",
@@ -82,7 +90,7 @@ function answerFor(body: Record<string, unknown>): string {
 	return name ? `Hello again, ${name}.` : "Hello.";
 }
 
-export function startFakeModel(): Promise<FakeModel> {
+export function startFakeModel(options: FakeModelOptions = {}): Promise<FakeModel> {
 	const requests: Array<Record<string, unknown>> = [];
 	const server: Server = createServer((req, res) => {
 		let raw = "";
@@ -90,7 +98,7 @@ export function startFakeModel(): Promise<FakeModel> {
 		req.on("end", () => {
 			const body = (raw ? JSON.parse(raw) : {}) as Record<string, unknown>;
 			requests.push(body);
-			const content = answerFor(body);
+			const content = answerFor(body, options);
 			if (body.stream) {
 				res.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
 				res.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);

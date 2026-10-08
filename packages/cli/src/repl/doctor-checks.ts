@@ -157,7 +157,7 @@ export function doctorChecksOffline(personaPath: string): DoctorReport {
       rows.push(warn("no model configured: the persona cannot answer, evolve or remember until one is set"));
       rows.push(
         ...fix(
-          "Set one with `/config` (or `personaxis config set` outside). Without a model the persona still runs, but appraisal falls back to heuristics and `compile` emits the template instead of polished prose.",
+          "Set one with `/config` (or `personaxis config set` outside). Without a model nothing runs: a persona answers, evolves and has its PERSONA.md written by a model.",
         ),
       );
     } else {

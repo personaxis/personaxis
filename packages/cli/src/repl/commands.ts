@@ -231,21 +231,13 @@ export const COMMANDS: CommandDef[] = [
       if (!firstCompile && !readRecompilePending(ctx.handle.personaPath).pending) {
         return void ctx.out(chalk.dim(`  PERSONA.md is already up to date: ${compiledPath}`));
       }
-      const llm = llmConfig(ctxModelArg(ctx));
-      ctx.out(
-        chalk.dim(
-          firstCompile
-            ? `  compiling PERSONA.md${llm ? "" : " (deterministic assembler, no model configured)"}…`
-            : "  recompiling PERSONA.md from the evolved spec…",
-        ),
-      );
+      ctx.out(chalk.dim(firstCompile ? "  the model is writing PERSONA.md…" : "  the model is rewriting PERSONA.md from the evolved spec…"));
       const address = slugAddressFromPath(ctx.handle.personaPath);
       try {
-        // Without a model, skip the polish stage: the stage-1 assembler still produces
-        // the full, correct document (compile NEVER silently no-ops).
+        // Written by the model or not at all: without one, runCompile refuses and says how to configure it.
         await runCompile({
           ...(address ? { slug: address } : { root: true }),
-          ...(llm ? { provider: "local" as const } : { noPolish: true }),
+          ...(llmConfig(ctxModelArg(ctx)) ? { provider: "local" as const } : {}),
         });
       } catch (e) {
         return void ctx.out(chalk.red(`  ✗ compile failed: ${(e as Error).message}`));

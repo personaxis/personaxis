@@ -1,8 +1,10 @@
 /**
  * F0.1 (V2): the compiled-document contract. `compiledPathFor` is the single owner of
  * "where does PERSONA.md live", `resolvePersonaSourcePath` walks up like git, a fresh
- * starter is born marked pending, and the deterministic first compile REALLY writes
- * the file (the phantom "/compile said ok but nothing exists" bug).
+ * starter is born marked pending, and the first compile REALLY writes the file (the
+ * phantom "/compile said ok but nothing exists" bug). Since 2026-10-07 a model writes
+ * it; the test model here answers with the persona's own reference, which passes the
+ * faithfulness check, so what is tested is where the file lands.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
@@ -16,14 +18,28 @@ vi.mock("os", async (importOriginal) => {
   return { ...mod, homedir: () => fake.home || mod.homedir() };
 });
 
-import { compiledPathFor, resolvePersonaSourcePath } from "../src/load.js";
-import { readRecompilePending } from "@personaxis/core";
+import { compiledPathFor, loadPersonaFile, resolvePersonaSourcePath } from "../src/load.js";
+import { assemblePersonaDoc, readRecompilePending } from "@personaxis/core";
 import { writeStarterPersona } from "../src/starter.js";
 import { runCompile } from "../src/commands/compile.js";
+import { assembleInputFor } from "../src/compiled-document.js";
+import { modelEnv, startFakeModel, type FakeModel } from "./helpers/fake-model.js";
 
 let base: string;
 let savedCwd: string;
 let savedPxsHome: string | undefined;
+let model: FakeModel | undefined;
+const savedModelEnv: Record<string, string | undefined> = {};
+
+/** A model for this process that answers a compile with the persona's own reference. */
+async function modelWritingItsReference(personaPath: string): Promise<void> {
+  const data = loadPersonaFile(personaPath).data as Record<string, unknown>;
+  model = await startFakeModel({ document: assemblePersonaDoc(assembleInputFor(personaPath, data)) });
+  for (const [k, v] of Object.entries(modelEnv(model))) {
+    savedModelEnv[k] = process.env[k];
+    process.env[k] = v;
+  }
+}
 
 beforeEach(() => {
   base = mkdtempSync(join(tmpdir(), "pxs-paths-"));
@@ -33,7 +49,13 @@ beforeEach(() => {
   fake.home = "";
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await model?.close();
+  model = undefined;
+  for (const [k, v] of Object.entries(savedModelEnv)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
   process.chdir(savedCwd);
   if (savedPxsHome === undefined) delete process.env.PERSONAXIS_HOME;
   else process.env.PERSONAXIS_HOME = savedPxsHome;
@@ -101,11 +123,12 @@ describe("starter + first compile (the phantom-compile bug)", () => {
     expect(readRecompilePending(p).reason).toContain("initial compile");
   });
 
-  it("the deterministic first compile writes PERSONA.md exactly where compiledPathFor says", async () => {
+  it("the first compile writes PERSONA.md exactly where compiledPathFor says", async () => {
     const repo = join(base, "repo3");
     const p = writeStarterPersona(repo, "Aria");
     process.chdir(repo);
-    await runCompile({ root: true, noPolish: true });
+    await modelWritingItsReference(p);
+    await runCompile({ root: true, quiet: true });
     const compiled = compiledPathFor(p);
     expect(compiled).toBe(join(repo, "PERSONA.md"));
     expect(existsSync(compiled)).toBe(true);
@@ -117,7 +140,8 @@ describe("starter + first compile (the phantom-compile bug)", () => {
     fake.home = join(base, "home2");
     const p = writeStarterPersona(fake.home, "Aria");
     process.chdir(fake.home);
-    await runCompile({ root: true, noPolish: true });
+    await modelWritingItsReference(p);
+    await runCompile({ root: true, quiet: true });
     const compiled = compiledPathFor(p);
     expect(compiled).toBe(join(fake.home, ".personaxis", "PERSONA.md"));
     expect(existsSync(compiled)).toBe(true);

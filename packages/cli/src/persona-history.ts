@@ -8,7 +8,7 @@
  * is moved, never deleted.
  */
 
-import { existsSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /**
@@ -27,6 +27,26 @@ export const LIVED_HISTORY = [
   "devices",
   ".dist",
 ] as const;
+
+/**
+ * True when the persona beside `personaPath` has lived nothing yet: its state never moved and it has no
+ * sessions, memory, self-edits or devices. Its record then holds only its genesis.
+ *
+ * Why it exists: the agent provider re-runs `create` after every answer it writes, and each re-run writes
+ * the same definition again over a persona created seconds before. Archiving that as a replaced persona
+ * left a `previous/` folder per handoff (2026-10-07). A persona whose state moved is archived even when its
+ * definition is written again unchanged, because whoever re-creates it asked for a fresh one.
+ */
+export function hasNotLived(personaPath: string): boolean {
+  const base = dirname(personaPath);
+  if (["self-edits.jsonl", "memory.md", "memory", "sessions", "devices"].some((name) => existsSync(join(base, name)))) return false;
+  try {
+    const state = JSON.parse(readFileSync(join(base, "state.json"), "utf-8")) as { mutation_log?: unknown[] };
+    return (state.mutation_log ?? []).length === 0;
+  } catch {
+    return !existsSync(join(base, "state.json"));
+  }
+}
 
 /**
  * Move every lived-history file beside `personaPath` into `previous/<timestamp>/`, and return that folder,

@@ -111,12 +111,12 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
     }
     personaPath = writeStarterPersona(process.cwd(), name);
     stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)}\n`);
-    // Born compiled: the deterministic stage-1 assembler needs no model, so a starter
-    // persona always has its PERSONA.md from second zero (never a phantom compile).
+    // Its PERSONA.md is written by the model, like every compiled document since 2026-10-07; without one,
+    // the session that follows refuses too, and says how to configure it.
     try {
-      await runCompile({ root: true, noPolish: true });
+      await runCompile({ root: true });
     } catch (e) {
-      stdout.write(chalk.yellow("  ! ") + `first compile failed: ${(e as Error).message}\n`);
+      stdout.write(chalk.yellow("  ! ") + `PERSONA.md not written: ${(e as Error).message}\n`);
     }
     stdout.write(chalk.green("  ✓ ") + `${chalk.bold(name)} is ready.\n`);
   }

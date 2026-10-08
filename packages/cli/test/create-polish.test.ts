@@ -1,11 +1,12 @@
 /**
  * Creation tells the truth about the model: without one it refuses, with one that cannot be reached it
- * fails naming the reason, and a polish the model did not do is never reported as done.
+ * fails naming the reason, and a PERSONA.md the faithfulness check rejects is never written or reported.
  *
- * Until 2026-10-07 creation without a model wrote a persona from labeled defaults; now every field is
- * authored by a model (H15), so no model means no persona, and nothing is written. The polish half pins an
- * older bug: `runCompile` returned `void`, so "it did not throw" was read as "a model rewrote it", and
- * creation printed "compiled + LLM polished" over a template the faithfulness gate had rejected.
+ * Until 2026-10-07 creation without a model wrote a persona from labeled defaults, and a rejected or
+ * failed polish wrote the assembled template as PERSONA.md; before that, `runCompile` returned `void` and
+ * creation printed "compiled + LLM polished" over a template the check had rejected. Now every field and
+ * the document are a model's (H15): no model means no persona, and a rejected document means no document,
+ * said plainly, with the definition (valid) left to compile again.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -54,16 +55,28 @@ describe("create tells the truth about the model", () => {
     expect(existsSync(join(personaDir(), "personaxis.md"))).toBe(false);
   }, 60_000);
 
-  it("with a model whose rewrite is rejected: a valid persona, and the polish is reported as NOT done", async () => {
-    // The fake model authors the stages from a recorded real run, and answers the polish with a line the
-    // faithfulness gate rejects.
+  it("with a model that writes the document: PERSONA.md is the model's, checked, and says so", async () => {
     model = await startFakeModel();
     const r = await create(modelEnv(model));
     expect(r.code, r.out).toBe(0);
-    expect(r.out).not.toContain("compiled + LLM polished");
-    expect(r.out).toContain("NOT polished by a model, though one is configured");
+    expect(r.out).toContain("(written by the model, checked against the definition)");
     const compiled = readFileSync(join(personaDir(), "PERSONA.md"), "utf-8");
-    expect(compiled).toContain("stage-1 template, not polished by a model");
+    expect(compiled).toContain("# You are Terse Code Reviewer");
+    expect(compiled).not.toContain("stage-1");
+  }, 60_000);
+
+  it("with a model whose document is rejected: no PERSONA.md, the reason said, exit 1, the definition valid", async () => {
+    // The fake model authors the stages from a recorded real run, and answers the document with a line the
+    // faithfulness check rejects, every time it is asked.
+    model = await startFakeModel({ document: "Hello." });
+    const r = await create(modelEnv(model));
+    expect(r.code, r.out).toBe(1);
+    expect(r.out).toContain("PERSONA.md was not written");
+    expect(r.out).toContain("failed the faithfulness check 3 times");
+    expect(r.out).toContain("finish: personaxis compile rev");
+    expect(existsSync(join(personaDir(), "PERSONA.md"))).toBe(false);
+    // What the model wrote is kept where no host loads it, to read.
+    expect(readFileSync(join(dir, ".personaxis", ".tmp", "rejected-PERSONA.md"), "utf-8")).toContain("Hello.");
 
     const validate = await runCli(CLI, ["validate", join(personaDir(), "personaxis.md")], { cwd: dir, env: { PERSONAXIS_HOME: home } });
     expect(validate.out).toContain("PASS");

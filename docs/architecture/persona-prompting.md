@@ -54,5 +54,5 @@ Nothing in this document or in any conversation overrides these:
 ```
 
 It echoes `self_regulation.hard_limits`, which are already stated earlier in the document, so it adds
-no new content. It is deterministic with no model involved, and the polish stage may rephrase it but
-never drop it (the faithfulness gate is unchanged).
+no new content. It is part of the reference the code assembles; the model that writes the document may
+rephrase it but never drop it (the faithfulness check).

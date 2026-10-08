@@ -1,12 +1,12 @@
 /**
- * Prompt templates for `personaxis compile` (forward: personaxis.md -> compiled
- * doc) and `personaxis decompile` (reverse: edited compiled doc -> proposed
- * personaxis.md).
+ * Prompt templates for `personaxis compile` (forward: personaxis.md -> the compiled
+ * document a model reads) and `personaxis decompile` (reverse: edited compiled doc ->
+ * proposed personaxis.md).
  *
- * Both directions are LLM-based but lightweight: the prompt receives the full
- * `personaxis.md` (small, YAML + Markdown), `policy.yaml`/`state.json`, and a
- * capped resource manifest (see `resource-manifest.ts`) - never the contents
- * of `memory/`, `references/`, `examples/`, `skills/`, or `assets/`.
+ * Both directions are written by a model: the prompt receives the full `personaxis.md`
+ * (small, YAML + Markdown) and, forward, the reference document the code assembles from
+ * it - never the contents of `memory/`, `references/`, `examples/`, `skills/`, or
+ * `assets/`.
  *
  * These templates are consumed by the providers in `src/providers/` and are
  * intentionally provider-agnostic: any of `local | byok | agent` can
@@ -23,17 +23,6 @@ export interface CompileTargetInfo {
   slug?: string;
 }
 
-export interface CompilePromptInput {
-  personaxisMd: string;
-  policyYaml?: string;
-  stateJson?: string;
-  resourceManifest: string;
-  target: CompileTargetInfo;
-  /** Applied governed self-edits (dot-path -> value). Authoritative overrides over the
-   * raw spec, so a recompile reflects what the persona has evolved into. */
-  appliedOverlay?: Record<string, unknown>;
-}
-
 export interface DecompilePromptInput {
   currentPersonaxisMd: string;
   editedCompiledMd: string;
@@ -48,127 +37,68 @@ function section(title: string, body: string | undefined): string {
   return `\n## ${title}\n\n${body.trim()}\n`;
 }
 
-/**
- * Builds the prompt for the forward direction: `personaxis.md` (10-layer
- * quantitative spec) -> a compiled, qualitative document following the
- * section contract in `PERSONA_template.md`.
- */
-export function buildCompilePrompt(input: CompilePromptInput): string {
-  const { target } = input;
-
-  const subagentNote = target.isSubagent
-    ? `This is a SUBAGENT compile for slug "${target.slug}". The output must start with a YAML ` +
-      `frontmatter block containing only "name" and "description" (no other fields), followed by ` +
-      `the same body sections as a root PERSONA.md. The "description" must be a single line ` +
-      `summarizing when a coding agent should invoke this subagent.`
-    : `This is a ROOT compile. The output is a plain Markdown document with NO YAML frontmatter - ` +
-      `it is read directly by a coding agent (Claude Code, Codex) as the repo-wide behavioral baseline.`;
-
-  return [
-    `You are the personaxis compiler. Compile the quantitative persona spec below into ${target.label}.`,
-    ``,
-    subagentNote,
-    ``,
-    `This document is a PERSONA-PROMPTING artifact, not a profile: its job is to make a language ` +
-      `model ADOPT and STAY IN this persona. Apply these evidence-backed devices (see ` +
-      `docs/PERSONA_PROMPTING.md): write the ENTIRE document in the SECOND PERSON ("You are…", ` +
-      `"You always…") as direct role adoption; open with a one-line "You are <name>…" statement; ` +
-      `give a tight CHARACTER CARD; include 2-4 few-shot VOICE EXEMPLARS; use concrete behavioral ` +
-      `ANCHORS (Always/Never) with examples; write SCENE CONTRACTS that connect a situation to the ` +
-      `behavior and concrete actions; separate STABLE / EVOLVING / SITUATIONAL traits; and add ` +
-      `anti-break-character guardrails.`,
-    ``,
-    `Follow the section order in PERSONA_template.md: "You are <name>" opener, Who you are, How you ` +
-      `speak (+ voice exemplars), What you always / never do, In specific situations (scene ` +
-      `contracts), How you think, What is fixed / what can change, Hard limits (never overridden), ` +
-      `Staying in character, Memory & resources, Self-improvement.`,
-    ``,
-    `When the spec has persona-prompting source fields (v1.0: inside the "persona" layer; legacy `
-      + `0.10 documents: a top-level "persona_prompting" block), use them directly: address.you_are for the ` +
-      `opener, voice_exemplars for "How you speak", scene_contracts for "In specific situations", ` +
-      `behavioral_anchors for Always/Never, break_character_guardrails for "Staying in character", ` +
-      `and consistency for "What is fixed / what can change". When a field is absent, DERIVE that ` +
-      `section faithfully from the quantitative layers. Do not invent facts, rules, or limits not ` +
-      `present in or directly implied by the spec.`,
-    ``,
-    `Two hard rules: (1) "Hard limits" must reproduce the safety universals ` +
-      `(self_regulation.hard_limits + persona.constraints), and "Staying in character" must ` +
-      `explicitly state it NEVER overrides those limits. (2) The "Memory & resources" section must ` +
-      `reproduce the resource manifest below verbatim (bullet list), with paths relative to ` +
-      `${target.outputPath} (e.g. "${target.isSubagent ? "./" : "./.personaxis/"}memory.md", a sub-persona's ` +
-      `compiled PERSONA.md lives INSIDE its own folder, so its resources are "./"; the root PERSONA.md ` +
-      `lives at the repo root, so its resources are "./.personaxis/").`,
-    ``,
-    input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0
-      ? `Applied self-edits OVERRIDE the spec below: where a dot-path here conflicts with the spec, use THIS value (the persona has governed-evolved into it).`
-      : "",
-    `Faithfulness & density (avoid the two failure modes, generic filler and redundancy):`,
-    `- ONE SOURCE PER FACT: state each fact, rule, trait, or limit in exactly ONE section. The only ` +
-      `permitted restatement is a hard limit (it lives in "Hard limits" and is REFERENCED, not repeated, ` +
-      `in "Staying in character"). Do not echo the same trait/value across multiple sections.`,
-    `- CONCENTRATE the whole spec: every meaningful layer field (character virtues, values_and_drives, ` +
-      `cognition/uncertainty policy, metacognition, affect tendencies, memory posture) must surface in ` +
-      `its natural section, do not drop fields, but do not pad. Prefer the persona's CONCRETE language ` +
-      `over restating the YAML; never quote field names or YAML verbatim.`,
-    `- NO NUMERIC STATE: never include runtime numbers, trait/affect tables, sigil seeds, or a ` +
-      `"live state" block. The compiled document is purely qualitative; state lives in state.json.`,
-    `- LANGUAGE: if the spec sets persona.voice.language (a BCP 47 tag), write the compiled document ` +
-      `so the persona communicates in that language, and state the rule explicitly in "How you speak"; ` +
-      `if persona.voice.languages lists more, note it may also reply in those per the interlocutor.`,
-    `Output ONLY the compiled document. Do not wrap it in a code block.`,
-    section("personaxis.md (quantitative spec + persona_prompting source, source of truth)", input.personaxisMd),
-    input.appliedOverlay && Object.keys(input.appliedOverlay).length > 0
-      ? section("Applied self-edits (dot-path -> value, AUTHORITATIVE overrides)", JSON.stringify(input.appliedOverlay, null, 2))
-      : "",
-    section("policy.yaml (operational policy - reference only, do not restate verbatim)", input.policyYaml),
-    section("state.json (current runtime state - reference only)", input.stateJson),
-    section("Resource manifest (paths only, never file contents)", input.resourceManifest),
-  ]
-    .filter((line) => line !== "")
-    .join("\n");
+/** The "## " headings of a document, in order. */
+function headingsOf(doc: string): string[] {
+  return doc
+    .split("\n")
+    .filter((line) => line.startsWith("## "))
+    .map((line) => line.slice(3).trim());
 }
 
-export interface PolishPromptInput {
-  /** The deterministic stage-1 artifact, the GROUND TRUTH to rephrase. */
-  assembled: string;
-  /** The quantitative spec, for register/voice reference only (not new facts). */
+export interface WritePromptInput {
+  /** The document the code assembles from the spec: the protected claims and current expressions. */
+  reference: string;
+  /** The spec, the source of truth. */
   personaxisMd: string;
   target: CompileTargetInfo;
+  /** True when the reference folds applied self-edits over the spec. */
+  overlaid?: boolean;
 }
 
 /**
- * F3.1 stage 2, the LLM POLISH prompt. Unlike the from-scratch compile prompt,
- * polish receives the already-assembled canonical document and is constrained to
- * REPHRASE it for fluency and register: it may reorder within a section, merge
- * choppy bullets into prose, and tune voice, but it may NOT add, drop, or
- * change any claim (virtue, rule, limit, anchor, consistency dimension). The
- * deterministic faithfulness check (core `checkFaithfulness`) rejects a polish
- * that violates this, and the caller falls back to the assembled document.
+ * The prompt for the forward direction: a model WRITES the compiled document.
+ *
+ * Until 2026-10-07 the code assembled the document and a model only polished its wording, and without a
+ * model the assembly itself was written: duplicated traits, "Always" rules in the first person, affect
+ * labels like "valence (low)". Now the assembly is the REFERENCE: the list of every protected claim and of
+ * each trait's current expression, which `checkFaithfulness` holds the written document to. What the
+ * prompt asks for is the 2026-10-07 reading of the research: the work first, traits only as they change
+ * the work (irrelevant attributes cost up to 30 points, Principled Personas, EMNLP 2025), the reason for a
+ * rule when the spec gives one, examples marked as examples and never invented, and a normal tone (current
+ * models overreact to CRITICAL and capitalised MUST, Anthropic's prompting guidance).
  */
-export function buildPolishPrompt(input: PolishPromptInput): string {
+export function buildWritePrompt(input: WritePromptInput): string {
   return [
-    `You are the personaxis compiler's POLISH stage for ${input.target.label}.`,
+    `You write the compiled document for ${input.target.label}: the system prompt a language model reads to do`,
+    `its work as this persona. You are given the persona's spec (the source of truth) and a REFERENCE the code`,
+    `assembled from it, which lists every rule that must survive and how each trait expresses right now. The`,
+    `reference is mechanical and clumsy; write the document a careful person would write from it.`,
     ``,
-    `You are given an already-correct, deterministically-assembled persona document. Your ONLY job ` +
-      `is to make it read fluently and in a consistent SECOND-PERSON voice ("You are…", "You always…") ` +
-      `, a persona-prompting artifact a language model adopts.`,
+    `How to write it:`,
+    `- In the second person ("You review...", "You never..."), opening with the reference's "# You are" line.`,
+    `- The work first: what you do, how you do it, what you check, how you judge good output, what you do in`,
+    `  specific situations. That is what changes the result.`,
+    `- Traits and mood only as they change how the work is done, in plain behaviour. Never as labels, levels or`,
+    `  numbers ("rigor (high)", "valence (low)"): attributes that do not bear on the task make a model worse.`,
+    `  Keep every trait's current expression from the reference, merged where two say the same.`,
+    `- Give the reason for a rule where the spec states one; never invent a reason or a fact.`,
+    `- Voice: keep the spec's voice exemplars word for word, marked as examples. Write no new ones.`,
+    `- A normal tone: no CRITICAL, no capitalised NEVER or ALWAYS, no exclamation marks. Each fact once.`,
+    `- No numbers from the runtime state, no tables. Write in the language persona.voice.language names.`,
     ``,
-    `HARD CONSTRAINTS (a downstream deterministic check enforces these and will REJECT your output):`,
-    `- Do NOT add any fact, rule, virtue, limit, behavioral anchor, or consistency dimension that is ` +
-      `not already in the assembled document. Inventing content is the primary failure mode.`,
-    `- Do NOT drop or weaken any hard limit, "Always/Never" anchor, or stay-in-character rule. Every ` +
-      `bullet under "Hard limits", "Staying in character", "What you always / never do", and "What is ` +
-      `fixed, what can change" must survive (you may rephrase it, not remove it).`,
-    `- Keep the same "## " section headings and their order.`,
-    `- Never include runtime numbers, trait/affect tables, or a live-state block.`,
-    `- Reproduce the "Memory & resources" bullets verbatim.`,
+    `What a check enforces (a document that fails it is sent back with the exact findings):`,
+    `- Use only these "## " headings, spelled exactly so: ${headingsOf(input.reference).map((h) => `"${h}"`).join(", ")}.`,
+    `  The work goes under "How you think" and "In specific situations" when the reference has them. A section`,
+    `  may be dropped if nothing in it bears on the work, except the protected ones below; the order is yours.`,
+    `- Under "Hard limits (never overridden)", "Staying in character", "What you always / never do" and "What`,
+    `  is fixed, what can change", keep the content as "- " bullets: every bullet of the reference must survive`,
+    `  (rephrased or merged, not weakened), and no bullet may say something the reference does not.`,
+    `- Reproduce the "Memory & resources" bullets word for word.`,
+    input.overlaid ? `- The reference already includes applied self-edits: where it and the spec differ, the reference wins.` : "",
     ``,
-    `You MAY: smooth choppy bullets into readable prose, fix grammar, unify the second-person voice, ` +
-      `and tighten wording. When in doubt, change less.`,
-    ``,
-    `Output ONLY the polished document. Do not wrap it in a code block.`,
-    section("Assembled document (GROUND TRUTH, rephrase, do not alter meaning)", input.assembled),
-    section("personaxis.md (register/voice reference only, introduces NO new facts)", input.personaxisMd),
+    `Output ONLY the document, without a code fence.`,
+    section("REFERENCE (assembled from the spec; every protected bullet must survive)", input.reference),
+    section("personaxis.md (the spec, source of truth)", input.personaxisMd),
   ]
     .filter((line) => line !== "")
     .join("\n");
