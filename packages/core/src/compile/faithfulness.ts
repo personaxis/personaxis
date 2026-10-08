@@ -1,15 +1,18 @@
 /**
- * F3.1, the DETERMINISTIC faithfulness check (guards stage 2 of the pipeline).
+ * F3.1, the DETERMINISTIC faithfulness check on the compiled document.
  *
- * Stage 2 (the optional LLM "polish") is constrained to REPHRASE the assembled
- * document, never to ADD or DROP claims. This check enforces that contract
- * deterministically by diffing the polished document against the assembled one
- * (the ground truth), section by section, over the PROTECTED claim classes:
+ * A model writes PERSONA.md (since 2026-10-07; before, it only polished an assembly). It may write
+ * freely, but it may not ADD or DROP a protected claim. This check enforces that by diffing the
+ * written document against the reference the code assembles from the spec (the ground truth),
+ * section by section, over the PROTECTED claim classes:
  *
  *   - Hard limits, a dropped safety limit is a hard failure.
  *   - Staying in character, same (these are hard limits too).
  *   - What you always/never, behavioral anchors.
  *   - What is fixed/change, consistency dimensions.
+ *   - Memory & resources, the paths to the persona's memory, skills and references (E92: a document
+ *     that lost them left the persona unable to see what it had). Since 2026-10-07 the model WRITES the
+ *     document, so nothing but this check keeps those lines.
  *
  * The historical CMO regression, the compiled PERSONA.md invented `consistency`
  * items the source never declared, fails here as an INVENTED finding.
@@ -71,7 +74,8 @@ export type FaithfulnessSection =
   | "hard limits (never overridden)"
   | "staying in character"
   | "what you always / never do"
-  | "what is fixed, what can change";
+  | "what is fixed, what can change"
+  | "memory & resources";
 
 export interface FaithfulnessFinding {
   kind: "dropped" | "invented";
@@ -99,6 +103,7 @@ const DEFAULT_SECTIONS = [
   "staying in character",
   "what you always / never do",
   "what is fixed, what can change",
+  "memory & resources",
 ];
 
 /**
@@ -151,12 +156,4 @@ export function checkFaithfulness(
   }
 
   return { ok: findings.length === 0, findings };
-}
-
-/** One-line human summary of a report (for CLI output / logs). */
-export function summarizeFaithfulness(report: FaithfulnessReport): string {
-  if (report.ok) return "faithfulness: OK (polish preserved every protected claim)";
-  const dropped = report.findings.filter((f) => f.kind === "dropped").length;
-  const invented = report.findings.filter((f) => f.kind === "invented").length;
-  return `faithfulness: FAIL, ${dropped} dropped, ${invented} invented protected claim(s)`;
 }

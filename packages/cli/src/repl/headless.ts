@@ -7,7 +7,7 @@
 
 import { ensureState, readMemoryKnobs, factsView, recallWindow, readHooksConfig, runHooks, ModelRequiredError } from "@personaxis/core";
 import { resolvePersonaPath, makeMeter } from "./config.js";
-import { makeCtx, recordTurn } from "./session.js";
+import { freshPersonaDoc, makeCtx, recordTurn } from "./session.js";
 import { shortName, friendlyProviderError } from "./render.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import { expandFileMentions } from "./mentions.js";
@@ -188,7 +188,7 @@ async function governedReply(o: GovernedReplyOptions): Promise<{ reply: string; 
     const reply = await ctx.responder
       .respond({
         message: expandFileMentions(o.prompt),
-        personaBody: `You are ${name}. Stay in character.\n\n${ctx.personaDoc}`,
+        personaBody: `You are ${name}. Stay in character.\n\n${freshPersonaDoc(ctx)}`,
         awareness: buildAwarenessBlock(o.personaPath, { frontmatter: ctx.handle.frontmatter as Record<string, unknown>, cwd: process.cwd() }),
         memory,
         state,

@@ -71,7 +71,7 @@ import { runRules } from "../linter/rules.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { ProviderRequiresAgentError } from "../providers/types.js";
-import { movePersonaHistoryAside } from "../persona-history.js";
+import { hasNotLived, movePersonaHistoryAside } from "../persona-history.js";
 
 interface CreateOpts {
   fromPrompt?: string;
@@ -82,9 +82,8 @@ interface CreateOpts {
   yes?: boolean;
   json?: boolean;
   provider?: ProviderName;
-  /** V5.P2.5: commander maps --no-polish onto polish:false. */
-  polish?: boolean;
-  noPolish?: boolean;
+  /** Commander maps --no-compile onto compile:false: write the definition, leave PERSONA.md to `compile`. */
+  compile?: boolean;
   /** E65: research the field on the web and leave what it found behind the persona. */
   research?: boolean;
   /** E128: the starting profile, the defaults of the three controls (range, per-layer policy, half-life). */
@@ -386,9 +385,9 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
       persona: spec,
       target: { name: (spec.identity as { display_name: string }).display_name, isSubagent: false, resourceBase: "./.personaxis/" },
     });
-    gates.push({ name: "compile (stage-1)", pass: compiled.length > 0, detail: `${compiled.split("\n").length} lines` });
+    gates.push({ name: "PERSONA.md reference", pass: compiled.length > 0, detail: `${compiled.split("\n").length} lines` });
   } catch (e) {
-    gates.push({ name: "compile (stage-1)", pass: false, detail: (e as Error).message });
+    gates.push({ name: "PERSONA.md reference", pass: false, detail: (e as Error).message });
   }
   // FASE 7 P1 hard gate (gap G1): no number leaves Genesis decorative. Every stage checks that its
   // numbers can cross a band and carries band prose; sigma = 0 here means a pipeline bug.
@@ -437,7 +436,10 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   // ── write artifacts ────────────────────────────────────────────────────────
   // Replacing an existing persona starts a new one: what the old one lived (state, record, memory,
   // sessions, self-edits) is moved aside, or the new definition would start from the old values (E176).
-  const previousHistory = existsSync(personaPath) ? movePersonaHistoryAside(personaPath) : undefined;
+  // The same definition over a persona that has lived nothing is the same persona: the agent provider
+  // re-runs `create` after every answer it writes, and each re-run must not archive the previous one.
+  const rerun = existsSync(personaPath) && readFileSync(personaPath, "utf-8") === document && hasNotLived(personaPath);
+  const previousHistory = existsSync(personaPath) && !rerun ? movePersonaHistoryAside(personaPath) : undefined;
   mkdirSync(baseDir, { recursive: true });
   writeFileSync(personaPath, document, "utf-8");
   writeFileSync(join(baseDir, "creation-report.md"), report, "utf-8");
@@ -452,59 +454,31 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   const handle = loadPersona(personaPath);
   ensureState(handle);
   const compiledPath = opts.root ? resolve("PERSONA.md") : join(baseDir, "PERSONA.md");
-  if (compiled) writeFileSync(compiledPath, compiled.trimEnd() + "\n", "utf-8");
 
-  // Creation is NOT done at the template. The stage-1 assembly echoes the answers back
-  // almost verbatim, language included, so a persona created with a model configured must
-  // pass through that model. Template output is a legitimate result ONLY with no model
-  // reachable, and it is marked as such.
-  //
-  // Reporting this used to be wrong in a way that mattered: `runCompile` returned nothing,
-  // so "it did not throw" was read as "a model rewrote it", and `create` printed
-  // "compiled + LLM polished" over a template whenever the faithfulness gate rejected the
-  // model's rewrite. It now asks for the outcome and says exactly what happened.
-  let polished = false;
-  let unpolishedReason: string | undefined;
-  const wantPolish = opts.polish !== false && !opts.noPolish;
-  const hasModel = !!resolveModel({ cwd: process.cwd(), personaPath });
-  if (wantPolish && hasModel) {
+  // PERSONA.md is written by the model and held to the reference by the faithfulness check
+  // (`runCompile`); there is no template to fall back on. A failure leaves the definition, which is
+  // valid, and says how to finish.
+  let compileError: string | undefined;
+  if (opts.compile !== false) {
     // With --json, stdout is the JSON already printed: compile's progress goes to stderr, or a script
     // parsing the output reads the JSON followed by a line of text (seen 2026-10-07).
     const log = console.log;
     if (opts.json) console.log = console.error;
     try {
-      const outcome = await runCompile(opts.root ? { root: true } : { slug });
-      polished = outcome.polished;
-      if (!polished) unpolishedReason = outcome.via;
+      await runCompile({ ...(opts.root ? { root: true } : { slug }), ...(opts.provider ? { provider: opts.provider } : {}) });
     } catch (e) {
-      unpolishedReason = (e as Error).message;
+      if (e instanceof ProviderRequiresAgentError) throw e; // the agent answers, then `create` runs again
+      compileError = (e as Error).message;
     } finally {
       console.log = log;
     }
-  }
-  if (!polished && compiled) {
-    const why = !wantPolish
-      ? "polish skipped (--no-polish)"
-      : !hasModel
-        ? "no model configured"
-        : (unpolishedReason ?? "the model's rewrite was not accepted");
-    writeFileSync(
-      compiledPath,
-      compiled.trimEnd() + `\n\n<!-- stage-1 template, not polished by a model: ${why}. Run \`personaxis compile\` once that is resolved. -->\n`,
-      "utf-8",
-    );
   }
 
   if (!opts.json) {
     console.log("");
     console.log(chalk.green("✓"), chalk.bold(slug), "created, a governed persona, not a prose blob:");
     console.log(`  ${chalk.cyan(relative(process.cwd(), personaPath))} ${chalk.dim("(validated " + validation.status + ")")}`);
-    const docNote = polished
-      ? chalk.dim("(compiled + LLM polished)")
-      : hasModel
-        ? chalk.yellow("(stage-1 template, NOT polished)")
-        : chalk.dim("(compiled, stage-1 offline; next compile with a model polishes it)");
-    console.log(`  ${chalk.cyan(relative(process.cwd(), compiledPath))} ${docNote}`);
+    if (opts.compile !== false && !compileError) console.log(`  ${chalk.cyan(relative(process.cwd(), compiledPath))} ${chalk.dim("(written by the model, checked against the definition)")}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), handle.statePath))} ${chalk.dim("(runtime state)")}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(where every field came from; ${inferredCount} inferred, read those first)`)}`);
     if (previousHistory) {
@@ -512,27 +486,20 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     }
     const warns = lint.filter((f) => f.severity === "warning").length;
     if (warns) console.log(chalk.dim(`  ${warns} lint warning(s), run \`personaxis lint\` for detail (decorative numbers are worth fixing).`));
-    // What was worked around (no model, a failed search) said where it happens, not only in the report.
+    // What was worked around (a failed search) said where it happens, not only in the report.
     for (const note of llmNotes) console.log(chalk.yellow(`  ⚠ ${note}`));
-    console.log(
-      chalk.dim(
-        polished
-          ? `\n  Next: personaxis state drift -f ${relative(process.cwd(), personaPath)} · talk to it: personaxis --persona ${relative(process.cwd(), personaPath)}`
-          : `\n  Next: personaxis compile ${opts.root ? "--root" : slug}  (LLM polish once a model is configured) · personaxis state drift -f ${relative(process.cwd(), personaPath)}`,
-      ),
-    );
+    if (opts.compile === false) console.log(chalk.dim(`\n  PERSONA.md not written (--no-compile). Next: personaxis compile ${opts.root ? "--root" : slug}`));
+    else if (!compileError) console.log(chalk.dim(`\n  Next: talk to it: personaxis --persona ${relative(process.cwd(), personaPath)}`));
   }
 
-  // A template produced WITH a model available is a defect, not a soft outcome: the user
-  // asked for a persona and got their own answers echoed back. Say so on stderr, LAST, so
-  // it is the line they leave with. The spec and state are already written and valid, so
-  // nothing is lost by finishing, but nobody should read this run as a success.
-  if (wantPolish && hasModel && !polished) {
+  // The definition is written and valid, but a persona without its document is not finished: say so on
+  // stderr, last, so it is the line the person leaves with, and exit 1.
+  if (compileError) {
     console.error("");
-    console.error(chalk.red("  ✗ the document was NOT polished by a model, though one is configured."));
-    console.error(chalk.dim(`    reason:  ${unpolishedReason ?? "unknown"}`));
-    console.error(chalk.dim("    written: the deterministic stage-1 assembly, marked as such in the file."));
-    console.error(chalk.dim(`    fix:     personaxis compile ${opts.root ? "--root" : slug}   (after resolving the reason above)`));
+    console.error(chalk.red("  ✗ PERSONA.md was not written."));
+    console.error(chalk.dim(`    reason: ${compileError}`));
+    console.error(chalk.dim(`    finish: personaxis compile ${opts.root ? "--root" : slug}`));
+    process.exitCode = 1;
   }
 }
 
@@ -547,7 +514,7 @@ export const createCommand = new Command("create")
   .option("--yes", "Non-interactive: never ask, and overwrite existing files")
   .option("--json", "Emit the spec + gates + provenance as JSON (dry-run unless --yes)")
   .option("--provider <name>", "Override the configured provider (local | byok | agent)")
-  .option("--no-polish", "Skip the automatic LLM polish after creation (offline template, marked pending)")
+  .option("--no-compile", "Write the definition only; PERSONA.md comes later with `personaxis compile`")
   .option("--profile <name>", "Starting profile: regulated | standard | research (the defaults of each layer's range, who approves lasting changes, and how fast it returns to baseline). Default: standard")
   .option("--research", "Search the web for the field, and leave what it found in references/ with each source and its date (needs a web provider key)")
   .action(async (slug: string | undefined, opts: CreateOpts) => {

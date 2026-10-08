@@ -49,7 +49,7 @@ describe.skipIf(!built)("SOUL.md import → governed persona → attest (V3.3)",
   afterEach(() => model.close());
 
   const create = () =>
-    runCli(CLI, ["create", "nyx", "--from-import", "SOUL.md", "--yes", "--no-polish"], {
+    runCli(CLI, ["create", "nyx", "--from-import", "SOUL.md", "--yes"], {
       cwd: dir,
       env: { PERSONAXIS_NO_ANIM: "1", PERSONAXIS_HOME: home, ...modelEnv(model) },
     });

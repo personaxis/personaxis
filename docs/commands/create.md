@@ -31,7 +31,7 @@ the persona (default: under `.personaxis/personas/<slug>/`; `--root` writes the 
 | `--json` | emit spec + gates + notes + sources + stages as JSON on stdout (dry-run unless `--yes`) |
 | `--provider <p>` | override the provider (`local\|byok\|agent`) |
 | `--research` | search the web for the field and keep what it found in `references/`, with each source and its date (needs a web provider key, see [web](./web.md)) |
-| `--no-polish` | skip the model polish of `PERSONA.md` after creation; the template is marked pending |
+| `--no-compile` | write the definition only; `PERSONA.md` comes later with `personaxis compile` |
 | `--root` | create the project's root persona |
 
 ## How it is written

@@ -1,5 +1,5 @@
 /**
- * E92: a live recompile writes the document `compile` writes.
+ * E92: the compiled document keeps what the persona has, whoever writes it and whenever.
  *
  * Measured on 2026-09-14: a persona crossed a band on its first TUI turn, the living loop rewrote
  * its `PERSONA.md`, and the new document had lost the header with its skill list and the resource
@@ -7,26 +7,31 @@
  * persona stopped seeing what it had. Two paths built the document and only one of them passed the
  * manifest, the header and the skills.
  *
- * The strongest check is the one that makes drift impossible to miss: for the same spec and the
- * same state, the live document is byte for byte the file `compile --no-polish` writes.
+ * Since 2026-10-07 a model writes every compiled document, in session too: a crossing marks it stale
+ * and starts the same `compile` in the background. What keeps the skills and resources now is the
+ * reference both paths build (`assembleInputFor`), the dressing `compile` puts in front, and the
+ * faithfulness check, which rejects a document that drops a "Memory & resources" line.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import matter from "gray-matter";
 
-import { ensureState, run } from "@personaxis/core";
+import { assemblePersonaDoc, checkFaithfulness, ensureState, markRecompilePending, readRecompilePending, run } from "@personaxis/core";
 
 import { compiledPathFor, loadPersonaFile } from "../src/load.js";
 import { writeStarterPersona } from "../src/starter.js";
 import { runCompile } from "../src/commands/compile.js";
-import { liveCompiledDocument } from "../src/compiled-document.js";
+import { assembleInputFor } from "../src/compiled-document.js";
 import { recompileHookFor } from "../src/repl/session.js";
+import { modelEnv, startFakeModel, type FakeModel } from "./helpers/fake-model.js";
 
 let base: string;
 let savedCwd: string;
 let savedPxsHome: string | undefined;
+let model: FakeModel | undefined;
+const savedModelEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
 	base = mkdtempSync(join(tmpdir(), "pxs-compiled-doc-"));
@@ -35,7 +40,13 @@ beforeEach(() => {
 	process.env.PERSONAXIS_HOME = join(base, "pxs-config"); // isolate model config
 });
 
-afterEach(() => {
+afterEach(async () => {
+	await model?.close();
+	model = undefined;
+	for (const [k, v] of Object.entries(savedModelEnv)) {
+		if (v === undefined) delete process.env[k];
+		else process.env[k] = v;
+	}
 	process.chdir(savedCwd);
 	if (savedPxsHome === undefined) delete process.env.PERSONAXIS_HOME;
 	else process.env.PERSONAXIS_HOME = savedPxsHome;
@@ -61,66 +72,88 @@ function withSkillAndReference(repo: string, subSlug?: string): string {
 }
 
 const specOf = (path: string) => loadPersonaFile(path).data as Record<string, unknown>;
+/** The reference the code assembles for a persona: what its document must carry. */
+const referenceOf = (path: string) => assemblePersonaDoc(assembleInputFor(path, specOf(path)));
 
-describe("the live compiled document (E92)", () => {
-	it("keeps the sub-persona header, its skill list and its resources", () => {
+/** A model for this process that writes `document` whenever it is asked for a PERSONA.md. */
+async function modelWriting(document: string): Promise<void> {
+	model = await startFakeModel({ document });
+	for (const [k, v] of Object.entries(modelEnv(model))) {
+		savedModelEnv[k] = process.env[k];
+		process.env[k] = v;
+	}
+}
+
+describe("the compiled document keeps what the persona has (E92)", () => {
+	it("the reference names the skills and the references, so the check holds a document to them", () => {
 		const path = withSkillAndReference(join(base, "repo"), "wright");
-		const { data, content } = matter(liveCompiledDocument(path, specOf(path)));
+		const reference = referenceOf(path);
+		expect(reference).toContain("`./references/`");
+		expect(reference).toContain("`pacing-notes.md`");
+		expect(reference).toContain("`./skills/`");
+		expect(reference).toContain("`level-pacing/`");
+	});
 
+	it("rejects a document that drops a Memory & resources line", () => {
+		const path = withSkillAndReference(join(base, "repo"), "wright");
+		const reference = referenceOf(path);
+		const lost = reference.split("\n").filter((line) => !line.includes("pacing-notes.md")).join("\n");
+		const report = checkFaithfulness(reference, lost);
+		expect(report.ok).toBe(false);
+		expect(report.findings.some((f) => f.kind === "dropped" && f.section === "memory & resources")).toBe(true);
+	});
+
+	it("compile puts the sub-persona header and the skills that exist in front of the model's document", async () => {
+		const repo = join(base, "repo");
+		const path = withSkillAndReference(repo, "wright");
+		writeFileSync(path, readFileSync(path, "utf-8").replace('    - "./skills/level-pacing"', '    - "./skills/level-pacing"\n    - "./skills/not-written-yet"'));
+		process.chdir(repo);
+		await modelWriting(referenceOf(path));
+		await runCompile({ slug: "wright", quiet: true });
+
+		const { data, content } = matter(readFileSync(compiledPathFor(path), "utf-8"));
 		expect(data.name).toBe("wright");
 		expect(data.skills).toEqual(["level-pacing"]);
-		expect(content).toContain("`./references/`");
 		expect(content).toContain("`pacing-notes.md`");
-		expect(content).toContain("`./skills/`");
-		expect(content).toContain("`level-pacing/`");
 	});
 
-	it("names only the skills that exist, the same selection compile copies", () => {
-		const path = withSkillAndReference(join(base, "repo"), "wright");
-		writeFileSync(path, readFileSync(path, "utf-8").replace('    - "./skills/level-pacing"', '    - "./skills/level-pacing"\n    - "./skills/not-written-yet"'));
-		const { data } = matter(liveCompiledDocument(path, specOf(path)));
-		expect(data.skills).toEqual(["level-pacing"]);
-	});
-
-	it("is byte for byte what compile writes without a model, for a sub-persona", async () => {
+	it("a crossing in session marks the document stale and the model rewrites it, never the template", async () => {
+		// The hook `makeCtx` hands the living loop, not a copy of it.
 		const repo = join(base, "repo");
 		const path = withSkillAndReference(repo, "wright");
 		process.chdir(repo);
-		await runCompile({ slug: "wright", noPolish: true });
-
-		const written = readFileSync(compiledPathFor(path), "utf-8");
-		expect(liveCompiledDocument(path, specOf(path)).trimEnd() + "\n").toBe(written);
-	});
-
-	it("is what the session's own recompile hook writes over a stale document", async () => {
-		// The hook `makeCtx` hands the living loop, not a copy of it. A session that went back to
-		// assembling the document by hand would pass every test above and fail this one.
-		const repo = join(base, "repo");
-		const path = withSkillAndReference(repo, "wright");
-		process.chdir(repo);
-		// State first, so the compile and the hook read the same values and the same disk.
 		ensureState(run.assemble(path).handle);
-		await runCompile({ slug: "wright", noPolish: true });
-
+		const written = "# You are Wright\n\nWritten by the model.\n";
 		const compiledPath = compiledPathFor(path);
-		const written = readFileSync(compiledPath, "utf-8");
+		mkdirSync(join(repo, ".personaxis", "personas", "wright"), { recursive: true });
 		writeFileSync(compiledPath, "stale\n");
-		await recompileHookFor(path, compiledPath)(run.assemble(path).handle);
+		// The model answers with the reference plus a line of its own, so its document passes the check and is
+		// told apart from the template the hook used to write.
+		await modelWriting(`${referenceOf(path)}\n\n${written}`);
 
-		expect(readFileSync(compiledPath, "utf-8")).toBe(written);
-		expect(matter(written).data.skills).toEqual(["level-pacing"]);
+		await recompileHookFor(path, compiledPath)(run.assemble(path).handle);
+		expect(readFileSync(compiledPath, "utf-8")).toBe("stale\n"); // the turn does not wait on the model
+		for (let i = 0; i < 100 && readRecompilePending(path).pending; i += 1) await new Promise((r) => setTimeout(r, 50));
+
+		expect(readRecompilePending(path).pending).toBe(false);
+		expect(readFileSync(compiledPath, "utf-8")).toContain("Written by the model.");
+		expect(model!.requests.length).toBeGreaterThan(0);
 	});
 
-	it("is byte for byte what compile writes without a model, for the root persona", async () => {
+	it("a failed rewrite leaves the mark for the next try", async () => {
 		const repo = join(base, "repo");
-		const path = withSkillAndReference(repo);
+		const path = withSkillAndReference(repo, "wright");
 		process.chdir(repo);
-		await runCompile({ root: true, noPolish: true });
+		ensureState(run.assemble(path).handle);
+		const compiledPath = compiledPathFor(path);
+		writeFileSync(compiledPath, "stale\n");
+		await modelWriting("Hello.");
+		markRecompilePending(path, "test");
 
-		const written = readFileSync(compiledPathFor(path), "utf-8");
-		const live = liveCompiledDocument(path, specOf(path));
-		expect(live.startsWith("---")).toBe(false);
-		expect(live).toContain("`pacing-notes.md`");
-		expect(live.trimEnd() + "\n").toBe(written);
+		await recompileHookFor(path, compiledPath)(run.assemble(path).handle);
+		for (let i = 0; i < 100 && !existsSync(join(repo, ".personaxis", ".tmp", "rejected-PERSONA.md")); i += 1) await new Promise((r) => setTimeout(r, 50));
+
+		expect(readRecompilePending(path).pending).toBe(true);
+		expect(readFileSync(compiledPath, "utf-8")).toBe("stale\n");
 	});
 });

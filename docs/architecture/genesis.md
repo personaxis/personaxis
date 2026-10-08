@@ -106,7 +106,8 @@ All four must pass before anything is written (`create.ts`):
 
 1. `validate` returns PASS (the five-state validator; a failing persona is never written).
 2. `lint` has no errors; warnings go in the report.
-3. A first compile succeeds (the stage-1 assembler accepts the spec).
+3. The reference for `PERSONA.md` assembles from the spec (the document itself is written by the model
+   next, and held to that reference).
 4. The load-bearing check: no mutable coordinate is left whose value cannot change the compiled document.
 
 Each stage was already checked, so a failing gate here is a bug, reported as one, and nothing is written.

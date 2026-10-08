@@ -93,7 +93,7 @@ import { compactConversation } from "./compact.js";
 import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
 import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError, engineVerdictLines, firstRunModelHint } from "./render.js";
-import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf } from "./session.js";
+import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf, rewriteInBackground, freshPersonaDoc } from "./session.js";
 
 /**
  * A turn: the persona CONVERSES and (when needed) USES TOOLS, one governed agent
@@ -175,7 +175,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       // the catalogue rather than replacing it, so a persona that gained a GitHub
       // server has not lost the ability to read a file.
       ...(ctx.mcp && ctx.mcp.tools.length > 0 ? { extraTools: [...ctx.mcp.tools] } : {}),
-      personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
+      personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${freshPersonaDoc(ctx)}`,
       // E73: this turn can run one of the persona's services, so its index says so and names the tool.
       awareness: buildAwarenessBlock(ctx.handle.personaPath, { ...awarenessOpts(ctx, llm.model), canRunServices: true }),
       goal: readGoalText(ctx.handle),
@@ -356,10 +356,11 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   }
 
   // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline, 
-  // a full LLM compile would block every single turn (the "stuck thinking" hang). Just
-  // surface it; recompile happens on /compile, on /review approve, or on exit.
-  if (readRecompilePending(ctx.handle.personaPath).pending) {
-    ctx.out(chalk.dim("  · PERSONA.md stale (self-edits applied), /compile to refresh"));
+  // a full LLM compile would block every single turn (the "stuck thinking" hang). A band crossing
+  // marks it stale too; the model rewrites it in the background and the next turn reads the new one
+  // (`freshPersonaDoc`).
+  if (readRecompilePending(ctx.handle.personaPath).pending && rewriteInBackground(ctx.handle.personaPath)) {
+    ctx.out(chalk.dim("  · PERSONA.md is being rewritten by the model, for the next turn"));
   }
 }
 
