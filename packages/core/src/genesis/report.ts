@@ -9,6 +9,7 @@
 
 import { describeImprovementMode } from "../governance.js";
 import type { AuthoredPersona, FieldProvenance } from "./author.js";
+import type { InterviewTurn } from "./interview.js";
 import type { Source } from "./sources.js";
 
 /**
@@ -43,10 +44,15 @@ export function renderCreationReport(
 	authored: AuthoredPersona,
 	sources: readonly Source[],
 	gates: Array<{ name: string; pass: boolean; detail: string }>,
-	/** What did not go as asked and was worked around: a failed web search, for instance. */
-	notes: readonly string[] = [],
-	model?: string,
+	extra: {
+		/** What did not go as asked and was worked around: a failed web search, for instance. */
+		notes?: readonly string[];
+		model?: string;
+		/** The interview's questions, answered or skipped. */
+		interview?: readonly InterviewTurn[];
+	} = {},
 ): string {
+	const { notes = [], model, interview = [] } = extra;
 	const { spec, stages } = authored;
 	const meta = spec.metadata as { name: string; created: string };
 	const all: FieldProvenance[] = stages.flatMap((s) => s.provenance);
@@ -70,6 +76,14 @@ export function renderCreationReport(
 		"",
 		...(inferred.length ? inferred.map((p) => `- \`${p.path}\`: ${cell(p.inferred ?? "", 200)}`) : ["(none: every field quotes a source)"]),
 		"",
+		...(interview.length
+			? [
+					`## Interview (${interview.filter((t) => t.answer !== undefined).length} answered, ${interview.filter((t) => t.answer === undefined).length} skipped)`,
+					"",
+					...interview.map((t) => `- ${t.answer === undefined ? "skipped" : "answered"} [${t.question.stage}] ${cell(t.question.question, 200)}${t.answer === undefined ? "" : `\n  ${cell(t.answer, 300)}`}`),
+					"",
+				]
+			: []),
 		"## Each stage",
 		"",
 	];

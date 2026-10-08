@@ -84,13 +84,15 @@ export PERSONAXIS_MODEL=qwen3:4b                        # a small local model wo
 personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-The model writes the persona one layer at a time, and the code checks every answer before it is kept: the
+In a terminal, the model first asks about what your brief leaves open: questions about the work, at most
+fifteen, any of them skippable (`--yes` skips the interview). Then it writes the persona one layer at a
+time, and the code checks every answer before it is kept: the
 schema, numbers that can move, and a source for every field. You get a folder with the definition
 (`personaxis.md`, in ten layers), the compiled document a model reads (`PERSONA.md`), the values that move
 as it works (`state.json`), and `creation-report.md`: the words of your brief each field quotes, and every
 field the model inferred, with what it inferred it from. Read the inferred list first.
 
-Other ways in: no flag starts an interview, `--from-project` reads your repository, `--from-import` takes a
+Other ways in: no flag lets you pick a source or start from questions alone, `--from-project` reads your repository, `--from-import` takes a
 SOUL.md, a SoulSpec package, a character card or a system prompt, and `--from-transcript` works from
 example conversations. `--research` searches the web for the field and keeps each source, with its date, in
 `references/`.

@@ -303,7 +303,11 @@ const WATCHED: { readonly pkg: string; readonly departure: number }[] = [
 	// 170 -> 169 on 2026-09-14 (E72), when the word-counting skill selector retired and took an
 	// export nothing outside core read with it. `use_skill` arrived in the same change with two
 	// exported constants nobody else needed, and this gate went red until they were made internal.
-	{ pkg: "core", departure: 169 },
+	//
+	// 169 -> 168 on 2026-10-07 (H15 step 3), when the fixed question bank and its answer-to-number
+	// helpers left core. The adaptive interview arrived with five exports only its test read; they
+	// were made internal and the test goes through `runInterview`, the one door the CLI uses.
+	{ pkg: "core", departure: 168 },
 	{
 		// 15 -> 12 when `A2` wired the bridge into the daemon, which is this ratchet
 		// doing its job on the commit after the one that earned it. The gate named the

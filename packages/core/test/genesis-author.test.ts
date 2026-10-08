@@ -68,6 +68,8 @@ describe("checkStage", () => {
 			today,
 		);
 		expect(issues.join(" ")).toMatch(/not in source S1/);
+		// The repair shows the real words, so a paraphrase is not repeated (2026-10-07: three times in a row).
+		expect(issues.join(" ")).toContain('The closest words in that source are: "Rigor is not negotiable."');
 	});
 
 	it("does not accept a group provenance at the layer's root", () => {

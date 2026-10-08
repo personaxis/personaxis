@@ -17,7 +17,7 @@ import { validate as validateSchema, validatePersona, personaSchema } from "@per
 import { bandBoundaries } from "../math/bands.js";
 import { ModelRequiredError } from "../model-config.js";
 import { isGenesisProfile, profileGuidance } from "./profiles.js";
-import { quoteIsIn, renderSources, type Source } from "./sources.js";
+import { closestSentence, quoteIsIn, renderSources, type Source } from "./sources.js";
 import { STAGES, type Stage } from "./stages.js";
 import type { StructuredCaller } from "./types.js";
 
@@ -292,7 +292,11 @@ export function checkStage(stage: Stage, answer: unknown, sources: readonly Sour
 		const hasInference = typeof p.inferred === "string" && p.inferred.trim().length > 0;
 		if (!hasQuote && !hasInference) issues.push(`Provenance for ${String(p.path)} gives neither a quote nor what it was inferred from.`);
 		if (hasQuote && !quoteIsIn(sources, String(p.source ?? ""), String(p.quote))) {
-			issues.push(`The quote for ${String(p.path)} is not in source ${String(p.source ?? "(none)")}: "${String(p.quote).slice(0, 80)}". Quote the exact words, or mark it inferred.`);
+			const near = closestSentence(sources, String(p.source ?? ""), String(p.quote));
+			issues.push(
+				`The quote for ${String(p.path)} is not in source ${String(p.source ?? "(none)")}: "${String(p.quote).slice(0, 80)}". Quote the exact words, or mark it inferred.` +
+					(near ? ` The closest words in that source are: "${near.slice(0, 160)}"` : ""),
+			);
 		}
 	}
 
