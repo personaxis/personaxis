@@ -1,103 +1,75 @@
 /**
- * Genesis interview wizard (F6.7b), driven through ink-testing-library's
- * stdin, so this covers the real key handling the TTY uses. The number
- * mappings themselves are core's (interview.property/unit tests); here we
- * assert the wizard COLLECTS the right answers and SHOWS the field→rule
- * mapping (the honesty surface).
+ * Genesis interview wizard (F6.7b), driven through ink-testing-library's stdin, so this covers the real key
+ * handling the TTY uses. The questions are a model's (core's genesis-interview tests); here we assert the
+ * wizard collects the right replies for one round and never skips or leaves by accident.
  */
 import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import { InterviewWizard } from "../src/wizard.js";
 import { sparkline, envelopeRow } from "../src/visual.js";
-import type { InterviewItem, InterviewAnswers } from "@personaxis/core";
+import type { InterviewQuestion, Reply } from "@personaxis/core";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 25));
 
-// E32: every item was missing `depth`, which the real bank declares on all of them and
-// which decides whether a question belongs to the short interview or the long one. A
-// wizard driven by items that have no depth is a wizard tested against a bank that
-// cannot exist. `core` on all four, because these four are the short path.
-const ITEMS: InterviewItem[] = [
-  { id: "id-name", depth: "core", kind: "text", construct: "identity.display_name", question: "What is this persona called?" },
-  { id: "t-open", depth: "core", kind: "likert", construct: "personality.traits.openness", question: "Explores unconventional angles." },
-  { id: "d-unknown", depth: "core", kind: "choice", construct: "cognition.default_strategy", question: "Facing unknowns it should…", options: ["ask for evidence", "hypothesize, labeled", "best effort, disclosed"] },
-  { id: "v-rank", depth: "core", kind: "rank", construct: "values_and_drives.values", question: "Order what it values most.", candidates: ["clarity", "speed"] },
+const QUESTIONS: InterviewQuestion[] = [
+  { id: "q1", stage: "self_regulation", question: "What change must it never approve?", why: "The brief states no limits." },
+  { id: "q2", stage: "persona", question: "How should it word a rejection?", why: "The brief says nothing about its voice.", options: ["blunt, one line", "blunt, with the reason"] },
+  { id: "q3", stage: "cognition", question: "What does it check first?", why: "No procedure is described." },
 ];
 
-async function drive(items: InterviewItem[], keys: string[]): Promise<{ answers: InterviewAnswers; frames: () => string }> {
-  let answers: InterviewAnswers = {};
-  const { stdin, lastFrame } = render(
-    <InterviewWizard items={items} onDone={(a) => (answers = a)} />,
-  );
+async function drive(questions: InterviewQuestion[], keys: string[]): Promise<{ replies: Reply[] | undefined; frames: () => string }> {
+  let replies: Reply[] | undefined;
+  const { stdin, lastFrame } = render(<InterviewWizard questions={questions} asked={0} limit={15} onDone={(r) => (replies = r)} />);
   await flush();
   for (const k of keys) {
     stdin.write(k);
     await flush();
   }
-  return { answers, frames: () => lastFrame() ?? "" };
+  return { replies, frames: () => lastFrame() ?? "" };
 }
 
 const CR = String.fromCharCode(13);
+const ESC = String.fromCharCode(27);
+const DOWN = ESC + "[B";
+const LEFT = ESC + "[D";
 
 describe("InterviewWizard", () => {
-  it("collects text, likert, choice, and rank answers end to end", async () => {
-    const { answers } = await drive(ITEMS, [
-      "K", "a", "y", "a", "\r",      // text: Kaya
-      "4", "\r",                     // likert: 4
-      "[B", "\r",              // choice: ↓ → option index 1
-      "\r", "\r",                    // rank: pick "clarity", then "speed" (auto-advance on last)
-      " ",                           // finish screen → any key builds
-    ]);
-    expect(answers["id-name"]).toBe("Kaya");
-    expect(answers["t-open"]).toBe(4);
-    expect(answers["d-unknown"]).toBe(1);
-    expect(answers["v-rank"]).toEqual(["clarity", "speed"]);
+  it("collects typed answers, a picked option and a skip, one reply per question", async () => {
+    const { replies } = await drive(QUESTIONS, ["L", "o", "g", "s", CR, DOWN, CR, "s"]);
+    expect(replies).toEqual([{ answer: "Logs" }, { answer: "blunt, with the reason" }, { skip: true }]);
   }, 30_000);
 
-  it("shows the field each answer is about, and the answer as recorded, never a computed number", async () => {
-    const { frames } = await drive(ITEMS, ["K", "\r"]); // answer text, land on likert
+  it("shows why each question is asked, and its options", async () => {
+    const { frames } = await drive(QUESTIONS, ["x", CR]);
     const out = frames();
-    expect(out).toContain("personality.traits.openness");
-    expect(out).toContain("neutral"); // live preview at default likert 3
-    expect(out).not.toContain("mean 0.50");
-    expect(out).toContain("identity.display_name"); // the trail line for the recorded answer
+    expect(out).toContain("The brief says nothing about its voice.");
+    expect(out).toContain("2. blunt, with the reason");
+    expect(out).toContain("question 2, at most 15");
   }, 30_000);
 
-  // `s` is the ONLY skip. Esc asks whether to leave rather than skipping silently.
-  it("s skips: no answer recorded, and the trail says it was skipped", async () => {
-    const { answers, frames } = await drive(ITEMS, ["s"]);
-    expect(answers["id-name"]).toBeUndefined();
-    expect(frames()).toContain("skipped");
-  });
-
-  it("Esc does NOT skip: it asks whether to leave, and any other key stays", async () => {
-    const { answers, frames } = await drive(ITEMS, [""]);
-    expect(frames()).toContain("leave the interview?");
-    expect(answers["id-name"]).toBeUndefined(); // nothing was recorded or skipped past
-  });
-
-  it("b goes back and lets a question be answered again", async () => {
-    // answer q1 (text), land on q2 (likert) and go back with `b` there (on a likert
-    // the arrows drive the scale), then answer q1 differently
-    // The walk must REACH THE END for onDone to hand the answers over.
-    const { answers } = await drive(ITEMS, [
-      "V", "e", "g", "a", CR, // q1 text -> "Vega"
-      "b",                     // q2 likert: back to q1
-      "N", "o", "v", "a", CR,  // q1 again -> "Nova"
-      CR,                      // q2 likert, default 3
-      CR,                      // q3 choice, first option
-      CR, CR,                  // q4 rank, both candidates
-      "x",                     // any key on the done screen
-    ]);
-    expect(answers["id-name"]).toBe("Nova");
+  it("typing replaces the options with your own answer, and an s inside it is a letter", async () => {
+    const { replies } = await drive(QUESTIONS.slice(1, 2), ["s", "o", "f", "t", CR]);
+    expect(replies).toEqual([{ skip: true }]); // `s` on the empty field skips; what follows types into nothing
+    const typed = await drive(QUESTIONS.slice(1, 2), ["n", "o", "s", CR]);
+    expect(typed.replies).toEqual([{ answer: "nos" }]);
   }, 30_000);
 
-  it("progress and completion screen reflect the walk", async () => {
-    const two = ITEMS.slice(0, 2);
-    const { frames } = await drive(two, ["K", "\r", "5", "\r"]);
-    const out = frames();
-    expect(out).toContain("done");
-    expect(out).toContain("2");
+  it("Enter on an empty field without options records nothing", async () => {
+    const { replies, frames } = await drive(QUESTIONS.slice(0, 1), [CR]);
+    expect(replies).toBeUndefined();
+    expect(frames()).toContain("What change must it never approve?");
+  }, 30_000);
+
+  it("← goes back and lets a question be answered again", async () => {
+    const { replies } = await drive(QUESTIONS.slice(0, 2), ["A", CR, LEFT, "B", CR, CR]);
+    expect(replies).toEqual([{ answer: "B" }, { answer: "blunt, one line" }]);
+  }, 30_000);
+
+  it("Esc asks before leaving, and leaving keeps what was answered", async () => {
+    const stay = await drive(QUESTIONS, [ESC, "n"]);
+    expect(stay.replies).toBeUndefined();
+    const leave = await drive(QUESTIONS, ["A", CR, ESC, "y"]);
+    expect(leave.replies).toEqual([{ answer: "A" }, { stop: true }]);
   }, 30_000);
 });
 

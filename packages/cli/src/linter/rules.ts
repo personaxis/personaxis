@@ -602,7 +602,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
       severity: "info",
       path: "persona",
       message: "No persona-prompting source material (v1.0: persona.address/voice_exemplars/scene_contracts; ≤0.10: the persona_prompting block), the compiled PERSONA.md will be derived from the quantitative layers. Adding voice_exemplars/scene_contracts/anchors yields a richer, more in-character document (see docs/PERSONA_PROMPTING.md).",
-      fix: "Optional, and worth it: add persona.address.you_are, two to four persona.voice_exemplars, and a couple of persona.scene_contracts (situation plus how this persona handles it). `personaxis create --deep` asks for all three.",
+      fix: "Optional, and worth it: add persona.address.you_are, two to four persona.voice_exemplars, and a couple of persona.scene_contracts (situation plus how this persona handles it). Voice exemplars must come from a source, so give `personaxis create` examples of how it talks (a transcript, or answers in the interview).",
     });
   }
 

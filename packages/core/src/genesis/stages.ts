@@ -6,7 +6,7 @@
  * to the envelope of what it references. Measured 2026-10-07 on command-a-03-2025: with character second, the
  * model referenced traits that did not exist yet and the whole document failed coherence. Then the blocks
  * outside the ten layers that govern change and the runtime. Each stage sees what the ones before it decided. The
- * guidance is what the 2026-10-07 research says about that part (`plan/runtime/PROMPTING_RESEARCH_2026-10-07.md`).
+ * guidance is what the 2026-10-07 reading of the prompting research says about that part.
  */
 
 export interface Stage {

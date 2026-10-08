@@ -4,7 +4,6 @@
  */
 
 export * from "./types.js";
-export * from "./item-bank.js";
 export * from "./interview.js";
 export * from "./imports.js";
 export * from "./report.js";

@@ -11,7 +11,7 @@ refuses and says how to configure one.
 
 | What you have | Use | What Genesis does with it |
 |---|---|---|
-| Nothing written yet | `personaxis create` (interview) | Twelve questions; the answers are the source the model writes from. `--deep` asks the full bank |
+| Nothing written yet | `personaxis create` (interview) | A model asks about the job, at most fifteen questions; the answers are the source it writes from |
 | A description of the job | `--from-prompt "<brief>"` | The brief is the source; each field quotes the words it came from, or says what it was inferred from |
 | A repository or a set of docs | `--from-project [dir]` | Reads the README, `CLAUDE.md`, `AGENTS.md` and docs as one source for the project's own persona |
 | A SOUL.md or SoulSpec package, a character card, a system prompt | `--from-import <file>` | The whole file is one source, card fields labelled; the model reads and cites it |

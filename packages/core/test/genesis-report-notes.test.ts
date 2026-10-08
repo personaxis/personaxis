@@ -28,7 +28,7 @@ const NOTE = "the web search returned nothing usable; nothing was researched";
 
 describe("the creation report", () => {
 	it("lists what was worked around with a warning mark, never under a passed gate", () => {
-		const r = renderCreationReport(authored, sources, [{ name: "validate", pass: true, detail: "PASS" }], [NOTE]);
+		const r = renderCreationReport(authored, sources, [{ name: "validate", pass: true, detail: "PASS" }], { notes: [NOTE] });
 		expect(r).toContain("## Worked around");
 		expect(r).toContain(`- ⚠️ ${NOTE}`);
 		expect(r).not.toMatch(new RegExp(`✅[^\\n]*${NOTE.slice(0, 20)}`));
@@ -39,12 +39,25 @@ describe("the creation report", () => {
 	});
 
 	it("names the sources, lists the inferred fields first, and shows each field's origin", () => {
-		const r = renderCreationReport(authored, sources, [], [], "command-a-03-2025");
+		const r = renderCreationReport(authored, sources, [], { model: "command-a-03-2025" });
 		expect(r).toContain("with command-a-03-2025");
 		expect(r).toContain("- **S1** (brief) the brief");
 		expect(r.indexOf("## Inferred, not stated by a source (1)")).toBeLessThan(r.indexOf("## Each stage"));
 		expect(r).toContain("`identity.system_identity.allowed_domains`: a reviewer works on pull requests");
 		expect(r).toContain('S1: "A terse code reviewer."');
 		expect(r).toContain("### identity (needed 1 repair)");
+		expect(r).not.toContain("## Interview");
+	});
+
+	it("lists every interview question, answered or skipped, with the part it informed", () => {
+		const r = renderCreationReport(authored, sources, [], {
+			interview: [
+				{ question: { id: "q1", stage: "self_regulation", question: "What must it never approve?", why: "no limits stated" }, answer: "A change that logs secrets." },
+				{ question: { id: "q2", stage: "persona", question: "How should it sound?", why: "no voice stated" } },
+			],
+		});
+		expect(r).toContain("## Interview (1 answered, 1 skipped)");
+		expect(r).toContain("- answered [self_regulation] What must it never approve?\n  A change that logs secrets.");
+		expect(r).toContain("- skipped [persona] How should it sound?");
 	});
 });

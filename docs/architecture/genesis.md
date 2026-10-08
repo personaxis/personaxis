@@ -24,7 +24,7 @@ Source = { id: S1.., kind: brief | project | import | transcript | research | an
 | Flag | Becomes |
 |---|---|
 | `--from-prompt "<brief>"` | one `brief` source |
-| interview (default in a terminal) | one `answer` source with every question and answer |
+| the interview (in a terminal, after the other sources) | one `answer` source with every question answered |
 | `--from-project [dir]` | one `project` source with the files it read (README, CLAUDE.md, AGENTS.md, SOUL.md, package.json, docs) |
 | `--from-import <file>` | one `import` source: a character card V2/V3 (PNG or JSON) with its fields labelled, a SOUL.md or SoulSpec package with `IDENTITY.md` and `soul.json`, or a system prompt, CLAUDE.md or AGENTS.md as written (`genesis/imports.ts`) |
 | `--from-transcript <file>` | one `transcript` source |
@@ -32,6 +32,23 @@ Source = { id: S1.., kind: brief | project | import | transcript | research | an
 
 Flags compose: every source is numbered and handed to the model together. No field is mapped from a
 file's layout; the model reads the file and cites it.
+
+## The interview
+
+In a terminal (not with `--yes` or `--json`), after the other sources are read, a model interviews the
+person about what they leave open (`genesis/interview.ts`). Each round it reads the sources and the
+answers so far, says how much each stage is covered, and writes at most five questions, at most fifteen
+in all; it asks none when the rest can be inferred. It is told to ask about real work rather than
+adjectives (tacit knowledge comes out of cases: "the last change you rejected, and why"), never to ask for
+ratings or about the format of the persona, and not to repeat a question asked, answered or skipped. Each
+question names the stage it informs and a line saying what is missing, which the person reads first. The
+code checks each round (a known stage, no repeats, the caps) and asks again with the exact problems, as
+authoring does.
+
+Every question can be skipped; what is skipped is inferred, and the report lists every question with
+whether it was answered. The answers become one source. They are saved as they are given
+(`genesis/draft.ts`) with a fingerprint of the sources, so leaving part-way loses nothing and a later run
+over the same sources offers to continue; the draft is deleted when the persona exists.
 
 ## Stages
 
@@ -97,7 +114,7 @@ Each stage was already checked, so a failing gate here is a bug, reported as one
 ## The creation report
 
 `creation-report.md`, beside the persona, lists the sources, then every **inferred** field with what it
-was inferred from (the review list), then each stage with its reasoning, how many repairs it needed and
+was inferred from (the review list), then the interview's questions, answered or skipped, then each stage with its reasoning, how many repairs it needed and
 each field's origin. Anything Genesis worked around (a web search that returned nothing) is listed under
 **Worked around**, never under a passed gate.
 
@@ -109,7 +126,7 @@ approve changes to. The model sets each number with that stance; the profile wri
 
 ## Surfaces
 
-- CLI: `personaxis create [slug] [--from-* ...] [--deep] [--profile <name>] [--research] [--yes] [--json]`.
+- CLI: `personaxis create [slug] [--from-* ...] [--profile <name>] [--research] [--yes] [--json]`.
   Exit codes follow the validator convention, and `--json` emits the spec, gates, sources and stages.
 - `--provider agent` hands each stage to the coding agent running the command, one prompt file at a time.
 - `init` stays the template scaffolder (fast, no model); `create` is the authored path.

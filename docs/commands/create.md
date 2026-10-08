@@ -8,11 +8,11 @@ where each field came from.
 A model is required. Without one, `create` refuses, says how to configure one, and writes nothing.
 
 A persona is the whole way a professional works: procedures, criteria, tools, sourced knowledge and
-character. The interview mostly fills in character; `--research` adds sourced knowledge (see below).
+character. The interview asks about the work the sources leave out; `--research` adds sourced knowledge
+(see below).
 
 ```bash
 personaxis create                              # asks WHICH source to use (TTY)
-personaxis create --deep                       # the full 20-question interview
 personaxis create --from-prompt "<brief>"      # natural language
 personaxis create --from-project [dir]         # the project's own docs
 personaxis create --from-import card.png       # character card V2/V3 (.json/.png)
@@ -26,9 +26,8 @@ the persona (default: under `.personaxis/personas/<slug>/`; `--root` writes the 
 
 | Flag | Effect |
 |---|---|
-| `--deep` | ask the FULL question bank (20) instead of the 12 core questions |
 | `--profile <name>` | starting profile, `regulated`, `standard` (default) or `research`: see below |
-| `--yes` | never ask, and overwrite existing files |
+| `--yes` | never ask (no interview), and overwrite existing files |
 | `--json` | emit spec + gates + notes + sources + stages as JSON on stdout (dry-run unless `--yes`) |
 | `--provider <p>` | override the provider (`local\|byok\|agent`) |
 | `--research` | search the web for the field and keep what it found in `references/`, with each source and its date (needs a web provider key, see [web](./web.md)) |
@@ -50,18 +49,19 @@ persona with [`personaxis jacobian`](./jacobian.md)). Exit codes follow the vali
 
 ## The interview
 
-Running `create` with no `--from-*` flag opens on the six ways to build a persona, so the sources are
+Running `create` with no `--from-*` flag opens on the five ways to start a persona, so the sources are
 visible rather than hidden in `--help`. Passing any flag skips that screen, which is what scripts and
 agents do.
 
-| Interview | Questions | Asks about |
-|---|---|---|
-| default | **12** | who it is, the five trait axes, values, voice, what it must never do |
-| `--deep` | **20** | the above plus envelope width, mood half-life, refusal detail, uncertainty thresholds, memory policy, starting profile, a voice exemplar |
+In a terminal, after reading the sources, a model asks about what they leave open: at most five questions
+a round and fifteen in all, written for this job, each with a line saying what is missing. It asks about
+real work (a case, a rejected change, what good output looks like), never for ratings, and stops when the
+rest can be inferred. Pick an option, type your own answer, `s` skips, `←` goes back, Esc leaves. What you
+skip is inferred, and the report lists every question and whether you answered it.
 
-The answers become one source the model reads and cites. Answers are saved as you give them: leaving the
-interview part-way does not lose them, and the next run offers to continue. The draft is deleted once the
-persona exists.
+The answers become one source the model reads and cites. They are saved as you give them: leaving part-way
+does not lose them, and the next run over the same sources offers to continue. The draft is deleted once
+the persona exists. `--yes` and `--json` never ask.
 
 ## The coding agent as the model
 

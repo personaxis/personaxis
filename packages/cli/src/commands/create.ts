@@ -2,7 +2,7 @@
  * `personaxis create`, Genesis: a governed AI Persona authored by a model from its sources
  * (docs/architecture/genesis.md):
  *
- *   personaxis create                          # the interview (TTY)
+ *   personaxis create                          # pick a source, or start from the interview (TTY)
  *   personaxis create --from-prompt "<brief>"  # natural language
  *   personaxis create --from-project [dir]     # the project's own docs
  *   personaxis create --from-import <file>     # SOUL.md / SoulSpec dir, character card V2/V3 (.json/.png),
@@ -10,7 +10,9 @@
  *   personaxis create --from-transcript <file> # exemplar conversations
  *   --research                                 # plus the field, read on the web, with URLs and dates
  *
- * Every mode is a source; the modes compose. A model authors the persona stage by stage and every field
+ * Every mode is a source; the modes compose. In a terminal, a model then interviews the person about what the
+ * sources leave open (`runInterview`, up to 15 questions it writes for the job). A model authors the persona
+ * stage by stage and every field
  * says which source it came from or what it was inferred from (`authorPersona`). Without a model, nothing
  * is created: since 2026-10-07 there is no template and no labeled default to fall back on. Output:
  * personaxis.md (validated), state.json, the compiled PERSONA.md, and creation-report.md.
@@ -24,13 +26,13 @@ import chalk from "chalk";
 import {
   isGenesisProfile,
   GENESIS_PROFILES,
-  pendingItems,
-  answersAsSource,
+  runInterview,
+  interviewAsSource,
+  sourcesFingerprint,
+  INTERVIEW_LIMIT,
   loadDraft,
   saveDraft,
   clearDraft,
-  ITEM_BANK,
-  ITEM_BANK_VERSION,
   importCharacterCard,
   importPrompt,
   importSoulMd,
@@ -58,7 +60,9 @@ import {
   type PersonaFrontmatter,
   type Source,
   type StructuredCaller,
-  type InterviewAnswers,
+  type InterviewQuestion,
+  type InterviewTurn,
+  type Reply,
 } from "@personaxis/core";
 import { dump } from "js-yaml";
 import { runCompile } from "./compile.js";
@@ -81,8 +85,6 @@ interface CreateOpts {
   /** V5.P2.5: commander maps --no-polish onto polish:false. */
   polish?: boolean;
   noPolish?: boolean;
-  /** Ask the whole question bank instead of the twelve core ones. */
-  deep?: boolean;
   /** E65: research the field on the web and leave what it found behind the persona. */
   research?: boolean;
   /** E128: the starting profile, the defaults of the three controls (range, per-layer policy, half-life). */
@@ -114,28 +116,48 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
 }
 
 /**
- * The interview, in one of two depths, resumable. Its answers become one source the model reads (the
- * fixed bank is replaced by questions the model writes in step 3 of the redesign).
- *
- *   core  twelve questions: who it is, the five trait axes, what it values, how it sounds,
- *         and what it must never do.
- *   deep  the whole bank, adding envelope width, mood half-life, refusal detail,
- *         uncertainty thresholds, memory policy, improvement posture and a voice exemplar.
- *
- * Answers are written to a draft as they are given, so abandoning the deep interview at
- * question 17 does not cost the sixteen already answered. The draft is deleted once the
- * persona exists.
+ * One round of questions in the terminal: the Ink wizard when it can run, readline otherwise
+ * (PERSONAXIS_NO_WIZARD=1 forces it). Lazy import: Ink costs about a second and only the interview pays it.
  */
-async function runInterview(depth: "core" | "deep", dir: string): Promise<Omit<Source, "id"> | undefined> {
-  const resumed = loadDraft(dir, ITEM_BANK_VERSION);
-  let answers: InterviewAnswers = {};
-  if (resumed && resumed.depth === depth) {
-    const n = Object.keys(resumed.answers).length;
-    const total = ITEM_BANK.filter((i) => depth === "deep" || i.depth === "core").length;
-    console.log(
-      chalk.yellow(`\n  An unfinished interview was found: ${n} of ${total} answered `) +
-        chalk.dim(`(${resumed.updated.slice(0, 16).replace("T", " ")}).`),
-    );
+async function askRound(questions: InterviewQuestion[], asked: number): Promise<Reply[]> {
+  if (process.env.PERSONAXIS_NO_WIZARD !== "1") {
+    try {
+      const { runInterviewWizard } = await import("@personaxis/tui");
+      return await runInterviewWizard(questions, asked, INTERVIEW_LIMIT);
+    } catch {
+      /* fall through to readline */
+    }
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const replies: Reply[] = [];
+  try {
+    for (const [i, q] of questions.entries()) {
+      console.log(chalk.dim(`\n  ${asked + i + 1}. ${q.why}`));
+      console.log(chalk.cyan(`  ${q.question}`));
+      q.options?.forEach((o, n) => console.log(`    ${chalk.dim(`${n + 1}.`)} ${o}`));
+      const raw = (await rl.question(chalk.dim("  (Enter skips, q leaves) > "))).trim();
+      if (raw === "q") return [...replies, { stop: true }];
+      const picked = q.options && /^[1-9]$/.test(raw) ? q.options[Number(raw) - 1] : undefined;
+      replies.push(raw ? { answer: picked ?? raw } : { skip: true });
+    }
+  } finally {
+    rl.close();
+  }
+  return replies;
+}
+
+/**
+ * The interview, after the sources are read: a model asks only what they leave open (`runInterview` in
+ * core), resumable. The turns are written to a draft as they are given, kept with a fingerprint of the
+ * sources, so leaving part-way does not lose them; the draft is deleted once the persona exists.
+ */
+async function interview(sources: Array<Omit<Source, "id">>, call: StructuredCaller, dir: string): Promise<InterviewTurn[]> {
+  const print = sourcesFingerprint(sources);
+  let turns: InterviewTurn[] = [];
+  const resumed = loadDraft(dir, print);
+  if (resumed) {
+    const answered = resumed.turns.filter((t) => t.answer !== undefined).length;
+    console.log(chalk.yellow(`\n  An unfinished interview was found: ${answered} answered of ${resumed.turns.length} asked `) + chalk.dim(`(${resumed.updated.slice(0, 16).replace("T", " ")}).`));
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     let keep = "y";
     try {
@@ -143,60 +165,20 @@ async function runInterview(depth: "core" | "deep", dir: string): Promise<Omit<S
     } finally {
       rl.close();
     }
-    if (keep === "y" || keep === "yes") answers = resumed.answers;
+    if (keep === "y" || keep === "yes") turns = resumed.turns;
     else clearDraft(dir);
   }
-
-  const remaining = pendingItems(answers, depth);
-  const save = (a: InterviewAnswers): void =>
-    saveDraft(dir, { answers: { ...answers, ...a }, depth, bankVersion: ITEM_BANK_VERSION });
-
-  // F6.7b: the Ink wizard is the primary interview surface, progress, live
-  // field→rule mapping per answer, arrow-key inputs. Lazy import (Ink costs ~1 s;
-  // only the interview path pays it); readline below stays as the fallback for
-  // odd terminals (PERSONAXIS_NO_WIZARD=1 forces it).
-  if (process.stdin.isTTY && process.stdout.isTTY && process.env.PERSONAXIS_NO_WIZARD !== "1") {
-    try {
-      const { runInterviewWizard } = await import("@personaxis/tui");
-      const wizardAnswers = await runInterviewWizard(remaining, save);
-      return answersAsSource({ ...answers, ...wizardAnswers });
-    } catch {
-      /* fall through to readline */
-    }
-  }
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  console.log(
-    chalk.bold("\nGenesis interview") +
-      chalk.dim(` (${depth === "core" ? "core: the twelve that decide who it is" : "deep: the full bank"}), every answer is a source the model cites; Enter skips a question.\n`),
-  );
-  try {
-    for (const item of remaining) {
-      if (item.kind === "likert") {
-        const raw = (await rl.question(`${chalk.cyan(item.question)}\n  ${chalk.dim("1 strongly disagree … 5 strongly agree")} > `)).trim();
-        if (raw) answers[item.id] = Number(raw);
-      } else if (item.kind === "choice") {
-        console.log(chalk.cyan(item.question));
-        item.options!.forEach((o, i) => console.log(`  ${chalk.dim(String(i + 1) + ".")} ${o}`));
-        const raw = (await rl.question("  > ")).trim();
-        if (raw) answers[item.id] = Number(raw) - 1;
-      } else if (item.kind === "rank") {
-        console.log(chalk.cyan(item.question));
-        console.log("  " + item.candidates!.map((c, i) => `${chalk.dim(String(i + 1) + ".")}${c}`).join("  "));
-        const raw = (await rl.question(`  ${chalk.dim("order as numbers, e.g. 3 1 2 …")} > `)).trim();
-        if (raw) {
-          const order = raw.split(/[\s,]+/).map((n) => item.candidates![Number(n) - 1]).filter(Boolean);
-          if (order.length) answers[item.id] = order;
-        }
-      } else {
-        const raw = (await rl.question(`${chalk.cyan(item.question)} > `)).trim();
-        if (raw) answers[item.id] = raw;
-      }
-      save(answers);
-    }
-  } finally {
-    rl.close();
-  }
-  return answersAsSource(answers);
+  console.log(chalk.dim(`\n  The model reads ${sources.length ? "your sources" : "what you tell it"} and asks only what is missing (at most ${INTERVIEW_LIMIT} questions; skip any, and it infers it and says from what).`));
+  return runInterview({
+    sources: numberSources(sources),
+    call,
+    turns,
+    ask: askRound,
+    onTurn: (t) => saveDraft(dir, print, t),
+    onRound: (r) => {
+      if (!r.questions.length) console.log(chalk.dim("  Nothing more to ask: the rest can be inferred from what you gave."));
+    },
+  });
 }
 
 /**
@@ -239,9 +221,8 @@ async function chooseSource(opts: CreateOpts): Promise<boolean> {
   const choice = await selectCards(
     "How should this persona be created?",
     [
-      { value: "core", title: "Answer 12 questions", desc: "who it is, its five trait axes, what it values, how it sounds, what it must never do" },
-      { value: "deep", title: "Answer the full bank (20)", desc: "adds envelope width, mood half-life, refusals, uncertainty, memory, improvement, a voice exemplar" },
-      { value: "prompt", title: "Describe it in a sentence", desc: "a natural-language brief; a model turns it into governed coordinates" },
+      { value: "interview", title: "Answer questions", desc: "a model asks about the job, only what it needs, at most 15; skip any" },
+      { value: "prompt", title: "Describe it in a sentence", desc: "a brief; then the model asks about what it leaves open" },
       { value: "project", title: "Infer it from this project", desc: "reads only README / CLAUDE.md / AGENTS.md / SOUL.md, within a fixed budget" },
       { value: "import", title: "Import an existing one", desc: "SOUL.md, a character card (V2/V3), a system prompt, CLAUDE.md or AGENTS.md" },
       { value: "transcript", title: "Induce it from transcripts", desc: "the persona that best explains example conversations" },
@@ -249,10 +230,7 @@ async function chooseSource(opts: CreateOpts): Promise<boolean> {
     "up/down choose - Enter confirm - Esc cancel - every path ends in a validated, governed spec",
   );
   if (!choice) return false;
-  if (choice === "core" || choice === "deep") {
-    opts.deep = choice === "deep";
-    return true;
-  }
+  if (choice === "interview") return true;
   if (choice === "project") {
     opts.fromProject = process.cwd();
     return true;
@@ -278,7 +256,8 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   }
   // No source flag and a terminal to ask in: show the sources instead of assuming one.
   const noSource = !opts.fromPrompt && opts.fromProject === undefined && !opts.fromImport && !opts.fromTranscript;
-  if (noSource && process.stdin.isTTY && process.stdout.isTTY && !opts.yes && !opts.json && !opts.deep) {
+  const interactive = !!process.stdin.isTTY && !!process.stdout.isTTY && !opts.yes && !opts.json;
+  if (noSource && interactive) {
     if (!(await chooseSource(opts))) {
       console.log(chalk.dim("  Cancelled; nothing was written."));
       return;
@@ -319,17 +298,23 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     gathered.push({ kind: "transcript", label: basename(opts.fromTranscript), text: readFileSync(resolve(opts.fromTranscript), "utf-8") });
   }
   if (opts.fromPrompt) gathered.push({ kind: "brief", label: "the brief", text: opts.fromPrompt });
-  if (gathered.length === 0) {
-    if (!process.stdin.isTTY || opts.yes) {
-      console.error(chalk.red("Error:"), "no source given and no TTY for the interview. Use --from-prompt/--from-project/--from-import/--from-transcript.");
-      process.exit(1);
-    }
-    const answers = await runInterview(opts.deep ? "deep" : "core", process.cwd());
+  if (gathered.length === 0 && !interactive) {
+    console.error(chalk.red("Error:"), "no source given and no terminal for the interview. Use --from-prompt/--from-project/--from-import/--from-transcript.");
+    process.exitCode = 1;
+    return;
+  }
+
+  // ── the interview: what the sources leave open, asked by the model (never with --yes or --json) ──
+  let turns: InterviewTurn[] = [];
+  if (interactive) {
+    turns = await interview(gathered, call, process.cwd());
+    const answers = interviewAsSource(turns);
     if (answers) gathered.push(answers);
-    if (gathered.length === 0) {
-      console.error(chalk.red("Error:"), "the interview was left empty; there is nothing to author a persona from.");
-      process.exit(1);
-    }
+  }
+  if (gathered.length === 0) {
+    console.error(chalk.red("Error:"), "the interview was left empty; there is nothing to author a persona from.");
+    process.exitCode = 1;
+    return;
   }
 
   // ── E65: the web research, only when asked for ─────────────────────────────
@@ -440,7 +425,8 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     return;
   }
 
-  const report = renderCreationReport(authored, sources, gates, llmNotes);
+  const model = opts.provider === "agent" ? "the coding agent (--provider agent)" : resolveModel({ cwd: process.cwd() })?.model;
+  const report = renderCreationReport(authored, sources, gates, { notes: llmNotes, interview: turns, ...(model ? { model } : {}) });
   const inferredCount = authored.stages.flatMap((st) => st.provenance).filter((p) => !p.quote && p.inferred).length;
 
   if (opts.json) {
@@ -562,7 +548,6 @@ export const createCommand = new Command("create")
   .option("--json", "Emit the spec + gates + provenance as JSON (dry-run unless --yes)")
   .option("--provider <name>", "Override the configured provider (local | byok | agent)")
   .option("--no-polish", "Skip the automatic LLM polish after creation (offline template, marked pending)")
-  .option("--deep", "Ask the FULL question bank (envelope width, mood half-life, refusals, uncertainty, memory, improvement, a voice exemplar) instead of the twelve core questions")
   .option("--profile <name>", "Starting profile: regulated | standard | research (the defaults of each layer's range, who approves lasting changes, and how fast it returns to baseline). Default: standard")
   .option("--research", "Search the web for the field, and leave what it found in references/ with each source and its date (needs a web provider key)")
   .action(async (slug: string | undefined, opts: CreateOpts) => {
