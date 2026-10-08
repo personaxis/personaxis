@@ -60,6 +60,9 @@ function genesisAnswer(body: Record<string, unknown>, prompt: string): string | 
 	// Only the sources count: later prompts also carry what earlier stages decided, which repeats the brief.
 	const sources = [...prompt.matchAll(/<source id="([^"]+)"[^>]*>\n([\s\S]*?)\n<\/source>/g)];
 	const cited = (p: { source?: string; quote?: string }) => sources.some(([, id, body]) => id === p.source && body?.includes(p.quote ?? ""));
+	// The coherence reading lists rules with their quotes: a rule whose words these sources lack is not one of theirs.
+	const rules = (recorded as { rules?: Array<{ source?: string; quote?: string }> }).rules;
+	if (rules) return JSON.stringify({ ...recorded, rules: rules.filter(cited) });
 	const provenance = recorded.provenance.map((p) =>
 		p.quote && !cited(p) ? { path: p.path, inferred: "recorded answer; the quote is not in these sources" } : p,
 	);

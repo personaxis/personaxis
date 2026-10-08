@@ -90,8 +90,23 @@ inputs, which is what lets the `agent` provider replay answers already written.
   so the persona returns to its baseline by itself (E127).
 
 A failing answer goes back to the model with the exact issues, up to two times; after that `create`
-stops with `GenesisStageError`, naming the stage and the issues. When every stage passes, the whole
-document goes through the validator, and any issue goes back once to the stage that owns it.
+stops with `GenesisStageError`, naming the stage and the issues.
+
+## Coherence
+
+Each stage sees only its own part, so after the eleven a model reads the whole persona against its
+sources. The task is mechanical on purpose: list every rule a source states (never, always, only, must,
+or a limit said another way), with its exact words, and the field of the persona that keeps it; and
+list two fields that contradict each other, if any. The code checks each quote against its source and
+each field path against the persona (a list item as `path.N`), and the field must share words with the
+rule. A rule no field keeps goes back to the stage the reading names, and that stage's answer must then
+carry it: the same repairs ask for it, and if it is still missing when they run out, the answer is kept
+and the report lists the rule under **Coherence** as not yet in the persona. Measured on 2026-10-07:
+an interview answer, "Currency in floats is never acceptable", reached no field until this reading
+sent it back, and the first time it did, the stage answered without it.
+
+After that, the whole document goes through the validator, and any issue goes back once to the stage
+that owns it.
 
 ## Research is a source, not a definition
 

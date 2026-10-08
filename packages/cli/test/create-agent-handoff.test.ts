@@ -50,7 +50,7 @@ describe.skipIf(!existsSync(CLI))("create with the agent provider (E175)", () =>
 		const doc = join(dirname(spec), "PERSONA.md");
 		const asked: string[] = [];
 
-		for (let round = 0; round <= STAGES.length + 1 && !existsSync(doc); round += 1) {
+		for (let round = 0; round <= STAGES.length + 2 && !existsSync(doc); round += 1) {
 			const r = await create();
 			expect(r.code, r.out).toBe(0);
 			if (existsSync(doc)) break;
@@ -64,6 +64,11 @@ describe.skipIf(!existsSync(CLI))("create with the agent provider (E175)", () =>
 				writeFileSync(answer, RECORDED.document);
 				continue;
 			}
+			if (prompt.startsWith("You are checking a whole AI persona")) {
+				asked.push("coherence");
+				writeFileSync(answer, JSON.stringify(RECORDED.answers.coherence));
+				continue;
+			}
 			expect(prompt).toContain("JSON Schema");
 			const stage = stageOf(prompt);
 			expect(stage, prompt.slice(0, 200)).toBeDefined();
@@ -71,7 +76,7 @@ describe.skipIf(!existsSync(CLI))("create with the agent provider (E175)", () =>
 			writeFileSync(answer, JSON.stringify(RECORDED.answers[stage!]));
 		}
 
-		expect(asked).toEqual([...STAGES.map((s) => s.id), "PERSONA.md"]);
+		expect(asked).toEqual([...STAGES.map((s) => s.id), "coherence", "PERSONA.md"]);
 		expect(readFileSync(doc, "utf8")).toContain("# You are Terse Code Reviewer");
 		// The re-runs wrote the same definition again; none of them was a replaced persona.
 		expect(existsSync(join(dirname(spec), "previous"))).toBe(false);

@@ -39,6 +39,21 @@ function possiblySame(keys: readonly string[]): Array<[string, string]> {
 
 const cell = (s: string, n = 100): string => s.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim().slice(0, n);
 
+/**
+ * What the reading of the whole persona found: the rules the sources state and where each one is kept, what
+ * went back to a stage, and what the persona still lacks after the rewrite (read that first).
+ */
+function coherenceSection(authored: AuthoredPersona): string[] {
+	const c = authored.coherence;
+	if (!c) return [];
+	const lines = [`## Coherence (${c.rules.length} rule(s) the sources state, ${c.findings.length} sent back)`, ""];
+	if (c.unresolved.length) lines.push("Still not in the persona after the rewrite; add them by hand or create again:", "", ...c.unresolved.map((u) => `- ⚠️ ${cell(u, 200)}`), "");
+	for (const r of c.rules) lines.push(`- ${r.source}: "${cell(r.quote, 160)}" ${r.kept_in ? `kept in \`${r.kept_in}\`` : `missing, sent to ${r.belongs_in}`}`);
+	for (const f of c.findings.filter((x) => !x.quote)) lines.push(`- contradiction, sent to ${f.stage}: ${cell(f.problem, 200)} (${(f.fields ?? []).join(", ")})`);
+	lines.push("");
+	return lines;
+}
+
 /** Render the creation report (markdown). */
 export function renderCreationReport(
 	authored: AuthoredPersona,
@@ -84,6 +99,7 @@ export function renderCreationReport(
 					"",
 				]
 			: []),
+		...coherenceSection(authored),
 		"## Each stage",
 		"",
 	];

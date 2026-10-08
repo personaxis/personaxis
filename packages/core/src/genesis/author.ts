@@ -41,6 +41,39 @@ export interface AuthoredPersona {
 	/** The frontmatter, valid against the spec. */
 	spec: Record<string, unknown>;
 	stages: StageRecord[];
+	/** The reading of the whole persona against its sources, and what it sent back to which stage. */
+	coherence?: CoherenceReading;
+}
+
+/** One problem the coherence reading found, with the evidence the code checked. */
+export interface CoherenceFinding {
+	/** The stage that owns the fix. */
+	stage: string;
+	problem: string;
+	/** A source and its exact words, when a source states what the persona misses or contradicts. */
+	source?: string;
+	quote?: string;
+	/** The fields involved, when two fields contradict each other. */
+	fields?: string[];
+}
+
+/** A rule a source states, and the field of the persona that keeps it (absent when none does). */
+export interface StatedRule {
+	source: string;
+	quote: string;
+	kept_in?: string;
+	/** When no field keeps it: the stage it belongs to. */
+	belongs_in?: string;
+}
+
+export interface CoherenceReading {
+	reasoning: string;
+	/** Every rule the sources state, each with where the persona keeps it. */
+	rules: StatedRule[];
+	/** What goes back to a stage: each rule no field keeps, and each contradiction between fields. */
+	findings: CoherenceFinding[];
+	/** Rules sent back that the persona still does not carry after the rewrite: for the report. */
+	unresolved: string[];
 }
 
 export interface AuthorInput {
@@ -359,19 +392,32 @@ export async function authorPersona(input: AuthorInput): Promise<AuthoredPersona
 	const decided: Json = {};
 	const records: StageRecord[] = [];
 
-	const runStage = async (stage: Stage, extra: string[] = []): Promise<void> => {
-		const prompt = stagePrompt(stage, sources, decided, profile);
+	/**
+	 * One stage: asked, checked, repaired. `extra` is what the whole document found wrong in this part, said
+	 * in the prompt and kept in every repair (until 2026-10-07 a repair dropped it). `wanted` checks that the
+	 * fix is in the answer; it is soft: asked for in the same repairs, and when the repairs run out with only
+	 * it unmet the answer is kept and the caller reports what is missing, because a rule left out is worth
+	 * reporting and not worth stopping a creation over.
+	 */
+	const runStage = async (stage: Stage, extra: string[] = [], wanted: (layer: Json) => string[] = () => []): Promise<void> => {
+		const base = stagePrompt(stage, sources, decided, profile);
+		const prompt = extra.length ? `${base}\n\nThe whole document failed these checks; fix them in this part:\n- ${extra.join("\n- ")}` : base;
 		const schema = responseSchema(stage);
-		const first = await call(extra.length ? `${prompt}\n\nThe whole document failed these checks; fix them in this part:\n- ${extra.join("\n- ")}` : prompt, schema, `persona_${stage.id}`);
-		let answer = first;
-		let issues = checkStage(stage, answer, sources, decided, today);
+		let answer = await call(prompt, schema, `persona_${stage.id}`);
+		const layerOf = (a: unknown): Json => (isObj(a) && isObj(a.layer) ? a.layer : {});
+		let hard = checkStage(stage, answer, sources, decided, today);
+		let soft = hard.length ? [] : wanted(layerOf(answer));
 		let attempts = 1;
-		while (issues.length) {
-			if (attempts > REPAIRS) throw new GenesisStageError(stage.id, issues);
+		while (hard.length || soft.length) {
+			if (attempts > REPAIRS) {
+				if (hard.length) throw new GenesisStageError(stage.id, hard);
+				break;
+			}
 			attempts += 1;
-			const repair = `${prompt}\n\nYour previous answer was:\n${JSON.stringify(answer)}\n\nIt failed these checks. Answer again with all of them fixed:\n- ${issues.join("\n- ")}`;
+			const repair = `${prompt}\n\nYour previous answer was:\n${JSON.stringify(answer)}\n\nIt failed these checks. Answer again with all of them fixed:\n- ${[...hard, ...soft].join("\n- ")}`;
 			answer = await call(repair, schema, `persona_${stage.id}`);
-			issues = checkStage(stage, answer, sources, decided, today);
+			hard = checkStage(stage, answer, sources, decided, today);
+			soft = hard.length ? [] : wanted(layerOf(answer));
 		}
 		const a = answer as { reasoning: string; layer: Json; provenance: FieldProvenance[] };
 		Object.assign(decided, a.layer);
@@ -382,6 +428,20 @@ export async function authorPersona(input: AuthorInput): Promise<AuthoredPersona
 
 	for (const stage of STAGES) await runStage(stage);
 
+	// Coherence: one reading of the whole persona against its sources, because each stage saw only its own
+	// part. Measured 2026-10-07: a limit the person stated in the interview ("never approve a money change
+	// without a failure-path test") reached the review criteria but not the hard limits. Each finding goes
+	// back once to the stage that owns it, with the same mechanism as the validator's findings below.
+	const coherence = await readCoherence(sources, decided, call);
+	for (const stage of STAGES) {
+		const mine = coherence.findings.filter((f) => f.stage === stage.id);
+		const rules = mine.filter((f) => f.quote).map((f) => f.quote!);
+		const wanted = (layer: Json): string[] => rules.filter((q) => !carries(layer, q)).map((q) => `The rule "${q}" is still in no field of this part: add it.`);
+		if (mine.length) await runStage(stage, mine.map(describeFinding), wanted);
+	}
+	// A stage may answer without the fix: what is still missing is reported, never looped on.
+	coherence.unresolved = coherence.findings.filter((f) => f.quote && !carries(decided, f.quote)).map((f) => `${f.source}: "${f.quote}"`);
+
 	// The whole document, against the full validator (universals included); the owning stages fix their part once.
 	let spec = bookkeeping(decided, today, input.canonicalId);
 	const findings = findingsByStage(spec);
@@ -391,5 +451,176 @@ export async function authorPersona(input: AuthorInput): Promise<AuthoredPersona
 		const left = findingsByStage(spec);
 		if (left.size) throw new GenesisStageError([...left.keys()].map((s) => s.id).join(", "), [...left.values()].flat());
 	}
-	return { spec, stages: STAGES.map((s) => records.find((r) => r.stage === s.id)!).filter(Boolean) };
+	return { spec, stages: STAGES.map((s) => records.find((r) => r.stage === s.id)!).filter(Boolean), coherence };
+}
+
+const COHERENCE_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: ["reasoning", "rules", "contradictions"],
+	properties: {
+		reasoning: { type: "string" },
+		rules: {
+			type: "array",
+			items: {
+				type: "object",
+				additionalProperties: false,
+				required: ["source", "quote"],
+				properties: {
+					source: { type: "string" },
+					quote: { type: "string" },
+					kept_in: { type: "string" },
+					belongs_in: { type: "string", enum: STAGES.map((s) => s.id) },
+				},
+			},
+		},
+		contradictions: {
+			type: "array",
+			items: {
+				type: "object",
+				additionalProperties: false,
+				required: ["stage", "problem", "fields"],
+				properties: {
+					stage: { type: "string", enum: STAGES.map((s) => s.id) },
+					problem: { type: "string" },
+					fields: { type: "array", items: { type: "string" } },
+				},
+			},
+		},
+	},
+} as const;
+
+/**
+ * The coherence prompt. A mechanical task rather than an open reading: measured 2026-10-07 with command-a,
+ * "find what only the whole shows" missed the limit it was written for and returned findings whose quote did
+ * not support them, and one against a universal the spec itself imposes. Listing every rule a source states
+ * and where the persona keeps it is something the code can check, quote by quote and path by path.
+ */
+function coherencePrompt(sources: readonly Source[], decided: Json): string {
+	return [
+		"You are checking a whole AI persona against the sources it was written from. Each part was written on its own.",
+		"",
+		"1. `rules`: list every rule the sources state about how this persona must or must not work: sentences with",
+		"   never, always, only, must, do not, or a limit put another way (\"X is never acceptable\"). For each, give",
+		"   `source` and `quote` with the exact words, and `kept_in`: the dot path of the field of the persona that",
+		"   keeps that rule (a hard limit, a prohibited behaviour, a commitment, an anchor, a strategy; a list item as",
+		"   path.N). When no field keeps it, leave `kept_in` out and give `belongs_in`: the part it belongs to (one of:",
+		"   " + STAGES.map((s) => s.id).join(", ") + "); a limit of what must never happen goes to self_regulation.",
+		"2. `contradictions`: two fields of the persona that contradict each other (a virtue and the trait or value it",
+		"   refers to, a value and its conflict rule, a voice and the behaviour it describes), with the stage that owns",
+		"   the fix (one of: " + STAGES.map((s) => s.id).join(", ") + ") and the dot paths of the fields. Most personas",
+		"   have none; report one only when the two fields cannot both hold.",
+		"Do not report style, wording, empty optional fields, or the universal rules every persona carries. Write",
+		"`reasoning` first.",
+		"",
+		"SOURCES:",
+		renderSources(sources),
+		"",
+		"THE PERSONA:",
+		dump(decided, { lineWidth: 120, noRefs: true }),
+	].join("\n");
+}
+
+/**
+ * The value at a dot path, or undefined; a number indexes a list. Lists matter here: measured 2026-10-07, a
+ * model placed every rule at `character.prohibited_behaviors.0` and the like, a reader without indices called
+ * each path missing, and the repair taught the model to leave every `kept_in` out.
+ */
+function at(doc: Json, path: string): unknown {
+	return path.split(".").reduce<unknown>((node, key) => (Array.isArray(node) && /^\d+$/.test(key) ? node[Number(key)] : isObj(node) ? node[key] : undefined), doc);
+}
+
+/** Whether the persona carries a rule somewhere: half of its words in one field. */
+function carries(decided: Json, quote: string): boolean {
+	const wanted = [...words(quote)];
+	if (!wanted.length) return true;
+	const texts: string[] = [];
+	const walk = (node: unknown): void => {
+		if (typeof node === "string") texts.push(node);
+		else if (Array.isArray(node)) node.forEach(walk);
+		else if (isObj(node)) Object.values(node).forEach(walk);
+	};
+	walk(decided);
+	return texts.some((t) => {
+		const have = words(t);
+		return wanted.filter((w) => have.has(w)).length * 2 >= wanted.length;
+	});
+}
+
+/**
+ * The content words of a text, each cut to its first five letters: a crude stem, so "softens" meets
+ * "softening" and "findings" meets "finding" (a model words a kept rule its own way).
+ */
+const words = (text: string): Set<string> =>
+	new Set(
+		text
+			.toLowerCase()
+			.split(/[^\p{L}\p{N}]+/u)
+			.filter((w) => w.length > 3)
+			.map((w) => w.slice(0, 5)),
+	);
+
+/** Every problem with a coherence answer: a quote not in its source, a field the persona lacks, or one that does not keep the rule. */
+function checkCoherence(answer: unknown, sources: readonly Source[], decided: Json): string[] {
+	const a = answer as { reasoning?: unknown; rules?: unknown; contradictions?: unknown } | null;
+	if (!isObj(a)) return ["The answer is not a JSON object with `reasoning`, `rules` and `contradictions`."];
+	const issues: string[] = [];
+	if (typeof a.reasoning !== "string" || !a.reasoning.trim()) issues.push("`reasoning` is missing or empty.");
+	if (!Array.isArray(a.rules)) issues.push("`rules` must be a list (empty when the sources state none).");
+	if (!Array.isArray(a.contradictions)) issues.push("`contradictions` must be a list (usually empty).");
+	if (issues.length) return issues;
+	(a.rules as unknown[]).forEach((r, i) => {
+		const n = `rules[${i}]`;
+		if (!isObj(r) || typeof r.quote !== "string" || !r.quote.trim()) return void issues.push(`${n} has no quote.`);
+		if (!quoteIsIn(sources, String(r.source ?? ""), r.quote)) {
+			const near = closestSentence(sources, String(r.source ?? ""), r.quote);
+			issues.push(`${n}.quote is not in source ${String(r.source ?? "(none)")}.` + (near ? ` The closest words there are: "${near.slice(0, 160)}"` : ""));
+		}
+		if (!(typeof r.kept_in === "string" && r.kept_in.trim()) && !STAGES.some((st) => st.id === r.belongs_in)) issues.push(`${n} has neither \`kept_in\` nor \`belongs_in\`.`);
+		if (typeof r.kept_in === "string" && r.kept_in.trim()) {
+			const kept = at(decided, r.kept_in);
+			if (kept === undefined) issues.push(`${n}.kept_in names ${r.kept_in}, which the persona does not have; leave it out if no field keeps the rule.`);
+			// The field must say something of the rule: a path to any field would otherwise pass as "kept".
+			else if (![...words(r.quote)].some((w) => words(JSON.stringify(kept)).has(w))) issues.push(`${n}.kept_in names ${r.kept_in}, which says nothing of "${r.quote.slice(0, 80)}"; leave it out if no field keeps the rule.`);
+		}
+	});
+	(a.contradictions as unknown[]).forEach((c, i) => {
+		const n = `contradictions[${i}]`;
+		if (!isObj(c)) return void issues.push(`${n} is not an object.`);
+		if (!STAGES.some((s) => s.id === c.stage)) issues.push(`${n}.stage must be one of: ${STAGES.map((s) => s.id).join(", ")}.`);
+		if (typeof c.problem !== "string" || !c.problem.trim()) issues.push(`${n}.problem is empty.`);
+		const fields = Array.isArray(c.fields) ? c.fields : [];
+		if (fields.length < 2) issues.push(`${n}.fields names fewer than the two fields that contradict each other.`);
+		for (const path of fields) if (at(decided, String(path)) === undefined) issues.push(`${n}.fields names ${String(path)}, which the persona does not have.`);
+	});
+	return issues;
+}
+
+/**
+ * The whole persona read against its sources. A rule a source states that no field keeps goes to
+ * self_regulation, which owns the hard limits; a contradiction goes to the stage the reading names.
+ */
+async function readCoherence(sources: readonly Source[], decided: Json, call: StructuredCaller): Promise<CoherenceReading> {
+	const prompt = coherencePrompt(sources, decided);
+	let answer = await call(prompt, COHERENCE_SCHEMA, "persona_coherence");
+	let issues = checkCoherence(answer, sources, decided);
+	for (let attempt = 1; issues.length; attempt += 1) {
+		if (attempt > REPAIRS) throw new GenesisStageError("coherence", issues);
+		answer = await call(`${prompt}\n\nYour previous answer was:\n${JSON.stringify(answer)}\n\nIt failed these checks. Answer again with all of them fixed:\n- ${issues.join("\n- ")}`, COHERENCE_SCHEMA, "persona_coherence");
+		issues = checkCoherence(answer, sources, decided);
+	}
+	const reading = answer as { reasoning: string; rules: StatedRule[]; contradictions: Array<{ stage: string; problem: string; fields: string[] }> };
+	const findings: CoherenceFinding[] = [
+		...reading.rules
+			.filter((r) => !r.kept_in)
+			.map((r) => ({ stage: r.belongs_in!, problem: `a rule a source states is kept by no field: "${r.quote}"; keep it in this part`, source: r.source, quote: r.quote })),
+		...reading.contradictions.map((c) => ({ stage: c.stage, problem: c.problem, fields: c.fields })),
+	];
+	return { reasoning: reading.reasoning, rules: reading.rules, findings, unresolved: [] };
+}
+
+/** A coherence finding as the owning stage reads it. */
+function describeFinding(f: CoherenceFinding): string {
+	const evidence = f.quote ? `${f.source}: "${f.quote}"` : `fields ${(f.fields ?? []).join(", ")}`;
+	return `A reading of the whole persona found: ${f.problem} (evidence: ${evidence}). Fix it in this part.`;
 }
