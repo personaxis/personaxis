@@ -132,6 +132,22 @@ describe("what the step produced", () => {
 		expect(producedBetween(before, after)).toEqual([]);
 	});
 
+	it("names a file the step wrote before the first scan read the folder", async () => {
+		// The race CI caught: the "before" scan runs alongside the step, so a quick
+		// write can be in both scans, unchanged. What makes it the step's is that it
+		// was modified after the step started; a file that was already there is older.
+		await writeFile(join(root, "old.md"), "already here");
+		const past = new Date(Date.now() - 60_000);
+		await utimes(join(root, "old.md"), past, past);
+		const startedAt = Date.now() - 1_000;
+		await writeFile(join(root, "quick.md"), "written by the step");
+		const before = await scanDirectory(root);
+		const after = await scanDirectory(root);
+
+		expect(producedBetween(before, after).map((file) => file.path)).toEqual([]);
+		expect(producedBetween(before, after, startedAt).map((file) => file.path)).toEqual(["quick.md"]);
+	});
+
 	it("says nothing about a deletion", async () => {
 		// This answers "what did the step leave", and a deletion leaves nothing to
 		// open. It belongs in the record as a tool call, not here.

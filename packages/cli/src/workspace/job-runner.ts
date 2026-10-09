@@ -331,7 +331,7 @@ export class JobRunner {
 				// a late event arriving at a job that is already over, which the
 				// record writer correctly ignores. Naming the files afterwards would
 				// have meant naming them into nothing.
-				void this.endAfterNamingFiles(reporter, cwd, before, body, author);
+				void this.endAfterNamingFiles(reporter, cwd, before, startedAt, body, author);
 		};
 
 		/**
@@ -400,6 +400,7 @@ export class JobRunner {
 		// ends, the comparison waits for it, which is the only ordering that can be
 		// correct: without a "before" there is no way to tell a file the step wrote
 		// from a file that was already there.
+		const startedAt = Date.now();
 		const before = scanDirectory(cwd);
 
 		void session.run().finally(() => {
@@ -512,6 +513,7 @@ export class JobRunner {
 		reporter: JobReporter,
 		cwd: string,
 		before: Promise<Awaited<ReturnType<typeof scanDirectory>>>,
+		startedAt: number,
 		ending: Parameters<JobReporter["reportWire"]>[0],
 		author: WireAuthor,
 	): Promise<void> {
@@ -519,7 +521,7 @@ export class JobRunner {
 			setTimeout(resolve, NAMING_BUDGET_MS).unref?.();
 		});
 
-		await Promise.race([this.reportProduced(reporter, cwd, before), deadline]);
+		await Promise.race([this.reportProduced(reporter, cwd, before, startedAt), deadline]);
 		reporter.reportWire(ending, author);
 	}
 
@@ -527,10 +529,11 @@ export class JobRunner {
 		reporter: JobReporter,
 		cwd: string,
 		before: Promise<Awaited<ReturnType<typeof scanDirectory>>>,
+		startedAt: number,
 	): Promise<void> {
 		try {
 			const [was, now] = await Promise.all([before, scanDirectory(cwd)]);
-			const produced = producedBetween(was, now);
+			const produced = producedBetween(was, now, startedAt);
 
 			for (const file of produced) {
 				reporter.reportWire({
