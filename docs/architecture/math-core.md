@@ -8,7 +8,7 @@ it in one read. The plain-language version is [GUARANTEES](../GUARANTEES.md).
 | Module | Implements | Consumed by |
 |---|---|---|
 | `uspace.ts` | `toU/fromU` (Def. 4, the meaning of every value), `projectValue/project` (Π_B), `rho` metric | `state drift`, dash gauges, proof |
-| `bands.ts` | `bandOf/bandCrossing/bandBoundaries` (Def. 6; declared `{low_max, moderate_max}` or defaults 0.33/0.66 · signed −0.33/+0.33), `bandRepresentatives`, `expressionFor` | compile stage-1, loop recompile trigger, jacobian |
+| `bands.ts` | `bandOf/bandCrossing/bandBoundaries` (Def. 6; declared `{low_max, moderate_max}` or defaults 0.33/0.66 · signed −0.33/+0.33), `bandRepresentatives`, `expressionFor` | compile reference, loop recompile trigger, jacobian |
 | `drift.ts` | `driftReport` (per-coordinate u/band/headroom + T3 live `minStepsToCross`, ∞ for protected, `decayAssisted` for recovery exits on `half_life` coordinates), `layerDrift` vs `governance.drift_thresholds` | `state drift`, `/drift`, dash, loop `drift` event |
 | `homeostasis.ts` | `decayRate` (λ = 1−2^(−1/h)), `homeostaticMoves` (pure: values in, moves out; written to the record as `runtime-decay`), T6 | loop tick (pre-gate) |
 | `arbitration.ts` | the total order (governance ≻ weight ≻ name), `arbitrate` with trace, `rankValues`, A1/A2 | `arbitrate`, `/arbitrate`, `.dist/` RUNTIME slice |
@@ -32,8 +32,8 @@ it in one read. The plain-language version is [GUARANTEES](../GUARANTEES.md).
   as part of the same batch, so a tick is one transaction and not a sequence of
   them.
 - **Recompile ≡ band crossing**: `loop.ts` (within-band movement is expression
-  variance; the crossing rewrites the compiled doc via the stage-1 assembler with
-  fresh `stateValues`, see `compile/assemble.ts sectionExpression`).
+  variance; the crossing marks the compiled doc stale and a model rewrites it from a
+  reference assembled with fresh `stateValues`, see `compile/assemble.ts sectionExpression`).
 
 ## The proof surface
 

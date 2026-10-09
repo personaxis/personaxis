@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { listSkills, addSkill, pullSkill, updateSkill, removeSkill } from "../src/repl/views/skills-data.js";
 
 let dir: string;
@@ -18,7 +18,7 @@ let baseDir: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-skills-"));
-  personaPath = writeStarterPersona(dir, "Vega");
+  personaPath = writeTestPersona(dir, "Vega");
   baseDir = dirname(personaPath);
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));

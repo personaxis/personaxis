@@ -71,7 +71,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
         severity: "error",
         path: field,
         message: `Required top-level field '${field}' is missing.`,
-        fix: `Add '${field}' at the top level of the frontmatter. \`personaxis template\` prints a scaffold with all four (apiVersion, kind, spec_version, metadata).`,
+        fix: `Add '${field}' at the top level of the frontmatter. \`personaxis spec\` shows what each of the four (apiVersion, kind, spec_version, metadata) holds.`,
       });
     }
   }
@@ -141,7 +141,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
           isAgent
             ? "An AgentPersona declares all ten; the layer is the contract, an absent one is not a neutral default but an undefined behavior."
             : "A UserPersona still needs identity, values_and_drives, cognition and persona."
-        } \`personaxis template\` prints the scaffold for it.`,
+        } \`personaxis spec\` shows what it holds.`,
       });
     }
   }
@@ -602,7 +602,7 @@ export function runRules(data: Record<string, unknown>): RuleResult {
       severity: "info",
       path: "persona",
       message: "No persona-prompting source material (v1.0: persona.address/voice_exemplars/scene_contracts; ≤0.10: the persona_prompting block), the compiled PERSONA.md will be derived from the quantitative layers. Adding voice_exemplars/scene_contracts/anchors yields a richer, more in-character document (see docs/PERSONA_PROMPTING.md).",
-      fix: "Optional, and worth it: add persona.address.you_are, two to four persona.voice_exemplars, and a couple of persona.scene_contracts (situation plus how this persona handles it). `personaxis create --deep` asks for all three.",
+      fix: "Optional, and worth it: add persona.address.you_are, two to four persona.voice_exemplars, and a couple of persona.scene_contracts (situation plus how this persona handles it). Voice exemplars must come from a source, so give `personaxis create` examples of how it talks (a transcript, or answers in the interview).",
     });
   }
 

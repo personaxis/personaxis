@@ -7,7 +7,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import React from "react";
 import { render } from "ink-testing-library";
 import { loadPersona, ensureState } from "@personaxis/core";
 import { Dashboard, Transcript } from "../src/components.js";

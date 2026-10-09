@@ -117,7 +117,6 @@ describe("PB-T3 evidence cost: minStepsToCross is a certified lower bound", () =
         ),
         ({ e, start, deltaMax, up }) => {
           const field = "personality.traits.x";
-          const envs = { [field]: e };
           let at = start;
           const startBand = bandOf(start, e);
           const bound = coordinateDrift(field, start, e, deltaMax).minStepsToCross;

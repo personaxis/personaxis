@@ -8,20 +8,14 @@
  */
 
 import chalk from "chalk";
-import { relative, dirname, join } from "node:path";
-import { existsSync, writeFileSync, readFileSync, unlinkSync, readdirSync } from "node:fs";
-import { ensureState,
-  readState,
+import { dirname, join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  ensureState,
   extractEnvelopes,
   driftReport,
   readDriftThresholds,
   readMaxStepDelta,
-  resolveField,
-  readArbitrationValues,
-  arbitrate,
-  rankValues,
-  activeOverlay,
-  proposals,
   readMemory,
   readMemoryTypes,
   readMemoryKnobs,
@@ -33,47 +27,30 @@ import { ensureState,
   consolidateSemantic,
   pruneMemory,
   searchMemory,
-  applySelfEdit,
-  rejectSelfEdit,
-  verifyMemoryChain,
-  overseerView,
-  liveProjects,
   readRecompilePending,
-  displayName,
-  readMode,
-  loadConversation,
   listSessions,
-  findSession,
-  renameSession,
 } from "@personaxis/core";
-import { envelopeBars, auraLines } from "@personaxis/tui/visual";
+import { auraLines } from "@personaxis/tui/visual";
 import { sigilParams, liveIntensity } from "@personaxis/core";
-import { renderFrame } from "@personaxis/tui";
 import type { SlashItem } from "@personaxis/tui/screen";
 import { compactConversation } from "./compact.js";
-import { isSubagentPath, slugAddressFromPath, loadPersonaFile, compiledPathFor } from "../load.js";
-import { runMode, isMode, MODES } from "../commands/improve.js";
+import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
 import { runCompile } from "../commands/compile.js";
 import { setModelSetting } from "../config.js";
-import { installHook, HOSTS } from "../commands/hooks.js";
-import { validatePersona } from "../schema.js";
-import { lint } from "../linter/index.js";
-import { writeStarterPersona } from "../starter.js";
 import { buildResourceManifest } from "../resource-manifest.js";
 import { discoverTree } from "./roster.js";
 import { buildAwarenessBlock } from "./awareness.js";
 import type { Ctx, CommandDef } from "./types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel, notePostureChange, readGoalText } from "./config.js";
-import { fmtK, panel, meterBar, userLine } from "./render.js";
-import { version } from "../generated/assets.js";
-import { stopDaemons, startStopDaemon, runCliPassthrough, runCliInteractive } from "./daemons.js";
+import { fmtK, panel, meterBar } from "./render.js";
+import { stopDaemons, runCliPassthrough, runCliInteractive } from "./daemons.js";
 import { resumeSessionInto, replayTranscript } from "./session.js";
-import { maybeRecompile, handleTurn } from "./turn.js";
+import { handleTurn } from "./turn.js";
 import { loadCustomCommands, findCustomCommand, expandCommand } from "./custom-commands.js";
 import { resolveDeclaredSkills } from "../targets/skills.js";
 import type { PersonaData } from "../load.js";
-import { startTask, listTasks, readTaskDetail, markTaskSurfaced } from "./tasks.js";
-import { statusLines, configLines, usageLines } from "./views/settings-data.js";
+import { startTask } from "./tasks.js";
+import { statusLines } from "./views/settings-data.js";
 import { driftTextLines } from "./views/drift-view.js";
 import { runDoctorChecks } from "./doctor-checks.js";
 import { lineText } from "./views/tabbed.js";
@@ -200,7 +177,7 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "create",
-    desc: "create or rewrite a persona: interview, a prompt, an import, a transcript",
+    desc: "create another persona in this folder: /create <name> [what it is for]; a model reads the folder and asks what is missing",
     external: "create",
     run: async (arg, ctx) => {
       if (!ctx.suspend) {
@@ -254,21 +231,13 @@ export const COMMANDS: CommandDef[] = [
       if (!firstCompile && !readRecompilePending(ctx.handle.personaPath).pending) {
         return void ctx.out(chalk.dim(`  PERSONA.md is already up to date: ${compiledPath}`));
       }
-      const llm = llmConfig(ctxModelArg(ctx));
-      ctx.out(
-        chalk.dim(
-          firstCompile
-            ? `  compiling PERSONA.md${llm ? "" : " (deterministic assembler, no model configured)"}…`
-            : "  recompiling PERSONA.md from the evolved spec…",
-        ),
-      );
+      ctx.out(chalk.dim(firstCompile ? "  the model is writing PERSONA.md…" : "  the model is rewriting PERSONA.md from the evolved spec…"));
       const address = slugAddressFromPath(ctx.handle.personaPath);
       try {
-        // Without a model, skip the polish stage: the stage-1 assembler still produces
-        // the full, correct document (compile NEVER silently no-ops).
+        // Written by the model or not at all: without one, runCompile refuses and says how to configure it.
         await runCompile({
           ...(address ? { slug: address } : { root: true }),
-          ...(llm ? { provider: "local" as const } : { noPolish: true }),
+          ...(llmConfig(ctxModelArg(ctx)) ? { provider: "local" as const } : {}),
         });
       } catch (e) {
         return void ctx.out(chalk.red(`  ✗ compile failed: ${(e as Error).message}`));
@@ -777,7 +746,7 @@ export const EXTERNAL_DOOR: Record<string, string> = {
   cost: "status", usage: "status", state: "status", config: "config",
   dash: "state drift", replay: "audit --tab Integrity", rewind: "state rewind <n>",
   review: "review", goal: "goal <text>", loop: "observe", improve: "improve <mode>",
-  init: "create", validate: "validate", lint: "lint", sessions: "status",
+  init: "init", validate: "validate", lint: "lint", sessions: "status",
   serve: "serve", watch: "watch", hooks: "hooks", tasks: "status",
   overseer: "overseer show", proof: "proof", arbitrate: "arbitrate", mode: "config",
 };

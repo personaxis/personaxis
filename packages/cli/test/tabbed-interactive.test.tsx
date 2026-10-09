@@ -5,7 +5,6 @@
  * Config actions edit real state in place (posture cycles and persists on ctx).
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React from "react";
 import { render } from "ink-testing-library";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +14,7 @@ import { settingsProvider, personaProvider } from "../src/repl/views/interactive
 import { scopedProvider } from "../src/repl/views/scoped.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter, POSTURES } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 const ESC = "";
 const UP = "[A";
@@ -31,7 +30,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const scaffoldCtx = () => makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
+const scaffoldCtx = () => makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
 
 describe("tabbed host v2 (V6.1)", () => {
   const View = registerTabbedView("v61-host-test", {
@@ -152,8 +151,8 @@ describe("Persona provider Anatomy drill (V6.1)", () => {
  */
 describe("the host's persona selector (V7.C1)", () => {
   it("shows every persona, and `p` switches which one the view answers for", async () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
-    writeStarterPersona(dir, "Helper", "helper");
+    const ctx = makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
+    writeTestPersona(dir, "Helper", "helper");
     const View = registerTabbedView("v7c1-scope-test", personaProvider(ctx));
     const { stdin, lastFrame } = render(
       <View personaPath={ctx.handle.personaPath} active={true} onBack={() => {}} params={{ tab: "Identity" }} />,
@@ -175,8 +174,8 @@ describe("the host's persona selector (V7.C1)", () => {
   });
 
   it("wraps ANY provider, so a view gets the selector in one line", async () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
-    writeStarterPersona(dir, "Helper", "helper");
+    const ctx = makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
+    writeTestPersona(dir, "Helper", "helper");
     // A minimal provider that simply reports which persona it was handed: this is the
     // contract the Ledger, Skills and the rest are wired through.
     const View = registerTabbedView(

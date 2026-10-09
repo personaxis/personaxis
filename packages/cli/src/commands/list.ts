@@ -26,8 +26,8 @@ export const listCommand = new Command("list")
     if (!existsSync(rootSpec) && entries.length === 0) {
       console.log("");
       console.log(chalk.dim("No personas found in .personaxis/"));
-      console.log(chalk.dim("Create one:"), chalk.cyan("personaxis create <slug>"), chalk.dim("(interview, --from-prompt, --from-project, --from-import, --from-transcript)"));
-      console.log(chalk.dim("Or scaffold the commented template:"), chalk.cyan("personaxis init"));
+      console.log(chalk.dim("Create this folder's persona:"), chalk.cyan("personaxis init"), chalk.dim("(a model reads the folder and asks what is missing)"));
+      console.log(chalk.dim("Or another one beside it:"), chalk.cyan("personaxis create <name>"));
       console.log("");
       return;
     }

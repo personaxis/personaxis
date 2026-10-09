@@ -6,10 +6,8 @@
 
 import { Command } from "commander";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
 import chalk from "chalk";
-import { stateOf, loadPersona, sigilParams, renderSigil, readState, type PersonaFrontmatter } from "@personaxis/core";
+import { stateOf, loadPersona, sigilParams, renderSigil, type PersonaFrontmatter } from "@personaxis/core";
 import { loadPersonaFile } from "../load.js";
 
 export interface CardData {
@@ -25,7 +23,6 @@ export interface CardData {
 export function buildCard(data: Record<string, unknown>, raw: string, personaPath: string): CardData {
   const id = (data.identity ?? {}) as { display_name?: string; canonical_id?: string; role_identity?: { primary_role?: string } };
   const params = sigilParams(data as unknown as PersonaFrontmatter);
-  const statePath = join(dirname(personaPath), "state.json");
   let mutations = 0;
   try {
     // Described, not created. A card is a picture of a persona and drawing one must

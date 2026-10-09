@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { livePresence } from "@personaxis/core";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
 import { noteActivity } from "../src/repl/index.js";
@@ -19,7 +19,7 @@ let personaPath: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-activity-"));
-  personaPath = writeStarterPersona(dir, "Vega");
+  personaPath = writeTestPersona(dir, "Vega");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

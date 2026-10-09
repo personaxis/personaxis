@@ -6,11 +6,11 @@
  */
 
 import chalk from "chalk";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import { stateOf,
-  readState,
+import {
+  stateOf,
   extractEnvelopes,
   driftReport,
   readDriftThresholds,
@@ -22,7 +22,7 @@ import { stateOf,
   readStatsCache,
 } from "@personaxis/core";
 import { lineChart, heatmapGitHub } from "@personaxis/tui/visual";
-import { slugAddressFromPath, compiledPathFor } from "../../load.js";
+import { slugAddressFromPath } from "../../load.js";
 import type { Ctx } from "../types.js";
 import { POSTURES, llmConfig, ctxModelArg, appraiserLabel } from "../config.js";
 import { fmtK, meterBar } from "../render.js";

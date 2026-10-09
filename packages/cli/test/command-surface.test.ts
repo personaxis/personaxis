@@ -15,10 +15,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { paletteMatches, type SlashItem } from "@personaxis/tui/ink";
-import { COMMANDS, ABSORBED, EXTERNAL_DOOR, listCommands, runCommand } from "../src/repl/commands.js";
+import { ABSORBED, EXTERNAL_DOOR, listCommands, runCommand } from "../src/repl/commands.js";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter, POSTURES } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 const PRIMARY = [
   "resume", "compact", "context",
@@ -34,7 +34,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const scaffold = () => {
-  const ctx = makeCtx(writeStarterPersona(dir, "Vega"), makeMeter());
+  const ctx = makeCtx(writeTestPersona(dir, "Vega"), makeMeter());
   const out: string[] = [];
   ctx.out = (t: string) => void out.push(t);
   return { ctx, out };

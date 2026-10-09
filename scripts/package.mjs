@@ -6,7 +6,7 @@
  * binaries per platform AND publish to npm with a thin-shim + optionalDependencies.
  * This script drives the bun side.
  *
- * Assets (schema/*.json, templates/*, version) are embedded at build time via
+ * Assets (the spec document and the version) are embedded at build time via
  * scripts/embed-assets.mjs -> packages/cli/src/generated/assets.ts, so the compiled
  * binary is self-contained (no runtime fs reads of bundled assets). Verified:
  * `personaxis --version` and `personaxis validate <persona>` work from the binary.
@@ -38,4 +38,4 @@ for (const t of targets) {
     stdio: "inherit",
   });
 }
-console.log("done. NOTE: embed schema/templates assets before shipping (see header).");
+console.log("done. NOTE: embed the assets before shipping (see header).");

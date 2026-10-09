@@ -24,8 +24,8 @@ personaxis observe --stdin                          # read a host-hook payload f
 ## What it does
 
 1. Resolves the persona spec (explicit `--persona`, else the project root spec).
-2. Runs **one** governed tick on the resolved model (`resolveModel`, an `LlmAppraiser` when a model
-   is configured, else the offline `HeuristicAppraiser`).
+2. Runs **one** governed tick on the resolved model (`resolveModel`, then an `LlmAppraiser`). With
+   no model configured it refuses and says how to configure one.
 3. **Recompile only when stale:** if the tick applied a governed self-edit that marked
    `PERSONA.md` stale, it recompiles (`--if-pending`, via the `local` provider), so the host
    reads a current document without a recompile on every turn.

@@ -59,39 +59,12 @@ export function renderWordmark(word: string): string[] {
   return rows;
 }
 
-// The brand mark: the personaxis STICKMAN (the real logo), small and alive.
-const EMBLEM = [
-  "   ◉   ",
-  "  /│\\  ",
-  "   │   ",
-  "  / \\  ",
-];
-
 export const LOGO = renderWordmark("personaxis");
 
 // Monochrome: the terminal's DEFAULT foreground (bold) adapts to light/dark themes
 // automatically, dark on a light terminal, light on a dark one. No color.
 const TAGLINE = chalk.dim("  the home of living, governed AI personas · ") + chalk.bold("/help");
 const word = (l: string): string => chalk.bold(l);
-
-/** Paint the emblem; `bright` controls the core (used for a single subtle pulse). */
-function paintEmblem(bright: boolean): string {
-  const core = "◉";
-  return EMBLEM.map((line) => {
-    let out = "";
-    for (const ch of line) {
-      if (ch === core) out += bright ? chalk.bold(ch) : chalk.dim(ch);
-      else if (ch === " ") out += " ";
-      else out += chalk.dim(ch);
-    }
-    return out;
-  }).join("\n");
-}
-
-/** Compact single-line logo for narrow terminals (the block wordmark would wrap + break). */
-function compactLogo(): string {
-  return chalk.bold("◉ personaxis") + chalk.dim("  ·  living, governed AI personas");
-}
 
 /**
  * A quiet, premium reveal. V5.P3.1 ROOT-CAUSE FIX: the old animation repainted in

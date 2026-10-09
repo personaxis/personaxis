@@ -6,7 +6,7 @@ import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
 import { statusLines, configLines, usageLines, statsLines, settingsLines, SETTINGS_TABS } from "../src/repl/views/settings-data.js";
 import { agoLabel } from "../src/repl/views/resume.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 let dir: string;
 beforeEach(() => {
@@ -15,7 +15,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 function scaffoldCtx() {
-  const personaPath = writeStarterPersona(dir, "Vega");
+  const personaPath = writeTestPersona(dir, "Vega");
   return makeCtx(personaPath, makeMeter());
 }
 

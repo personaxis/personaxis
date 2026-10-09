@@ -21,10 +21,10 @@ import { hostname } from "node:os";
 import chalk from "chalk";
 import { isAwake, readLiveStatus } from "./fleet.js";
 import { hostsFor } from "./repl/scope.js";
-import { stateOf,
+import {
+  stateOf,
   type MutationLogEntry,
   loadPersona,
-  readState,
   extractEnvelopes,
   personaTheme,
   displayName,

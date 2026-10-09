@@ -37,16 +37,13 @@
 import { randomUUID } from "node:crypto";
 
 import chalk from "chalk";
-import { ensureState,
+import {
+  ensureState,
   run,
   record,
   EventBus,
   Tracer,
-  readState,
   readMemoryTypes,
-  readMemoryKnobs,
-  factsView,
-  recallWindow,
   prepareMemoryEntry,
   commitMemoryEntry,
   appendTurn,
@@ -95,9 +92,8 @@ import type { Ctx } from "./types.js";
 import { compactConversation } from "./compact.js";
 import { llmConfig, ctxModelArg, buildPolicy, readGoalText } from "./config.js";
 import type { AwarenessOpts } from "./awareness.js";
-import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError, engineVerdictLines } from "./render.js";
-import { expandFileMentions } from "./mentions.js";
-import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf } from "./session.js";
+import { shortName, replyLine, phaseFor, renderEvent, friendlyProviderError, engineVerdictLines, firstRunModelHint } from "./render.js";
+import { recordTurn, recordEvidence, makeCtx, ensureCtxSession, conversationOf, rewriteInBackground, freshPersonaDoc } from "./session.js";
 
 /**
  * A turn: the persona CONVERSES and (when needed) USES TOOLS, one governed agent
@@ -125,22 +121,10 @@ function awarenessOpts(ctx: Ctx, model: string | undefined): AwarenessOpts {
 export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   const llm = llmConfig(ctxModelArg(ctx));
   if (!llm) {
-    const cur = ensureState(ctx.handle);
-    // Offline recall (V2-F1.2): the user profile loads FIRST (name recall works with
-    // no model), then the bounded recent window, never a blind last-6 of raw lines.
-    const p = ctx.handle.personaPath;
-    const knobs = readMemoryKnobs(ctx.handle.frontmatter as Record<string, unknown>);
-    const known = factsView(p);
-    const memoryLines = [
-      ...Object.entries(known.facts).map(([k, v]) => `${k}: ${v.value}`),
-      ...recallWindow(p, { maxItems: knobs.maxItems, sessionId: ctx.sessionId }).map((m) => m.content),
-    ];
-    const reply = await ctx.responder
-      .respond({ message: expandFileMentions(line), personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`, awareness: buildAwarenessBlock(p, awarenessOpts(ctx, undefined)), memory: memoryLines, state: cur.values, name: shortName(ctx) })
-      .catch((e) => `(responder error: ${friendlyProviderError((e as Error).message)})`);
-    ctx.out(replyLine(ctx, reply), "persona");
-    await recordTurn(ctx, line, reply);
-    await ctx.loop.observe({ observation: line, source: "user", actor: "actor-llm", sessionId: ctx.sessionId }).catch((e) => ctx.out(chalk.dim(`loop skipped: ${(e as Error).message}`)));
+    // Since 2026-10-07 a persona answers through a model or not at all: the offline reply assembled
+    // from its definition made a template look like a persona. Nothing is recorded, because nothing
+    // happened.
+    firstRunModelHint((s) => ctx.out(s));
     return;
   }
 
@@ -191,7 +175,7 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
       // the catalogue rather than replacing it, so a persona that gained a GitHub
       // server has not lost the ability to read a file.
       ...(ctx.mcp && ctx.mcp.tools.length > 0 ? { extraTools: [...ctx.mcp.tools] } : {}),
-      personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${ctx.personaDoc}`,
+      personaBody: `You are ${shortName(ctx)}. Stay in character.\n\n${freshPersonaDoc(ctx)}`,
       // E73: this turn can run one of the persona's services, so its index says so and names the tool.
       awareness: buildAwarenessBlock(ctx.handle.personaPath, { ...awarenessOpts(ctx, llm.model), canRunServices: true }),
       goal: readGoalText(ctx.handle),
@@ -372,10 +356,11 @@ export async function runAgentTurn(line: string, ctx: Ctx): Promise<void> {
   }
 
   // A governed self-edit may have marked the compiled doc stale. Do NOT recompile inline, 
-  // a full LLM compile would block every single turn (the "stuck thinking" hang). Just
-  // surface it; recompile happens on /compile, on /review approve, or on exit.
-  if (readRecompilePending(ctx.handle.personaPath).pending) {
-    ctx.out(chalk.dim("  · PERSONA.md stale (self-edits applied), /compile to refresh"));
+  // a full LLM compile would block every single turn (the "stuck thinking" hang). A band crossing
+  // marks it stale too; the model rewrites it in the background and the next turn reads the new one
+  // (`freshPersonaDoc`).
+  if (readRecompilePending(ctx.handle.personaPath).pending && rewriteInBackground(ctx.handle.personaPath)) {
+    ctx.out(chalk.dim("  · PERSONA.md is being rewritten by the model, for the next turn"));
   }
 }
 

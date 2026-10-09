@@ -11,9 +11,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ensureState,
+import {
+  ensureState,
   run,
-  readState,
   extractEnvelopes,
   resolveField,
   record,
@@ -42,7 +42,6 @@ export class EngineHost {
   readonly sessionId = randomUUID();
   private readonly server: ProtocolServer;
   private handle: PersonaHandle;
-  private interrupted = false;
   /** FR.10: approvals outlive a render cycle and can be answered by ANY front. */
   readonly approvals = new ApprovalBroker();
 
@@ -166,8 +165,9 @@ export class EngineHost {
         return { ok: true, data: r };
       }
       case "interrupt":
-        this.interrupted = true;
-        return { ok: true };
+        // A tick here runs to completion: there is nothing to abort it with, so saying "ok" would
+        // tell the front end a turn stopped when it did not.
+        return { ok: false, error: "interrupt is not supported by the engine host: a governed tick runs to completion" };
       case "approval": {
         const decided = this.approvals.decide(op.requestId, op.decision);
         return decided
@@ -182,7 +182,6 @@ export class EngineHost {
 
   private async observe(observation: string, source: "user" | "tool" | "internal" | "synthesis"): Promise<OpResult> {
     if (!observation.trim()) return { ok: false, error: "observation must be non-empty" };
-    this.interrupted = false;
     const turnId = randomUUID();
     this.broadcast({ event: "turn.started", turnId });
     const evolver = run.evolverFor(

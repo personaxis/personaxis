@@ -10,34 +10,38 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+
+import { modelEnv, runCli, startFakeModel, type FakeModel } from "./helpers/fake-model.js";
 
 const CLI = join(process.cwd(), "dist", "index.js");
 const FIELD = "affect.baseline.core_affect.arousal";
 
+const BRIEF = "A terse code reviewer that never softens findings";
+
 let dir: string;
 let home: string;
-beforeEach(() => {
+let model: FakeModel;
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "pxs-create-overwrite-"));
   home = mkdtempSync(join(tmpdir(), "pxs-create-overwrite-home-"));
+  model = await startFakeModel();
 });
-afterEach(() => {
+afterEach(async () => {
+  await model.close();
   rmSync(dir, { recursive: true, force: true });
   rmSync(home, { recursive: true, force: true });
 });
 
-function run(args: string[]): string {
-  const r = spawnSync(process.execPath, [CLI, ...args], {
-    cwd: dir,
-    encoding: "utf-8",
-    env: { ...process.env, PERSONAXIS_HOME: home, PERSONAXIS_ENDPOINT: "", PERSONAXIS_MODEL: "", PERSONAXIS_API_KEY: "" },
-  });
-  expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-  return `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+async function run(args: string[]): Promise<string> {
+  const r = await runCli(CLI, args, { cwd: dir, env: { PERSONAXIS_HOME: home, ...modelEnv(model) } });
+  expect(r.code, r.out).toBe(0);
+  return r.out;
 }
 
-function create(prompt: string): string {
-  return run(["create", "rev", "--from-prompt", prompt, "--yes", "--no-polish"]);
+// The same brief both times: the fake model answers from one recorded run, and what is under test is what
+// happens to the old persona's history, not what the new one says.
+function create(): Promise<string> {
+  return run(["create", "rev", BRIEF, "--yes", "--no-compile"]);
 }
 
 function valueIn(path: string): number {
@@ -45,15 +49,15 @@ function valueIn(path: string): number {
 }
 
 describe("create --yes over an existing persona", () => {
-  it("does not carry the old state, record, sessions or self-edits into the new persona, and keeps them aside", () => {
-    create("A terse code reviewer that never softens findings");
+  it("does not carry the old state, record, sessions or self-edits into the new persona, and keeps them aside", async () => {
+    await create();
     const base = join(dir, ".personaxis", "personas", "rev");
     const statePath = join(base, "state.json");
 
     // The old persona lived: its state moved through the real command, which also writes the record, and it
     // held sessions, a self-edit ledger and episodic memory.
     const before = valueIn(statePath);
-    run(["state", "mutate", "--field", FIELD, "--delta", "0.05", "--reason", "old-persona-entry", "-f", "rev"]);
+    await run(["state", "mutate", "--field", FIELD, "--delta", "0.05", "--reason", "old-persona-entry", "-f", "rev"]);
     const moved = valueIn(statePath);
     expect(moved).not.toBe(before);
     expect(readFileSync(join(base, "record.jsonl"), "utf-8")).toContain("old-persona-entry");
@@ -63,7 +67,7 @@ describe("create --yes over an existing persona", () => {
     mkdirSync(join(base, "memory"), { recursive: true });
     writeFileSync(join(base, "memory", "episodic.jsonl"), JSON.stringify({ content: "old-memory" }) + "\n");
 
-    const out = create("A patient mentor who explains every review comment");
+    const out = await create();
 
     expect(valueIn(statePath)).toBe(before);
     const record = existsSync(join(base, "record.jsonl")) ? readFileSync(join(base, "record.jsonl"), "utf-8") : "";
@@ -84,8 +88,8 @@ describe("create --yes over an existing persona", () => {
     expect(out).toMatch(/previous/);
   }, 120_000);
 
-  it("leaves a first creation alone: nothing to move aside", () => {
-    create("A terse code reviewer that never softens findings");
+  it("leaves a first creation alone: nothing to move aside", async () => {
+    await create();
     expect(existsSync(join(dir, ".personaxis", "personas", "rev", "previous"))).toBe(false);
   }, 60_000);
 });

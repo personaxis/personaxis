@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname, relative, join } from "path";
 import chalk from "chalk";
-import { loadPersonaFile, resolvePersonaSourcePath, compiledPathFor } from "../load.js";
+import { loadPersonaFile, resolvePersonaSourcePath, compiledPathFor, isSubagentPath, slugAddressFromPath } from "../load.js";
 import { validatePersona } from "../schema.js";
 import { injectBaselineIntoClaude } from "../targets/claude-code.js";
 import { injectBaselineIntoAgents } from "../targets/codex.js";
@@ -12,15 +12,19 @@ import {
   clearRecompilePending,
   assemblePersonaDoc,
   checkFaithfulness,
-  summarizeFaithfulness,
+  enforceProtected,
   distSlices,
+  ModelRequiredError,
   DIST_HOT_FILE,
   DIST_COLD_FILE,
+  recordCompiled,
+  compiledHistory,
+  ensureState,
+  loadPersona,
 } from "@personaxis/core";
-import { buildPolishPrompt, type CompileTargetInfo } from "../compile-instructions.js";
+import { buildWritePrompt, type CompileTargetInfo } from "../compile-instructions.js";
 import { ProviderRequiresAgentError, type ProviderRunResult } from "../providers/types.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
-import { runProviderOrExit } from "../provider-run.js";
 import { hashContent, saveManifest } from "../manifest.js";
 import { placeCompiledDocument, isSoulPlatform, PLACEMENT_PLATFORMS, type PlacementPlatform } from "../targets/placement.js";
 import { resolveDeclaredSkills, materializeLocalSkills, writeSkillsManifest } from "../targets/skills.js";
@@ -58,7 +62,7 @@ function readSibling(baseDir: string, name: string): string | undefined {
  * unreachable from Codex while the command reported success: an explicit request is not a
  * guess to be defaulted away. (Found by dogfooding all four hosts in V7.C5.)
  */
-export function injectRootBaselines(platform?: PlacementPlatform, cwd: string = process.cwd()): void {
+export function injectRootBaselines(platform?: PlacementPlatform, cwd: string = process.cwd(), say: Say = console.log): void {
   // `cwd` is a parameter rather than a read of `process.cwd()` so this can be exercised
   // against a temp directory without `process.chdir`, which is process-global and leaks
   // into every other test sharing the worker (it did: it changed which persona another
@@ -68,14 +72,14 @@ export function injectRootBaselines(platform?: PlacementPlatform, cwd: string = 
   // An explicitly requested host gets its baseline, existing or not.
   if (platform === "codex" && !existsSync(agentsMdPath)) {
     writeFileSync(agentsMdPath, injectBaselineIntoAgents(""), "utf-8");
-    console.log(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim("(created), @PERSONA.md reference injected"));
-    injectSecondaryBaselines(cwd);
+    say(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim("(created), @PERSONA.md reference injected"));
+    injectSecondaryBaselines(cwd, say);
     return;
   }
   if (platform === "claude-code" && !existsSync(claudeMdPath)) {
     writeFileSync(claudeMdPath, injectBaselineIntoClaude(""), "utf-8");
-    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created), @PERSONA.md reference injected"));
-    injectSecondaryBaselines(cwd);
+    say(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created), @PERSONA.md reference injected"));
+    injectSecondaryBaselines(cwd, say);
     return;
   }
 
@@ -84,8 +88,8 @@ export function injectRootBaselines(platform?: PlacementPlatform, cwd: string = 
 
   if (!claudeExists && !agentsExists) {
     writeFileSync(claudeMdPath, injectBaselineIntoClaude(""), "utf-8");
-    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created), @PERSONA.md reference injected"));
-    injectSecondaryBaselines(cwd);
+    say(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim("(created), @PERSONA.md reference injected"));
+    injectSecondaryBaselines(cwd, say);
     return;
   }
 
@@ -93,16 +97,16 @@ export function injectRootBaselines(platform?: PlacementPlatform, cwd: string = 
     const existing = readFileSync(claudeMdPath, "utf-8");
     writeFileSync(claudeMdPath, injectBaselineIntoClaude(existing), "utf-8");
     const action = existing.includes("PERSONA:BASELINE") ? "already up to date" : "updated";
-    console.log(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim(`(${action}), @PERSONA.md reference injected`));
+    say(chalk.green("✓"), chalk.bold("CLAUDE.md"), chalk.dim(`(${action}), @PERSONA.md reference injected`));
   }
 
   if (agentsExists) {
     const existing = readFileSync(agentsMdPath, "utf-8");
     writeFileSync(agentsMdPath, injectBaselineIntoAgents(existing), "utf-8");
     const action = existing.includes("PERSONA:BASELINE") || existing.includes("PERSONA:CODEX") ? "already up to date" : "updated";
-    console.log(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim(`(${action}), @PERSONA.md reference injected`));
+    say(chalk.green("✓"), chalk.bold("AGENTS.md"), chalk.dim(`(${action}), @PERSONA.md reference injected`));
   }
-  injectSecondaryBaselines(cwd);
+  injectSecondaryBaselines(cwd, say);
 }
 
 /**
@@ -114,7 +118,7 @@ export function injectRootBaselines(platform?: PlacementPlatform, cwd: string = 
  * file EXISTS, and never create it (no litter for hosts the project does not
  * use). Full matrix: docs/architecture/target-matrix.md.
  */
-function injectSecondaryBaselines(cwd: string = process.cwd()): void {
+function injectSecondaryBaselines(cwd: string = process.cwd(), say: Say = console.log): void {
   const hosts: Array<{ label: string; path: string }> = [
     { label: "GEMINI.md", path: resolve(cwd, "GEMINI.md") },
     { label: ".github/copilot-instructions.md", path: resolve(cwd, ".github", "copilot-instructions.md") },
@@ -124,7 +128,7 @@ function injectSecondaryBaselines(cwd: string = process.cwd()): void {
     const existing = readFileSync(h.path, "utf-8");
     writeFileSync(h.path, injectBaselineIntoAgents(existing), "utf-8");
     const action = existing.includes("PERSONA:BASELINE") ? "already up to date" : "updated";
-    console.log(chalk.green("✓"), chalk.bold(h.label), chalk.dim(`(${action}), @PERSONA.md reference injected`));
+    say(chalk.green("✓"), chalk.bold(h.label), chalk.dim(`(${action}), @PERSONA.md reference injected`));
   }
 }
 
@@ -138,63 +142,104 @@ export interface RunCompileOptions {
   platform?: PlacementPlatform;
   /** Skip (no-op) unless the persona's compiled doc is marked stale by a self-edit. */
   ifPending?: boolean;
-  /** F3.1: skip the LLM polish stage, write the deterministic assembled document. */
-  noPolish?: boolean;
+  /** Why this document is written, for its history; otherwise the stale mark's reason, or "compile". */
+  cause?: string;
+  /** Print nothing: the in-session recompile runs behind a screen it must not write over. */
+  quiet?: boolean;
+  /** The persona's personaxis.md, when the caller already has it (the in-session recompile). */
+  sourcePath?: string;
 }
 
+type Say = (...parts: unknown[]) => void;
+
+/** The model's document still failed the faithfulness check after its repairs; nothing was written. */
+export class CompileRejectedError extends Error {
+  constructor(
+    public readonly findings: string[],
+    /** Where the last rejected document was kept, to read what the model wrote. */
+    public readonly kept?: string,
+  ) {
+    super(
+      `The model's PERSONA.md failed the faithfulness check ${REPAIRS + 1} times, so nothing was written:\n  - ${findings.slice(0, 8).join("\n  - ")}` +
+        (kept ? `\nThe last document it wrote is in ${kept}.` : "") +
+        `\nRun \`personaxis compile\` again, or with a stronger model.`,
+    );
+    this.name = "CompileRejectedError";
+  }
+}
+
+/** How many times a rejected document goes back to the model with its findings before compile stops. */
+const REPAIRS = 2;
+
 /**
- * F3.1 stage 2, run the LLM polish over the assembled document and gate it
- * with the deterministic faithfulness check. Returns the document to write and
- * how it was produced. On any failure (no real provider, provider error, or a
- * faithfulness violation) it falls back to the assembled document, compile
- * ALWAYS produces a correct doc, provider or not.
+ * A model writes the compiled document from the spec, held to the reference the code assembles.
+ *
+ * Until 2026-10-07 the model only polished the assembly, and any failure (no model, an error, a rejected
+ * polish) wrote the assembly itself, which is a template. Now the document is the model's or there is
+ * none: a rejected document goes back with the exact findings (`checkFaithfulness`), twice, and then
+ * compile stops with `CompileRejectedError`. Without a model it refuses with `ModelRequiredError`; the
+ * `agent` provider hands each prompt to the coding agent (`ProviderRequiresAgentError`, handled by the
+ * caller). `--from-file` takes one document as the model's answer and gates it the same way.
  */
-async function polishOrFallback(
-  assembled: string,
+async function writeDocument(
+  reference: string,
   personaxisMd: string,
   target: CompileTargetInfo,
   opts: RunCompileOptions,
-): Promise<{ content: string; polished: boolean; via: string; source: ProviderRunResult["source"] | "manual"; model: string }> {
+  overlaid: boolean,
+): Promise<{ content: string; via: string; source: ProviderRunResult["source"] | "manual"; model: string; attempts: number }> {
   const provider = resolveProvider(opts.provider, { personaPath: personaxisMd });
-  // Smart-default `agent` handoff with no explicit choice and no --from-file:
-  // there is no model to polish with, so write the deterministic doc directly.
-  const agentByDefault = provider.source === "cli-agent" && !opts.provider && !opts.fromFile;
-  if (opts.noPolish || agentByDefault) {
-    return { content: assembled, polished: false, via: "deterministic assembler", source: provider.source, model: "none" };
+  // `agent` is also what resolves when no model is configured; it writes only when asked for by name.
+  if (provider.source === "cli-agent" && !opts.provider && !opts.fromFile) throw new ModelRequiredError("Compiling PERSONA.md");
+
+  const prompt = buildWritePrompt({ reference, personaxisMd: readFileSync(personaxisMd, "utf-8"), target, overlaid });
+  const unfence = (text: string): string => {
+    const t = text.trim();
+    const fence = t.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
+    return fence ? fence[1]!.trim() : t;
+  };
+  const describe = (f: { kind: string; section: string; text: string }): string =>
+    // "As a bullet": the check reads only "- " lines in a protected section, and command-a kept a dropped
+    // claim as prose three times when the finding did not say so (2026-10-07).
+    f.kind === "dropped" ? `dropped from "${f.section}": ${f.text} (it must be a "- " bullet under that heading; prose there is not read)` : f.section === "(sections)" ? `a heading the reference does not have: "## ${f.text}"` : `added to "${f.section}", not in the reference: ${f.text}`;
+
+  if (opts.fromFile) {
+    const content = unfence(readFileSync(resolve(opts.fromFile), "utf-8"));
+    const report = checkFaithfulness(reference, content);
+    if (!report.ok) throw new CompileRejectedError(report.findings.map(describe));
+    return { content, via: "--from-file", source: "manual", model: "manual", attempts: 1 };
   }
 
-  const prompt = buildPolishPrompt({ assembled, personaxisMd, target });
-  let result;
-  try {
-    result = await runProviderOrExit(provider, prompt, opts.fromFile);
-  } catch (err) {
-    if (err instanceof ProviderRequiresAgentError) throw err; // handled by runProviderOrExit (exits)
-    console.log(chalk.yellow("!"), `polish skipped (${(err as Error).message}); wrote the deterministic document.`);
-    // Carry the REASON, not just the outcome: callers report why a persona came out as a
-    // template, and "deterministic assembler" alone tells the user nothing actionable.
-    return {
-      content: assembled,
-      polished: false,
-      via: `provider unavailable: ${(err as Error).message}`,
-      source: provider.source,
-      model: "none",
-    };
-  }
-
-  let polished = result.text.trim();
-  const fence = polished.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n```$/);
-  if (fence) polished = fence[1].trim();
-
-  const report = checkFaithfulness(assembled, polished);
-  if (!report.ok) {
-    console.log(chalk.yellow("!"), summarizeFaithfulness(report));
-    for (const f of report.findings.slice(0, 6)) {
-      console.log(chalk.dim(`    ${f.kind === "dropped" ? "dropped" : "invented"} [${f.section}] ${f.text.slice(0, 80)}`));
+  let ask = prompt;
+  for (let attempt = 1; ; attempt += 1) {
+    const result = await provider.run(ask);
+    const content = unfence(result.text);
+    const report = checkFaithfulness(reference, content);
+    if (report.ok) return { content, via: `written by ${result.source}`, source: result.source, model: result.model, attempts: attempt };
+    const findings = report.findings.map(describe);
+    if (attempt > REPAIRS) {
+      // The protected rules are the definition's, not the model's wording: put back what it dropped, take out
+      // what it added to a protected section, keep its prose, and say so. A new heading cannot be put right
+      // that way, so the document is checked again and refused if it still fails.
+      const enforced = enforceProtected(reference, content, report);
+      // A few fixes, not a rewrite: past a quarter of the protected rules (or two), the model did not write this persona.
+      const few = enforced.restored + enforced.removed <= Math.max(2, Math.floor(enforced.protectedClaims / 4));
+      if (few && checkFaithfulness(reference, enforced.document).ok) {
+        const note = [enforced.restored ? `${enforced.restored} rule(s) restored` : "", enforced.removed ? `${enforced.removed} added line(s) removed` : ""].filter(Boolean).join(", ");
+        if (!opts.quiet) console.log(chalk.yellow("!"), `the model's document kept failing the check; the definition's protected rules were enforced (${note})`);
+        return { content: enforced.document, via: `written by ${result.source}, ${note} from the definition`, source: result.source, model: result.model, attempts: attempt };
+      }
+      // Kept beside the agent's prompts, never where a host would load it as the persona.
+      const kept = join(".personaxis", ".tmp", "rejected-PERSONA.md");
+      mkdirSync(dirname(resolve(kept)), { recursive: true });
+      writeFileSync(resolve(kept), content + "\n", "utf-8");
+      throw new CompileRejectedError(findings, kept);
     }
-    console.log(chalk.dim("  → kept the deterministic assembled document (polish rejected)."));
-    return { content: assembled, polished: false, via: "deterministic assembler (polish rejected)", source: result.source, model: result.model };
+    if (!opts.quiet) console.log(chalk.yellow("!"), `the document failed the faithfulness check (${findings.length} finding(s)); asking the model to fix them`);
+    // The previous document goes back with its findings, so the model fixes those and keeps the rest: asked
+    // to write again from the prompt alone, command-a repeated the same six findings three times (2026-10-07).
+    ask = `${prompt}\n\nYour previous document:\n\n${content}\n\nIt failed the check. Return it with exactly these fixed, everything else unchanged:\n- ${findings.join("\n- ")}`;
   }
-  return { content: polished, polished: true, via: `${result.source} polish`, source: result.source, model: result.model };
 }
 
 /**
@@ -204,17 +249,18 @@ async function polishOrFallback(
  * (B.9) and `push` (B.8) can invoke it directly.
  */
 /**
- * What a compile actually did. Returned because callers were guessing: `create` treated
- * "runCompile did not throw" as "the document was polished by a model", which is false
- * whenever the faithfulness gate rejects the model's rewrite and the deterministic
- * assembly is kept. The command then reported "compiled + LLM polished" over a template.
- * A caller cannot report honestly about a step whose outcome it never receives.
+ * What a compile actually did. Returned because callers were guessing: until 2026-10-07 `create`
+ * read "runCompile did not throw" as "a model polished it", and printed that over a template the
+ * faithfulness gate had rejected. A rejection is now an error (`CompileRejectedError`), and this
+ * says how the document that was written came to be.
  */
 export interface CompileOutcome {
-  /** True only when a model's rewrite was accepted and written. */
-  polished: boolean;
-  /** How the final document was produced, e.g. "cli-local polish" or "deterministic assembler (polish rejected)". */
+  /** True when a document was written; false only for `--if-pending` with nothing stale. */
+  written: boolean;
+  /** How the document was produced, e.g. "written by cli-local". */
   via: string;
+  /** How many answers the model needed: 1 when its first document passed the check. */
+  attempts: number;
   /** Model that answered, or "none". */
   model: string;
   /** Where the compiled document was written. */
@@ -222,41 +268,26 @@ export interface CompileOutcome {
 }
 
 export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcome> {
-  const isSubagent = !!opts.slug && !opts.root;
-  const slug = isSubagent ? (opts.slug as string) : undefined;
-
-  let sourcePath: string;
-  try {
-    sourcePath = resolvePersonaSourcePath(slug);
-  } catch (err) {
-    console.error(chalk.red("Error:"), (err as Error).message);
-    process.exit(1);
-  }
+  const say: Say = opts.quiet ? () => undefined : console.log;
+  // A path given directly decides root or sub-persona by where it lives; otherwise the slug does.
+  const isSubagent = opts.sourcePath ? isSubagentPath(opts.sourcePath) : !!opts.slug && !opts.root;
+  const slug = !isSubagent ? undefined : opts.sourcePath ? slugAddressFromPath(opts.sourcePath) : (opts.slug as string);
+  // Thrown, never process.exit: the in-session recompile runs inside a live session.
+  const sourcePath = opts.sourcePath ?? resolvePersonaSourcePath(slug);
 
   if (opts.ifPending && !readRecompilePending(sourcePath).pending) {
-    // Nothing stale: a cheap no-op. Reported as "not polished" because no document was
+    // Nothing stale: a cheap no-op. Reported as not written because no document was
     // produced, so no caller can mistake this for a model having rewritten anything.
-    return { polished: false, via: "up to date (no recompile needed)", model: "none", outPath: compiledPathFor(sourcePath) };
+    return { written: false, via: "up to date (no recompile needed)", attempts: 0, model: "none", outPath: compiledPathFor(sourcePath) };
   }
 
   const baseDir = dirname(sourcePath);
   const raw = readFileSync(sourcePath, "utf-8");
 
-  let loaded;
-  try {
-    loaded = loadPersonaFile(sourcePath);
-  } catch (err) {
-    console.error(chalk.red("Error:"), (err as Error).message);
-    process.exit(1);
-  }
-
+  const loaded = loadPersonaFile(sourcePath);
   const validation = validatePersona(loaded.data);
-  if (!validation.valid) {
-    console.error(chalk.red("✗"), `${relative(process.cwd(), sourcePath)} is invalid (${validation.status}). Run`, chalk.cyan("personaxis validate"), "for details.");
-    process.exit(1);
-  }
+  if (!validation.valid) throw new Error(`${relative(process.cwd(), sourcePath)} is invalid (${validation.status}). Run \`personaxis validate\` for details.`);
 
-  const policyYaml = readSibling(baseDir, "policy.yaml");
   const stateJson = readSibling(baseDir, "state.json");
 
   // Canonical compiled-document location (single owner: compiledPathFor in load.ts):
@@ -275,8 +306,8 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
   // Fold APPLIED governed self-edits so a recompile reflects what the persona evolved into.
   const appliedOverlay = activeOverlay(sourcePath);
 
-  // F3.1, STAGE 1: the deterministic assembler always runs. It is the canonical,
-  // hashable artifact and the ground truth the optional polish is checked against.
+  // The reference: what the code assembles from the spec, the ground truth the model's document is
+  // checked against. It is never written as the compiled document.
   // E92: the input, and below the dressing, come from `compiled-document.ts`, which the live
   // recompile asks too. Built here by hand, they had drifted: the live path lost the resource
   // manifest, the sub-persona header and the skill list.
@@ -286,9 +317,9 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
     // (value → band → prose, deterministic). No state.json → envelope means.
     stateValues: parseStateValues(stateJson),
   });
-  const assembled = assemblePersonaDoc(assembleInput);
+  const reference = assemblePersonaDoc(assembleInput);
 
-  // F3.1, STAGE 2: optional LLM polish, gated by the faithfulness check.
+  // The model writes the document, gated by the faithfulness check.
   //
   // D6: this is the only part of a compile that holds the persona long enough for anyone to
   // notice, so it is the only part that announces. Stage 1 and the writes around it are
@@ -297,7 +328,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
   const presence = holdPresence(sourcePath, { host: "compile", activity: "compiling PERSONA.md" });
   let stage2;
   try {
-    stage2 = await polishOrFallback(assembled, raw, target, opts);
+    stage2 = await writeDocument(reference, sourcePath, target, opts, Object.keys(appliedOverlay ?? {}).length > 0);
   } finally {
     presence.release();
   }
@@ -311,7 +342,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
 
   if (opts.stdout) {
     process.stdout.write(withFrontmatter + "\n");
-    return { polished: stage2.polished, via: stage2.via, model: stage2.model, outPath: "(stdout)" };
+    return { written: true, via: stage2.via, attempts: stage2.attempts, model: stage2.model, outPath: "(stdout)" };
   }
 
   let finalContent = withFrontmatter;
@@ -336,14 +367,14 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
     for (const skill of declaredSkills) {
       if (skill.kind === "local") {
         if (skill.missing) {
-          console.log(chalk.yellow("!"), `${skill.name}: skills/${skill.name}/SKILL.md not found (declared in extensions.skills)`);
+          say(chalk.yellow("!"), `${skill.name}: skills/${skill.name}/SKILL.md not found (declared in extensions.skills)`);
         } else {
           const materialized = materializedSkills.find((m) => m.name === skill.name);
           const dest = materialized ? `${materialized.destDir.replace(/\\/g, "/")}/` : "";
-          console.log(chalk.green("✓"), skill.name, chalk.dim("→"), dest);
+          say(chalk.green("✓"), skill.name, chalk.dim("→"), dest);
         }
       } else {
-        console.log(chalk.dim(`  ${skill.name}: reference-only (${skill.ref}) - see skills-manifest.json`));
+        say(chalk.dim(`  ${skill.name}: reference-only (${skill.ref}) - see skills-manifest.json`));
       }
     }
   }
@@ -358,10 +389,19 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
 
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, finalContent.trimEnd() + "\n", "utf-8");
+  // Every version goes into the persona's record with why it was written and from which definition: a
+  // model wrote it, so the definition alone no longer says what an agent read on a given day.
+  const pending = readRecompilePending(sourcePath);
+  const cause = opts.cause ?? (pending.pending && pending.reason ? pending.reason : "compile");
+  if (!opts.out) {
+    const handle = loadPersona(sourcePath);
+    ensureState(handle);
+    await recordCompiled(sourcePath, handle.statePath, { document: finalContent.trimEnd() + "\n", specText: raw, cause, model: result.model });
+  }
   clearRecompilePending(sourcePath); // the compiled doc now reflects the spec
 
-  console.log(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
-  console.log(chalk.dim(`  via ${result.via} (${result.model})`));
+  say(chalk.green("✓"), chalk.bold(relative(process.cwd(), sourcePath).replace(/\\/g, "/")), chalk.dim("→"), relative(process.cwd(), outPath).replace(/\\/g, "/"));
+  say(chalk.dim(`  via ${result.via} (${result.model})`));
 
   // F3.2, emit the derived `.dist/` consumer slices beside the spec: a HOT slice
   // (opener + voice + anchors + hard limits, for the always-load hot path) and the
@@ -373,7 +413,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
     mkdirSync(distDir, { recursive: true });
     writeFileSync(join(distDir, DIST_HOT_FILE), hot, "utf-8");
     writeFileSync(join(distDir, DIST_COLD_FILE), cold, "utf-8");
-    console.log(chalk.dim(`  .dist/ slices: ${DIST_HOT_FILE} (${hot.length}B hot) · ${DIST_COLD_FILE} (${cold.length}B cold)`));
+    say(chalk.dim(`  .dist/ slices: ${DIST_HOT_FILE} (${hot.length}B hot) · ${DIST_COLD_FILE} (${cold.length}B cold)`));
   }
 
   // Optional host export: place the compiled document into the host's convention so it can adopt the
@@ -386,7 +426,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
     if (placedPath !== resolve(outPath)) {
       mkdirSync(dirname(placedPath), { recursive: true });
       writeFileSync(placedPath, placement.content.trimEnd() + "\n", "utf-8");
-      console.log(chalk.green("✓"), chalk.dim("host export →"), relative(process.cwd(), placedPath).replace(/\\/g, "/"));
+      say(chalk.green("✓"), chalk.dim("host export →"), relative(process.cwd(), placedPath).replace(/\\/g, "/"));
     }
   }
 
@@ -395,7 +435,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
   // HOME-root persona: no host reads a loose ~/CLAUDE.md or ~/AGENTS.md, it would be litter.
   const homeRoot = !isSubagent && canonicalOutPath.replace(/\\/g, "/").includes("/.personaxis/");
   if (!isSubagent && !homeRoot && !isSoulPlatform(opts.platform as PlacementPlatform | undefined)) {
-    injectRootBaselines(opts.platform as PlacementPlatform | undefined);
+    injectRootBaselines(opts.platform as PlacementPlatform | undefined, process.cwd(), say);
   }
 
   saveManifest(baseDir, {
@@ -409,7 +449,7 @@ export async function runCompile(opts: RunCompileOptions): Promise<CompileOutcom
     timestamp: new Date().toISOString(),
   });
 
-  return { polished: stage2.polished, via: stage2.via, model: stage2.model, outPath };
+  return { written: true, via: stage2.via, attempts: stage2.attempts, model: stage2.model, outPath };
 }
 
 export const compileCommand = new Command("compile")
@@ -422,23 +462,44 @@ export const compileCommand = new Command("compile")
   .option("--stdout", "Print to stdout instead of writing a file")
   .option("--platform <platform>", `Also EXPORT a host placement for a sub-persona (.claude/agents or .codex): ${PLACEMENT_PLATFORMS.join(" | ")}`)
   .option("--if-pending", "No-op unless a self-edit marked the compiled doc stale (.recompile-pending.json)")
-  .option("--no-polish", "Write the deterministic assembled document; skip the LLM polish stage")
-  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string; ifPending?: boolean; polish?: boolean }) => {
+  .option("--history", "List every version of the compiled document: when, why, from which definition, by which model")
+  .action(async (slug: string | undefined, opts: { root?: boolean; provider?: string; fromFile?: string; out?: string; stdout?: boolean; platform?: string; ifPending?: boolean; history?: boolean }) => {
+    if (opts.history) {
+      const sourcePath = resolvePersonaSourcePath(slug && !opts.root ? slug : undefined);
+      const versions = compiledHistory(sourcePath);
+      if (!versions.length) return void console.log(chalk.dim("  No compiled version recorded yet."));
+      for (const v of versions) {
+        const kept = v.path ? relative(process.cwd(), v.path).replace(/\\/g, "/") : chalk.dim("(text not kept)");
+        console.log(`  ${v.at.slice(0, 19).replace("T", " ")}  ${v.hash.slice(0, 12)}  ${v.cause ?? "compile"}${v.model ? chalk.dim(` · ${v.model}`) : ""}`);
+        console.log(chalk.dim(`    from definition ${v.spec?.slice(0, 12) ?? "?"} · ${kept}`));
+      }
+      return;
+    }
     if (opts.platform && !(PLACEMENT_PLATFORMS as readonly string[]).includes(opts.platform)) {
       console.error(chalk.red("Unknown platform:"), opts.platform);
       console.error(chalk.dim("Valid platforms:"), PLACEMENT_PLATFORMS.join(", "));
       process.exit(1);
     }
 
-    await runCompile({
-      slug,
-      root: opts.root,
-      provider: opts.provider as ProviderName | undefined,
-      fromFile: opts.fromFile,
-      out: opts.out,
-      stdout: opts.stdout,
-      platform: opts.platform as PlacementPlatform | undefined,
-      ifPending: opts.ifPending,
-      noPolish: opts.polish === false, // commander: --no-polish sets polish=false
-    });
+    try {
+      await runCompile({
+        slug,
+        root: opts.root,
+        provider: opts.provider as ProviderName | undefined,
+        fromFile: opts.fromFile,
+        out: opts.out,
+        stdout: opts.stdout,
+        platform: opts.platform as PlacementPlatform | undefined,
+        ifPending: opts.ifPending,
+      });
+    } catch (err) {
+      // The prompt is waiting for the coding agent: say where, exit 0, as `create` does.
+      if (err instanceof ProviderRequiresAgentError) {
+        console.log(err.message.replace("Then re-run this command with --from-file " + err.resultFile + " to apply the result.", "Then re-run this same command: it reads the answer and continues."));
+        return;
+      }
+      console.error(chalk.red("Error:"), (err as Error).message);
+      // Not process.exit: a failure right after a model call aborts the process on Windows.
+      process.exitCode = 1;
+    }
   });

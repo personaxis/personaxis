@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "node:http";
 import { buildHttpServer } from "../src/commands/serve.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 let dir: string;
 let server: Server | null = null;
@@ -26,7 +26,7 @@ function listen(s: Server): Promise<number> {
 
 describe("serve security (V5.P2.6)", () => {
   it("without a token every route stays open (local default)", async () => {
-    const personaPath = writeStarterPersona(dir, "Srv");
+    const personaPath = writeTestPersona(dir, "Srv");
     server = buildHttpServer(personaPath);
     const port = await listen(server);
     const res = await fetch(`http://127.0.0.1:${port}/agents.md`);
@@ -34,7 +34,7 @@ describe("serve security (V5.P2.6)", () => {
   });
 
   it("with a token, requests are 401 without it and 200 with it", async () => {
-    const personaPath = writeStarterPersona(dir, "Srv2");
+    const personaPath = writeTestPersona(dir, "Srv2");
     server = buildHttpServer(personaPath, { token: "s3cret" });
     const port = await listen(server);
     const noAuth = await fetch(`http://127.0.0.1:${port}/persona/state`);

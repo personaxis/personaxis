@@ -192,8 +192,18 @@ export type RecordBody =
 	 * Its own kind rather than a field on `context`, because the author differs: a
 	 * compile is the compiler's act and a context change is the operator's or the
 	 * runtime's. Folding them would make one signature stand for two hands.
+	 *
+	 * Since 2026-10-07 a model writes the document, so the hash alone does not say which
+	 * definition it came from or why it was written again: `cause`, `spec` (the hash of the
+	 * personaxis.md) and `model` say so. Optional, so an entry written before them still reads.
 	 */
-	| { readonly type: "compiled"; readonly hash: string }
+	| {
+			readonly type: "compiled";
+			readonly hash: string;
+			readonly cause?: string;
+			readonly spec?: string;
+			readonly model?: string;
+	  }
 	/** Something the model said, with any provider material left outside by reference. */
 	| {
 			readonly type: "message";

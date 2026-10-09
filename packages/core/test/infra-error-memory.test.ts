@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { distillTurns, isInfraErrorReply, sessionBrief } from "../src/memory/consolidate.js";
+import { distillTurns, isInfraErrorReply } from "../src/memory/consolidate.js";
 import type { SessionTurn } from "../src/sessions.js";
 
 const t = (role: SessionTurn["role"], content: string): SessionTurn => ({ type: "turn", role, content, ts: new Date().toISOString() });

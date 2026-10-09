@@ -16,7 +16,6 @@ import {
   loadPersona,
   ensureState,
   stateOf,
-  readState,
   extractEnvelopes,
   verifyMemoryChain,
   readMemory,
@@ -146,11 +145,12 @@ export async function runDashboard(opts: DashOpts): Promise<void> {
 // EVERY CLI startup (via the dash command); only the interview path may pay.
 // The component itself is deep-importable ("@personaxis/tui/dist/wizard.js").
 export async function runInterviewWizard(
-  items: import("@personaxis/core").InterviewItem[],
-  onProgress?: (answers: import("@personaxis/core").InterviewAnswers) => void,
-): Promise<import("@personaxis/core").InterviewAnswers> {
+  questions: import("@personaxis/core").InterviewQuestion[],
+  asked: number,
+  limit: number,
+): Promise<import("@personaxis/core").Reply[]> {
   const { runInterviewWizard: run } = await import("./wizard.js");
-  return run(items, onProgress);
+  return run(questions, asked, limit);
 }
 
 /**

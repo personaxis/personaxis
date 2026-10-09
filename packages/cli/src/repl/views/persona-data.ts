@@ -7,8 +7,9 @@
 
 import chalk from "chalk";
 import { dirname } from "node:path";
-import { type PersonaHandle, stateOf,
-  readState,
+import {
+  type PersonaHandle,
+  stateOf,
   sigilParams,
   liveIntensity,
   readArbitrationValues,

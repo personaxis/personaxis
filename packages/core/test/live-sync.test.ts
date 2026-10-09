@@ -92,17 +92,12 @@ describe("live-sync", () => {
     expect(existsSync(join(dir, ".live.json"))).toBe(true);
   });
 
-  it("F3.1: with an assemble fn, the hook rewrites the compiled doc deterministically (inline recompile)", async () => {
+  it("writes the marker and leaves the compiled doc to the model (no template rewrite since 2026-10-07)", async () => {
     const handle = loadPersona(personaPath);
     writeState(handle.statePath, st());
-    const hook = makeRecompileHook({
-      compiledPath,
-      assemble: () => "# You are Fresh\n\nDeterministically re-assembled.\n",
-    });
-    await hook(handle);
-    const after = readFileSync(compiledPath, "utf-8");
-    expect(after).toContain("# You are Fresh");
-    expect(after).toContain("Deterministically re-assembled.");
-    expect(existsSync(join(dir, ".live.json"))).toBe(true); // marker still written
+    const before = readFileSync(compiledPath, "utf-8");
+    await makeRecompileHook({ compiledPath })(handle);
+    expect(readFileSync(compiledPath, "utf-8")).toBe(before);
+    expect(existsSync(join(dir, ".live.json"))).toBe(true);
   });
 });

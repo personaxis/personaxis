@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { stdin, stdout } from "node:process";
 import chalk from "chalk";
 import { resolvePersonaSourcePath } from "../load.js";
-import { runCommandCenter, type CenterSection } from "../command-center.js";
+import type { CenterSection } from "../command-center.js";
 
 const SECTIONS: CenterSection[] = ["home", "model", "state", "drift", "audit", "memory", "proposals", "fleet"];
 
@@ -62,5 +62,7 @@ export const menuCommand = new Command("menu")
     } catch {
       personaPath = undefined; // Model config still works with no persona here.
     }
+    // Lazy: the Command Center pulls in Ink/React, which every other command would pay for at startup.
+    const { runCommandCenter } = await import("../command-center.js");
     await runCommandCenter({ personaPath, personas: personaSlugs(process.cwd()), cwd: process.cwd(), section });
   });

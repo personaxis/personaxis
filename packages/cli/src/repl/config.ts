@@ -11,17 +11,14 @@ import { resolve, join, dirname } from "node:path";
 import {
   resolveModel,
   describeModel,
-  HeuristicAppraiser,
-  LlmAppraiser,
   LlmResponder,
-  ReflectiveResponder,
+  ModelRequiredError,
   policyFromFrontmatter,
   personaResourceRoots,
   resolveEffectivePersona,
   ContextMeter,
   cachedContextWindow,
   resolveContextWindow,
-  type Appraiser,
   type Responder,
   type Policy,
   type SandboxMode,
@@ -83,13 +80,19 @@ export function ctxModelArg(ctx: Ctx): { personaPath: string; frontmatter: Recor
   return { personaPath: ctx.handle.personaPath, frontmatter: ctx.handle.frontmatter as Record<string, unknown> };
 }
 
-export function pickAppraiser(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): Appraiser {
-  const llm = llmConfig(arg);
-  return llm ? new LlmAppraiser(llm) : new HeuristicAppraiser();
-}
+/**
+ * The persona's responder, resolving its model on every reply, so a model set with `/model` in the
+ * middle of a session answers the next line. With none it refuses: since 2026-10-07 there is no
+ * offline reply assembled from the definition.
+ */
 export function pickResponder(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): Responder {
-  const llm = llmConfig(arg);
-  return llm ? new LlmResponder(llm) : new ReflectiveResponder();
+  return {
+    respond: (input) => {
+      const llm = llmConfig(arg);
+      if (!llm) return Promise.reject(new ModelRequiredError("Answering as this persona"));
+      return new LlmResponder(llm).respond(input);
+    },
+  };
 }
 export function appraiserLabel(arg?: { personaPath?: string; frontmatter?: Record<string, unknown> }): string {
   return describeModel({ personaPath: arg?.personaPath, frontmatter: arg?.frontmatter, cwd: process.cwd() });

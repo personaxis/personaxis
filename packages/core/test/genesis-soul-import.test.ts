@@ -1,7 +1,6 @@
 /**
- * V3.3 embrace-extend: SOUL.md / SoulSpec import into Genesis. The ecosystem's
- * soft persona file becomes deterministic evidence (name, identity, boundaries)
- * plus extractor prose; numbers are never invented from the file.
+ * V3.3 embrace-extend: SOUL.md / SoulSpec import into Genesis. Since 2026-10-07 the package is read whole
+ * and handed to the model as one source it cites; no field is mapped from the file's layout.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -40,42 +39,25 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("importSoulMd", () => {
-  it("maps identity + boundaries deterministically and keeps all prose", () => {
+  it("keeps the whole SOUL.md as one source, nothing mapped by layout", () => {
     const m = importSoulMd(join(dir, "SOUL.md"));
     expect(m.format).toBe("soul-md");
-    expect(m.seed.selfConcept).toContain("Nyx");
-    expect(m.seed.prohibitedBehaviors).toEqual([
-      "Never fabricate a citation",
-      "Never claim to be human",
-      "No medical advice",
-    ]);
-    expect(m.evidence.some((e) => e.mappedFields.some((f) => f.path === "self_regulation.prohibited_behaviors"))).toBe(true);
-    expect(m.evidence.every((e) => e.kind === "imported-field")).toBe(true);
-    expect(m.prose).toContain("Dry humor");
+    expect(m.text).toContain("You are Nyx");
+    expect(m.text).toContain("Never fabricate a citation");
+    expect(m.text).toContain("Dry humor");
   });
 
-  it("takes the name from soul.json over IDENTITY.md over the heading", () => {
-    writeFileSync(join(dir, "IDENTITY.md"), "Name: FromIdentity\nEmoji: 🌙\n", "utf-8");
-    let m = importSoulMd(join(dir, "SOUL.md"));
-    expect(m.seed.displayName).toBe("FromIdentity");
-    expect(m.prose).toContain("IDENTITY.md");
-
-    writeFileSync(join(dir, "soul.json"), JSON.stringify({ name: "FromMeta", description: "the meta description" }), "utf-8");
-    m = importSoulMd(join(dir, "SOUL.md"));
-    expect(m.seed.displayName).toBe("FromMeta");
-    expect(m.seed.description).toBe("the meta description");
+  it("adds IDENTITY.md and soul.json under their own names when they sit beside it", () => {
+    writeFileSync(join(dir, "IDENTITY.md"), "Name: FromIdentity\n", "utf-8");
+    writeFileSync(join(dir, "soul.json"), "{not json", "utf-8");
+    const m = importSoulMd(join(dir, "SOUL.md"));
+    expect(m.text).toContain("IDENTITY.md:\nName: FromIdentity");
+    expect(m.text).toContain("soul.json:\n{not json");
   });
 
   it("isSoulImport recognizes the file and the package directory", () => {
     expect(isSoulImport(join(dir, "SOUL.md"))).toBe(true);
     expect(isSoulImport(dir)).toBe(true);
     expect(isSoulImport(join(dir, "AGENTS.md"))).toBe(false);
-  });
-
-  it("a malformed soul.json never blocks the import", () => {
-    writeFileSync(join(dir, "soul.json"), "{not json", "utf-8");
-    const m = importSoulMd(join(dir, "SOUL.md"));
-    expect(m.format).toBe("soul-md");
-    expect(m.seed.selfConcept).toContain("Nyx");
   });
 });

@@ -18,11 +18,15 @@
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-blue.svg"></a>
 </p>
 
+<!-- Demo hidden until the final version: it shows 0.17.0 output (a persona created without a model), which
+     no longer matches what create does. Restore this block once docs/assets/demo.svg is regenerated.
 <p align="center">
   <img src="docs/assets/demo.svg" alt="A terminal: personaxis create writes a persona, personaxis compile writes the document Claude Code reads, and personaxis proof --quick checks the engine offline." width="820">
 </p>
 
 <p align="center"><sub>Real output from personaxis 0.17.0. Paths are shortened, and <code>proof</code> is an excerpt.</sub></p>
+-->
+
 
 A persona is the whole way a professional works: the procedures it follows, the criteria it applies, the
 tools it reaches, the knowledge it cites with sources, what it has learned on the job, and the limits it
@@ -70,40 +74,48 @@ node packages/cli/dist/index.js proof --quick
 
 ## Create a persona and load it
 
-**1. Create it** in any folder:
-
-```bash
-personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
-```
-
-You get a folder with the definition (`personaxis.md`, in ten layers), the compiled document a model reads
-(`PERSONA.md`), the values that move as it works (`state.json`), and `creation-report.md`: which sentence of
-your brief produced each number, and every default it assumed. Read the report. Without a working model most
-of the persona is labelled defaults, as the demo above shows, so point it at one first (step 2).
-
-Other ways in: no flag starts an interview, `--from-project` reads your repository, `--from-import` takes a
-SOUL.md, a SoulSpec package, a character card or a system prompt, and `--from-transcript` works from
-example conversations. `--research` searches the web for the field and keeps each source, with its date, in
-`references/`.
-
-**2. Point it at a model.** Any OpenAI-compatible endpoint, hosted or local:
+**1. Point it at a model.** Any OpenAI-compatible endpoint, hosted or local. A model writes the persona
+and runs it; without one, nothing is created, and it says how to configure one:
 
 ```bash
 export PERSONAXIS_ENDPOINT=http://localhost:11434/v1   # Ollama, LM Studio, llama.cpp or a hosted API
-export PERSONAXIS_MODEL=qwen3:4b                        # a small local model works; expect weaker tool use
+export PERSONAXIS_MODEL=qwen3:4b                        # a small local model works; expect weaker results
 ```
 
-**3. Load it into your agent:**
+**2. Create it** in the folder it will work in, the way `/init` gives a repository its `CLAUDE.md`:
 
 ```bash
-personaxis compile reviewer --platform claude-code   # writes .claude/agents/reviewer.md
+cd your-project
+personaxis init "A code reviewer who blocks merges without tests and explains every rejection."
+```
+
+The model reads the folder (its tree, the files that explain it, the personas already there), takes what
+you said it is for (optional: without it, it asks, or infers it from the folder), asks about what that
+leaves open, at most fifteen questions about the work, any of them skippable (`--yes` never asks), and
+writes the persona one layer at a time. The code checks every answer before it is kept: the schema,
+numbers that can move, a source for every field, and every rule your sources state kept somewhere. You get
+the definition (`.personaxis/personaxis.md`, in ten layers), the document a model reads (`PERSONA.md`,
+written by the model and checked against the definition), the values that move as it works
+(`state.json`), and `creation-report.md`: what each field quotes, and every field the model inferred, with
+what it inferred it from. Read the inferred list first.
+
+`personaxis create <name> "..."` makes another persona beside it by the same process. Either one also
+reads what you point at: `--from-import` (a SOUL.md, a SoulSpec package, a character card or a system
+prompt), `--from-transcript` (example conversations) and `--research` (the field on the web, each source
+kept with its date in `references/`).
+
+**3. Your agent already reads it.** `init` points `CLAUDE.md` and `AGENTS.md` at `PERSONA.md`, so Claude
+Code and Codex load it in this folder. For another host, or for a persona made with `create`:
+
+```bash
+personaxis compile --platform hermes                 # or openclaw; a persona from create: compile <name>
 npx -y @personaxis/mcp                               # or serve it to any MCP host (16 tools)
 ```
 
 **4. Talk to it directly**, to see it work outside your agent:
 
 ```bash
-personaxis --persona .personaxis/personas/reviewer/personaxis.md
+personaxis                                           # in the folder: its persona
 ```
 
 ## How each agent loads a persona

@@ -358,14 +358,6 @@ export function forgetProject(root: string): boolean {
   return true;
 }
 
-/** Projects that still exist on this machine, newest first (the display path). */
-export function liveProjects(): ProjectRecord[] {
-  const reg = loadRegistry();
-  return Object.values(reg.projects)
-    .filter((p) => existsSync(p.root) && !isEphemeralProjectPath(p.root))
-    .sort((a, b) => (b.lastSeen ?? "").localeCompare(a.lastSeen ?? ""));
-}
-
 export function createCollection(name: string): Collection {
   const reg = loadRegistry();
   reg.collections[name] ??= { name, personas: [], projects: [] };

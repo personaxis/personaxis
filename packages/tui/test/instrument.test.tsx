@@ -6,7 +6,6 @@
  * the app SHOWS it.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React from "react";
 import { render } from "ink-testing-library";
 import { ReplApp, createReplStore, crossingSummary } from "../src/ink-repl.js";
 import { DriftView } from "../src/components.js";

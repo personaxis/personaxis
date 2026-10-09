@@ -15,18 +15,15 @@ npm i -g personaxis              # puts `personaxis` on your PATH (Node 20.18.1+
 ## First steps
 
 ```bash
-personaxis create reviewer --from-prompt "A code reviewer who blocks merges without tests and explains every rejection."
-personaxis compile reviewer --platform claude-code
+personaxis config        # a local server (Ollama, LM Studio, llama.cpp) or your own key: a model writes the persona
+cd your-project
+personaxis init "A code reviewer who blocks merges without tests and explains every rejection."
 ```
 
-`create` writes the definition (`personaxis.md`), the compiled document a model reads (`PERSONA.md`),
-the moving values (`state.json`) and a creation report that shows which sentence of your brief produced
-each number and labels every default. Without a configured model most of the persona is labelled
-defaults, so set one first:
-
-```bash
-personaxis config        # a local server (Ollama, LM Studio, llama.cpp) or your own key
-```
+`init` reads the folder, takes what you said, asks what is missing and writes the definition
+(`.personaxis/personaxis.md`), the document a model reads (`PERSONA.md`, which `CLAUDE.md` and `AGENTS.md`
+now point at), the moving values (`state.json`) and a creation report with what each field quotes and what
+the model inferred. `personaxis create <name>` makes another persona beside it.
 
 ## What else is in the package
 

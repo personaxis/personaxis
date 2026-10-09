@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCompilePrompt, buildDecompilePrompt, type CompileTargetInfo } from "../src/compile-instructions.js";
+import { buildWritePrompt, buildDecompilePrompt, type CompileTargetInfo } from "../src/compile-instructions.js";
 
 const target: CompileTargetInfo = {
   label: "root persona (repo-root PERSONA.md)",
@@ -7,32 +7,30 @@ const target: CompileTargetInfo = {
   isSubagent: false,
 };
 
-describe("compile prompt, persona-prompting (v0.10)", () => {
-  const p = buildCompilePrompt({ personaxisMd: "---\nx: 1\n---\n", resourceManifest: "- ./memory.md", target });
+describe("the prompt a model writes PERSONA.md from", () => {
+  const reference = "# You are X\n\n## Who you are\n\nX.\n\n## Hard limits (never overridden)\n\n- No claim of subjective consciousness.\n\n## Memory & resources\n\n- `./memory.md`, your semantic memory\n";
+  const p = buildWritePrompt({ reference, personaxisMd: "---\nx: 1\n---\n", target });
 
-  it("instructs second-person role adoption + the persona-prompting devices", () => {
-    expect(p).toMatch(/SECOND PERSON/);
-    expect(p).toMatch(/role adoption/i);
-    expect(p).toMatch(/scene contract/i);
-    expect(p).toMatch(/voice exemplar/i);
-    expect(p).toMatch(/break.?character/i);
+  it("asks for the work first, traits only as behaviour, reasons from the spec, and a normal tone", () => {
+    expect(p).toMatch(/second person/);
+    expect(p).toMatch(/The work first/);
+    expect(p).toMatch(/Never as labels, levels or\s+numbers/);
+    expect(p).toMatch(/never invent a reason or a fact/);
+    expect(p).toMatch(/no CRITICAL, no capitalised NEVER or ALWAYS/);
+    expect(p).toMatch(/Write no new ones/);
   });
 
-  it("enforces faithful density: one source per fact + no numeric state in the doc", () => {
-    expect(p).toMatch(/ONE SOURCE PER FACT/);
-    expect(p).toMatch(/NO NUMERIC STATE/);
-    expect(p).toMatch(/purely qualitative/i);
+  it("names the exact headings it may use, taken from the reference, and what the check enforces", () => {
+    expect(p).toContain('"Who you are", "Hard limits (never overridden)", "Memory & resources"');
+    expect(p).toMatch(/every bullet of the reference must survive/);
+    expect(p).toMatch(/"Memory & resources" bullets word for word/);
   });
 
-  it("folds applied self-edits as authoritative overrides when present", () => {
-    const withOverlay = buildCompilePrompt({
-      personaxisMd: "---\nx: 1\n---\n",
-      resourceManifest: "- ./memory.md",
-      target,
-      appliedOverlay: { "persona_prompting.address.you_are": "You are X." },
-    });
-    expect(withOverlay).toMatch(/Applied self-edits/i);
-    expect(withOverlay).toMatch(/you_are/);
+  it("carries the reference and the spec, and says the reference wins when it folds self-edits", () => {
+    expect(p).toContain("- No claim of subjective consciousness.");
+    expect(p).toContain("x: 1");
+    expect(p).not.toMatch(/reference wins/);
+    expect(buildWritePrompt({ reference, personaxisMd: "x", target, overlaid: true })).toMatch(/the reference wins/);
   });
 });
 

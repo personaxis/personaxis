@@ -5,12 +5,11 @@
  * "read-only").
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React from "react";
 import { render } from "ink-testing-library";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { personaTree } from "../src/center/tree.js";
 import { ScopeNavigator } from "../src/center/navigator.js";
 import type { ScopeNode } from "../src/center/tree.js";
@@ -26,8 +25,8 @@ let mainPath: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-nav-"));
-  mainPath = writeStarterPersona(dir, "Vega");
-  writeStarterPersona(dir, "Legal", "legal");
+  mainPath = writeTestPersona(dir, "Vega");
+  writeTestPersona(dir, "Legal", "legal");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

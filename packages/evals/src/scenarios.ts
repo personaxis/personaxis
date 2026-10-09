@@ -6,10 +6,10 @@
  * holds, the gate blocks, max_step_delta bounds drift, episodic:false is honored,
  * the memory chain is tamper-evident, malicious injection blocks evolution, budgets
  * stop, and the independent verifier catches an unverified finish. Deterministic
- * (no API key), uses the HeuristicAppraiser, FixedAppraiser, and scripted tool calls.
+ * (no API key), uses a FixedAppraiser that stands in for the model, and scripted tool calls.
  */
 
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +24,6 @@ import {
   PersonaAgent,
   loadPersona,
   extractEnvelopes,
-  readState,
-  writeState,
   readMemory,
   prepareMemoryEntry,
   commitMemoryEntry,

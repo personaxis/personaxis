@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { execFileSync } from "node:child_process";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { modelEnv, runCli, startFakeModel, type FakeModel } from "./helpers/fake-model.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, "..", "dist", "index.js");
@@ -19,24 +20,16 @@ identity: { canonical_id: tester, display_name: Tester }
 You are Tester.
 `;
 
-function run(args: string[], env: Record<string, string>): { code: number; out: string } {
-  try {
-    const out = execFileSync("node", [CLI, ...args], {
-      encoding: "utf-8",
-      env: { ...process.env, FORCE_COLOR: "0", PERSONAXIS_NO_UPDATE_CHECK: "1", ...env },
-    });
-    return { code: 0, out };
-  } catch (e) {
-    const err = e as { status?: number; stdout?: string; stderr?: string };
-    return { code: err.status ?? 1, out: (err.stdout ?? "") + (err.stderr ?? "") };
-  }
-}
-
 describe.skipIf(!built)("user hooks lifecycle (V2-F3.C14)", () => {
   let dir: string;
   let persona: string;
   let home: string;
   let marker: string;
+  let model: FakeModel;
+  beforeAll(async () => {
+    model = await startFakeModel();
+  });
+  afterAll(() => model.close());
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "pxs-hooks-"));
     home = join(dir, "home");
@@ -46,7 +39,7 @@ describe.skipIf(!built)("user hooks lifecycle (V2-F3.C14)", () => {
     marker = join(dir, "hook-fired").replace(/\\/g, "/");
   });
 
-  it("fires a UserPromptSubmit hook on a headless turn", { timeout: 90_000 }, () => {
+  it("fires a UserPromptSubmit hook on a headless turn", { timeout: 90_000 }, async () => {
     const hooks = {
       hooks: {
         UserPromptSubmit: [
@@ -56,8 +49,8 @@ describe.skipIf(!built)("user hooks lifecycle (V2-F3.C14)", () => {
     };
     // readHooksConfig reads hooks.json next to the persona file.
     writeFileSync(join(dir, "hooks.json"), JSON.stringify(hooks));
-    const r = run(["-p", "hi", "--persona", persona], { PERSONAXIS_HOME: home });
-    expect(r.code).toBe(0);
+    const r = await runCli(CLI, ["-p", "hi", "--persona", persona], { env: { PERSONAXIS_HOME: home, ...modelEnv(model) } });
+    expect(r.code, r.out).toBe(0);
     expect(existsSync(marker)).toBe(true);
   });
 });

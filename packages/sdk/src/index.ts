@@ -26,9 +26,6 @@ import {
   Tracer,
   readObservability,
   loadPersona,
-  readState,
-  writeState,
-  withStateLock,
   ensureState,
   extractEnvelopes,
   resolveField,
@@ -60,8 +57,7 @@ import {
   type ProvenanceSource,
 } from "@personaxis/core";
 import { randomUUID } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 export interface ObserveResult {
   report: { mutationsApplied: number; memoriesWritten: number; abstained: boolean };
@@ -165,9 +161,10 @@ export class Persona {
   }
 
   /**
-   * Run ONE governed Living-Loop cycle on an observation, on the persona's resolved model
-   * (falls back to the deterministic heuristic appraiser if no model is configured). Every mutation
-   * is clamped + audited; a malicious observation is injection-scanned and cannot steer evolution.
+   * Run ONE governed Living-Loop cycle on an observation, on the persona's resolved model. With no
+   * model configured it rejects with `ModelRequiredError`: there is no offline appraiser. Every
+   * mutation is clamped + audited; a malicious observation is injection-scanned and cannot steer
+   * evolution.
    */
   async observe(observation: string, source: ProvenanceSource = "user"): Promise<ObserveResult> {
     const events: LoopEvent[] = [];
@@ -188,6 +185,8 @@ export class Persona {
       const report = await evolver.observe({ observation, source });
       return { report, events, recompilePending: readRecompilePending(this.personaPath).pending };
     } catch (e) {
+      // Missing configuration is the caller's to fix, not an event to log and carry on past.
+      if ((e as { modelRequired?: boolean }).modelRequired) throw e;
       return {
         report: { mutationsApplied: 0, memoriesWritten: 0, abstained: true },
         events: [...events, { type: "error", message: (e as Error).message }],

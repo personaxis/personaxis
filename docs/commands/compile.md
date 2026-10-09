@@ -18,18 +18,28 @@ personaxis compile [slug] [options]
 |---|---|
 | `--root` | Compile the root persona (default when no slug). |
 | `--provider <name>` | Override the provider (`local \| byok \| agent`). |
-| `--from-file <path>` | Use a file's contents as the compiled output instead of calling the LLM. |
+| `--from-file <path>` | Use a file's contents as the model's document; it goes through the same faithfulness check. |
 | `-o, --out <path>` | Override the canonical output path. |
 | `--stdout` | Print to stdout instead of writing. |
 | `--platform <p>` | Export the placement for a host: `claude-code \| codex \| openclaw \| hermes`. |
 | `--if-pending` | No-op unless a self-edit marked the doc stale (`.recompile-pending.json`). |
-| `--no-polish` | Write the deterministic assembled document and skip the model polish stage (works offline). |
+| `--history` | List every version of the compiled document: when, why (creation, a band crossed in a session, a self-edit, a manual compile), from which definition, by which model. |
 
 ## What it does
-- Reads `personaxis.md` + `policy.yaml`/`state.json` (reference) + a capped resource manifest.
-- Folds **applied governed self-edits** (the active overlay) as authoritative overrides.
-- Assembles a second-person document: role adoption, character card, voice exemplars, scene
-  contracts, behavioral anchors, break-character guardrails, hard limits, memory/resources.
+- Assembles a **reference** from `personaxis.md` (with applied governed self-edits folded in as
+  authoritative overrides): every protected rule, the memory and resource paths, and how each trait
+  expresses at the current state.
+- Has the model **write** a second-person document from the spec and that reference: the work
+  first, traits as behaviour, the spec's voice exemplars word for word, hard limits,
+  stay-in-character rules, memory and resources.
+- Checks it against the reference (nothing protected dropped or added, no new heading). A rejected
+  document goes back to the model with its findings, twice. A few protected rules still missing or
+  added are then put right from the definition, and the output says how many; more than that, or a
+  missing section or a new heading, and `compile` stops, writes nothing, and keeps the last attempt in
+  `.personaxis/.tmp/rejected-PERSONA.md`. Without a model it refuses.
+- Records the version in the persona's record (`compiled`: the document's hash, the cause, the hash of
+  the definition, the model) and keeps its text once per hash in `compiled/<hash>.md`, so the document an
+  agent read on a given day can be read back. `--history` lists them.
 - Clears the recompile-pending marker on success.
 - Root compile also injects the `@PERSONA.md` baseline block for the hosts that read one.
 
@@ -66,6 +76,6 @@ personaxis compile --root --if-pending            # only if a self-edit made it 
 
 ## While it runs
 
-The polish stage calls a model and can take a while. While it runs, `personaxis ps` shows the
+The model writes the whole document, which can take a while. While it runs, `personaxis ps` shows the
 persona as compiling, and under `watch` it returns to `watching for spec edits` on its own.
 See [presence](../architecture/presence.md).

@@ -35,7 +35,7 @@ import { activeOverlay, applyOverlay, proposeSelfEdit, editGate, editableLayers,
 import { buildEvolutionView } from "./evolution-view.js";
 import { machineId } from "./registry.js";
 import { randomUUID } from "node:crypto";
-import { loadPersona, type PersonaHandle, type StateFile } from "./persona.js";
+import { loadPersona, type PersonaHandle } from "./persona.js";
 import { defaultFsStorage, type Storage } from "./ports/index.js";
 import { EventBus } from "./events.js";
 import type { Appraiser, AppraisalSignal, ProvenanceSource } from "./appraisal.js";
@@ -162,6 +162,9 @@ export class LivingLoop {
           evolutionView,
         });
       } catch (err) {
+        // No model is not a blip to ride out: there is no offline appraiser, so abstaining would leave a
+        // persona that never evolves and a caller that never hears why (2026-10-07).
+        if ((err as { modelRequired?: boolean }).modelRequired) throw err;
         bus.emit({ type: "error", message: `appraiser unavailable: ${(err as Error).message}` });
         bus.emit({ type: "abstain", reason: "appraiser error" });
         return { mutationsApplied: 0, memoriesWritten: 0, abstained: true };

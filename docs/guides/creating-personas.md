@@ -1,55 +1,58 @@
 # Creating personas
 
-How to pick the right way in, review what Genesis found versus what it assumed, and improve a persona
-without throwing that record away. Every flag is in [`docs/commands/create.md`](../commands/create.md);
-the design is in [`docs/architecture/genesis.md`](../architecture/genesis.md).
+How a persona is made, what to give it, how to review what the model quoted versus what it inferred, and
+how to improve a persona without throwing that record away. The commands are
+[`init`](../commands/init.md) and [`create`](../commands/create.md); the design is in
+[`docs/architecture/genesis.md`](../architecture/genesis.md).
 
-Configure a model first (`personaxis config`). Without one, Genesis still writes a valid persona, but
-most of it is labelled defaults.
+Configure a model first (`personaxis config`). A model writes every field, so without one nothing is
+created.
 
-## Pick the way in
+## One process, in one order
 
-| What you have | Use | What Genesis does with it |
-|---|---|---|
-| Nothing written yet | `personaxis create` (interview) | Twelve questions turn into values, ranges, weights and limits; `--deep` asks the full bank. Works offline |
-| A description of the job | `--from-prompt "<brief>"` | A model extracts what the brief says; every value must quote the sentence it came from, and anything the brief does not say is left to a labelled default |
-| A repository or a set of docs | `--from-project [dir]` | Reads the README, `CLAUDE.md`, `AGENTS.md` and docs, and proposes the project's own persona |
-| A SOUL.md or SoulSpec package, a character card, a system prompt | `--from-import <file>` | Structured fields map directly; prose goes through the same quoted extraction |
-| Good example conversations | `--from-transcript <file>` | Infers the persona that best explains them |
+Open a terminal in the folder the persona will work in and run `personaxis init` (this folder's persona)
+or `personaxis create <name>` (another one beside it). Whatever the case, it goes in this order:
 
-Add `--research` to any of them to search the web for the field and keep what it found in
-`references/`, each source with its date (needs a web provider key). `--profile regulated | standard |
-research` sets how wide the ranges start, who approves lasting changes and how fast values return to
-baseline.
+1. **The folder**: the model reads its tree, the files that explain it and the personas already there.
+2. **What you want it for**, optional: say it in the command (`personaxis init "..."`) or when asked.
+   It wins over the folder when they disagree.
+3. **What you point at**, optional: `--from-import` (a SOUL.md, a character card, a system prompt),
+   `--from-transcript` (conversations of how it should work), `--research` (the field, read on the web).
+4. **The interview**: the model asks only what all of that leaves open, about real work; skip any question
+   and it infers the answer and says from what.
+5. **The persona**, its coherence reading, and its `PERSONA.md`.
 
-The ways in combine: run the interview, then `--from-import` an older prompt; later evidence wins per
-field, and every override is visible in the report.
+The more of the real work the sources hold (how a review is done, what was rejected and why, what must
+never happen), the less the model has to infer. `--profile regulated | standard | research` sets the
+stance on how wide values move, who approves lasting changes and how fast values return to baseline.
 
 ## Worked example
 
 ```bash
-personaxis create auditor --research --from-prompt "A security reviewer for web APIs. Checks
-authentication, authorization and input validation first; never approves a change that logs
-secrets; cites the OWASP item behind every finding; asks for the threat model when it is missing."
+cd payments-api
+personaxis create auditor --research "A security reviewer for this API. Checks authentication,
+authorization and input validation first; never approves a change that logs secrets; cites the OWASP item
+behind every finding; asks for the threat model when it is missing."
 personaxis validate .personaxis/personas/auditor/personaxis.md     # PASS
 ```
 
 Then read `creation-report.md` next to it. Two sections matter:
 
-1. **Provenance.** Which sentence produced each value, weight and limit ("never approves a change that
-   logs secrets" becomes a hard limit), and whether each value's behavior text was earned from a
-   quote, synthesized, or a labelled default. If the evidence for a value looks weak, change the
-   brief, not the YAML.
-2. **Defaults.** Every value Genesis had to assume. This is the review list: each default is either
-   fine or worth a sentence in the brief.
+1. **Inferred, not stated by a source.** Every field the model filled without a source saying it, with
+   what it inferred it from. This is the review list: each inference is either right or worth a
+   sentence in the brief.
+2. **Each stage.** The model's reasoning per layer, how many repairs the checks asked for, and the words
+   each field quotes ("never approves a change that logs secrets" becomes a hard limit). If the support
+   for a value looks weak, change the brief, not the YAML.
 
 A persona is more than its values. Look at `skills/` and `references/` too: the procedures it follows
 and the sources it cites are what most change how it does the job.
 
 ## Tune the wording
 
-Genesis writes behavior text for each band of each value, so every value changes the compiled
-document (`personaxis jacobian` lists any that do not). What you tune is the wording on the values you
+The model writes behavior text for each band of each value, and Genesis refuses a value whose range
+never crosses a band, so every value changes the compiled document (`personaxis jacobian` lists any that
+do not). What you tune is the wording on the values you
 care about:
 
 ```yaml

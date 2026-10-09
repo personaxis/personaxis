@@ -17,7 +17,7 @@
  *     forever, so a stale lease is reclaimable, and reclaiming is recorded as such.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, unlinkSync, renameSync } from "node:fs";
 import { hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { machineId } from "./registry.js";

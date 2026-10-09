@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { LlmResponder, ReflectiveResponder } from "../src/index.js";
+import { LlmResponder } from "../src/index.js";
 
 const input = { message: "hi", personaBody: "id", memory: [], state: {}, name: "T" };
 
@@ -78,12 +78,5 @@ describe("LlmResponder error handling", () => {
       fetchImpl: fetchReturning(() => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "  hello  " } }] }) })),
     });
     expect(await r.respond(input)).toBe("hello");
-  });
-});
-
-describe("ReflectiveResponder (offline)", () => {
-  it("acknowledges honestly and points to enabling a model", async () => {
-    const out = await new ReflectiveResponder().respond(input);
-    expect(out).toMatch(/PERSONAXIS_ENDPOINT/);
   });
 });
