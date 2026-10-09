@@ -71,4 +71,16 @@ describe("enforceProtected", () => {
 		expect(restored).toBe(0);
 		expect(checkFaithfulness(reference, document).ok).toBe(false);
 	});
+
+	it("reads a model's document in linear time, whatever whitespace it is made of", () => {
+		// The input CodeQL described: a heading or bullet marker, a long run of tabs, then a line that cannot
+		// match (U+2028 is not `.`). With `\s+(.*)$` both halves could claim the same tabs, and every split
+		// was tried before giving up: quadratic.
+		const tabs = "\t".repeat(50_000);
+		const written = `${reference}\n##${tabs}x y\n*${tabs}x y\n-${tabs}x y`;
+		const started = performance.now();
+		const report = checkFaithfulness(reference, written);
+		enforceProtected(reference, written, report);
+		expect(performance.now() - started).toBeLessThan(1_000);
+	});
 });
