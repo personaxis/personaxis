@@ -2,69 +2,9 @@
 import { program } from "commander";
 import { version } from "./generated/assets.js";
 import { checkForUpdate } from "./update-check.js";
-import { initCommand } from "./commands/init.js";
-import { validateCommand } from "./commands/validate.js";
-import { compileCommand } from "./commands/compile.js";
-import { listCommand } from "./commands/list.js";
-import { lintCommand } from "./commands/lint.js";
-import { diffCommand } from "./commands/diff.js";
-import { exportCommand } from "./commands/export.js";
 import { noteProject } from "./project-registration.js";
-import { specCommand } from "./commands/spec.js";
-import { pullCommand } from "./commands/pull.js";
-import { runtimeCommand } from "./commands/runtime.js";
-import { connectCommand } from "./commands/connect.js";
-import { guardCommand } from "./commands/guard.js";
 import { notOffered, offered } from "./saas-gating.js";
-import { stateCommand } from "./commands/state.js";
-import { arbitrateCommand } from "./commands/arbitrate.js";
-import { jacobianCommand } from "./commands/jacobian.js";
-import { createCommand } from "./commands/create.js";
-import { proofCommand } from "./commands/proof.js";
-// V7.H1: the non-interactive gates for capabilities that used to be slash-only, so an
-// agent or a CI job can read and act on a persona without driving a menu.
-import {
-  statusCommand,
-  auditCommand,
-  memoryCommand,
-  driftCommand,
-  goalCommand,
-  reviewCommand,
-  doctorCommand,
-} from "./commands/inspect.js";
-import { editCommand } from "./commands/edit.js";
-import { improveCommand } from "./commands/improve.js";
-import { migrateCommand } from "./commands/migrate.js";
-import { configCommand } from "./commands/config.js";
-import { modelCommand } from "./commands/model.js";
-import { credentialCommand } from "./commands/credential.js";
-import { decompileCommand } from "./commands/decompile.js";
-import { pushCommand } from "./commands/push.js";
-import { skillsCommand } from "./commands/skills.js";
-import { overseerCommand } from "./commands/overseer.js";
-import { orchestrateCommand } from "./commands/orchestrate.js";
-import { teamCommand } from "./commands/team.js";
-import { sigilCommand } from "./commands/sigil.js";
-import { dashCommand } from "./commands/dash.js";
-import { menuCommand } from "./commands/menu.js";
-import { syncCommand } from "./commands/sync.js";
-import { serveCommand } from "./commands/serve.js";
-import { observeCommand } from "./commands/observe.js";
-import { serviceCommand } from "./commands/service.js";
-import { webCommand } from "./commands/web.js";
-import { watchCommand } from "./commands/watch.js";
-import { hooksCommand } from "./commands/hooks.js";
-import { onboardCommand } from "./commands/onboard.js";
-import { personasCommand } from "./commands/personas.js";
-import { traceCommand } from "./commands/trace.js";
-import { scanCommand } from "./commands/scan.js";
-import { signCommand, verifyCommand } from "./commands/sign.js";
-import { attestCommand } from "./commands/attest.js";
-import { mcpCommand } from "./commands/mcp.js";
-import { psCommand } from "./commands/ps.js";
-import { leaseCommand } from "./commands/lease.js";
-import { consoleCommand } from "./commands/console.js";
-import { cardCommand } from "./commands/card.js";
+import { entriesFor } from "./command-table.js";
 
 // Options after a subcommand belong to that subcommand (so `sigil --persona X`
 // is parsed by `sigil`, not captured by the root REPL's own --persona).
@@ -108,7 +48,9 @@ program
         prompt,
         format: (opts.outputFormat as "text" | "json" | "stream-json") ?? "text",
       });
-      process.exit(code);
+      // Not process.exit: right after a model call it aborts on Windows (0xC0000409) while a socket is closing.
+      process.exitCode = code;
+      return;
     }
     // Lazy: the REPL pulls in Ink/React (~1 s of import cost), only the
     // no-subcommand path pays it, never `validate`/CI/hook invocations.
@@ -122,67 +64,10 @@ program
 
 // L14: every command goes through one list, and what needs the Personaxis service is left out by the gating
 // table (`saas-gating.ts`), so it is neither run nor listed in `--help`; the code stays for when it comes back.
-const COMMANDS = [
-  initCommand,
-  createCommand,
-  validateCommand,
-  lintCommand,
-  compileCommand,
-  exportCommand,
-  diffCommand,
-  specCommand,
-  listCommand,
-  pullCommand,
-  runtimeCommand,
-  connectCommand,
-  guardCommand,
-  stateCommand,
-  arbitrateCommand,
-  jacobianCommand,
-  proofCommand,
-  statusCommand,
-  auditCommand,
-  memoryCommand,
-  driftCommand,
-  goalCommand,
-  reviewCommand,
-  doctorCommand,
-  editCommand,
-  improveCommand,
-  migrateCommand,
-  configCommand,
-  modelCommand,
-  credentialCommand,
-  decompileCommand,
-  pushCommand,
-  skillsCommand,
-  overseerCommand,
-  orchestrateCommand,
-  teamCommand,
-  sigilCommand,
-  dashCommand,
-  menuCommand,
-  syncCommand,
-  serveCommand,
-  observeCommand,
-  serviceCommand,
-  webCommand,
-  watchCommand,
-  hooksCommand,
-  onboardCommand,
-  personasCommand,
-  traceCommand,
-  scanCommand,
-  leaseCommand,
-  consoleCommand,
-  signCommand,
-  verifyCommand,
-  attestCommand,
-  mcpCommand,
-  psCommand,
-  cardCommand,
-];
-for (const command of COMMANDS) if (offered(command.name())) program.addCommand(command);
+// The list loads lazily: only the commands this invocation needs are imported (see `command-table.ts`).
+for (const command of await Promise.all(entriesFor(process.argv.slice(2)).map((entry) => entry.load()))) {
+  if (offered(command.name())) program.addCommand(command);
+}
 
 // A gated name typed anyway is told what it is and what brings it back. Without this the root command takes the word
 // as an argument and answers "too many arguments", which reads as a broken command rather than one not offered yet.

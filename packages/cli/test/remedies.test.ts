@@ -13,10 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { join } from "node:path";
 import matter from "gray-matter";
 import { validatePersona } from "@personaxis/spec";
 import { runRules } from "../src/linter/rules.js";
@@ -25,6 +22,7 @@ import { validatePolicy } from "../src/policy.js";
 import { writeTestPersona } from "./helpers/test-persona.js";
 import { doctorChecksOffline } from "../src/repl/doctor-checks.js";
 import { offered } from "../src/saas-gating.js";
+import { COMMAND_TABLE } from "../src/command-table.js";
 
 /**
  * A structurally VALID persona (the starter, which passes validate out of the
@@ -176,20 +174,14 @@ describe("every lint finding carries an actionable remedy (V7.B4)", () => {
  * mine did exactly that (`personaxis inspect memory`, `personaxis inspect audit`),
  * and only a dogfood caught it. Now the suite does.
  */
-/**
- * The commands this version registers: the `COMMANDS` list of src/index.ts, less what the gating table keeps out
- * (L14). Read from the source rather than imported, because index.ts parses argv on import.
- */
-function registeredCommands(src: string): string[] {
-  const list = /const COMMANDS = \[([\s\S]*?)\];/.exec(src)?.[1] ?? "";
-  return [...list.matchAll(/(\w+)Command,/g)].map((m) => m[1]!).filter((name) => offered(name));
+/** The commands this version registers: the command table, less what the gating table keeps out (L14). */
+function registeredCommands(): string[] {
+  return COMMAND_TABLE.map((entry) => entry.names[0]!).filter((name) => offered(name));
 }
 
 describe("every command a remedy names actually exists (V7.B4)", () => {
-  // Read from the registration site rather than importing index.ts, which parses
-  // argv on import. Same source the docs-parity suite uses.
-  const indexSrc = readFileSync(join(__dirname, "..", "src", "index.ts"), "utf-8");
-  const known = new Set(registeredCommands(indexSrc));
+  // Same source the docs-parity suite uses.
+  const known = new Set(registeredCommands());
 
   function commandsCitedIn(text: string): string[] {
     // `personaxis <verb>` inside backticks or prose, first word only.
