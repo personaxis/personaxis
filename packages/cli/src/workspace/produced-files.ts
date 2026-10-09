@@ -149,13 +149,19 @@ export async function scanDirectory(root: string): Promise<ProducedScan> {
  *
  * A file that shrank to nothing, or that was deleted, is not reported: this
  * answers "what did the step leave", and a deletion leaves nothing to open.
+ *
+ * `startedAt` (epoch milliseconds) is when the step started. The "before" scan
+ * runs alongside the step, so a step that writes quickly can land a file before
+ * the scan reads the folder; the file is then the same in both scans. Anything
+ * modified at or after the start is the step's, wherever the scan saw it first
+ * (CI caught the race on 2026-10-09). A file that was already there is older.
  */
-export function producedBetween(before: ProducedScan, after: ProducedScan): ProducedFile[] {
+export function producedBetween(before: ProducedScan, after: ProducedScan, startedAt = Infinity): ProducedFile[] {
 	const previous = new Map(before.files.map((file) => [file.path, file]));
 
 	return after.files.filter((file) => {
 		const was = previous.get(file.path);
-		return !was || was.modifiedAt !== file.modifiedAt || was.bytes !== file.bytes;
+		return !was || was.modifiedAt !== file.modifiedAt || was.bytes !== file.bytes || file.modifiedAt >= startedAt;
 	});
 }
 
