@@ -1,93 +1,87 @@
 /**
- * `personaxis create`, Genesis: a governed AI Persona from zero, every entry
- * case covered (docs/architecture/genesis.md):
+ * `personaxis init` and `personaxis create`, Genesis: an AI persona written by a model from what it can
+ * read and what you tell it (docs/architecture/genesis.md). One process, in one order, whatever the case:
  *
- *   personaxis create                          # psychometric interview (TTY)
- *   personaxis create --from-prompt "<brief>"  # natural language
- *   personaxis create --from-project [dir]     # infer from the project's docs
- *   personaxis create --from-import <file>     # SOUL.md / SoulSpec dir, character card V2/V3 (.json/.png),
- *                                              # system prompt, CLAUDE.md/AGENTS.md
- *   personaxis create --from-transcript <file> # exemplar conversations
+ *   1. the folder you are in, always: its tree, the files that explain it and the personas already in it
+ *      (`folderContext`; nothing in the home folder or an empty one);
+ *   2. what you want, optional, in a sentence: the command's argument, or one question in a terminal;
+ *   3. material you point at: `--from-import` (SOUL.md, a character card, a system prompt),
+ *      `--from-transcript`, `--research`;
+ *   4. the interview, in a terminal: the model asks only what all of that leaves open;
+ *   5. the persona, stage by stage, the coherence reading, the gates, and PERSONA.md written by the model.
  *
- * Modes COMPOSE (later evidence wins per field; the report shows overrides).
- * Output is never a prose blob: personaxis.md (validated PASS, Genesis never
- * writes an invalid persona), state.json, compiled PERSONA.md (stage-1
- * assembler), and creation-report.md with per-number provenance.
+ *   personaxis init ["what it is for"]           # this folder's persona (.personaxis/personaxis.md)
+ *   personaxis create <name> ["what it is for"]  # another persona in this folder (.personaxis/personas/<name>/)
+ *
+ * Without a model nothing is created: there is no template and no default to fall back on (2026-10-07).
  */
 
 import { Command } from "commander";
 import { createInterface } from "node:readline/promises";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve, relative, basename } from "node:path";
 import chalk from "chalk";
 import {
-  genesis,
   isGenesisProfile,
   GENESIS_PROFILES,
-  mergeSeed,
-  buildSpecDocument,
-  pendingItems,
-  applyAnswers,
+  runInterview,
+  interviewAsSource,
+  sourcesFingerprint,
+  INTERVIEW_LIMIT,
   loadDraft,
   saveDraft,
   clearDraft,
-  ITEM_BANK,
-  ITEM_BANK_VERSION,
   importCharacterCard,
   importPrompt,
   importSoulMd,
   isSoulImport,
-  extractSeed,
-  heuristicSeed,
+  numberSources,
+  authorPersona,
   renderCreationReport,
-  provenanceSummary,
   loadPersona,
   ensureState,
   assemblePersonaDoc,
   extractEnvelopes,
   staticallyDecorative,
   canCross,
+  resolveModel,
+  ModelRequiredError,
+  RESEARCH_QUERIES_INSTRUCTION,
+  RESEARCH_QUERIES_SCHEMA,
+  findingsFrom,
+  parseQueries,
+  referenceName,
+  renderReferenceNote,
+  researchSources,
+  resolveWebSearch,
+  type Finding,
   type PersonaFrontmatter,
-  type SeedContribution,
+  type Source,
   type StructuredCaller,
-  type InterviewAnswers,
-  type GenesisResult,
+  type InterviewQuestion,
+  type InterviewTurn,
+  type Reply,
 } from "@personaxis/core";
-import { resolveModel } from "@personaxis/core";
-import {
-	RESEARCH_QUERIES_INSTRUCTION,
-	RESEARCH_QUERIES_SCHEMA,
-	fallbackQueries,
-	findingsFrom,
-	parseQueries,
-	referenceName,
-	renderReferenceNote,
-	researchContribution,
-	resolveWebSearch,
-	type Finding,
-} from "@personaxis/core";
+import { dump } from "js-yaml";
 import { runCompile } from "./compile.js";
 import { validatePersona, exitCodeFor } from "../schema.js";
 import { runRules } from "../linter/rules.js";
-import { buildResourceManifest } from "../resource-manifest.js";
 import { resolveProvider, type ProviderName } from "../providers/index.js";
 import { ProviderRequiresAgentError } from "../providers/types.js";
-import { movePersonaHistoryAside } from "../persona-history.js";
+import { hasNotLived, movePersonaHistoryAside } from "../persona-history.js";
 
 interface CreateOpts {
-  fromPrompt?: string;
-  fromProject?: string | boolean;
+  /** What the persona is for, or anything to add: the command's argument. */
+  intent?: string;
   fromImport?: string;
   fromTranscript?: string;
   root?: boolean;
   yes?: boolean;
   json?: boolean;
   provider?: ProviderName;
-  /** V5.P2.5: commander maps --no-polish onto polish:false. */
-  polish?: boolean;
-  noPolish?: boolean;
-  /** Ask the whole question bank instead of the twelve core ones. */
-  deep?: boolean;
+  /** Commander maps --no-compile onto compile:false: write the definition, leave PERSONA.md to `compile`. */
+  compile?: boolean;
   /** E65: research the field on the web and leave what it found behind the persona. */
   research?: boolean;
   /** E128: the starting profile, the defaults of the three controls (range, per-layer policy, half-life). */
@@ -102,8 +96,8 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
     // no-model path and built the persona from labeled defaults. It goes through the text path
     // like any provider without structured output; the agent provider writes the prompt for the
     // coding agent and `create` stops until the answer exists (see the action's catch).
-    // Only when asked for by name: `agent` is also the default when no model is configured, and
-    // there `create` keeps its promise of working offline, from labeled defaults it reports.
+    // Only when asked for by name: `agent` is also what resolves when no model is configured, and a
+    // persona nobody asked a coding agent to author is a persona that needs a model configured.
     if (provider.name === "agent" && name !== "agent") return null;
     if (provider.runStructured) {
       return (prompt, schema, schemaName) => provider.runStructured!(prompt, schema, schemaName).then((r) => r.json);
@@ -119,29 +113,48 @@ function structuredCaller(name?: ProviderName): StructuredCaller | null {
 }
 
 /**
- * The interview, in one of two depths, resumable.
- *
- *   core  twelve questions: who it is, the five trait axes, what it values, how it sounds,
- *         and what it must never do. Everything else falls back to a LABELED default whose
- *         provenance says "not stated", so the creation report separates what the author
- *         decided from what the tool assumed.
- *   deep  the whole bank, adding envelope width, mood half-life, refusal detail,
- *         uncertainty thresholds, memory policy, improvement posture and a voice exemplar.
- *
- * Answers are written to a draft as they are given, so abandoning the deep interview at
- * question 17 does not cost the sixteen already answered. The draft is deleted once the
- * persona exists.
+ * One round of questions in the terminal: the Ink wizard when it can run, readline otherwise
+ * (PERSONAXIS_NO_WIZARD=1 forces it). Lazy import: Ink costs about a second and only the interview pays it.
  */
-async function runInterview(depth: "core" | "deep", dir: string): Promise<SeedContribution> {
-  const resumed = loadDraft(dir, ITEM_BANK_VERSION);
-  let answers: InterviewAnswers = {};
-  if (resumed && resumed.depth === depth) {
-    const n = Object.keys(resumed.answers).length;
-    const total = ITEM_BANK.filter((i) => depth === "deep" || i.depth === "core").length;
-    console.log(
-      chalk.yellow(`\n  An unfinished interview was found: ${n} of ${total} answered `) +
-        chalk.dim(`(${resumed.updated.slice(0, 16).replace("T", " ")}).`),
-    );
+async function askRound(questions: InterviewQuestion[], asked: number): Promise<Reply[]> {
+  if (process.env.PERSONAXIS_NO_WIZARD !== "1") {
+    try {
+      const { runInterviewWizard } = await import("@personaxis/tui");
+      return await runInterviewWizard(questions, asked, INTERVIEW_LIMIT);
+    } catch {
+      /* fall through to readline */
+    }
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const replies: Reply[] = [];
+  try {
+    for (const [i, q] of questions.entries()) {
+      console.log(chalk.dim(`\n  ${asked + i + 1}. ${q.why}`));
+      console.log(chalk.cyan(`  ${q.question}`));
+      q.options?.forEach((o, n) => console.log(`    ${chalk.dim(`${n + 1}.`)} ${o}`));
+      const raw = (await rl.question(chalk.dim("  (Enter skips, q leaves) > "))).trim();
+      if (raw === "q") return [...replies, { stop: true }];
+      const picked = q.options && /^[1-9]$/.test(raw) ? q.options[Number(raw) - 1] : undefined;
+      replies.push(raw ? { answer: picked ?? raw } : { skip: true });
+    }
+  } finally {
+    rl.close();
+  }
+  return replies;
+}
+
+/**
+ * The interview, after the sources are read: a model asks only what they leave open (`runInterview` in
+ * core), resumable. The turns are written to a draft as they are given, kept with a fingerprint of the
+ * sources, so leaving part-way does not lose them; the draft is deleted once the persona exists.
+ */
+async function interview(sources: Array<Omit<Source, "id">>, call: StructuredCaller, dir: string): Promise<InterviewTurn[]> {
+  const print = sourcesFingerprint(sources);
+  let turns: InterviewTurn[] = [];
+  const resumed = loadDraft(dir, print);
+  if (resumed) {
+    const answered = resumed.turns.filter((t) => t.answer !== undefined).length;
+    console.log(chalk.yellow(`\n  An unfinished interview was found: ${answered} answered of ${resumed.turns.length} asked `) + chalk.dim(`(${resumed.updated.slice(0, 16).replace("T", " ")}).`));
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     let keep = "y";
     try {
@@ -149,134 +162,98 @@ async function runInterview(depth: "core" | "deep", dir: string): Promise<SeedCo
     } finally {
       rl.close();
     }
-    if (keep === "y" || keep === "yes") answers = resumed.answers;
+    if (keep === "y" || keep === "yes") turns = resumed.turns;
     else clearDraft(dir);
   }
-
-  const remaining = pendingItems(answers, depth);
-  const save = (a: InterviewAnswers): void =>
-    saveDraft(dir, { answers: { ...answers, ...a }, depth, bankVersion: ITEM_BANK_VERSION });
-
-  // F6.7b: the Ink wizard is the primary interview surface, progress, live
-  // field→rule mapping per answer, arrow-key inputs. Lazy import (Ink costs ~1 s;
-  // only the interview path pays it); readline below stays as the fallback for
-  // odd terminals (PERSONAXIS_NO_WIZARD=1 forces it).
-  if (process.stdin.isTTY && process.stdout.isTTY && process.env.PERSONAXIS_NO_WIZARD !== "1") {
-    try {
-      const { runInterviewWizard } = await import("@personaxis/tui");
-      const wizardAnswers = await runInterviewWizard(remaining, save);
-      const { seed, evidence } = applyAnswers({ ...answers, ...wizardAnswers });
-      return { label: "interview", seed, evidence };
-    } catch {
-      /* fall through to readline */
-    }
-  }
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  console.log(
-    chalk.bold("\nGenesis interview") +
-      chalk.dim(` (${depth === "core" ? "core: the twelve that decide who it is" : "deep: the full bank"}), every answer becomes auditable evidence; Enter skips a question.\n`),
-  );
-  try {
-    for (const item of remaining) {
-      if (item.kind === "likert") {
-        const raw = (await rl.question(`${chalk.cyan(item.question)}\n  ${chalk.dim("1 strongly disagree … 5 strongly agree")} > `)).trim();
-        if (raw) answers[item.id] = Number(raw);
-      } else if (item.kind === "choice") {
-        console.log(chalk.cyan(item.question));
-        item.options!.forEach((o, i) => console.log(`  ${chalk.dim(String(i + 1) + ".")} ${o}`));
-        const raw = (await rl.question("  > ")).trim();
-        if (raw) answers[item.id] = Number(raw) - 1;
-      } else if (item.kind === "rank") {
-        console.log(chalk.cyan(item.question));
-        console.log("  " + item.candidates!.map((c, i) => `${chalk.dim(String(i + 1) + ".")}${c}`).join("  "));
-        const raw = (await rl.question(`  ${chalk.dim("order as numbers, e.g. 3 1 2 …")} > `)).trim();
-        if (raw) {
-          const order = raw.split(/[\s,]+/).map((n) => item.candidates![Number(n) - 1]).filter(Boolean);
-          if (order.length) answers[item.id] = order;
-        }
-      } else {
-        const raw = (await rl.question(`${chalk.cyan(item.question)} > `)).trim();
-        if (raw) answers[item.id] = raw;
-      }
-      save(answers);
-    }
-  } finally {
-    rl.close();
-  }
-  const { seed, evidence } = applyAnswers(answers);
-  return { label: "interview", seed, evidence };
+  console.log(chalk.dim(`\n  The model reads ${sources.length ? "your sources" : "what you tell it"} and asks only what is missing (at most ${INTERVIEW_LIMIT} questions; skip any, and it infers it and says from what).`));
+  return runInterview({
+    sources: numberSources(sources),
+    call,
+    turns,
+    ask: askRound,
+    onTurn: (t) => saveDraft(dir, print, t),
+    onRound: (r) => {
+      if (!r.questions.length) console.log(chalk.dim("  Nothing more to ask: the rest can be inferred from what you gave."));
+    },
+  });
 }
 
-/**
- * Gather the project's own words, BOUNDED by design (V5.P2.5): only the
- * default-read/agent files, 6,000 chars per file, 24,000 chars total. Never the
- * whole project: a giant repo costs the same as a small one.
- */
-const PROJECT_FILES = ["README.md", "CLAUDE.md", "AGENTS.md", "SOUL.md", "package.json", "docs/HOW_IT_WORKS.md"] as const;
-const PROJECT_TOTAL_BUDGET = 24_000;
+/** Folders that say nothing about what a project is, skipped in its tree. */
+const SKIP = new Set([".git", "node_modules", "dist", "build", "out", "target", "vendor", ".venv", "venv", "__pycache__", ".next", ".turbo", "coverage", ".cache", ".idea", ".vscode"]);
+/** The files that explain a project, in the order they are read, across ecosystems. */
+const EXPLAINS = ["README.md", "README", "readme.md", "CLAUDE.md", "AGENTS.md", "SOUL.md", "CONTRIBUTING.md", "package.json", "pyproject.toml", "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Gemfile", "composer.json", "requirements.txt"];
+const PER_FILE = 6000;
+const TOTAL = 24_000;
 
-function projectMaterial(dir: string): { material: string; files: string[]; chars: number } {
-  const parts: string[] = [`RESOURCE MANIFEST:\n${buildResourceManifest(dir) ?? "(none)"}`];
+/**
+ * What the folder you are in says about itself, the way `/init` reads a repository before writing its
+ * CLAUDE.md: a two-level tree, the files that explain the project (and up to three documents from `docs/`),
+ * and the personas already living there with their purpose, so a new one knows its colleagues. Bounded: a
+ * giant repository costs the same as a small one. Undefined in the home folder (a personal persona is not a
+ * project's) and in a folder with nothing to read. `skip` leaves out the persona being created (its own
+ * earlier write is not a colleague, and listing it changed every prompt of an agent's re-run) and a file
+ * given with --from-import, which is read once, as the import.
+ */
+export function folderContext(dir: string, skip: readonly string[] = []): { text: string; files: string[] } | undefined {
+  const skipped = new Set(skip.map((p) => resolve(p).toLowerCase()));
+  const kept = (p: string): boolean => !skipped.has(resolve(p).toLowerCase());
+  if (resolve(dir) === resolve(homedir())) return undefined;
+  const list = (d: string): string[] => {
+    try {
+      return readdirSync(d, { withFileTypes: true })
+        .filter((e) => !SKIP.has(e.name) && e.name !== ".personaxis")
+        .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+        .sort();
+    } catch {
+      return [];
+    }
+  };
+  const top = list(dir);
+  const tree = top.flatMap((entry) => [entry, ...(entry.endsWith("/") ? list(join(dir, entry)).slice(0, 12).map((c) => `  ${entry}${c}`) : [])]).slice(0, 80);
+  const docs = existsSync(join(dir, "docs")) ? list(join(dir, "docs")).filter((f) => /\.md$/i.test(f)).slice(0, 3).map((f) => `docs/${f}`) : [];
+  const parts: string[] = [];
   const files: string[] = [];
-  let total = parts[0].length;
-  for (const f of PROJECT_FILES) {
-    const p = join(dir, f);
-    if (!existsSync(p)) continue;
-    const room = PROJECT_TOTAL_BUDGET - total;
-    if (room <= 0) break;
-    const chunk = readFileSync(p, "utf-8").slice(0, Math.min(6000, room));
+  let total = 0;
+  // Matched against the real names, without regard to case and once each: on a case-insensitive disk
+  // "README.md" and "readme.md" are one file, read twice before this (2026-10-08).
+  const actual = new Map(top.filter((e) => !e.endsWith("/")).map((e) => [e.toLowerCase(), e]));
+  const wanted = [...new Set([...EXPLAINS.map((f) => actual.get(f.toLowerCase())).filter((f): f is string => !!f), ...docs])];
+  for (const f of wanted) {
+    const path = join(dir, f);
+    if (!kept(path) || !existsSync(path) || !statSync(path).isFile() || total >= TOTAL) continue;
+    const chunk = readFileSync(path, "utf-8").slice(0, Math.min(PER_FILE, TOTAL - total));
     parts.push(`FILE ${f}:\n${chunk}`);
     files.push(f);
     total += chunk.length;
   }
-  return { material: parts.join("\n\n"), files, chars: total };
+  const personas = [join(dir, ".personaxis", "personaxis.md"), ...list(join(dir, ".personaxis", "personas")).filter((e) => e.endsWith("/")).map((e) => join(dir, ".personaxis", "personas", e, "personaxis.md"))]
+    .filter((p) => existsSync(p) && kept(p))
+    .map((p) => {
+      const purpose = /purpose:\s*>?-?\s*\n?\s*(.+)/.exec(readFileSync(p, "utf-8"))?.[1]?.trim() ?? "(no purpose stated)";
+      return `- ${relative(dir, p).replace(/\\/g, "/")}: ${purpose.slice(0, 200)}`;
+    });
+  if (!tree.length && !parts.length && !personas.length) return undefined;
+  // Said in the source itself: measured 2026-10-08 on a copy of the spec package, without this line the model
+  // made the persona the software ("Spec Validator") instead of the professional who works on it.
+  const text = [
+    `FOLDER ${basename(resolve(dir))}: the place this persona will work in. It describes the work, not the persona: unless the person says otherwise, the persona is the professional who does this folder's work (builds it, maintains it, reviews it, runs it), and never the software or the documents themselves.`,
+    tree.length ? `TREE:\n${tree.join("\n")}` : "",
+    ...parts,
+    personas.length ? `PERSONAS ALREADY HERE:\n${personas.join("\n")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return { text, files };
 }
 
-/**
- * How the persona is going to be built, asked as a QUESTION rather than hidden behind
- * flags. Running `create` with no arguments dropped straight into the interview, so the
- * other four sources existed only for whoever had read `--help`.
- *
- * It fills the SAME options the flags fill, so there is exactly one code path per source:
- * a picker that re-implemented each source would be a second place for them to drift.
- * Passing any `--from-*` flag skips this screen entirely, which is what scripts and agents
- * do. Returns false when the user cancels.
- */
-async function chooseSource(opts: CreateOpts): Promise<boolean> {
-  const { selectCards, promptText } = await import("@personaxis/tui/prompt");
-  const choice = await selectCards(
-    "How should this persona be created?",
-    [
-      { value: "core", title: "Answer 12 questions", desc: "who it is, its five trait axes, what it values, how it sounds, what it must never do" },
-      { value: "deep", title: "Answer the full bank (20)", desc: "adds envelope width, mood half-life, refusals, uncertainty, memory, improvement, a voice exemplar" },
-      { value: "prompt", title: "Describe it in a sentence", desc: "a natural-language brief; a model turns it into governed coordinates" },
-      { value: "project", title: "Infer it from this project", desc: "reads only README / CLAUDE.md / AGENTS.md / SOUL.md, within a fixed budget" },
-      { value: "import", title: "Import an existing one", desc: "SOUL.md, a character card (V2/V3), a system prompt, CLAUDE.md or AGENTS.md" },
-      { value: "transcript", title: "Induce it from transcripts", desc: "the persona that best explains example conversations" },
-    ],
-    "up/down choose - Enter confirm - Esc cancel - every path ends in a validated, governed spec",
-  );
-  if (!choice) return false;
-  if (choice === "core" || choice === "deep") {
-    opts.deep = choice === "deep";
-    return true;
+/** One line in a terminal: what the persona is for, or anything to add. Empty means nothing. */
+async function askIntent(): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await rl.question(chalk.cyan("  What should this persona do, or anything to add? ") + chalk.dim("(Enter to let the model infer it) "))).trim();
+  } finally {
+    rl.close();
   }
-  if (choice === "project") {
-    opts.fromProject = process.cwd();
-    return true;
-  }
-  const label =
-    choice === "prompt"
-      ? "Describe the persona in a sentence"
-      : choice === "import"
-        ? "Path to the file or directory to import"
-        : "Path to the transcript file";
-  const value = (await promptText(label)).trim();
-  if (!value) return false;
-  if (choice === "prompt") opts.fromPrompt = value;
-  else if (choice === "import") opts.fromImport = value;
-  else opts.fromTranscript = value;
-  return true;
 }
 
 export async function runCreate(slugArg: string | undefined, opts: CreateOpts): Promise<void> {
@@ -284,51 +261,35 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   if (opts.profile !== undefined && !isGenesisProfile(opts.profile)) {
     throw new Error(`--profile must be one of ${GENESIS_PROFILES.join(", ")}; got '${opts.profile}'.`);
   }
-  // No source flag and a terminal to ask in: show the sources instead of assuming one.
-  const noSource = !opts.fromPrompt && opts.fromProject === undefined && !opts.fromImport && !opts.fromTranscript;
-  if (noSource && process.stdin.isTTY && process.stdout.isTTY && !opts.yes && !opts.json && !opts.deep) {
-    if (!(await chooseSource(opts))) {
-      console.log(chalk.dim("  Cancelled; nothing was written."));
-      return;
-    }
-  }
+  const interactive = !!process.stdin.isTTY && !!process.stdout.isTTY && !opts.yes && !opts.json;
 
-  const contributions: SeedContribution[] = [];
   const call = structuredCaller(opts.provider);
+  // A persona is a model's work or it is not made: refused before anything is read or asked.
+  if (!call) throw new ModelRequiredError("Creating a persona");
+  const gathered: Array<Omit<Source, "id">> = [];
   const llmNotes: string[] = [];
 
-  const extractOr = async (material: string, label: string, fallbackBrief?: string): Promise<SeedContribution> => {
-    if (call) {
-      try {
-        const { seed, evidence } = await extractSeed(material, label, call);
-        return { label, seed, evidence };
-      } catch (e) {
-        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
-        llmNotes.push(`extractor failed for ${label} (${(e as Error).message}); heuristic baseline used`);
-      }
-    } else {
-      llmNotes.push(`no model provider available for ${label}; heuristic baseline used (labeled defaults)`);
-    }
-    const { seed, evidence } = heuristicSeed(fallbackBrief ?? material.slice(0, 400));
-    return { label: `${label}-heuristic`, seed, evidence };
-  };
-
-  // ── collect contributions (modes compose; order = precedence, later wins) ──
-  if (opts.fromProject !== undefined) {
-    const dir = resolve(typeof opts.fromProject === "string" ? opts.fromProject : ".");
-    const pm = projectMaterial(dir);
-    if (!opts.json) {
-      console.log(
-        chalk.dim(
-          `  reading ${pm.files.length} file(s) (${pm.files.join(", ") || "manifest only"}) · ~${Math.ceil(pm.chars / 4).toLocaleString()} tokens of input, bounded: never the whole project`,
-        ),
-      );
-    }
-    contributions.push(await extractOr(pm.material, `project:${basename(dir)}`));
+  // ── 1. the folder you are in, always ───────────────────────────────────────
+  const target = opts.root ? resolve(".personaxis", "personaxis.md") : resolve(".personaxis", "personas", slugArg ?? "", "personaxis.md");
+  const folder = folderContext(process.cwd(), [target, ...(opts.fromImport ? [resolve(opts.fromImport)] : [])]);
+  if (folder) gathered.push({ kind: "project", label: `this folder (${basename(process.cwd())})`, text: folder.text });
+  if (!opts.json) {
+    console.log(
+      chalk.dim(
+        folder
+          ? `  reading this folder: ${folder.files.length ? folder.files.join(", ") : "its tree"}, bounded, never the whole project`
+          : "  no project here to read (the home folder or an empty one): the persona comes from what you say",
+      ),
+    );
   }
+
+  // ── 2. what you want, optional ─────────────────────────────────────────────
+  const intent = opts.intent?.trim() || (interactive ? await askIntent() : "");
+  if (intent) gathered.push({ kind: "brief", label: "what you asked for", text: intent });
+
+  // ── 3. material you point at ───────────────────────────────────────────────
   if (opts.fromImport) {
     const path = resolve(opts.fromImport);
-    // SOUL.md / a SoulSpec package dir (V3.3 embrace-extend) > character card > bare prompt.
     const isSoul = isSoulImport(path);
     const isCard = !isSoul && /\.(json|png)$/i.test(path);
     const material = isSoul
@@ -336,88 +297,44 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
       : isCard
         ? importCharacterCard(path)
         : importPrompt(path);
-    contributions.push({ label: `import:${material.format}`, seed: material.seed, evidence: material.evidence });
-    // Prose refinement is LLM-only: the deterministic import fields are already
-    // the trustworthy baseline, a no-model heuristic must never override them.
-    if (material.prose.trim() && call) {
-      try {
-        const { seed, evidence } = await extractSeed(material.prose, `import-prose:${material.format}`, call);
-        contributions.push({ label: `import-prose:${material.format}`, seed, evidence });
-      } catch (e) {
-        if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
-        llmNotes.push(`extractor failed for import prose (${(e as Error).message}); card fields kept as-is`);
-      }
-    } else if (material.prose.trim()) {
-      llmNotes.push("no model provider: card prose (personality/example dialogue) kept for later `personaxis decompile` refinement; deterministic fields used");
-    }
+    gathered.push({ kind: "import", label: `${basename(path)} (${material.format})`, text: material.text });
   }
   if (opts.fromTranscript) {
-    const text = readFileSync(resolve(opts.fromTranscript), "utf-8");
-    contributions.push(await extractOr(text, `transcript:${basename(opts.fromTranscript)}`));
+    gathered.push({ kind: "transcript", label: basename(opts.fromTranscript), text: readFileSync(resolve(opts.fromTranscript), "utf-8") });
   }
-  if (opts.fromPrompt) {
-    contributions.push(await extractOr(opts.fromPrompt, "prompt", opts.fromPrompt));
-  }
-  if (contributions.length === 0) {
-    if (!process.stdin.isTTY || opts.yes) {
-      console.error(chalk.red("Error:"), "no input mode given and no TTY for the interview. Use --from-prompt/--from-project/--from-import/--from-transcript.");
-      process.exit(1);
-    }
-    contributions.push(await runInterview(opts.deep ? "deep" : "core", process.cwd()));
-  } else if (process.stdin.isTTY && !opts.yes && !opts.fromPrompt && contributions.every((c) => c.label.endsWith("heuristic"))) {
-    // Nothing but defaults collected, offer the interview so numbers get earned.
-    contributions.push(await runInterview(opts.deep ? "deep" : "core", process.cwd()));
+  if (gathered.length === 0 && !interactive) {
+    console.error(chalk.red("Error:"), "nothing to create from: no project here, no intent and no terminal for the interview. Say what the persona is for: personaxis init \"...\".");
+    process.exitCode = 1;
+    return;
   }
 
-  if (slugArg) {
-    contributions.push({ label: "cli-arg", seed: { slug: slugArg }, evidence: [] });
+  // ── 4. the interview: what the sources leave open, asked by the model (never with --yes or --json) ──
+  let turns: InterviewTurn[] = [];
+  if (interactive) {
+    turns = await interview(gathered, call, process.cwd());
+    const answers = interviewAsSource(turns);
+    if (answers) gathered.push(answers);
   }
-  // E128: last, so a profile named on the command line wins over one the interview answered.
-  if (opts.profile !== undefined) {
-    contributions.push({
-      label: "cli-arg",
-      seed: { profile: opts.profile as (typeof GENESIS_PROFILES)[number] },
-      evidence: [
-        {
-          id: "profile",
-          kind: "answer",
-          source: "user",
-          excerpt: `--profile ${opts.profile}`,
-          mappedFields: [{ path: "governance.per_layer_edit_policy", value: opts.profile, rule: "choice-to-profile" }],
-        },
-      ],
-    });
+  if (gathered.length === 0) {
+    console.error(chalk.red("Error:"), "the interview was left empty; there is nothing to author a persona from.");
+    process.exitCode = 1;
+    return;
   }
 
   // ── E65: the web research, only when asked for ─────────────────────────────
   //
-  // It contributes ONE seed field, the path of the note it leaves, plus its evidence. Everything the pages
-  // actually said is in the note and in the ledger, so nothing found here can define the identity, the hard
-  // limits or a number. Each result passes `ingestUntrusted` inside `findingsFrom`, because this command is
-  // not the agent loop and the loop's injection scan does not cover this path.
+  // What the pages said becomes sources the model may cite for knowledge and procedures; `checkStage`
+  // rejects a web source as the origin of the identity, the character or a hard limit. Each result passes
+  // `ingestUntrusted` inside `findingsFrom`, because this command is not the agent loop.
   let researchNote: { name: string; content: string } | null = null;
   if (opts.research) {
     const provider = resolveWebSearch({ cwd: process.cwd() });
-    const brief = opts.fromPrompt ?? "";
+    const brief = gathered.map((g) => g.text).join("\n\n").slice(0, 4000);
     if (!provider) {
       llmNotes.push("no web search provider available (no key); nothing was researched");
-    } else if (!brief.trim()) {
-      llmNotes.push("--research needs --from-prompt to know what to search for; nothing was researched");
     } else {
-      let queries: string[] = [];
-      if (call) {
-        try {
-          const said = (await call(`${RESEARCH_QUERIES_INSTRUCTION}\n\nBRIEF:\n${brief}`, RESEARCH_QUERIES_SCHEMA, "research_queries")) as { queries?: string[] };
-          queries = parseQueries((said?.queries ?? []).join("\n"));
-        } catch (e) {
-          if ((e as { requiresAgent?: boolean }).requiresAgent) throw e; // E175: a handoff, not a failure
-          llmNotes.push(`the model could not write the research queries (${(e as Error).message}); the brief was searched as given`);
-        }
-      }
-      if (queries.length === 0) {
-        queries = fallbackQueries(brief);
-        if (queries.length > 0 && !call) llmNotes.push("no model provider available for the research queries; the brief was searched as given");
-      }
+      const said = (await call(`${RESEARCH_QUERIES_INSTRUCTION}\n\nBRIEF:\n${brief}`, RESEARCH_QUERIES_SCHEMA, "research_queries")) as { queries?: string[] };
+      const queries = parseQueries((said?.queries ?? []).join("\n"));
       const findings: Finding[] = [];
       for (const query of queries) {
         try {
@@ -433,27 +350,33 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
       } else {
         const now = new Date();
         const name = referenceName(now);
-        researchNote = { name, content: renderReferenceNote(findings, { provider: provider.name, now, brief }) };
-        contributions.push(researchContribution(findings, { referencePath: `references/${name}`, now }));
+        researchNote = { name, content: renderReferenceNote(findings, { provider: provider.name, now, ...(intent ? { brief: intent } : {}) }) };
+        gathered.push(...researchSources(findings, now));
         console.log(chalk.dim(`  researched ${queries.length} quer${queries.length === 1 ? "y" : "ies"}, kept ${findings.length} source(s) in references/${name}`));
       }
     }
   }
 
-  // ── build + gates ──────────────────────────────────────────────────────────
-  const result: GenesisResult = genesis(contributions);
+  // ── author: one model call per stage, every field with its provenance ──────
+  const sources = numberSources(gathered);
+  if (!opts.json) console.log(chalk.dim(`  authoring from ${sources.length} source(s), one model call per stage…`));
+  const authored = await authorPersona({ sources, call, profile: opts.profile ?? "standard", ...(slugArg ? { canonicalId: slugArg } : {}) });
+  const spec = authored.spec;
+  if (researchNote) spec.extensions = { ...((spec.extensions as Record<string, unknown>) ?? {}), references: [`references/${researchNote.name}`] };
+  const document = `---\n${dump(spec, { lineWidth: 100, noRefs: true })}---\n\n## Overview\n\n${(spec.metadata as { description: string }).description}\n\n## Sources\n\n${sources.map((s) => `- ${s.id}: ${s.label}${s.url ? ` (${s.url})` : ""}`).join("\n")}\n\nWhere every field came from is in \`creation-report.md\`.\n`;
   const gates: Array<{ name: string; pass: boolean; detail: string }> = [];
 
-  const validation = validatePersona(result.spec);
+  const validation = validatePersona(spec);
   gates.push({ name: "validate", pass: validation.valid, detail: validation.status });
   if (!validation.valid) {
-    // Valid-by-construction is property-tested; reaching here is a bug, not a user error.
+    // The author validates every stage and the whole document; reaching here is a bug, not a user error.
     console.error(chalk.red("✗ internal error:"), "Genesis produced an invalid spec, nothing was written. Please report this.");
     for (const e of validation.errors) console.error(`  ${chalk.red("✗")} ${e.field ?? ""} ${e.message}`);
-    process.exit(exitCodeFor(validation.status));
+    process.exitCode = exitCodeFor(validation.status);
+    return;
   }
 
-  const lint = runRules(result.spec as Record<string, unknown>).findings;
+  const lint = runRules(spec as Record<string, unknown>).findings;
   const lintErrors = lint.filter((f) => f.severity === "error");
   // Warnings only: this counted every non-error finding, info included, so the report said 3 where the
   // terminal, counting warnings, said 1 (2026-10-03).
@@ -464,18 +387,17 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   let compiled = "";
   try {
     compiled = assemblePersonaDoc({
-      persona: result.spec,
-      target: { name: (result.spec.identity as { display_name: string }).display_name, isSubagent: false, resourceBase: "./.personaxis/" },
+      persona: spec,
+      target: { name: (spec.identity as { display_name: string }).display_name, isSubagent: false, resourceBase: "./.personaxis/" },
     });
-    gates.push({ name: "compile (stage-1)", pass: compiled.length > 0, detail: `${compiled.split("\n").length} lines` });
+    gates.push({ name: "PERSONA.md reference", pass: compiled.length > 0, detail: `${compiled.split("\n").length} lines` });
   } catch (e) {
-    gates.push({ name: "compile (stage-1)", pass: false, detail: (e as Error).message });
+    gates.push({ name: "PERSONA.md reference", pass: false, detail: (e as Error).message });
   }
-  // FASE 7 P1 hard gate (gap G1): no number leaves Genesis decorative. The
-  // synthesis pass guarantees band prose; sigma = 0 here means a pipeline bug,
-  // not a user error, exactly like valid-by-construction.
+  // FASE 7 P1 hard gate (gap G1): no number leaves Genesis decorative. Every stage checks that its
+  // numbers can cross a band and carries band prose; sigma = 0 here means a pipeline bug.
   try {
-    const lookup = extractEnvelopes(result.spec as PersonaFrontmatter);
+    const lookup = extractEnvelopes(spec as PersonaFrontmatter);
     // Zero-width envelopes are immutable by geometry: excluded, nothing to express.
     const decorative = Object.entries(lookup.envelopes)
       .filter(([, e]) => canCross(e) && staticallyDecorative(e))
@@ -488,39 +410,45 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
     if (decorative.length > 0) {
       console.error(chalk.red("✗ internal error:"), "Genesis produced decorative coordinates, nothing was written. Please report this.");
       for (const f of decorative) console.error(`  ${chalk.red("✗")} ${f} (σ=0: value cannot change the compiled artifact)`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   } catch (e) {
     gates.push({ name: "load-bearing (jacobian)", pass: false, detail: (e as Error).message });
     console.error(chalk.red("✗ internal error:"), "load-bearing gate crashed, nothing was written.", (e as Error).message);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
-  const slug = (result.spec.metadata as { name: string }).name;
+  const slug = (spec.metadata as { name: string }).name;
   const baseDir = opts.root ? resolve(".personaxis") : resolve(".personaxis", "personas", slug);
   const personaPath = join(baseDir, "personaxis.md");
   if (existsSync(personaPath) && !opts.yes) {
     console.error(chalk.red("Error:"), `${relative(process.cwd(), personaPath)} already exists. Re-run with --yes to overwrite, or pass a different [slug].`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
-  const summary = provenanceSummary(result.spec, result.ledger);
-  const report = renderCreationReport(result, gates, llmNotes);
+  const model = opts.provider === "agent" ? "the coding agent (--provider agent)" : resolveModel({ cwd: process.cwd() })?.model;
+  const report = renderCreationReport(authored, sources, gates, { notes: llmNotes, interview: turns, ...(model ? { model } : {}) });
+  const inferredCount = authored.stages.flatMap((st) => st.provenance).filter((p) => !p.quote && p.inferred).length;
 
   if (opts.json) {
-    console.log(JSON.stringify({ spec: result.spec, gates, notes: llmNotes, provenance: summary, path: relative(process.cwd(), personaPath) }, null, 2));
+    console.log(JSON.stringify({ spec, gates, notes: llmNotes, sources, stages: authored.stages, path: relative(process.cwd(), personaPath) }, null, 2));
     if (!opts.yes) return; // --json without --yes is a dry-run
   }
 
   // ── write artifacts ────────────────────────────────────────────────────────
   // Replacing an existing persona starts a new one: what the old one lived (state, record, memory,
   // sessions, self-edits) is moved aside, or the new definition would start from the old values (E176).
-  const previousHistory = existsSync(personaPath) ? movePersonaHistoryAside(personaPath) : undefined;
+  // The same definition over a persona that has lived nothing is the same persona: the agent provider
+  // re-runs `create` after every answer it writes, and each re-run must not archive the previous one.
+  const rerun = existsSync(personaPath) && readFileSync(personaPath, "utf-8") === document && hasNotLived(personaPath);
+  const previousHistory = existsSync(personaPath) && !rerun ? movePersonaHistoryAside(personaPath) : undefined;
   mkdirSync(baseDir, { recursive: true });
-  writeFileSync(personaPath, result.document, "utf-8");
+  writeFileSync(personaPath, document, "utf-8");
   writeFileSync(join(baseDir, "creation-report.md"), report, "utf-8");
-  // E65: the note goes where the spec says it is. The document already lists it, because the contribution put
-  // the path in the seed and the builder rendered `extensions.references` from there.
+  // E65: the note goes where `extensions.references` says it is.
   if (researchNote) {
     mkdirSync(join(baseDir, "references"), { recursive: true });
     writeFileSync(join(baseDir, "references", researchNote.name), researchNote.content, "utf-8");
@@ -531,109 +459,88 @@ export async function runCreate(slugArg: string | undefined, opts: CreateOpts): 
   const handle = loadPersona(personaPath);
   ensureState(handle);
   const compiledPath = opts.root ? resolve("PERSONA.md") : join(baseDir, "PERSONA.md");
-  if (compiled) writeFileSync(compiledPath, compiled.trimEnd() + "\n", "utf-8");
 
-  // Creation is NOT done at the template. The stage-1 assembly echoes the answers back
-  // almost verbatim, language included, so a persona created with a model configured must
-  // pass through that model. Template output is a legitimate result ONLY with no model
-  // reachable, and it is marked as such.
-  //
-  // Reporting this used to be wrong in a way that mattered: `runCompile` returned nothing,
-  // so "it did not throw" was read as "a model rewrote it", and `create` printed
-  // "compiled + LLM polished" over a template whenever the faithfulness gate rejected the
-  // model's rewrite. It now asks for the outcome and says exactly what happened.
-  let polished = false;
-  let unpolishedReason: string | undefined;
-  const wantPolish = opts.polish !== false && !opts.noPolish;
-  const hasModel = !!resolveModel({ cwd: process.cwd(), personaPath });
-  if (wantPolish && hasModel) {
+  // PERSONA.md is written by the model and held to the reference by the faithfulness check
+  // (`runCompile`); there is no template to fall back on. A failure leaves the definition, which is
+  // valid, and says how to finish.
+  let compileError: string | undefined;
+  if (opts.compile !== false) {
+    // With --json, stdout is the JSON already printed: compile's progress goes to stderr, or a script
+    // parsing the output reads the JSON followed by a line of text (seen 2026-10-07).
+    const log = console.log;
+    if (opts.json) console.log = console.error;
     try {
-      const outcome = await runCompile(opts.root ? { root: true } : { slug });
-      polished = outcome.polished;
-      if (!polished) unpolishedReason = outcome.via;
+      await runCompile({ ...(opts.root ? { root: true } : { slug }), ...(opts.provider ? { provider: opts.provider } : {}), cause: "creation" });
     } catch (e) {
-      unpolishedReason = (e as Error).message;
+      if (e instanceof ProviderRequiresAgentError) throw e; // the agent answers, then `create` runs again
+      compileError = (e as Error).message;
+    } finally {
+      console.log = log;
     }
-  }
-  if (!polished && compiled) {
-    const why = !wantPolish
-      ? "polish skipped (--no-polish)"
-      : !hasModel
-        ? "no model configured"
-        : (unpolishedReason ?? "the model's rewrite was not accepted");
-    writeFileSync(
-      compiledPath,
-      compiled.trimEnd() + `\n\n<!-- stage-1 template, not polished by a model: ${why}. Run \`personaxis compile\` once that is resolved. -->\n`,
-      "utf-8",
-    );
   }
 
   if (!opts.json) {
     console.log("");
     console.log(chalk.green("✓"), chalk.bold(slug), "created, a governed persona, not a prose blob:");
     console.log(`  ${chalk.cyan(relative(process.cwd(), personaPath))} ${chalk.dim("(validated " + validation.status + ")")}`);
-    const docNote = polished
-      ? chalk.dim("(compiled + LLM polished)")
-      : hasModel
-        ? chalk.yellow("(stage-1 template, NOT polished)")
-        : chalk.dim("(compiled, stage-1 offline; next compile with a model polishes it)");
-    console.log(`  ${chalk.cyan(relative(process.cwd(), compiledPath))} ${docNote}`);
+    if (opts.compile !== false && !compileError) console.log(`  ${chalk.cyan(relative(process.cwd(), compiledPath))} ${chalk.dim("(written by the model, checked against the definition)")}`);
     console.log(`  ${chalk.cyan(relative(process.cwd(), handle.statePath))} ${chalk.dim("(runtime state)")}`);
-    console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(provenance: ${summary.covered.length}/${summary.quantitativeFields.length} fields, ${summary.defaultsOnly.length} default(s) to review)`)}`);
+    console.log(`  ${chalk.cyan(relative(process.cwd(), join(baseDir, "creation-report.md")))} ${chalk.dim(`(where every field came from; ${inferredCount} inferred, read those first)`)}`);
     if (previousHistory) {
       console.log(`  ${chalk.cyan(relative(process.cwd(), previousHistory))} ${chalk.dim("(the replaced persona's state, record and memory, moved aside; the new one starts fresh)")}`);
     }
     const warns = lint.filter((f) => f.severity === "warning").length;
     if (warns) console.log(chalk.dim(`  ${warns} lint warning(s), run \`personaxis lint\` for detail (decorative numbers are worth fixing).`));
-    // What was worked around (no model, a failed search) said where it happens, not only in the report.
+    // What was worked around (a failed search) said where it happens, not only in the report.
     for (const note of llmNotes) console.log(chalk.yellow(`  ⚠ ${note}`));
-    console.log(
-      chalk.dim(
-        polished
-          ? `\n  Next: personaxis state drift -f ${relative(process.cwd(), personaPath)} · talk to it: personaxis --persona ${relative(process.cwd(), personaPath)}`
-          : `\n  Next: personaxis compile ${opts.root ? "--root" : slug}  (LLM polish once a model is configured) · personaxis state drift -f ${relative(process.cwd(), personaPath)}`,
-      ),
-    );
+    if (opts.compile === false) console.log(chalk.dim(`\n  PERSONA.md not written (--no-compile). Next: personaxis compile ${opts.root ? "--root" : slug}`));
+    else if (!compileError) console.log(chalk.dim(`\n  Next: talk to it: personaxis --persona ${relative(process.cwd(), personaPath)}`));
   }
 
-  // A template produced WITH a model available is a defect, not a soft outcome: the user
-  // asked for a persona and got their own answers echoed back. Say so on stderr, LAST, so
-  // it is the line they leave with. The spec and state are already written and valid, so
-  // nothing is lost by finishing, but nobody should read this run as a success.
-  if (wantPolish && hasModel && !polished) {
+  // The definition is written and valid, but a persona without its document is not finished: say so on
+  // stderr, last, so it is the line the person leaves with, and exit 1.
+  if (compileError) {
     console.error("");
-    console.error(chalk.red("  ✗ the document was NOT polished by a model, though one is configured."));
-    console.error(chalk.dim(`    reason:  ${unpolishedReason ?? "unknown"}`));
-    console.error(chalk.dim("    written: the deterministic stage-1 assembly, marked as such in the file."));
-    console.error(chalk.dim(`    fix:     personaxis compile ${opts.root ? "--root" : slug}   (after resolving the reason above)`));
+    console.error(chalk.red("  ✗ PERSONA.md was not written."));
+    console.error(chalk.dim(`    reason: ${compileError}`));
+    console.error(chalk.dim(`    finish: personaxis compile ${opts.root ? "--root" : slug}`));
+    process.exitCode = 1;
   }
 }
 
-export const createCommand = new Command("create")
-  .description("Genesis: create a persona from nothing: an interview, a brief, a project scan, an imported card or system prompt, or transcripts. Always validated; provenance per number.")
-  .argument("[slug]", "Persona slug (default: derived from its name; created under .personaxis/personas/<slug>/)")
-  .option("--from-prompt <brief>", "Create from a natural-language brief")
-  .option("--from-project [dir]", "Infer the persona from a project's own docs (README, CLAUDE.md, …)")
-  .option("--from-import <file>", "Import a SOUL.md / SoulSpec package dir, character card (.json/.png V2/V3), system prompt, or CLAUDE.md/AGENTS.md")
-  .option("--from-transcript <file>", "Induce the persona that best explains exemplar conversations")
-  .option("--root", "Create as the project's ROOT persona (.personaxis/personaxis.md + repo PERSONA.md)")
-  .option("--yes", "Non-interactive: accept labeled defaults, overwrite existing files")
-  .option("--json", "Emit the spec + gates + provenance as JSON (dry-run unless --yes)")
-  .option("--provider <name>", "Override the configured provider (local | byok | agent)")
-  .option("--no-polish", "Skip the automatic LLM polish after creation (offline template, marked pending)")
-  .option("--deep", "Ask the FULL question bank (envelope width, mood half-life, refusals, uncertainty, memory, improvement, a voice exemplar) instead of the twelve core questions")
-  .option("--profile <name>", "Starting profile: regulated | standard | research (the defaults of each layer's range, who approves lasting changes, and how fast it returns to baseline). Default: standard")
-  .option("--research", "Search the web for the field, and leave what it found in references/ with each source and its date (needs a web provider key)")
-  .action(async (slug: string | undefined, opts: CreateOpts) => {
-    try {
-      await runCreate(slug, opts);
-    } catch (err) {
-      // E175: the prompt is waiting for the coding agent, as with `compile`: say where, exit 0.
-      if (err instanceof ProviderRequiresAgentError) {
-        console.log(err.message.replace("Then re-run this command with --from-file " + err.resultFile + " to apply the result.", "Then re-run this same command: it reads the answer and continues."));
-        process.exit(0);
-      }
-      console.error(chalk.red("Error:"), (err as Error).message);
-      process.exit(1);
+/** The options `init` and `create` share: everything after the folder and the intent. */
+export function withGenesisOptions(command: Command): Command {
+  return command
+    .option("--from-import <file>", "Also read a SOUL.md or SoulSpec package, a character card (.json/.png V2/V3), a system prompt, or CLAUDE.md/AGENTS.md")
+    .option("--from-transcript <file>", "Also read example conversations of how it should work")
+    .option("--research", "Also search the web for the field, and keep what it found in references/ with each source and its date (needs a web provider key)")
+    .option("--profile <name>", "Starting stance: regulated | standard | research (how far values move, how fast they return, who approves lasting changes). Default: standard")
+    .option("--yes", "Never ask (no interview), and overwrite existing files")
+    .option("--json", "Emit the spec + gates + sources + stages as JSON (dry-run unless --yes)")
+    .option("--provider <name>", "Override the configured provider (local | byok | agent)")
+    .option("--no-compile", "Write the definition only; PERSONA.md comes later with `personaxis compile`");
+}
+
+/** Run Genesis from a command, with the agent handoff and the exit code every caller needs. */
+export async function runGenesisCommand(slug: string | undefined, opts: CreateOpts): Promise<void> {
+  try {
+    await runCreate(slug, opts);
+  } catch (err) {
+    // E175: the prompt is waiting for the coding agent, as with `compile`: say where, exit 0.
+    if (err instanceof ProviderRequiresAgentError) {
+      console.log(err.message.replace("Then re-run this command with --from-file " + err.resultFile + " to apply the result.", "Then re-run this same command: it reads the answer and continues."));
+      return;
     }
-  });
+    console.error(chalk.red("Error:"), (err as Error).message);
+    // Not process.exit: a failure right after a model call leaves its socket closing, and exiting under
+    // it aborts the process on Windows (libuv UV_HANDLE_CLOSING, 0xC0000409) instead of returning 1.
+    process.exitCode = 1;
+  }
+}
+
+export const createCommand = withGenesisOptions(
+  new Command("create")
+    .description("Create another persona in this folder (.personaxis/personas/<name>/): a model reads the folder, asks what is missing and writes it")
+    .argument("<name>", "Its name in this folder: .personaxis/personas/<name>/")
+    .argument("[intent...]", "What it is for, or anything to add (optional)"),
+).action(async (name: string, intent: string[], opts: CreateOpts) => runGenesisCommand(name, { ...opts, intent: intent.join(" ") }));

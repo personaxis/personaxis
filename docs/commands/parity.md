@@ -23,7 +23,7 @@ JSON. Agents cannot drive menus, so they get flags. Inside the app, an unknown `
 | Host hooks | `/status → Daemons` | `personaxis hooks install --host <h>`, `hooks check` | text and exit code |
 | Skills | `/skill` | `personaxis skills list \| pull` | skills-manifest.json |
 | Proof | `/doctor → Proof` | `personaxis proof --auto [--quick] [--demo] [--persona <p>]` | exit 0 only if every check passed |
-| Create | `/create` | `personaxis create --from-* --yes [--json] [--no-polish]` | `--json` (spec, gates, provenance) |
+| Create | `/create` | `personaxis create --from-* --yes [--json] [--no-compile]` | `--json` (spec, gates, provenance) |
 | Compile | `/compile` | `personaxis compile [slug] [--platform <host>]` | manifest.json hashes |
 | Serve over HTTP | `/status → Daemons` | `personaxis serve -p <spec> [--host] [--token]` | HTTP endpoints |
 | Background tasks | `/bg` | task records and `.out` stream-json under `.personaxis/tasks/` | JSONL events |

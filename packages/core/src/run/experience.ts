@@ -68,8 +68,8 @@ export function experienceOf(outcome: TurnOutcome): string | undefined {
 	if (denied.length > 0) lines.push(`The gate refused ${denied.length} of its calls.`);
 
 	if (lines.length === 0) return undefined;
-	// The heading is neutral on purpose: the offline appraiser counts words, and a heading that said
-	// "the work" read as one point of success on every turn, whatever happened in it.
+	// The heading is neutral on purpose: it names what happened without judging it, and the judgement
+	// is the appraising model's.
 	return ["What happened in the turn it just finished, as the runtime recorded it:", ...lines.map((line) => `- ${line}`)].join("\n");
 }
 

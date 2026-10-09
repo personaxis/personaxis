@@ -1,16 +1,14 @@
 /**
  * E65: what Genesis learns from the web, and what it is never allowed to do with it.
  *
- * ## The invariant, and why it is a type and not a promise
+ * ## What the web may inform
  *
- * A research contribution writes **exactly one seed field, `references`, and it holds file paths**. Everything
- * the web actually said becomes a note on disk and evidence in the ledger, so a page cannot define the
- * identity, the hard limits or a number: there is no field for it to land in. `imports.ts` learned the softer
- * version of this rule with character cards ("card text only ever becomes evidence, and the builder's
- * universals always win"); here the rule is checkable, and its test asserts the seed's keys are that one.
- *
- * It started as an empty seed, which was stronger and wrong: the document is rendered from the seed, so a
- * reference nobody listed is a reference the persona never loads.
+ * Since 2026-10-07 a persona is authored by a model from its sources, and what was read on the web is one of
+ * them (`researchSources`), each finding with its URL and the day it was read. The E65 invariant survives as
+ * a check instead of a missing field: a provenance entry that cites a research source for identity,
+ * character or self-regulation is rejected by `checkStage`, so a page can inform the persona's knowledge and
+ * procedures but never who it is or what it refuses. The note it leaves under `references/` is listed in
+ * `extensions.references` by the caller, which writes the file.
  *
  * ## Every result passes the untrusted door, here
  *
@@ -20,17 +18,13 @@
  *
  * ## Pure on purpose
  *
- * No network and no disk. The queries are decided by the persona's own model through one instruction, the
- * same split `E88` used for lessons (`lesson.ts` pure, `lesson-extract.ts` making the call), and the caller
- * performs the search. What is left here can be checked without a model and without a key.
+ * No network and no disk. The queries are decided by the persona's own model through one instruction, and the
+ * caller performs the search. Without a model there are no queries and nothing is searched.
  */
 
 import { ingestUntrusted } from "../security/ingest.js";
 import type { WebResult } from "../web/search.js";
-import type { EvidenceItem } from "./types.js";
-// `SeedContribution` is declared by the orchestrator, not by `types.ts`. Type-only, so it is erased at compile
-// time and the barrel re-exporting this module never becomes a runtime cycle.
-import type { SeedContribution } from "./index.js";
+import type { Source } from "./sources.js";
 
 /**
  * How many queries one creation may run, and how many results each keeps.
@@ -108,18 +102,6 @@ export function parseQueries(text: string): string[] {
   return out;
 }
 
-/**
- * The no-model fallback, labelled as such by its caller.
- *
- * One query, the brief itself trimmed to a searchable length. It is worse than what a model writes and that is
- * the point: `heuristicSeed` does the same thing for the seed, and a creation that silently searched nothing
- * would look identical to one that searched well.
- */
-export function fallbackQueries(brief: string): string[] {
-  const words = String(brief ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 12);
-  return words.length >= 3 ? [words.join(" ")] : [];
-}
-
 /** Results for one query, through the untrusted door. Malicious content is dropped, not tagged and kept. */
 export function findingsFrom(query: string, results: readonly WebResult[]): Finding[] {
   const out: Finding[] = [];
@@ -165,22 +147,14 @@ export function renderReferenceNote(findings: readonly Finding[], opts: { provid
   return lines.join("\n") + "\n";
 }
 
-/**
- * The contribution Genesis merges: the evidence, and one field naming the note it left.
- *
- * `mappedFields` points at `extensions.references`, which is the only thing this research justifies. It does
- * not justify a number, a trait or a limit, and there is no code path here that could make it do so.
- */
-export function researchContribution(findings: readonly Finding[], opts: { referencePath: string; now: Date }): SeedContribution {
-  const retrieved = opts.now.toISOString();
-  const evidence: EvidenceItem[] = findings.map((f, i) => ({
-    id: `web-${i + 1}`,
-    kind: "researched",
-    source: "tool",
-    excerpt: `${f.title}: ${f.text.replace(/\s+/g, " ").trim().slice(0, 140)}`,
-    mappedFields: [{ path: "extensions.references", value: opts.referencePath, rule: `web-search (${f.query})` }],
-    url: f.url,
-    retrieved,
-  }));
-  return { label: "web-research", seed: { references: [opts.referencePath] }, evidence };
+/** The findings as sources the model reads and cites, each with where and when it was read. */
+export function researchSources(findings: readonly Finding[], now: Date): Array<Omit<Source, "id">> {
+	const retrieved = now.toISOString();
+	return findings.map((f) => ({
+		kind: "research" as const,
+		label: `${f.title} (searched: ${f.query})`,
+		text: f.text,
+		url: f.url,
+		retrieved,
+	}));
 }

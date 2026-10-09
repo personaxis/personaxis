@@ -6,9 +6,9 @@
 
 import React, { useEffect, useState } from "react";
 import { Box, Text, Static, useApp, useInput } from "ink";
-import { stateOf,
+import {
+  stateOf,
   loadPersona,
-  readState,
   extractEnvelopes,
   verifyMemoryChain,
   readMemory,

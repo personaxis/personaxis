@@ -16,8 +16,7 @@ the field, so a new rule cannot ship without one:
 ```
 ✗ spec FAIL_SCHEMA: 18 error(s)
     · character: must have required property 'character'
-    fix: Add the missing field 'character' at the document root. `personaxis template`
-         prints a scaffold with every MUST field in place.
+    fix: Add the missing field 'character' at the document root.
 ```
 
 In the TUI, `/doctor` opens a view where `p` switches persona, so a sub-persona's health is

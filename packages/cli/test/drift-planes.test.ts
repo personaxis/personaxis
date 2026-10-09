@@ -15,7 +15,7 @@ import chalk from "chalk";
 import { proposeSelfEdit } from "@personaxis/core";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { structuralReport, behavioralReport, changeDetailLines } from "../src/repl/views/drift-data.js";
 import {
   continuousLines,
@@ -39,7 +39,7 @@ const RATIONALE =
   "Across three sessions the user asked for shorter answers and rated the long ones unhelpful; the recorded evaluations support loosening the tone.";
 
 function personaWithEdits(): ReturnType<typeof makeCtx> {
-  const p = writeStarterPersona(dir, "Clio");
+  const p = writeTestPersona(dir, "Clio");
   const ctx = makeCtx(p, makeMeter());
   proposeSelfEdit(p, { targetPath: "persona.voice.tone", toValue: "warm, discursive, playful", rationale: RATIONALE, sources: ["user"] }, "autonomous");
   proposeSelfEdit(p, { targetPath: "cognition.uncertainty_policy.disclose_when_above", toValue: 0.6, rationale: RATIONALE, sources: ["user"] }, "autonomous");
@@ -54,7 +54,7 @@ describe("the drift miniapp has three planes (V7.F3)", () => {
   });
 
   it("every plane renders for a persona that has never moved", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Still"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Still"), makeMeter());
     for (const lines of [continuousLines(ctx), structuralLines(ctx), behavioralLines(ctx)]) {
       expect(lines.length).toBeGreaterThan(0);
     }
@@ -115,7 +115,7 @@ describe("the behavioral plane answers whether behaviour actually changed (V7.F2
   });
 
   it("a persona with no edits shows no compiled shift", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Still"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Still"), makeMeter());
     expect(behavioralReport(ctx).compiledShift).toBe(0);
   });
 

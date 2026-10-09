@@ -59,22 +59,21 @@ describe.skipIf(!built)("personaxis CLI (e2e against built dist)", () => {
     expect(ov).toContain("collections");
   });
 
-  it("first-run onboarding scaffolds a VALID, playable starter persona", { timeout: 90_000 }, () => {
+  it("first run without a persona writes no fixed one: it points at init", { timeout: 90_000 }, () => {
+    // Until 2026-10-08 this wrote a starter persona ("Aria") for everyone. Now a persona is a model's,
+    // written by `init` from the folder; without a terminal to run it in, the first run says so.
     const cwd = mkdtempSync(join(tmpdir(), "pxs-onboard-"));
     const out = execFileSync("node", [CLI], {
       cwd,
       input: "hi there\n/exit\n",
       encoding: "utf-8",
       // NO_INHERIT: without it the git-like walk-up would attach to the developer's
-      // real ~/.personaxis (the temp dir lives under the home) and never scaffold.
+      // real ~/.personaxis (the temp dir lives under the home).
       env: { ...process.env, FORCE_COLOR: "0", PERSONAXIS_NO_ANIM: "1", PERSONAXIS_NO_INHERIT: "1" },
     });
-    expect(out).toContain("is ready");
-    expect(out).toContain("is awake");
-    const created = join(cwd, ".personaxis", "personaxis.md");
-    expect(existsSync(created)).toBe(true);
-    // The starter must always validate (regression guard), throws on non-zero exit.
-    expect(() => run(["validate", created])).not.toThrow();
+    expect(out).toContain("No persona here yet.");
+    expect(out).toContain("personaxis init");
+    expect(existsSync(join(cwd, ".personaxis", "personaxis.md"))).toBe(false);
     rmSync(cwd, { recursive: true, force: true });
   });
 

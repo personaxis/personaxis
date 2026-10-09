@@ -8,7 +8,6 @@ import matter from "gray-matter";
 import {
   assemblePersonaDoc,
   checkFaithfulness,
-  summarizeFaithfulness,
   type AssembleInput,
 } from "../src/index.js";
 
@@ -97,7 +96,6 @@ describe("F3.1 checkFaithfulness, deterministic stage-2 gate", () => {
     ].join("\n");
     const report = checkFaithfulness(assembled, polished);
     expect(report.ok).toBe(true);
-    expect(summarizeFaithfulness(report)).toMatch(/OK/);
   });
 
   it("FAILS on an INVENTED protected claim (the CMO consistency regression)", () => {

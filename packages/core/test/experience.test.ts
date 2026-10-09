@@ -14,7 +14,6 @@ import { join } from "node:path";
 import {
 	ensureState,
 	extractEnvelopes,
-	HeuristicAppraiser,
 	LivingLoop,
 	loadPersona,
 	readPreferences,
@@ -174,24 +173,36 @@ describe("the same request, two outcomes, two directions (E117)", () => {
 		return personaPath;
 	};
 
-	const toneAfter = async (turn: TurnOutcome): Promise<number> => {
+	// What the appraiser is shown. Which way the layers move is the model's judgement (since 2026-10-07
+	// there is no offline appraiser that counted words); what the runtime owes it is the work's outcome,
+	// told apart, on the same request.
+	const shown = async (turn: TurnOutcome): Promise<string[]> => {
 		const personaPath = freshPersona();
-		const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
-		// The request is neutral on purpose, so that anything that moves is the work and not the words.
+		const seen: string[] = [];
+		const appraiser = {
+			appraise: async (input: { observation: string }): Promise<AppraisalSignal> => {
+				seen.push(input.observation);
+				return { appraisal: "", mutations: [], memories: [], confidence: 1 };
+			},
+		};
+		const loop = new LivingLoop(personaPath, { appraiser });
 		await loop.tick({ observation: "Build me a small game about a cat.", source: "user" });
 		const experience = run.experienceOf(turn);
 		if (experience) await loop.tick({ observation: experience, source: "internal", actor: "runtime-context" });
-		return ensureState(loadPersona(personaPath)).values["mood.tone"]!;
+		return seen;
 	};
 
-	it("moves the layers apart when the work passed its checks and when it failed them", async () => {
-		const passed = await toneAfter(outcome({ delivered: { checks: [check(true, "game.html")], unverified: [] } }));
-		const failed = await toneAfter(outcome({ delivered: { checks: [check(false, "game.html")], unverified: [] } }));
-		const nothing = await toneAfter(outcome({}));
+	it("shows the appraiser how the work went, and the two outcomes read differently", async () => {
+		const passed = await shown(outcome({ delivered: { checks: [check(true, "game.html")], unverified: [] } }));
+		const failed = await shown(outcome({ delivered: { checks: [check(false, "game.html")], unverified: [] } }));
+		const nothing = await shown(outcome({}));
 
-		expect(passed).toBeGreaterThan(0);
-		expect(failed).toBeLessThan(0);
-		// And a turn with nothing to observe leaves the layers where the request left them.
-		expect(nothing).toBe(0);
+		expect(passed).toHaveLength(2);
+		expect(failed).toHaveLength(2);
+		expect(passed[1]).not.toBe(failed[1]);
+		expect(passed[1]).toMatch(/checked and it works/);
+		expect(failed[1]).toMatch(/checked and failed 1 of 1/);
+		// And a turn with nothing to observe shows only the request.
+		expect(nothing).toHaveLength(1);
 	});
 });

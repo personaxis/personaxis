@@ -476,7 +476,7 @@ function schemaFix(e: ErrorObject): string {
   switch (e.keyword) {
     case "required": {
       const prop = (e.params as { missingProperty?: string }).missingProperty ?? "the field";
-      return `Add the missing field '${prop}' ${at}. \`personaxis template\` prints a scaffold with every MUST field in place.`;
+      return `Add the missing field '${prop}' ${at}. \`personaxis spec\` shows every MUST field.`;
     }
     case "type": {
       const want = (e.params as { type?: string }).type ?? "the declared type";
@@ -538,7 +538,7 @@ export function validatePersona(data: unknown): ValidationResult {
           field: "",
           message: "PERSONA frontmatter is not an object.",
           category: "FAIL_SCHEMA",
-          fix: "The file needs a YAML frontmatter block (--- ... ---) holding the persona document. `personaxis template` prints a valid one.",
+          fix: "The file needs a YAML frontmatter block (--- ... ---) holding the persona document. `personaxis init` has a model write a valid one.",
         },
       ],
       warnings: [],

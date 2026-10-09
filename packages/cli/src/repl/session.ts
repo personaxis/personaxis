@@ -8,12 +8,8 @@
  */
 
 import { stdout } from "node:process";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve, join, dirname } from "node:path";
 import {
   run,
-  loadPersona,
-  stateOf,
   displayName,
   readMode,
   personaTheme,
@@ -25,55 +21,72 @@ import {
   fallbackName,
   nameSession,
   makeRecompileHook,
-  activeOverlay,
-  readState,
-  readMemoryTypes,
-  readWritePolicy,
-  readConsolidationMode,
-  readMemoryKnobs,
+  markRecompilePending,
   closeSessionMemory,
-  consolidateSemantic,
-  pruneMemory,
   listSessions,
   findSession,
   loadConversation,
   readSession,
-  readAutobiographical,
-  appendAutobiographical,
   recordSessionStats,
   type ContextMeter,
   type SessionSummary,
   type SessionKind,
 } from "@personaxis/core";
 import chalk from "chalk";
-import { isSubagentPath, slugAddressFromPath, compiledPathFor } from "../load.js";
-import { liveCompiledDocument } from "../compiled-document.js";
+import { existsSync, readFileSync } from "node:fs";
+import { compiledPathFor, isSubagentPath, slugAddressFromPath } from "../load.js";
+import { runCompile } from "../commands/compile.js";
 import { replyLine, userLine } from "./render.js";
 import type { Ctx } from "./types.js";
 import type { LineRole } from "@personaxis/tui/screen";
-import { POSTURES, pickAppraiser, pickResponder, llmConfig, ctxModelArg } from "./config.js";
+import { POSTURES, pickResponder, llmConfig, ctxModelArg } from "./config.js";
 
 /**
- * What the living loop runs when a band is crossed: the compiled document, rewritten in place.
+ * The compiled document as it is on disk now, kept on the context. Read every turn because the model
+ * rewrites it in the background (`rewriteInBackground`); until 2026-10-07 the session read it once at
+ * start, so even the old inline rewrite reached the model only in the next session.
+ */
+export function freshPersonaDoc(ctx: Pick<Ctx, "handle" | "personaDoc">): string {
+  const path = compiledPathFor(ctx.handle.personaPath);
+  if (existsSync(path)) ctx.personaDoc = readFileSync(path, "utf-8");
+  return ctx.personaDoc;
+}
+
+/** Personas whose document a model is rewriting right now, so a second crossing does not start another. */
+const rewriting = new Set<string>();
+
+/**
+ * What the living loop runs when a band is crossed: the document is marked stale and a model rewrites it
+ * after the turn, in the background.
  *
- * E92: the document `compile` writes, minus the model polish, from `compiled-document.ts`. It was
- * assembled inline in `makeCtx` without the resource manifest, the sub-persona header or the skill
- * list, so the first band a persona crossed erased from its identity what it could see it had.
- * Named and exported so that promise is checked against a real compile, not against a copy of it.
+ * Until 2026-10-07 the code rewrote it in place with the assembled template, so a turn never waited on a
+ * model (and E92 made that template match a compile's). Now the compiled document is always a model's, so
+ * the crossing marks it pending and starts the same `compile` the command runs, quiet, once at a time; the
+ * turn does not wait, and the next turn reads the new document (`freshPersonaDoc`). A failed rewrite leaves
+ * the mark, so the next crossing or `personaxis compile --if-pending` tries again. Named and exported so the
+ * promise is checked against the hook the session hands the loop, not against a copy of it.
  */
 export function recompileHookFor(personaPath: string, compiledPath: string): ReturnType<typeof makeRecompileHook> {
-  return makeRecompileHook({
-    // Always pass the canonical path: the hook itself no-ops while the file does not
-    // exist, and starts keeping it fresh the moment the first /compile creates it.
-    compiledPath,
-    assemble: (h) =>
-      liveCompiledDocument(personaPath, h.frontmatter as Record<string, unknown>, {
-        appliedOverlay: activeOverlay(personaPath),
-        // Undefined when the persona has not started. Building a session must not
-        // bring one into existence as a side effect of describing it.
-        stateValues: stateOf(h)?.values,
-      }),
-  });
+  const marker = makeRecompileHook({ compiledPath });
+  return async (handle) => {
+    await marker(handle);
+    markRecompilePending(personaPath, "a band was crossed in a session");
+    rewriteInBackground(personaPath);
+  };
+}
+
+/**
+ * Start the model's rewrite of a stale PERSONA.md without waiting for it: quiet, one at a time per persona,
+ * and only while it is marked pending. Returns true when one is running (started now or before). A failure
+ * leaves the mark for the next try.
+ */
+export function rewriteInBackground(personaPath: string): boolean {
+  if (rewriting.has(personaPath)) return true;
+  rewriting.add(personaPath);
+  void runCompile({ sourcePath: personaPath, ifPending: true, quiet: true })
+    .catch(() => undefined)
+    .finally(() => rewriting.delete(personaPath));
+  return true;
 }
 
 /**

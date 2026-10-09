@@ -13,12 +13,12 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import chalk from "chalk";
 import { makeCtx } from "../src/repl/session.js";
 import { makeMeter } from "../src/repl/config.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { daemonLines } from "../src/repl/views/settings-data.js";
+import { modelEnv, runCli, startFakeModel } from "./helpers/fake-model.js";
 
 chalk.level = 0;
 const CLI = join(process.cwd(), "dist", "index.js");
@@ -36,7 +36,7 @@ afterEach(() => {
 
 describe("the Daemons view explains itself (V7.H2)", () => {
   it("with none running, it says what each daemon is FOR", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Clio"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Clio"), makeMeter());
     const text = daemonLines(ctx).join("\n");
     expect(text).toContain("none running");
     // Purpose before mechanics: a reader must learn what these are without reading source.
@@ -48,7 +48,7 @@ describe("the Daemons view explains itself (V7.H2)", () => {
   });
 
   it("with one running, it reports purpose, pid, uptime, port, binding and token posture", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Clio"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Clio"), makeMeter());
     ctx.bg = { serve: { pid: 4242, exitCode: null } as never };
     ctx.daemonInfo = {
       serve: {
@@ -70,20 +70,20 @@ describe("the Daemons view explains itself (V7.H2)", () => {
   });
 
   it("a finished daemon is not reported as running", () => {
-    const ctx = makeCtx(writeStarterPersona(dir, "Clio"), makeMeter());
+    const ctx = makeCtx(writeTestPersona(dir, "Clio"), makeMeter());
     ctx.bg = { watch: { pid: 1, exitCode: 0 } as never };
     expect(daemonLines(ctx).join("\n")).toContain("none running");
   });
 });
 
 describe("a background run is a REAL session (V7.H3)", () => {
-  it("writes a transcript, labelled `background`, under the id it reported", () => {
-    const persona = writeStarterPersona(dir, "Clio", "rev");
-    const r = spawnSync(
-      process.execPath,
-      [CLI, "-p", "what is your role?", "--persona", persona, "--output-format", "stream-json"],
-      { cwd: dir, encoding: "utf-8", env: { ...process.env, PERSONAXIS_HOME: home } },
-    );
+  it("writes a transcript, labelled `background`, under the id it reported", async () => {
+    const persona = writeTestPersona(dir, "Clio", "rev");
+    const model = await startFakeModel();
+    const r = await runCli(CLI, ["-p", "what is your role?", "--persona", persona, "--output-format", "stream-json"], {
+      cwd: dir,
+      env: { PERSONAXIS_HOME: home, ...modelEnv(model) },
+    }).finally(() => model.close());
     const init = (r.stdout ?? "")
       .split("\n")
       .map((l) => {

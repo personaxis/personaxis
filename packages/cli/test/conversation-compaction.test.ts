@@ -28,7 +28,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ContextMeter } from "@personaxis/core";
 import { makeCtx } from "../src/repl/session.js";
 import { maybeAutoCompact } from "../src/repl/turn.js";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 let dir: string;
 let home: string | undefined;
@@ -81,7 +81,7 @@ function conversing(turns: number): { role: string; content: string }[] {
 
 function sessionAt(fraction: number, turns: number) {
 	const meter = new ContextMeter(WINDOW);
-	const ctx = makeCtx(writeStarterPersona(dir, "Clio"), meter);
+	const ctx = makeCtx(writeTestPersona(dir, "Clio"), meter);
 	ctx.conversation = conversing(turns) as never;
 	meter.used = Math.round(WINDOW * fraction);
 	const shown: string[] = [];

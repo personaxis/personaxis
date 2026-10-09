@@ -23,8 +23,7 @@ vi.mock("../src/model-config.js", async (importOriginal) => ({
 	resolveModel,
 }));
 
-import { HeuristicAppraiser } from "../src/heuristic-appraiser.js";
-import { LlmAppraiser } from "../src/llm-appraiser.js";
+import { ModelRequiredError } from "../src/model-config.js";
 import { loadPersona, type StateFile } from "../src/persona.js";
 import { appraiserFor, evolverFor } from "../src/run/evolving.js";
 
@@ -62,36 +61,65 @@ body
 	writeFileSync(handle.statePath, JSON.stringify(state, null, 2));
 });
 
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(() => {
+	vi.unstubAllGlobals();
+	rmSync(dir, { recursive: true, force: true });
+});
 
 const facts = () => ({ personaPath, frontmatter: { runtime: {} } as Record<string, unknown> });
 
 describe("the appraiser is the persona's", () => {
-	it("uses the model it declared when there is one", () => {
-		resolveModel.mockReturnValue({ endpoint: "http://model.invalid", model: "m", apiKey: "k" });
+	const input = {
+		observation: "the review found two missing tests",
+		source: "user" as const,
+		personaBody: "You are Lens.",
+		mutableFields: [],
+	};
 
-		expect(appraiserFor(facts())).toBeInstanceOf(LlmAppraiser);
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("asks the model the persona declared, at the moment it appraises", async () => {
+		resolveModel.mockReturnValue({ endpoint: "http://model.invalid/v1", model: "m", apiKey: "k" });
+		const urls: string[] = [];
+		vi.stubGlobal("fetch", async (url: string) => {
+			urls.push(String(url));
+			throw new Error("network off in tests");
+		});
+
+		await appraiserFor(facts()).appraise(input).catch(() => undefined);
+
+		expect(urls.some((u) => u.startsWith("http://model.invalid/v1"))).toBe(true);
 	});
 
-	it("falls back to the heuristic one when there is none, rather than refusing to run", () => {
-		// Offline is not a lesser mode. It is the reason a persona with no model
-		// configured is still governed: every clamp, gate and audit downstream is
-		// identical either way, and only the proposal changes.
-		expect(appraiserFor(facts())).toBeInstanceOf(HeuristicAppraiser);
+	it("refuses when there is no model, instead of guessing from word counts", async () => {
+		// Decided by David on 2026-10-07: an appraisal is a model's judgement or it is nothing.
+		// The keyword appraiser that stood in for it counted words like "good" and "fail".
+		await expect(appraiserFor(facts()).appraise(input)).rejects.toBeInstanceOf(ModelRequiredError);
 	});
 
-	it("asks about THIS persona, not about whatever the process is pointed at", () => {
-		appraiserFor({ ...facts(), cwd: "/somewhere/else" });
+	it("picks up a model configured after the session started", async () => {
+		const appraiser = appraiserFor(facts());
+		await expect(appraiser.appraise(input)).rejects.toBeInstanceOf(ModelRequiredError);
+
+		resolveModel.mockReturnValue({ endpoint: "http://model.invalid/v1", model: "m", apiKey: "k" });
+		vi.stubGlobal("fetch", async () => {
+			throw new Error("network off in tests");
+		});
+		await expect(appraiser.appraise(input)).rejects.not.toBeInstanceOf(ModelRequiredError);
+	});
+
+	it("asks about THIS persona, not about whatever the process is pointed at", async () => {
+		await appraiserFor({ ...facts(), cwd: "/somewhere/else" }).appraise(input).catch(() => undefined);
 
 		expect(resolveModel).toHaveBeenCalledWith(
 			expect.objectContaining({ personaPath, cwd: "/somewhere/else" }),
 		);
 	});
 
-	it("leaves the working directory unnamed when the caller did not name one", () => {
+	it("leaves the working directory unnamed when the caller did not name one", async () => {
 		// `resolveModel` defaults it, and passing an explicit `undefined` is not the
 		// same as passing nothing to a function that reads its own default.
-		appraiserFor(facts());
+		await appraiserFor(facts()).appraise(input).catch(() => undefined);
 
 		expect(resolveModel).toHaveBeenCalledWith(expect.not.objectContaining({ cwd: undefined }));
 	});
@@ -134,6 +162,9 @@ describe("what the consumer holds", () => {
 		// The old shape handed back an object and every caller then did `loop.bus.on`.
 		// That works only because all four happened to remember, and a caller that
 		// attached after its first tick would have seen an empty stream with no error.
+		resolveModel.mockReturnValue({ endpoint: "http://model.invalid/v1", model: "m", apiKey: "k" });
+		const appraisal = { appraisal: "", mutations: [], memories: [], confidence: 0.9 };
+		vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(appraisal) } }] }), { status: 200 }));
 		const seen: string[] = [];
 		const evolver = evolverFor(facts(), {
 			recompile: null,

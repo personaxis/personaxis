@@ -7,9 +7,8 @@
  * identity (PERSONA.md), recent memory, and current mood, and bound by the spec
  * (never claims real feelings).
  *
- * `LlmResponder` talks to any OpenAI-compatible endpoint (Ollama/llama.cpp/hosted).
- * `ReflectiveResponder` is an offline fallback: it doesn't fake a conversation, it
- * gives an honest persona-flavored acknowledgement and points to enabling a model.
+ * `LlmResponder` talks to any OpenAI-compatible endpoint (Ollama/llama.cpp/hosted). There is no
+ * offline responder: without a model, a persona does not answer (`ModelRequiredError`).
  */
 
 import { withModelClock } from "./run/model-clock.js";
@@ -148,26 +147,5 @@ export class LlmResponder implements Responder {
       }
     }
     return full.trim() || "(the model returned an empty reply, try rephrasing, or check the model/endpoint)";
-  }
-}
-
-/**
- * Offline fallback. It does NOT pretend to converse, it reflects the persona's
- * current modeled tone honestly and nudges the user to enable a model for real
- * dialogue. Deterministic, dependency-free.
- */
-export class ReflectiveResponder implements Responder {
-  async respond(input: RespondInput): Promise<string> {
-    const tone = input.state["mood.tone"] ?? 0;
-    const mood = tone > 0.12 ? "upbeat" : tone < -0.12 ? "subdued" : "even";
-    // The known facts lead the memory lines (e.g. "interlocutor.name: X"). Even
-    // offline, the persona addresses a KNOWN party by name, whatever the subject,
-    // cross-session recall made visible (not limited to a "user").
-    const known = input.memory.map((l) => /^[\w:.-]*\.?name:\s*(.+)$/.exec(l)?.[1]).find(Boolean);
-    return (
-      `(${input.name}, modeled tone: ${mood})${known ? ` Noted, ${known}.` : ""} I registered that and updated my state + memory. ` +
-      `I can't hold a full conversation without a model, set PERSONAXIS_ENDPOINT + PERSONAXIS_MODEL ` +
-      `(Ollama/llama.cpp) or BYOK to talk with me for real.`
-    );
   }
 }

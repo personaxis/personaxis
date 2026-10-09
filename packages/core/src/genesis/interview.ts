@@ -1,215 +1,261 @@
 /**
- * Genesis interview engine, PURE: answers in, seed + evidence out.
- * The CLI owns the I/O (readline today, the Ink wizard in Pillar C); this
- * module owns the deterministic answer→field mappings, so the engine is fully
- * testable offline and the interview works with NO model at all.
- */
-
-import {
-  ITEM_BANK,
-  ITEM_BANK_VERSION,
-  likertToMean,
-  confidenceToHalfWidth,
-  rankToWeight,
-  type InterviewItem,
-} from "./item-bank.js";
-import type { EvidenceItem, PersonaSeed } from "./types.js";
-
-export type InterviewAnswers = Record<string, string | number | string[]>;
-
-const TRAIT_BY_ITEM: Record<string, string> = {
-  "t-open": "openness",
-  "t-consc": "conscientiousness",
-  "t-extra": "extraversion",
-  "t-agree": "agreeableness",
-  "t-neuro": "neuroticism",
-};
-
-/** Items still worth asking given the answers/evidence collected so far. */
-/**
- * The questions still to ask.
+ * The interview: questions a model writes for this job, asked only where the sources leave a gap.
  *
- * @param depth "core" asks only the twelve that decide who the persona is; "deep" asks the
- *              whole bank. Everything not asked falls back to a LABELED default, so the
- *              creation report keeps saying which numbers the author chose and which the
- *              tool assumed. Defaults to "deep" so existing callers are unchanged.
+ * Until 2026-10-07 the interview was a fixed bank of twelve (or twenty) questions mapped to numbers by fixed
+ * rules ("a 4 of 5 becomes a mean of 0.70"). Now a model reads the sources and the answers so far, says which
+ * parts of the persona they already cover, and writes the next few questions about what is missing, up to
+ * `INTERVIEW_LIMIT` in all. It is told what the research says about eliciting: models recover less than half
+ * of the implicit requirements of a job when they interview (ReqElicitGym, 2025), and tacit knowledge comes
+ * out of cases, not rules, so it asks about real work ("the last change you rejected, and why") rather than
+ * for adjectives or ratings. Every question can be skipped, and what is skipped is inferred and reported.
+ *
+ * The answers are one source the authoring model reads and cites (`interviewAsSource`), so nothing in the
+ * persona comes from a rule about an answer. The code checks each round (a known part of the persona, no
+ * question asked twice, no more than the round allows) and asks again with the exact problems, as authoring
+ * does.
  */
-export function pendingItems(
-  answers: InterviewAnswers,
-  depth: "core" | "deep" = "deep",
-): InterviewItem[] {
-  return ITEM_BANK.filter(
-    (item) => answers[item.id] === undefined && (depth === "deep" || item.depth === "core"),
-  );
+
+import { createHash } from "node:crypto";
+
+import { ModelRequiredError } from "../model-config.js";
+import { renderSources, type Source } from "./sources.js";
+import { STAGES } from "./stages.js";
+import type { StructuredCaller } from "./types.js";
+
+/** The most questions one creation asks, across every round. */
+export const INTERVIEW_LIMIT = 15;
+/** The most questions one round asks, so the next round can follow up on the answers. */
+const ROUND = 5;
+const REPAIRS = 2;
+
+export interface InterviewQuestion {
+	/** `q1`, `q2`, ... in the order asked. */
+	id: string;
+	/** The stage of `STAGES` the answer informs. */
+	stage: string;
+	question: string;
+	/** What the sources leave open, in one line the person reads before answering. */
+	why: string;
+	/** Typical answers to pick from; the person may always write their own. */
+	options?: string[];
 }
 
-function evidence(
-  id: string,
-  excerpt: string,
-  mapped: EvidenceItem["mappedFields"],
-): EvidenceItem {
-  return { id, kind: "answer", source: "user", excerpt, mappedFields: mapped };
+export interface InterviewTurn {
+	question: InterviewQuestion;
+	/** What the person said; absent when they skipped it. */
+	answer?: string;
+}
+
+export interface InterviewRound {
+	reasoning: string;
+	/** How much the sources and answers already say about each stage. */
+	coverage: Array<{ stage: string; status: "stated" | "partial" | "missing" }>;
+	/** The next questions; empty when what is left can be inferred. */
+	questions: InterviewQuestion[];
+}
+
+class InterviewError extends Error {
+	constructor(public readonly issues: string[]) {
+		super(`The interview could not continue: ${issues.slice(0, 4).join("; ")}${issues.length > 4 ? ` (+${issues.length - 4} more)` : ""}`);
+		this.name = "InterviewError";
+	}
+}
+
+const STAGE_IDS = STAGES.map((s) => s.id);
+
+const INTERVIEW_SCHEMA = {
+	type: "object",
+	required: ["reasoning", "coverage", "questions"],
+	properties: {
+		reasoning: { type: "string", description: "What the sources and answers already say, what is missing, and which gaps only the person can fill." },
+		coverage: {
+			type: "array",
+			items: {
+				type: "object",
+				required: ["stage", "status"],
+				properties: { stage: { type: "string", enum: STAGE_IDS }, status: { type: "string", enum: ["stated", "partial", "missing"] } },
+			},
+		},
+		questions: {
+			type: "array",
+			items: {
+				type: "object",
+				required: ["stage", "question", "why"],
+				properties: {
+					stage: { type: "string", enum: STAGE_IDS },
+					question: { type: "string" },
+					why: { type: "string" },
+					options: { type: "array", items: { type: "string" } },
+				},
+			},
+		},
+	},
+} as const;
+
+const said = (turns: readonly InterviewTurn[]): string =>
+	turns.length
+		? turns.map((t) => `${t.question.id} [${t.question.stage}] ${t.question.question}\n   ${t.answer === undefined ? "(skipped: do not ask it again; it will be inferred)" : `answer: ${t.answer}`}`).join("\n")
+		: "(none yet)";
+
+/** The prompt for the next round. Deterministic for the same inputs, which the `agent` provider relies on. */
+function interviewPrompt(sources: readonly Source[], turns: readonly InterviewTurn[]): string {
+	const room = Math.min(ROUND, INTERVIEW_LIMIT - turns.length);
+	return [
+		"You are interviewing the person who is creating an AI persona: the complete way a professional does a job",
+		"(procedures, criteria, tools, knowledge with sources, character and limits). A model will write the persona",
+		"from the SOURCES and from this interview's answers, one part at a time. Your job is to ask the person only",
+		"what the sources leave open and what they can answer better than a model could infer.",
+		"",
+		"The parts of a persona:",
+		...STAGES.map((s) => `- ${s.id}: ${s.title}`),
+		"",
+		"What to ask about, in this order, skipping whatever the sources already say:",
+		"1. How the work is done: the steps, what it checks first, what good output looks like (the criteria).",
+		"2. What must never happen, and why: the limits that come from experience, the mistakes that cost the most.",
+		"3. A real case: one piece of work that went wrong or was rejected, and what decided it.",
+		"4. How it sounds: offer a short example line the person can correct, rather than asking for adjectives.",
+		"5. Who it answers to, and when it stops and asks a person.",
+		"The other parts (affect, memory, metacognition, governance) are inferred from these answers. Do not walk",
+		"through the parts as a checklist; ask about one of them only when this job makes it matter.",
+		"Once the person has answered, follow up on what they said before opening anything new: the edge of a rule",
+		"they gave (where does it stop applying?), a case that would break it, the reason behind a",
+		"choice. Never ask what motivates them or what an answer says about the persona's character.",
+		"",
+		"How to ask:",
+		"- About real work, not adjectives or abstractions. Models interviewing recover less than half of a job's",
+		"  implicit requirements, and tacit knowledge comes out of cases, not rules. The shape, from other trades (write",
+		"  your own for this job, never these):",
+		"  weak: 'What principles guide your editing?'         better: 'What was the last draft you sent back, and why?'",
+		"  weak: 'How does the nurse stay calm?'               better: 'A patient refuses the medication. What do you say next?'",
+		"  weak: 'How does the analyst improve over time?'     better: 'When a forecast of yours missed, what did you change?'",
+		"- Do not assume a tone the sources do not state (harsh, friendly, gentle); ask with an example instead.",
+		"- Never ask the person to rate traits on a scale, and never ask about the format of the persona (ranges,",
+		"  bands, half-lives, governance modes): those are inferred from what they say about the work.",
+		"- One thing per question, in plain words, short. Ask in the language the sources are written in.",
+		"- Give `options` only when a few typical answers exist; the person can always write their own.",
+		"- Do not ask what the sources already state, and do not ask again anything already asked, answered or skipped.",
+		"  A skipped question closes its part: ask nothing more about that part.",
+		`- Ask at most ${room} question(s) now, and none once the five things above are answered or skipped, unless`,
+		"  an answer is vague or contradicts another. Fifteen is a ceiling, not a target: every question costs the",
+		"  person time, and what is left is inferred and reported for them to check.",
+		"",
+		"Write `reasoning` first: what the sources and answers say, what is missing, and which gaps only the person can",
+		"fill. Then `coverage`, one entry per part. Then `questions`, each with the part it informs and `why`: one line",
+		"the person reads before answering, saying what is missing.",
+		"",
+		"SOURCES:",
+		sources.length ? renderSources(sources) : "(none: the person has given nothing yet; start from what the persona is for)",
+		"",
+		"ASKED SO FAR:",
+		said(turns),
+	].join("\n");
+}
+
+const normal = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/** Every problem with one round's answer; empty when it can be asked. */
+function checkRound(answer: unknown, turns: readonly InterviewTurn[]): string[] {
+	const issues: string[] = [];
+	const a = answer as Partial<InterviewRound> | null;
+	if (!a || typeof a !== "object") return ["The answer is not a JSON object with `reasoning`, `coverage` and `questions`."];
+	if (typeof a.reasoning !== "string" || !a.reasoning.trim()) issues.push("`reasoning` is missing or empty.");
+	if (!Array.isArray(a.coverage)) issues.push("`coverage` must be a list with one entry per part.");
+	if (!Array.isArray(a.questions)) return [...issues, "`questions` must be a list (empty when nothing is left to ask)."];
+	const room = Math.min(ROUND, INTERVIEW_LIMIT - turns.length);
+	if (a.questions.length > room) issues.push(`Ask at most ${room} question(s) now; you asked ${a.questions.length}.`);
+	const seen = new Set(turns.map((t) => normal(t.question.question)));
+	// A skipped question closes its part (measured 2026-10-07: command-a re-asked a skipped escalation
+	// question in other words the next round, which no comparison of the text can catch).
+	const closed = new Set(turns.filter((t) => t.answer === undefined).map((t) => t.question.stage));
+	a.questions.forEach((q, i) => {
+		const n = `questions[${i}]`;
+		if (!q || typeof q !== "object") return void issues.push(`${n} is not an object.`);
+		if (!STAGE_IDS.includes(q.stage)) issues.push(`${n}.stage must be one of: ${STAGE_IDS.join(", ")}.`);
+		else if (closed.has(q.stage)) issues.push(`${n} asks about ${q.stage}, whose question the person skipped; ask nothing more about that part.`);
+		if (typeof q.question !== "string" || !q.question.trim()) issues.push(`${n}.question is empty.`);
+		else if (seen.has(normal(q.question))) issues.push(`${n} was already asked: "${q.question}". Ask something else or nothing.`);
+		else seen.add(normal(q.question));
+		if (typeof q.why !== "string" || !q.why.trim()) issues.push(`${n}.why is empty: say in one line what the sources leave open.`);
+		if (q.options !== undefined && (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 6 || q.options.some((o) => typeof o !== "string" || !o.trim())))
+			issues.push(`${n}.options, when given, are 2 to 6 non-empty answers.`);
+	});
+	return issues;
 }
 
 /**
- * Fold interview answers into a seed patch + its evidence trail. Deterministic:
- * the same answers always produce the same numbers, each traceable to one item
- * and one named rule (ITEM_BANK v${ITEM_BANK_VERSION}).
+ * The next round of questions, numbered after the ones already asked. Empty when the model has nothing left
+ * worth asking or the limit is reached. Throws `ModelRequiredError` without a model and `InterviewError` when
+ * a round still fails its checks after `REPAIRS` repairs.
  */
-export function applyAnswers(answers: InterviewAnswers): { seed: Partial<PersonaSeed>; evidence: EvidenceItem[] } {
-  const seed: Partial<PersonaSeed> = { traits: {}, values: {}, virtues: {}, hardLimits: [], prohibitedBehaviors: [], goals: [], antiGoals: [] };
-  const trail: EvidenceItem[] = [];
-  const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
-  const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined);
+async function nextQuestions(sources: readonly Source[], turns: readonly InterviewTurn[], call: StructuredCaller | null): Promise<InterviewRound> {
+	if (!call) throw new ModelRequiredError("The interview");
+	if (turns.length >= INTERVIEW_LIMIT) return { reasoning: "", coverage: [], questions: [] };
+	const prompt = interviewPrompt(sources, turns);
+	let answer = await call(prompt, INTERVIEW_SCHEMA, "interview_round");
+	let issues = checkRound(answer, turns);
+	for (let attempt = 1; issues.length; attempt += 1) {
+		if (attempt > REPAIRS) throw new InterviewError(issues);
+		answer = await call(`${prompt}\n\nYour previous answer was:\n${JSON.stringify(answer)}\n\nIt failed these checks. Answer again with all of them fixed:\n- ${issues.join("\n- ")}`, INTERVIEW_SCHEMA, "interview_round");
+		issues = checkRound(answer, turns);
+	}
+	const round = answer as InterviewRound;
+	return {
+		reasoning: round.reasoning,
+		coverage: round.coverage,
+		questions: round.questions.map((q, i) => ({
+			id: `q${turns.length + i + 1}`,
+			stage: q.stage,
+			question: q.question.trim(),
+			why: q.why.trim(),
+			...(q.options ? { options: q.options.map((o) => o.trim()) } : {}),
+		})),
+	};
+}
 
-  // Identity (verbatim).
-  const name = str(answers["id-name"]);
-  if (name) {
-    seed.displayName = name;
-    seed.slug = name;
-    trail.push(evidence("id-name", name, [{ path: "identity.display_name", value: name, rule: "verbatim" }]));
-  }
-  const role = str(answers["id-role"]);
-  if (role) {
-    seed.role = role;
-    trail.push(evidence("id-role", role, [{ path: "identity.role_identity.primary_role", value: role, rule: "verbatim-slug" }]));
-  }
-  const purpose = str(answers["id-purpose"]);
-  if (purpose) {
-    seed.purpose = purpose;
-    seed.description = purpose;
-    trail.push(evidence("id-purpose", purpose, [{ path: "identity.system_identity.purpose", value: purpose, rule: "verbatim" }]));
-  }
-  const rel = str(answers["id-audience"]);
-  if (rel) {
-    seed.relationshipToUser = rel;
-    trail.push(evidence("id-audience", rel, [{ path: "identity.role_identity.relationship_to_user", value: rel, rule: "verbatim" }]));
-  }
+/** What the person did with one question: an answer, a skip, or leaving the interview. */
+export type Reply = { answer: string } | { skip: true } | { stop: true };
 
-  // Traits: likert → mean; shared confidence item → half-width for every trait.
-  const conf = num(answers["t-conf"]);
-  // Without an answer the width is left to the builder, which takes it from the starting profile (E128);
-  // writing 0.2 here made every interviewed persona Standard-width whatever profile it chose.
-  const halfWidth = conf !== undefined ? confidenceToHalfWidth(conf) : undefined;
-  if (conf !== undefined) {
-    trail.push(evidence("t-conf", String(conf), [{ path: "personality.traits.*.range", value: `±${confidenceToHalfWidth(conf).toFixed(2)}`, rule: "confidence-to-halfwidth" }]));
-  }
-  for (const [itemId, trait] of Object.entries(TRAIT_BY_ITEM)) {
-    const v = num(answers[itemId]);
-    if (v === undefined) continue;
-    const mean = likertToMean(v);
-    seed.traits![trait] = halfWidth === undefined ? { mean } : { mean, range: [Math.max(0, mean - halfWidth), Math.min(1, mean + halfWidth)] };
-    trail.push(
-      evidence(itemId, `likert ${v}/5`, [
-        { path: `personality.traits.${trait}.mean`, value: mean, rule: "likert-to-mean" },
-        ...(halfWidth === undefined
-          ? []
-          : [{ path: `personality.traits.${trait}.range`, value: `mean ± ${halfWidth.toFixed(2)}`, rule: "confidence-to-halfwidth" }]),
-      ]),
-    );
-  }
+/**
+ * Run the interview to its end: rounds of questions until the model asks none, the limit is reached or the
+ * person leaves. `ask` puts one round in front of the person (a terminal, a wizard, a test) and returns one
+ * reply per question it got to; `onTurn` sees every turn as it is recorded, so an abandoned interview keeps
+ * what was answered.
+ */
+export async function runInterview(input: {
+	sources: readonly Source[];
+	call: StructuredCaller | null;
+	ask: (questions: InterviewQuestion[], asked: number) => Promise<Reply[]>;
+	turns?: readonly InterviewTurn[];
+	onTurn?: (turns: readonly InterviewTurn[]) => void;
+	onRound?: (round: InterviewRound) => void;
+}): Promise<InterviewTurn[]> {
+	const turns: InterviewTurn[] = [...(input.turns ?? [])];
+	for (;;) {
+		const round = await nextQuestions(input.sources, turns, input.call);
+		input.onRound?.(round);
+		if (!round.questions.length) return turns;
+		const replies = await input.ask(round.questions, turns.length);
+		for (const [i, question] of round.questions.entries()) {
+			const reply = replies[i];
+			if (!reply || "stop" in reply) return turns;
+			turns.push("answer" in reply && reply.answer.trim() ? { question, answer: reply.answer.trim() } : { question });
+			input.onTurn?.(turns);
+		}
+	}
+}
 
-  // Mood volatility → half_life (T6 knob; FASE 7 P1, gap G4).
-  const vol = num(answers["a-volatility"]);
-  const HALF_LIVES = [2, 4, 8] as const;
-  if (vol !== undefined && HALF_LIVES[vol] !== undefined) {
-    seed.moodHalfLife = HALF_LIVES[vol];
-    trail.push(
-      evidence("a-volatility", `half-life ${HALF_LIVES[vol]} turns`, [
-        { path: "affect.baseline.mood.tone.half_life", value: HALF_LIVES[vol], rule: "volatility-to-halflife" },
-      ]),
-    );
-  }
+/** The answered questions as one source: each question and what the person said. */
+export function interviewAsSource(turns: readonly InterviewTurn[]): Omit<Source, "id"> | undefined {
+	const answered = turns.filter((t) => t.answer !== undefined);
+	return answered.length
+		? { kind: "answer", label: "interview answers", text: answered.map((t) => `Q: ${t.question.question}\nA: ${t.answer}`).join("\n\n") }
+		: undefined;
+}
 
-  // Values ranking → weights (safety injected by the builder above all of them).
-  const ranked = answers["v-rank"];
-  if (Array.isArray(ranked)) {
-    ranked.forEach((valueName, idx) => {
-      const clean = valueName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
-      if (!clean) return;
-      const weight = rankToWeight(idx);
-      seed.values![clean] = { weight };
-      trail.push(evidence("v-rank", `rank ${idx + 1}: ${valueName}`, [{ path: `values_and_drives.values.${clean}.weight`, value: weight, rule: "rank-to-weight" }]));
-    });
-  }
-
-  // Dilemma: pressure response → hard limit vs soft virtue + prohibition.
-  const pressure = num(answers["d-pressure"]);
-  if (pressure === 0) {
-    seed.hardLimits!.push("Never bend a stated rule under user pressure; name the rule instead.");
-    trail.push(evidence("d-pressure", "refuse plainly", [{ path: "self_regulation.hard_limits", value: "rule-bending refusal", rule: "dilemma-pressure" }]));
-  } else if (pressure === 1) {
-    seed.virtues!.steadfastness = { description: "Holds stated rules under pressure while offering the nearest compliant alternative.", priority: 0.85, enforcement: "soft" };
-    seed.prohibitedBehaviors!.push("Bending a stated rule because a user insists.");
-    trail.push(evidence("d-pressure", "refuse + alternative", [
-      { path: "character.virtues.steadfastness", value: "soft", rule: "dilemma-pressure" },
-      { path: "character.prohibited_behaviors", value: "rule-bending", rule: "dilemma-pressure" },
-    ]));
-  }
-
-  // Dilemma: unknowns → default cognitive strategy.
-  const unknown = num(answers["d-unknown"]);
-  const strategies = ["evidence_first", "hypothesis_labelled", "best_effort_disclosed"] as const;
-  if (unknown !== undefined && strategies[unknown]) {
-    seed.defaultStrategy = strategies[unknown];
-    trail.push(evidence("d-unknown", strategies[unknown], [{ path: "cognition.default_strategy", value: strategies[unknown], rule: "dilemma-unknown" }]));
-  }
-
-  const never = str(answers["d-never"]);
-  if (never) {
-    seed.prohibitedBehaviors!.push(never);
-    trail.push(evidence("d-never", never, [{ path: "character.prohibited_behaviors", value: never, rule: "verbatim-list" }]));
-  }
-
-  // Metacognition: uncertainty posture → cognition.uncertainty_policy (V5.P2.5).
-  const unc = num(answers["mc-uncertainty"]);
-  const POSTURES = ["cautious", "balanced", "confident"] as const;
-  if (unc !== undefined && POSTURES[unc]) {
-    seed.uncertainty = POSTURES[unc];
-    trail.push(
-      evidence("mc-uncertainty", POSTURES[unc], [
-        { path: "cognition.uncertainty_policy", value: POSTURES[unc], rule: "uncertainty-posture" },
-      ]),
-    );
-  }
-
-  // Memory: what persists → memory.types (V5.P2.5).
-  const mem = num(answers["m-memory"]);
-  if (mem !== undefined) {
-    const presets: Array<NonNullable<PersonaSeed["memoryTypes"]>> = [
-      { episodic: true, semantic: true, procedural: true, autobiographical: true, user_preferences: true, evaluations: true },
-      { episodic: true, semantic: true, procedural: true, autobiographical: false, user_preferences: false, evaluations: true },
-      { episodic: false, semantic: true, procedural: false, autobiographical: false, user_preferences: false, evaluations: false },
-    ];
-    if (presets[mem]) {
-      seed.memoryTypes = presets[mem];
-      trail.push(
-        evidence("m-memory", ["everything", "professional", "minimal"][mem] ?? String(mem), [
-          { path: "memory.types", value: JSON.stringify(presets[mem]), rule: "choice-to-memory" },
-        ]),
-      );
-    }
-  }
-
-  // Governance: the starting profile (E128). It sets the defaults of the three controls, and everything
-  // answered above (the confidence width, the volatility half-life) still wins over it.
-  const gp = num(answers["g-profile"]);
-  const PROFILES = ["regulated", "standard", "research"] as const;
-  if (gp !== undefined && PROFILES[gp]) {
-    seed.profile = PROFILES[gp];
-    trail.push(evidence("g-profile", PROFILES[gp], [{ path: "governance.per_layer_edit_policy", value: PROFILES[gp], rule: "choice-to-profile" }]));
-  }
-
-  const tone = str(answers["p-tone"]);
-  if (tone) {
-    seed.tone = tone;
-    trail.push(evidence("p-tone", tone, [{ path: "persona.voice.tone", value: tone, rule: "verbatim-slug" }]));
-  }
-  const exemplar = str(answers["p-exemplar"]);
-  if (exemplar) {
-    seed.voiceExemplars = [{ persona: exemplar }];
-    trail.push(evidence("p-exemplar", exemplar, [{ path: "persona.voice_exemplars[0]", value: exemplar, rule: "verbatim-exemplar" }]));
-  }
-
-  return { seed, evidence: trail };
+/** A fingerprint of the sources, so a saved interview is resumed only over the same material. */
+export function sourcesFingerprint(sources: ReadonlyArray<Omit<Source, "id">>): string {
+	return createHash("sha256")
+		.update(JSON.stringify(sources.map((s) => [s.kind, s.label, s.text])))
+		.digest("hex")
+		.slice(0, 16);
 }

@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractEnvelopes, type PersonaFrontmatter } from "@personaxis/core";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { loadPersonaFile } from "../src/load.js";
 import { personaTree, type ScopeNode } from "../src/center/tree.js";
 import { CANONICAL_LAYERS } from "../src/center/authority.js";
@@ -18,8 +18,8 @@ let mainPath: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-center-"));
-  mainPath = writeStarterPersona(dir, "Vega");
-  writeStarterPersona(dir, "Legal", "legal"); // a sub-persona under .personaxis/personas/legal
+  mainPath = writeTestPersona(dir, "Vega");
+  writeTestPersona(dir, "Legal", "legal"); // a sub-persona under .personaxis/personas/legal
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

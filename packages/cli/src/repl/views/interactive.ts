@@ -16,8 +16,9 @@
  */
 
 import chalk from "chalk";
-import { loadPersona, stateOf,
-  readState,
+import {
+  loadPersona,
+  stateOf,
   extractEnvelopes,
   driftReport,
   readDriftThresholds,
@@ -35,8 +36,6 @@ import { configMatrixLines, type CellEditor } from "./config-matrix.js";
 import { settingFor, invalidateScopeCache } from "../scope.js";
 import { scopedProvider } from "./scoped.js";
 import type { TabbedProvider, TabLine, TabAction } from "./tabbed.js";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
 
 const LAYERS = [
   "identity",

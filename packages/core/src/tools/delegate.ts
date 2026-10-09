@@ -131,7 +131,7 @@ const DELEGATION_CLASS = {
 
 export function delegateTool(options: DelegateToolOptions): ToolSpec {
 	return {
-		name: "delegate",
+		name: DELEGATE_TOOL,
 		// `meta` and not a category of its own: it acts on the run rather than on a
 		// file, a shell or a network, which is what the other five name. A seventh
 		// category for one tool would be a subsetting rule nobody can use.

@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "dist", "index.js");
@@ -33,7 +33,7 @@ const valueOf = () => (JSON.parse(cli("state", "show", "--json").out) as { value
 /** A folder as `create` leaves it: the spec under `.personaxis/`, the compiled prose at the root. */
 function project(): void {
 	dir = mkdtempSync(join(tmpdir(), "pxs-state-"));
-	writeStarterPersona(dir, "Vega");
+	writeTestPersona(dir, "Vega");
 	writeFileSync(join(dir, "PERSONA.md"), "# Vega\n\nVega is a careful designer who checks before shipping.\n");
 }
 

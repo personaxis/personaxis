@@ -68,8 +68,8 @@ $env:YOUR_API_KEY_ENV_VAR = "<your-key>"
 ```
 
 The hook runs as a child of your coding agent, so the agent's process must have the variable set. Set it
-before launching the agent (or add it to your shell profile), otherwise `observe` falls back to the
-offline heuristic and nothing real is learned.
+before launching the agent (or add it to your shell profile), otherwise `observe` refuses for lack
+of a model and nothing is learned.
 
 ### 2. Compile the persona and wire the reference
 

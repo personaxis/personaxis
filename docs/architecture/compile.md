@@ -5,9 +5,23 @@ Source: `packages/cli/src/commands/{compile,decompile}.ts`,
 
 ## Compile (`personaxis.md` → compiled doc)
 
-LLM-based, provider-agnostic (`local | byok | agent`). Input: the full
-`personaxis.md` (+ `policy.yaml`/`state.json` as reference + a capped resource manifest).
-Output: the persona-prompting document (`PERSONA.md`).
+A model writes the document, provider-agnostic (`local | byok | agent`); without one, `compile`
+refuses and says how to configure one. Input: the full `personaxis.md` and a **reference** the code
+assembles from it (`packages/core/src/compile/assemble.ts`): every hard limit, stay-in-character
+rule, always/never anchor, consistency line and memory or resource path, plus how each trait
+expresses at the current state. Output: the persona-prompting document (`PERSONA.md`).
+
+The prompt (`compile-instructions.ts`) asks for the work first, traits only as they change how the
+work is done and never as labels or levels, the reason for a rule where the spec gives one, the
+spec's voice exemplars word for word, a normal tone, and only the reference's headings. The
+faithfulness check (`packages/core/src/compile/faithfulness.ts`) then holds the document to the
+reference: no protected bullet dropped, none added, no new heading. A rejected document goes back
+with its findings and its own text, twice. If it still fails on a few protected rules (at most a quarter
+of them, or two), those rules are the definition's to enforce: the dropped ones go back verbatim under
+their label, the added ones come out, the model's prose stays, and the output says how many
+(`enforceProtected`). Anything else (a missing protected section, a new heading, many rules) stops
+`compile`: it writes nothing and keeps the last attempt in `.personaxis/.tmp/rejected-PERSONA.md`. The reference itself is never written as a
+persona's document.
 
 **Canonical output paths** (see [multi-persona.md](./multi-persona.md)):
 - root → `<repo>/PERSONA.md` (one level above `.personaxis/`); also injects `@PERSONA.md`
@@ -37,12 +51,17 @@ The strip is idempotent.
 See [self-evolution.md](./self-evolution.md) for how the active overlay (applied governed
 self-edits) folds into compile as authoritative overrides.
 
-When a coordinate crosses a band mid-session, the living loop rewrites `PERSONA.md` in place.
-That rewrite is the same document `compile --no-polish` writes: the resource manifest, the
-sub-persona header and the skill list included. Both paths ask one function for it
-(`packages/cli/src/compiled-document.ts`), and a test holds the session's hook to a real compile
-byte for byte. What the rewrite does not do is what only `compile` does: polish the prose with a
-model, and copy skills into a host's discovery directory.
+Every written version goes into the persona's record as a `compiled` entry (the document's hash, why
+it was written, the hash of the definition it came from, the model), and its text is kept once per hash
+in `compiled/<hash>.md` (`packages/core/src/compile/history.ts`). A model writes the document, so two
+compiles of one definition differ, and only this says which one an agent read.
+
+When a coordinate crosses a band mid-session, the session marks `PERSONA.md` stale and starts the
+same `compile` in the background, quiet and one at a time (`packages/cli/src/repl/session.ts`); the
+turn does not wait, and every turn reads the document from disk, so the next one sees the rewrite. A
+failed rewrite leaves the mark for the next crossing or `compile --if-pending`. The reference both
+paths build carries the resource manifest, and the faithfulness check rejects a document that drops
+a "Memory & resources" line, which is what a 2026-09-14 rewrite lost.
 
 ## Decompile (edited compiled doc → proposed `personaxis.md`)
 

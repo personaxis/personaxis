@@ -5,12 +5,11 @@
  * write_policy and retention.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import {
   LivingLoop,
-  HeuristicAppraiser,
   loadPersona,
   readMemory,
   readLiveMemory,
@@ -87,6 +86,19 @@ function seed(): void {
   writeFileSync(handle.statePath, JSON.stringify(state, null, 2));
 }
 
+
+/** An appraiser that proposes remembering the observation when `worth` says so, as a model would. */
+function remembers(worth: (observation: string) => boolean): Appraiser {
+  return {
+    appraise: async (input) => ({
+      appraisal: "",
+      mutations: [],
+      memories: worth(input.observation) ? [{ content: input.observation, source: input.source }] : [],
+      confidence: 0.9,
+    }),
+  };
+}
+
 describe("extractFacts (offline, es/en; entity-neutral)", () => {
   it("attributes an introduction to the neutral 'interlocutor' subject, never 'user'", () => {
     expect(extractFacts("hola, me llamo Mara y trabajo en esto")[0]).toMatchObject({ key: "interlocutor.name", value: "Mara" });
@@ -131,10 +143,21 @@ describe("spec knobs are read (V2-F1.6, zero decorative fields)", () => {
 });
 
 describe("a stable fact survives a session (V2-F1.1, generalized; name is one instance)", () => {
-  it("HeuristicAppraiser + LivingLoop persist the fact; factsView recalls it grouped by subject", async () => {
+  it("the loop persists a fact the appraiser proposes; factsView recalls it grouped by subject", async () => {
     writeFileSync(personaPath, fixture());
     seed();
-    const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
+    // The model reads the line and proposes the fact; the stub stands in for it. What is under test is
+    // what the loop does with the proposal, which is the runtime's and the same whatever the model.
+    const learnsTheName: Appraiser = {
+      appraise: async (input) => ({
+        appraisal: "",
+        mutations: [],
+        memories: [],
+        preferences: input.observation.includes("Mara") ? [{ key: "interlocutor.name", value: "Mara", rationale: "self-introduction" }] : [],
+        confidence: 0.9,
+      }),
+    };
+    const loop = new LivingLoop(personaPath, { appraiser: learnsTheName });
     await loop.tick({ observation: "hola, me llamo Mara", source: "user" });
     // The fact is in the preferences store as a subject-qualified key, ready for every later session.
     expect(readPreferences(personaPath)["interlocutor.name"]?.value).toBe("Mara");
@@ -143,7 +166,6 @@ describe("a stable fact survives a session (V2-F1.1, generalized; name is one in
     // The block groups by subject, and works for ANY subject, not just "user".
     expect(renderFacts(view)).toContain("interlocutor: name = Mara");
     // A general entity fact (e.g. project) lands in the same block, another subject.
-    await loop.tick({ observation: "recuerda esto", source: "user" }); // salient, keeps the loop honest
     // And learning it the first time is an autobiographical milestone.
     expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(true);
     // E16: the milestone is owned by the turn that produced it, not by a constant.
@@ -155,10 +177,9 @@ describe("a stable fact survives a session (V2-F1.1, generalized; name is one in
     // it back as the persona's own account of itself. Both halves are asserted, because
     // refusing to remember anything a tool said would be a different bug.
     //
-    // The appraiser is a stub, not HeuristicAppraiser: the heuristic one only extracts
-    // facts when `source === "user"`, so it can never reach this path. A MODEL-backed
-    // appraiser has no such filter (see APPRAISAL_JSON_SCHEMA's `preferences`), and it
-    // is the one that reads a poisoned tool result and proposes a preference from it.
+    // A model-backed appraiser has no filter on the source (see APPRAISAL_JSON_SCHEMA's
+    // `preferences`), and it is the one that reads a poisoned tool result and proposes a
+    // preference from it; the stub stands in for it.
     writeFileSync(personaPath, fixture());
     seed();
     const fromTool: Appraiser = {
@@ -184,10 +205,12 @@ describe("a stable fact survives a session (V2-F1.1, generalized; name is one in
     expect(readAutobiographical(personaPath).some((e) => e.event.includes("Mara"))).toBe(true);
   });
 
-  it("non-salient chatter earns NO episodic entry (dedup with sessions/)", async () => {
+  it("only what the appraiser proposes earns an episodic entry (dedup with sessions/)", async () => {
+    // Which line is worth remembering is the model's call; the runtime writes what it proposes
+    // and nothing for the rest of the chatter, which already lives in sessions/.
     writeFileSync(personaPath, fixture());
     seed();
-    const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
+    const loop = new LivingLoop(personaPath, { appraiser: remembers((o) => o.includes("deploy")) });
     await loop.tick({ observation: "ok", source: "user" });
     await loop.tick({ observation: "how is the weather", source: "user" });
     expect(readMemory(personaPath).length).toBe(0);
@@ -200,7 +223,7 @@ describe("write_policy is honored (V2-F1.6)", () => {
   it("ephemeral: nothing reaches the ledger", async () => {
     writeFileSync(personaPath, fixture("  write_policy:\n    default: ephemeral\n"));
     seed();
-    const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
+    const loop = new LivingLoop(personaPath, { appraiser: remembers(() => true) });
     await loop.tick({ observation: "recuerda esto importante", source: "user" });
     expect(readMemory(personaPath).length).toBe(0);
   });
@@ -208,7 +231,7 @@ describe("write_policy is honored (V2-F1.6)", () => {
   it("session: entries are tagged to the session and recall-scoped", async () => {
     writeFileSync(personaPath, fixture("  write_policy:\n    default: session\n"));
     seed();
-    const loop = new LivingLoop(personaPath, { appraiser: new HeuristicAppraiser() });
+    const loop = new LivingLoop(personaPath, { appraiser: remembers(() => true) });
     await loop.tick({ observation: "recuerda: el deploy es el viernes", source: "user", sessionId: "s1" });
     const all = readLiveMemory(personaPath);
     expect(all[0].tags).toContain("session:s1");

@@ -40,7 +40,7 @@ import { Ledger } from "../src/run/budget.js";
 import { recordTurns } from "../src/run/recording.js";
 import { TurnRunner } from "../src/run/service.js";
 import type { Envelope } from "../src/envelopes.js";
-import type { RecordBody, RecordEntry } from "../src/record/entry.js";
+import type { RecordBody } from "../src/record/entry.js";
 import type { TurnCompaction, TurnRequest } from "../src/run/vocabulary.js";
 
 const ASKED: TurnRequest = {

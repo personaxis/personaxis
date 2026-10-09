@@ -10,7 +10,7 @@
  */
 
 import { Command } from "commander";
-import { existsSync, mkdirSync, copyFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import chalk from "chalk";
 import {

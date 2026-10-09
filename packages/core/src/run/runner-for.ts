@@ -64,8 +64,6 @@ import { warmPax } from "../judge/pax-process.js";
 import { colleaguePathFor, colleaguesOf, lowerCeiling, type Ceiling } from "./colleagues.js";
 import { wordlessReport } from "./wordless.js";
 import { lessonFrom } from "./lesson-extract.js";
-import { requestToolCall } from "../tool-calling.js";
-import type { Lesson, PostmortemInput } from "../postmortem.js";
 import { compile } from "../enforcement/policy-compile.js";
 import { Kernel } from "../kernel/index.js";
 import { delegateTool, MAX_DELEGATION_DEPTH } from "../tools/delegate.js";

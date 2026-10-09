@@ -113,7 +113,7 @@ export function validatePolicy(
         category: "FAIL_SCHEMA",
         fix:
           e.keyword === "required"
-            ? `Add '${(e.params as { missingProperty?: string }).missingProperty}' to policy.yaml${e.instancePath ? ` at ${e.instancePath}` : ""}. \`personaxis init\` writes a complete template.`
+            ? `Add '${(e.params as { missingProperty?: string }).missingProperty}' to policy.yaml${e.instancePath ? ` at ${e.instancePath}` : ""}.`
             : e.keyword === "if" || e.keyword === "then"
               ? `A conditional rule applies here: what ${e.instancePath || "the document"} already declares makes another field required or restricted. Fix the sibling error above this one; this line is its consequence.`
               : e.keyword === "enum"

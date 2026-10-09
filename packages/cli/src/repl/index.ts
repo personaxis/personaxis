@@ -11,15 +11,14 @@
 
 import * as readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { join, relative, resolve, dirname, basename } from "node:path";
+import { relative, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import chalk from "chalk";
-import { ensureState, record, readState, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
+import { ensureState, record, extractEnvelopes, resolveModel, registerProject, listSessions, proposals, applySelfEdit, rejectSelfEdit, announcePresence, releasePresence, acquireLease, releaseLease, describeLease, PRESENCE_HEARTBEAT_MS } from "@personaxis/core";
 import { animateLogo, awaken, voiceWrap, farewell, driftGauge } from "@personaxis/tui/visual";
 import { type SlashItem } from "@personaxis/tui/screen";
 import { InkScreen } from "@personaxis/tui/ink";
-import { writeStarterPersona } from "../starter.js";
-import { runCompile } from "../commands/compile.js";
+import { runGenesisCommand } from "../commands/create.js";
 import { runModelSetup } from "../config-wizard.js";
 import { runCommandCenter } from "../command-center.js";
 import type { Ctx, ReplOptions } from "./types.js";
@@ -52,8 +51,7 @@ import { qualitativeDriftLines } from "./views/drift-data.js";
 import { AUDIT_TABS, auditLines } from "./views/audit-data.js";
 import { registerHistoryView } from "./views/history.js";
 import { rewind, rewindPlan } from "../rewind.js";
-import { resolveDeclaredSkills } from "../targets/skills.js";
-import { loadPersonaFile, slugAddressFromPath } from "../load.js";
+import { slugAddressFromPath } from "../load.js";
 
 // Re-exported for the REPL's public surface (tests + the CLI entry import these). The whole
 // REPL was split into modules (F3.6): types, config, render, daemons, session, turn, commands.
@@ -73,6 +71,34 @@ export function noteActivity(ctx: Ctx, activity: string): void {
   }
 }
 
+/** Offer to configure a model, the Command Center's model section or the readline wizard. Skippable. */
+async function offerModelSetup(personaPath?: string): Promise<void> {
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+  let yn = "y";
+  try {
+    yn = ((await rl.question(`\n  ${chalk.yellow("No model configured.")} Set one up now? ${chalk.dim("[Y/skip]")} `)) || "y").trim().toLowerCase();
+  } finally {
+    rl.close();
+  }
+  if (yn !== "y" && yn !== "yes") {
+    stdout.write(chalk.dim("  Skipped. Nothing answers until a model is set; configure it anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
+    return;
+  }
+  if (!process.env.PERSONAXIS_NO_INK && stdout.isTTY) {
+    // The Command Center's Model section, the SAME stable alt-screen config
+    // the REPL's /config opens (one config UX, first-run and later alike).
+    await runCommandCenter({ ...(personaPath ? { personaPath } : {}), cwd: process.cwd(), section: "model" });
+    return;
+  }
+  // Headless / NO_INK fallback: the readline wizard.
+  const rl2 = readline.createInterface({ input: stdin, output: stdout });
+  try {
+    await runModelSetup(rl2, { scope: "global", out: (t) => stdout.write(t + "\n") });
+  } finally {
+    rl2.close();
+  }
+}
+
 export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   let personaPath = resolvePersonaPath(opts.persona);
   await animateLogo();
@@ -86,40 +112,38 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
 
   // V5.P0.2: starting at the user's HOME with no persona means creating their MAIN
   // AI persona (the personal one every project inherits unless it has its own).
+  // Since 2026-10-08 nothing here is a template: the persona is `init`'s, written by a
+  // model from this folder and what the person says, so a model comes first.
   const atHome = resolve(process.cwd()) === resolve(homedir());
   if (!personaPath) {
     stdout.write(
       atHome
         ? chalk.yellow("  No main persona yet.") + chalk.dim(" This is your home directory: the persona created here is YOUR personal AI persona, inherited by every project that has none of its own.\n\n")
-        : chalk.yellow("  No persona here yet.") + chalk.dim(" Let's create one so you can start playing.\n\n"),
+        : chalk.yellow("  No persona here yet.") + chalk.dim(" A model reads this folder, asks what it is missing, and writes the persona.\n\n"),
     );
-    let name = "Aria";
-    if (stdin.isTTY) {
-      const onboard = readline.createInterface({ input: stdin, output: stdout });
-      try {
-        const prompt = atHome
-          ? `  Create your MAIN persona in ${chalk.cyan("~/.personaxis/")}? ${chalk.dim("[Y/n]")} `
-          : `  Create a starter persona in ${chalk.cyan(".personaxis/")}? ${chalk.dim("[Y/n]")} `;
-        const yn = ((await onboard.question(prompt)) || "y").trim().toLowerCase();
-        if (yn && yn !== "y" && yn !== "yes") {
-          stdout.write(chalk.dim("  No problem. Run ") + chalk.cyan("personaxis init") + chalk.dim(" anytime, or pass ") + chalk.cyan("--persona <path>") + chalk.dim(".\n"));
-          return;
-        }
-        name = ((await onboard.question(`  Name your persona ${chalk.dim("[Aria]")} `)) || "Aria").trim() || "Aria";
-      } finally {
-        onboard.close();
-      }
+    if (!stdin.isTTY) {
+      stdout.write(chalk.dim("  Run ") + chalk.cyan("personaxis init \"what it is for\"") + chalk.dim(" to create it.\n"));
+      return;
     }
-    personaPath = writeStarterPersona(process.cwd(), name);
-    stdout.write(chalk.green("  ✓ ") + `created ${chalk.cyan(personaPath)}\n`);
-    // Born compiled: the deterministic stage-1 assembler needs no model, so a starter
-    // persona always has its PERSONA.md from second zero (never a phantom compile).
+    if (!resolveModel({ cwd: process.cwd() })) await offerModelSetup();
+    if (!resolveModel({ cwd: process.cwd() })) {
+      stdout.write(chalk.dim("  A persona is written by a model; configure one with ") + chalk.cyan("personaxis config") + chalk.dim(", then run ") + chalk.cyan("personaxis init") + chalk.dim(".\n"));
+      return;
+    }
+    const onboard = readline.createInterface({ input: stdin, output: stdout });
+    let yn = "y";
     try {
-      await runCompile({ root: true, noPolish: true });
-    } catch (e) {
-      stdout.write(chalk.yellow("  ! ") + `first compile failed: ${(e as Error).message}\n`);
+      yn = ((await onboard.question(atHome ? `  Create your MAIN persona now? ${chalk.dim("[Y/n]")} ` : `  Create this folder's persona now? ${chalk.dim("[Y/n]")} `)) || "y").trim().toLowerCase();
+    } finally {
+      onboard.close();
     }
-    stdout.write(chalk.green("  ✓ ") + `${chalk.bold(name)} is ready.\n`);
+    if (yn !== "y" && yn !== "yes") {
+      stdout.write(chalk.dim("  No problem. Run ") + chalk.cyan("personaxis init") + chalk.dim(" anytime, or pass ") + chalk.cyan("--persona <path>") + chalk.dim(".\n"));
+      return;
+    }
+    await runGenesisCommand(undefined, { root: true });
+    personaPath = resolvePersonaPath(opts.persona);
+    if (!personaPath) return;
   }
 
   // V5.P0.2: keep the global registry aware of every PROJECT with a persona, so the
@@ -137,32 +161,7 @@ export async function startRepl(opts: ReplOptions = {}): Promise<void> {
   }
 
   // First-run model setup: if no model resolves, offer an interactive setup (skippable).
-  if (stdin.isTTY && !resolveModel({ cwd: process.cwd(), personaPath })) {
-    const rl = readline.createInterface({ input: stdin, output: stdout });
-    let yn = "y";
-    try {
-      yn = ((await rl.question(`\n  ${chalk.yellow("No model configured.")} Set one up now? ${chalk.dim("[Y/skip]")} `)) || "y").trim().toLowerCase();
-    } finally {
-      rl.close();
-    }
-    if (yn === "y" || yn === "yes") {
-      if (!process.env.PERSONAXIS_NO_INK && stdout.isTTY) {
-        // The Command Center's Model section, the SAME stable alt-screen config
-        // the REPL's /config opens (one config UX, first-run and later alike).
-        await runCommandCenter({ personaPath, cwd: process.cwd(), section: "model" });
-      } else {
-        // Headless / NO_INK fallback: the readline wizard.
-        const rl2 = readline.createInterface({ input: stdin, output: stdout });
-        try {
-          await runModelSetup(rl2, { scope: "global", out: (s) => stdout.write(s + "\n") });
-        } finally {
-          rl2.close();
-        }
-      }
-    } else {
-      stdout.write(chalk.dim("  Skipped, running offline (heuristic). Configure anytime with ") + chalk.cyan("/config") + chalk.dim(" here, or ") + chalk.cyan("personaxis config set") + chalk.dim(".\n"));
-    }
-  }
+  if (stdin.isTTY && !resolveModel({ cwd: process.cwd(), personaPath })) await offerModelSetup(personaPath);
 
   const meter = makeMeter();
   const ctx = makeCtx(personaPath, meter);
@@ -643,4 +642,4 @@ async function runScreenMode(ctx: Ctx): Promise<void> {
   await farewell(ctx.handle.frontmatter);
 }
 
-/** Guide a first-time user to configure a model instead of silently falling back to heuristic mode. */
+/** Guide a first-time user to configure a model, which every turn needs. */

@@ -10,5 +10,4 @@ List the sub-personas installed in THIS project (`.personaxis/personas/`), one l
 personaxis list
 ```
 
-See also: `personaxis personas` (tree with addresses), `personaxis template` (authoring
-scaffolds), `personaxis ps` (which personas are awake).
+See also: `personaxis personas` (tree with addresses), `personaxis ps` (which personas are awake).

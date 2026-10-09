@@ -110,7 +110,7 @@ function validateFile(filePath?: string): ValidationResult {
           field: "",
           message: (err as Error).message,
           category: "FAIL_SCHEMA",
-          fix: "Check the path: `personaxis validate` looks for .personaxis/personaxis.md (or the file you named). `personaxis create` scaffolds one if this project has no persona yet.",
+          fix: "Check the path: `personaxis validate` looks for .personaxis/personaxis.md (or the file you named). `personaxis init` has a model write one if this project has no persona yet.",
         },
       ],
       warnings: [],
@@ -166,7 +166,7 @@ function validateFile(filePath?: string): ValidationResult {
       result.valid = false;
     }
   } else if (specVersion === "0.5.0" || specVersion === "0.6.0") {
-    console.log(`  ${chalk.yellow("!")} sibling policy.yaml not found. spec_version ${specVersion} expects one. Run 'personaxis init' to generate.`);
+    console.log(`  ${chalk.yellow("!")} sibling policy.yaml not found. spec_version ${specVersion} expects one; migrate the persona to the current spec, which does not.`);
     if (result.status === "PASS") result.status = "PASS_WITH_WARNINGS";
   }
 
@@ -231,7 +231,7 @@ export const validateCommand = new Command("validate")
     console.log("");
 
     if (!result.valid) {
-      console.error(chalk.dim("See "), chalk.cyan("personaxis spec"), chalk.dim(" for the current spec, or "), chalk.cyan("personaxis init"), chalk.dim(" to generate a valid template. Run "), chalk.cyan("personaxis migrate 0.10-to-1.0"), chalk.dim(" to upgrade a legacy document (chain older codemods first if needed)."));
+      console.error(chalk.dim("See "), chalk.cyan("personaxis spec"), chalk.dim(" for the current spec, or "), chalk.cyan("personaxis init"), chalk.dim(" to have a model write a new one. Run "), chalk.cyan("personaxis migrate 0.10-to-1.0"), chalk.dim(" to upgrade a legacy document (chain older codemods first if needed)."));
       console.error("");
     }
     process.exit(exitCodeFor(result.status));

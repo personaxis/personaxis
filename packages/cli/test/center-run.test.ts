@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { readState } from "@personaxis/core";
-import { writeStarterPersona } from "../src/starter.js";
+import { writeTestPersona } from "./helpers/test-persona.js";
 import { personaTree, type ScopeNode } from "../src/center/tree.js";
 import { applyNavigatorEdit } from "../src/center/run.js";
 
@@ -16,7 +16,7 @@ let mainPath: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pxs-run-"));
-  mainPath = writeStarterPersona(dir, "Vega");
+  mainPath = writeTestPersona(dir, "Vega");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

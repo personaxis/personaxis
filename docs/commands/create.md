@@ -1,115 +1,77 @@
 # `personaxis create`: Genesis
 
-Create a persona from nothing. Every entry case produces the same four files: a validated
-`personaxis.md` (Genesis cannot write an invalid one; this is property-tested), `state.json`,
-a first compiled `PERSONA.md`, and `creation-report.md`, which records where each number came
-from.
+Create another persona in this folder, beside the one [`init`](./init.md) makes: a reviewer next to the
+project's main persona, for instance. It runs the same process as `init`, in the same order: this folder,
+always; what you want it for, optional; material you point at; the interview; then the persona and its
+`PERSONA.md`. Every run produces the same four files: a validated `personaxis.md`, `state.json`,
+`PERSONA.md`, and `creation-report.md`, which records where each field came from.
 
-A persona is the whole way a professional works: procedures, criteria, tools, sourced
-knowledge and character. The interview mostly fills in character; `--research` adds sourced
-knowledge (see below).
+A model is required. Without one, `create` refuses, says how to configure one, and writes nothing.
 
 ```bash
-personaxis create                              # asks WHICH source to use (TTY)
-personaxis create --deep                       # the full 20-question interview
-personaxis create --from-prompt "<brief>"      # natural language
-personaxis create --from-project [dir]         # infer from the project's own docs
-personaxis create --from-import card.png       # character card V2/V3 (.json/.png)
-personaxis create --from-import CLAUDE.md      # system prompt, CLAUDE.md, AGENTS.md, SOUL.md
-personaxis create --research                   # also search the web and keep the sources
-personaxis create --from-transcript chat.txt   # exemplar conversations
+personaxis create reviewer                                   # read the folder, ask what it is for, interview
+personaxis create reviewer "blocks merges without tests"     # what it is for, given up front
+personaxis create voice --from-import SOUL.md                # also read a SOUL.md, a card or a system prompt
+personaxis create tutor --from-transcript sessions.txt       # also read example conversations
+personaxis create auditor --research "API security review"   # also read the field on the web
 ```
 
-Modes **compose** (later evidence wins per field; overrides stay visible in the
-report). `[slug]` names the persona (default: under `.personaxis/personas/<slug>/`;
-`--root` writes the project's root persona).
+`<name>` is its folder: `.personaxis/personas/<name>/`. Every source is numbered (S1, S2, ...) and the
+model reads them together; what you say it is for wins over the folder when they disagree. The options are
+the same as `init`'s: `--from-import`, `--from-transcript`, `--research`, `--profile`, `--yes`, `--json`,
+`--provider` and `--no-compile` (see [`init`](./init.md)).
 
-| Flag | Effect |
-|---|---|
-| `--deep` | ask the FULL question bank (20) instead of the 12 core questions |
-| `--profile <name>` | starting profile, `regulated`, `standard` (default) or `research`: see below |
-| `--yes` | non-interactive: accept labeled defaults, overwrite existing |
-| `--json` | emit spec + gates + notes + provenance as JSON (dry-run unless `--yes`) |
-| `--provider <p>` | override the provider for LLM extraction (`local\|byok\|agent`) |
-| `--research` | search the web for the field and keep what it found in `references/`, with each source and its date (needs a web provider key, see [web](./web.md)) |
-| `--no-polish` | skip the model polish after creation; the offline template is marked pending |
-| `--root` | create the project's root persona |
+## How it is written
 
-## Two interviews, one bank
+Eleven stages, from identity to governance. Each prompt carries the sources, what earlier stages
+decided and the schema of the answer. Each answer gives its reasoning, the layer, and a provenance entry
+for every field: the exact words of a source, or what the value was inferred from. The code checks the
+answer (schema, universal rules, quotes really in their source, numbers that can move, no web page as
+the origin of identity, character or limits) and sends the exact problems back, up to two times. If a
+stage still fails, `create` stops and names the stage and the problems; nothing is written.
 
-Running `create` with no `--from-*` flag opens on the six ways to build a persona, so the
-sources are visible rather than hidden in `--help`. Passing any flag skips that screen,
-which is what scripts and agents do.
+Then four gates must pass before writing: five-state validate = PASS, lint, a first compile, and the
+load-bearing check (no mutable coordinate whose value cannot change the compiled document; run it on any
+persona with [`personaxis jacobian`](./jacobian.md)). Exit codes follow the validator convention.
 
-| Interview | Questions | Asks about |
-|---|---|---|
-| default | **12** | who it is, the five trait axes, values, voice, what it must never do |
-| `--deep` | **20** | the above plus envelope width, mood half-life, refusal detail, uncertainty thresholds, memory policy, starting profile, a voice exemplar |
+## The interview
 
-Whatever is not asked falls back to a **labeled default**, and `creation-report.md` keeps
-saying which numbers you decided and which the tool assumed, so a short interview is a
-smaller claim rather than a hidden guess.
+In a terminal, after reading the sources, a model asks about what they leave open: at most five questions
+a round and fifteen in all, written for this job, each with a line saying what is missing. It asks about
+real work (a case, a rejected change, what good output looks like), never for ratings, and stops when the
+rest can be inferred. Pick an option, type your own answer, `s` skips, `←` goes back, Esc leaves. What you
+skip is inferred, and the report lists every question and whether you answered it.
 
-Answers are saved as you give them: leaving the interview part-way does not lose them, and
-the next run offers to continue. The draft is deleted once the persona exists.
+The answers become one source the model reads and cites. They are saved as you give them: leaving part-way
+does not lose them, and the next run over the same sources offers to continue. The draft is deleted once
+the persona exists. `--yes` and `--json` never ask.
 
-**The interview** maps answers deterministically (item bank v1.0.0): Likert to
-trait means, a confidence item to envelope widths, value ranking to weights,
-dilemmas to hard limits / prohibited behaviors / cognitive strategy. Works fully
-offline. **LLM extraction** (prompt/project/transcript/card-prose) requires every
-number to carry an evidence quote; dimensions without evidence are omitted, never
-invented; with no model, a labeled heuristic baseline is used and recorded.
+## The coding agent as the model
 
-Every number changes the compiled document, and you never hand-write behavior prose. Genesis
-fills each trait and affect coordinate with per-band `expression` text and, where the
-evidence implies volatility, a `half_life`, so the value actually selects prose when
-its band changes at compile time. The source of that prose is recorded per number:
-`earned` (an evidence quote), `synthesized` (a deterministic construct table, rule
-`construct-band-prose@v1`, same seed gives the same prose), or `default`. Volatility
-cues like "quick to anger, slow to forgive" map to short and long half-lives on the
-matching coordinates.
+With `--provider agent`, each stage's prompt is written to `.personaxis/.tmp/<hash>.prompt.md` and
+`create` stops (exit 0). The agent running the command (Claude Code, Codex) answers it in
+`.personaxis/.tmp/<hash>.out.md`, and re-running the same command replays every answer already written and
+stops at the next stage, until the persona exists. The prompts are deterministic, so the hashes match.
 
-Input cannot change the universals: safety stays governance-typed at 0.98 and cannot be
-outranked; honesty stays hard; the three universal hard limits are always present; envelopes
-are sanitized to `min ≤ mean ≤ max`.
+## What to review
 
-Gates (all must pass before writing): five-state validate = PASS, lint, a first compile,
-provenance completeness, and a load-bearing check. The load-bearing check compiles the
-persona at each band and rejects any mutable coordinate whose value cannot change the
-compiled document; Genesis repairs it by synthesis and recompiles, and only a coordinate that
-cannot be made to matter fails the gate (a bug, not a user error). You can run the same
-check on any persona with [`personaxis jacobian`](./jacobian.md). Exit codes follow the
-validator convention.
-
-**The coding agent as the model.** With `--provider agent`, `create` does not fall back to
-defaults: it writes the extraction prompt to `.personaxis/.tmp/<hash>.prompt.md` and stops
-(exit 0). The agent running the command (Claude Code, Codex) answers it in
-`.personaxis/.tmp/<hash>.out.md`, and re-running the same command continues from that answer.
-A step that needs another prompt stops again the same way. Without the flag, `agent` is only
-the fallback when no model is configured, and `create` keeps working offline from labeled
-defaults.
-
-What Genesis had to work around (no model configured, an extractor that failed, a web search
-that returned nothing) is printed as a warning when `create` finishes and listed under
-**Worked around** in `creation-report.md`. Nothing was checked for these; where something was
-missing, the persona was built from labeled defaults.
-
-See [genesis](../architecture/genesis.md) for the design, and `creation-report.md` for what to
-review: its "Defaults" section lists every number not earned from evidence, and its provenance
-table marks each coordinate as earned, synthesized or default.
+`creation-report.md` lists the sources, then every field the model **inferred** without a source stating
+it, with what it inferred it from: read that list first, and if an inference is wrong, say it in the brief
+and create again. Then each stage, with its reasoning, its repairs and each field's origin. Anything
+worked around (a web search that returned nothing) is printed when `create` finishes and listed under
+**Worked around**. See [genesis](../architecture/genesis.md) for the design.
 
 ## Starting profiles
 
-Every persona Genesis creates keeps a state that moves inside its ranges as it works and
-returns to its baseline on its own. A profile only sets the starting values of the three things its owner controls,
-and anything the interview or the extraction states wins over it.
+Every persona keeps a state that moves inside its ranges as it works and returns to its baseline on its
+own. A profile is the stance the model takes on the three things its owner controls:
 
 | Profile | How far it can move | How fast it returns | Lasting changes to how it works |
 |---|---|---|---|
-| `regulated` | half the standard range | twice as fast (half-life 2 turns for affect, 12 for traits) | a person approves them |
-| `standard` | ±0.2 on traits, the affect ranges as before | half-life 4 for affect, 24 for traits | a person approves them |
-| `research` | half again the standard range | twice as slow (8 and 48) | applied by the persona itself |
+| `regulated` | narrow ranges, about half what the work allows | short half-lives | a person approves them |
+| `standard` | as wide as the work needs | half-lives that fit how fast the job recovers | under review; identity, character, values and limits need a person |
+| `research` | about half again wider | longer half-lives | applied by the persona itself on working layers |
 
-In all three, changes to who the persona is (identity, character, values) need a person, and the
-protected floor (the universals, hard limits, governance, permissions) never opens. None of them is
+In all three, changes to who the persona is (identity, character, values, self-regulation) need a person,
+and the protected floor (the universals, hard limits, governance, permissions) never opens. None of them is
 `locked`: that mode is the kill-switch, for an incident or an audit, and `personaxis improve locked` sets it.

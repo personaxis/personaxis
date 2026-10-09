@@ -17,7 +17,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { ensureState, readState, type PersonaHandle, type StateFile } from "./persona.js";
+import { ensureState, type PersonaHandle, type StateFile } from "./persona.js";
 
 export const LIVE_START = "<!-- PERSONAXIS:LIVE-STATE start -->";
 export const LIVE_END = "<!-- PERSONAXIS:LIVE-STATE end -->";
@@ -80,23 +80,14 @@ export function liveSync(handle: PersonaHandle, compiledPath: string | undefined
 export interface RecompileHookOptions {
   /** Path to the compiled doc to keep in sync (marker + live-block self-heal). */
   compiledPath?: string;
-  /**
-   * F3.1, optional DETERMINISTIC inline recompile. When provided, on drift the
-   * hook also rewrites `compiledPath` with this freshly-assembled document (the
-   * stage-1 assembler, no provider, cheap, no tokens). This is what makes the
-   * loop's `recompile` a real recompile rather than a marker: the compiled doc
-   * reflects the evolved spec immediately. A later `personaxis compile` re-polishes.
-   * Returns undefined to skip the rewrite for a given tick.
-   */
-  assemble?: (handle: PersonaHandle) => string | undefined;
 }
 
 /**
  * Build a `recompile` hook for the LivingLoop: on numeric drift it writes the `.live.json`
- * notify marker (and strips any residual live block from the compiled doc). When an
- * `assemble` function is supplied (F3.1) it ALSO rewrites the compiled doc deterministically
- *, a cheap, provider-free inline recompile. The qualitative LLM POLISH remains a separate,
- * provider-backed step (`personaxis compile`).
+ * notify marker (and strips any residual live block from the compiled doc). Rewriting the
+ * document itself is a model's job since 2026-10-07 (`personaxis compile`; the CLI's session
+ * hook starts it in the background); until then this hook could rewrite it with the assembled
+ * template, which no persona gets any more.
  */
 export function makeRecompileHook(
   opts?: string | RecompileHookOptions,
@@ -105,9 +96,5 @@ export function makeRecompileHook(
   return async (handle: PersonaHandle) => {
     const state = ensureState(handle);
     liveSync(handle, options.compiledPath, state);
-    if (options.assemble && options.compiledPath && existsSync(options.compiledPath)) {
-      const doc = options.assemble(handle);
-      if (doc && doc.trim()) writeFileSync(options.compiledPath, doc.trimEnd() + "\n", "utf-8");
-    }
   };
 }

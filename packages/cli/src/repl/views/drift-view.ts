@@ -16,8 +16,8 @@
  */
 
 import chalk from "chalk";
-import { stateOf,
-  readState,
+import {
+  stateOf,
   extractEnvelopes,
   driftReport,
   readMaxStepDelta,
