@@ -6,7 +6,6 @@ import { join } from "node:path";
 import chalk from "chalk";
 import { loadConfig, saveConfig, configPath, type PersonaxisConfig, type ConfigScope } from "../config.js";
 import { runConfigMenu } from "../config-wizard.js";
-import { runCommandCenter } from "../command-center.js";
 import { resolvePersonaSourcePath } from "../load.js";
 import { GATED_PROVIDERS } from "../saas-gating.js";
 
@@ -243,6 +242,8 @@ export const configCommand = new Command("config")
       } catch {
         personaPath = undefined;
       }
+      // Lazy: the Command Center pulls in Ink/React, which every other command would pay for at startup.
+      const { runCommandCenter } = await import("../command-center.js");
       await runCommandCenter({ personaPath, personas: personaSlugs(process.cwd()), cwd: process.cwd(), section: "model" });
       return;
     }

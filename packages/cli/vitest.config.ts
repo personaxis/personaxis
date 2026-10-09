@@ -65,6 +65,13 @@ import { coverage } from "../../vitest.floor";
  * So: a red that moves between files is a red from the environment, not from the diff. Check `node --version`
  * and the `collect` total before reading a single line of a change. And never raise a timeout to make it go
  * away, which is the E27 lesson this file already opens with.
+ *
+ * ## If it creeps back over sixty seconds, time `personaxis --version` next
+ *
+ * Measured 2026-10-09: the suite had grown to 76-122s and E29 was back with it, while `node --version` took 77ms.
+ * The time was the CLI's own startup, paid on every spawn: it imported all 58 commands, two of them the Command
+ * Center's Ink and React, so `--version` took 1.25s. Loading only the command asked for took `--version` to
+ * about 0.4s and the suite to 43-48s, three runs, all 1,276 tests green and no E29.
  * The `threads` pool would use a different transport and answer where the reply is lost.
  * It is not an option here: 22 tests fail under it.
  */
