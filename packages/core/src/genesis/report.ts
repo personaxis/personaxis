@@ -37,7 +37,7 @@ function possiblySame(keys: readonly string[]): Array<[string, string]> {
 	return pairs;
 }
 
-const cell = (s: string, n = 100): string => s.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim().slice(0, n);
+const cell = (s: string, n = 100): string => s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim().slice(0, n);
 
 /**
  * What the reading of the whole persona found: the rules the sources state and where each one is kept, what

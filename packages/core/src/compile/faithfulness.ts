@@ -55,13 +55,14 @@ function claimsBySection(doc: string): Map<string, string[]> {
   const lines = doc.split(/\r?\n/);
   let current: string | undefined;
   for (const line of lines) {
-    const h = line.match(/^##\s+(.*)$/);
+    // `\S` first, so the whitespace run and the text cannot both claim the same tabs (polynomial backtracking).
+    const h = line.match(/^##\s+(\S.*)$/);
     if (h) {
       current = h[1].trim().toLowerCase();
       map.set(current, []);
       continue;
     }
-    const b = line.match(/^\s*[-*]\s+(.*)$/);
+    const b = line.match(/^\s*[-*]\s+(\S.*)$/);
     if (b && current) {
       const text = b[1].replace(/^\*\*[^*]+\*\*:?\s*/, "").trim(); // drop a leading **bold:** label
       if (text) map.get(current)!.push(text);
@@ -184,7 +185,7 @@ export function enforceProtected(
     const next = all.findIndex((l, i) => i > start && /^##\s+/.test(l));
     return next === -1 ? all.length : next;
   };
-  const bulletText = (l: string): string | undefined => l.match(/^\s*[-*]\s+(.*)$/)?.[1]?.replace(/^\*\*[^*]+\*\*:?\s*/, "").trim();
+  const bulletText = (l: string): string | undefined => l.match(/^\s*[-*]\s+(\S.*)$/)?.[1]?.replace(/^\*\*[^*]+\*\*:?\s*/, "").trim();
   const labelOf = (l: string): string | undefined => l.match(/^\s*\*\*([^*]+?):?\*\*\s*$/)?.[1]?.trim().toLowerCase();
   let removed = 0;
   let restored = 0;
