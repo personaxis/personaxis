@@ -25,7 +25,7 @@
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@personaxis/core": "workspace:*",
     "@personaxis/sdk": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

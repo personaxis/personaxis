@@ -21,8 +21,8 @@
   "dependencies": {
     "@personaxis/spec": "workspace:*",
     "gray-matter": "^4.0.3",
-    "js-yaml": "^4.3.2",
-    "undici": "^7.30.0"
+    "js-yaml": "^5.4.3",
+    "undici": "^8.11.2"
   },
   "devDependencies": {
     "@fast-check/vitest": "^0.4.1",
