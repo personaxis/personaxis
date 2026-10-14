@@ -87,7 +87,7 @@ jobs:
       # latest release, because that is where somebody who has never used this
       # decides which version to install.
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist-bin/personaxis-${{ matrix.name }}*
           prerelease: ${{ contains(github.ref_name, '-') }}
