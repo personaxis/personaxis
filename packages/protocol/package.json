@@ -17,9 +17,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.4.0",
+    "@agentclientprotocol/sdk": "2.1.0",
     "@personaxis/core": "workspace:*",
-    "vscode-jsonrpc": "^8.2.1"
+    "vscode-jsonrpc": "^10.0.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "3.2.6",
